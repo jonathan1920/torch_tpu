@@ -29,7 +29,6 @@
 #include "torch_tpu/common/context_states.h"
 
 namespace torch_tpu {
-
 namespace internal {
 
 // The ThreadLocalDebugInfo slot to use for TorchTPU context states. For now, we
@@ -46,7 +45,17 @@ template <typename T, typename... Args>
 inline constexpr bool is_alternative_v<T, std::variant<Args...>> =
     (std::is_same_v<T, Args> || ...);
 
+// Crashes if the current thread is not allowed to access context states.
+void CrashIfContextStateAccessIsDisallowed();
+
 }  // namespace internal
+
+// One-way flip to disallow the current thread to access thread-local context
+// states. After the flip, any attempt to access or mutate context states leads
+// to crash.
+//
+// Intended to be used in the background worker threads only.
+void DisallowThisThreadToAccessContextState();
 
 // The state for different types of context managers respectively.
 using ContextManagerState = std::variant<
@@ -94,6 +103,7 @@ std::optional<T> GetContextState() {
   static_assert(
       internal::is_alternative_v<T, ContextManagerState>,
       "T must be one of the alternative types of ContextManagerState.");
+  internal::CrashIfContextStateAccessIsDisallowed();
 
   // Traverse nodes in the TorchTPU context state slot until a state of the
   // given type is found.
@@ -144,6 +154,8 @@ void PushContextState(T state) {
   static_assert(
       internal::is_alternative_v<T, ContextManagerState>,
       "T must be one of the alternative types of ContextManagerState.");
+  internal::CrashIfContextStateAccessIsDisallowed();
+
   internal::PushContextStateUntyped(ContextManagerState(std::move(state)));
 }
 
@@ -154,6 +166,8 @@ void PopContextState() {
   static_assert(
       internal::is_alternative_v<T, ContextManagerState>,
       "T must be one of the alternative types of ContextManagerState.");
+  internal::CrashIfContextStateAccessIsDisallowed();
+
   auto node = internal::PopContextStateUntyped();
   const T* state = std::get_if<T>(&node->state());
   ABSL_CHECK(state != nullptr)  // CRASH_OK

@@ -58,6 +58,7 @@
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/contain.h"
+#include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
@@ -855,6 +856,10 @@ void CompilationCache::EnqueueCompilation(
   compilation_pool_->Schedule(
       [this, key, builder = std::move(executable_builder),
        compile_options = std::move(compile_options)]() mutable {
+        // Prevent compilation threads from accessing thread-local context
+        // states to enforce they always rely on resolved compiler options
+        // passed down from the dispatch thread.
+        DisallowThisThreadToAccessContextState();
         torch_tpu::ScopedMemMeasuringContainer container;
         this->GetFromTier2OrCompile(std::move(key), std::move(builder),
                                     std::move(compile_options));
@@ -980,6 +985,10 @@ void CompilationCache::GetFromTier3OrCompile(
     backup_compilation_pool_->Schedule(
         [this, key, builder = std::move(executable_builder),
          options = std::move(compile_options)]() mutable {
+          // Prevent backup compilation threads from accessing thread-local
+          // context states to enforce they always rely on resolved
+          // compiler options passed down from the dispatch thread.
+          DisallowThisThreadToAccessContextState();
           // As an optimization, if the tier-3 cache read has already
           // populated the executable, skip the backup compilation.
           if (this->IsExecutableReady(key)) {

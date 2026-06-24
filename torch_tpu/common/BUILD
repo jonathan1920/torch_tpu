@@ -890,6 +890,7 @@ torch_tpu_cc_library(
         ":compilation",
         ":compilation_spec",
         ":compile_options_key",
+        ":context_manager",
         ":dimension_types",
         ":dtype",
         ":env_vars",
@@ -1271,6 +1272,18 @@ torch_tpu_cc_library(
         "//shims/torch/c10/util:base",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:absl_check",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "context_state_access_test",
+    srcs = ["context_state_access_test.cc"],
+    deps = [
+        ":context_manager",
+        ":context_states",
+        "//shims/torch",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
