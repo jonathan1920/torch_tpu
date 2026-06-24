@@ -6020,6 +6020,16 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     for res, expected in zip(res_tpu, x_bool):
       self.assertEqual(res.cpu(), expected)
 
+  def test_sort_indices(self):
+    """Tests that torch.sort returns correct indices (dtype and values)."""
+    x = torch.tensor([5.0, 1.0, 3.0, 2.0, 4.0], dtype=torch.float32)
+
+    def run(device):
+      values, indices = torch.sort(x.to(device))
+      return values, indices
+
+    self.assert_close_tpu_vs_cpu(run)
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""
