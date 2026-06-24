@@ -45,6 +45,14 @@
 namespace torch_tpu {
 namespace {
 
+double Factorial(int64_t n) {
+  double f = 1.0;
+  for (int64_t i = 2; i <= n; ++i) {
+    f *= i;
+  }
+  return f;
+}
+
 constexpr double kPi = 3.14159265358979323846;
 
 std::vector<double> ComputeCotDerivativeCoeffs(int n) {
@@ -95,15 +103,26 @@ absl::StatusOr<mlir::MlirOp> BuildPolygammaShlo(
   }
 
   // 1. Direct path (x >= 0.5)
-  auto n_const = MakeConstantLike(input_op, static_cast<double>(n));
-  mlir::MlirOp direct_op = mlir::chlo::BroadcastPolygamma(n_const, input_op);
+  // psi^(n)(x) = (-1)^(n+1) * n! * zeta(n+1, x)
+  double sign_val = ((n + 1) % 2 == 0) ? 1.0 : -1.0;
+  double coeff_val = sign_val * Factorial(n);
+  auto coeff_cst = MakeConstantLike(input_op, coeff_val);
+  auto n_plus_one_cst = MakeConstantLike(input_op, static_cast<double>(n + 1));
+  auto zeta_op = mlir::chlo::BroadcastZeta(n_plus_one_cst, input_op);
+  auto direct_op = mlir::stablehlo::Mul(coeff_cst, zeta_op);
 
   // 2. Reflection path (x < 0.5)
+  // psi^(n)(x) = (-1)^n * psi^(n)(1-x) - pi^(n+1) * d^n/dx^n (cot(pi x))
   auto one = MakeConstantLike(input_op, 1.0);
   auto one_minus_x = mlir::stablehlo::Subtract(one, input_op);
-  mlir::MlirOp polygamma_1_minus_x =
-      mlir::chlo::BroadcastPolygamma(n_const, one_minus_x);
+  auto zeta_1_minus_x = mlir::chlo::BroadcastZeta(n_plus_one_cst, one_minus_x);
 
+  // First term: (-1)^n * psi^(n)(1-x) = -n! * zeta(n+1, 1-x)
+  double first_term_coeff = -Factorial(n);
+  auto first_term_coeff_cst = MakeConstantLike(input_op, first_term_coeff);
+  auto first_term = mlir::stablehlo::Mul(first_term_coeff_cst, zeta_1_minus_x);
+
+  // Second term: -pi^(n+1) * poly_op
   auto pi_cst = MakeConstantLike(input_op, kPi);
   auto pi_x = mlir::stablehlo::Mul(input_op, pi_cst);
   auto cos_pi_x = mlir::stablehlo::Cosine(pi_x);
@@ -115,12 +134,9 @@ absl::StatusOr<mlir::MlirOp> BuildPolygammaShlo(
 
   double pi_pow_val = -std::pow(kPi, n + 1);
   auto pi_pow_cst = MakeConstantLike(input_op, pi_pow_val);
-  auto reflection_term = mlir::stablehlo::Mul(pi_pow_cst, poly_op);
+  auto second_term = mlir::stablehlo::Mul(pi_pow_cst, poly_op);
 
-  double sign_val = ((n + 1) % 2 == 0) ? 1.0 : -1.0;
-  auto sign_cst = MakeConstantLike(input_op, sign_val);
-  auto signed_pg = mlir::stablehlo::Mul(sign_cst, polygamma_1_minus_x);
-  auto reflection_op = mlir::stablehlo::Subtract(reflection_term, signed_pg);
+  auto reflection_op = mlir::stablehlo::Add(first_term, second_term);
 
   // 3. Selection and Pole Handling
   auto point_five = MakeConstantLike(input_op, 0.5);
