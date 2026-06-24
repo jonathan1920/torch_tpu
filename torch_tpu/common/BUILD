@@ -566,7 +566,7 @@ torch_tpu_cc_library(
     srcs = ["macro_utils.cc"],
     hdrs = ["macro_utils.h"],
     deps = [
-        "//shims/torch/torch/headeronly:torch_headeronly",
+        "//shims/torch:torch_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
