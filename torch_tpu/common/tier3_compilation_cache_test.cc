@@ -21,6 +21,8 @@
 #include <cstdint>
 #include <string>
 
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -34,6 +36,12 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
+
+// TODO: b/527454770 - Workaround for a test runner bug where environment
+// variables containing '=' are truncated. To avoid this, we pass the path
+// via this command-line flag and set the environment variable programmatically
+// in `main`. Remove this workaround once the underlying Blaze bug is fixed.
+ABSL_FLAG(std::string, cache_root, "", "Tier-3 compilation cache root.");
 
 namespace torch_tpu {
 
@@ -116,3 +124,16 @@ TEST_F(Tier3CompilationCacheTest, GetFromTier3CacheFailsIfCacheFileIsInvalid) {
 
 }  // namespace
 }  // namespace torch_tpu
+
+int main(int argc, char** argv) {
+  testing::InitGoogleTest(&argc, argv);
+  absl::ParseCommandLine(argc, argv);
+  // The TPU runtime and cache initialization read the cache root from the
+  // environment variable. We must set it programmatically here, before any
+  // initialization occurs, using the value passed via the command-line flag.
+  if (!absl::GetFlag(FLAGS_cache_root).empty()) {
+    setenv("TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT",
+           absl::GetFlag(FLAGS_cache_root).c_str(), 1);
+  }
+  return RUN_ALL_TESTS();
+}

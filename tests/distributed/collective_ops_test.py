@@ -27,13 +27,31 @@ before the open source release.
 """
 
 import os
+import sys
 import time
 from typing import Any, Callable, List, Union
 
+from absl import flags
 from absl import logging
 from absl.testing import absltest
 
+# TODO: b/527454770 - Workaround for a test runner bug where environment
+# variables containing '=' are truncated. To avoid this, we pass the path
+# via this command-line flag and set the environment variable programmatically.
+# Remove this workaround once the underlying Blaze bug is fixed.
+flags.DEFINE_string("cache_root", None, "Tier-3 compilation cache root.")
+
 if __name__ == "__main__":  # We are in the parent process.
+  flags.FLAGS(sys.argv, known_only=True)
+  # The TPU runtime and cache initialization read the cache root from the
+  # environment variable. We must set it programmatically here, before any
+  # initialization occurs (including importing torch), using the value passed
+  # via the command-line flag.
+  if flags.FLAGS.cache_root:
+    os.environ["TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT"] = (
+        flags.FLAGS.cache_root
+    )
+
   # Pick a likely unique cache root for this run. This makes it less likely for
   # multiple runs of this test to interfere with each other via the compilation
   # cache. This must be done once in the parent process, before importing torch.

@@ -1131,10 +1131,12 @@ torch_tpu_cc_test(
         ":tier2_compilation_cache",
         ":tier3_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1142,12 +1144,10 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "remote_tier3_compilation_cache_test",
     srcs = ["tier3_compilation_cache_test.cc"],
-    env = {
-        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
-        # Alternatively, set it to a GCS directory.
-        # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/remote_tier3_compilation_cache_test"
+    args = [
+        # "--cache_root=$DATA_ROOT/$TMP_SUBDIR/ttl=1d/remote_tier3_compilation_cache_test"
         "",
-    },
+    ],
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
@@ -1166,22 +1166,22 @@ torch_tpu_cc_test(
         ":tier2_compilation_cache",
         ":tier3_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
 torch_tpu_cc_test(
     name = "compilation_cache_remote_filesystem_test",
     srcs = ["compilation_cache_remote_filesystem_test.cc"],
-    env = {
-        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
-        # Alternatively, set it to a GCS directory.
-        # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/compilation_cache_remote_filesystem_test"
+    args = [
+        # "--cache_root=$DATA_ROOT/$TMP_SUBDIR/ttl=1d/compilation_cache_remote_filesystem_test"
         "",
-    },
+    ],
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
@@ -1198,11 +1198,13 @@ torch_tpu_cc_test(
         ":tier2_compilation_cache",  # buildcleaner: keep
         ":tier3_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:path",
         "@xla//xla/tsl/platform:env",
     ],
