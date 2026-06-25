@@ -103,7 +103,6 @@ torch_tpu_py_test(
     ],
     deps = [
         ":distributed_utils",
-        "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -118,14 +117,12 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "collective_ops_remote_cache_test",
     srcs = ["collective_ops_test.py"],
-    args = [
-        # TODO: b/527453701 - Disable trimmed degraded reads in the TPU client
-        # to avoid crashes on read resubmissions. Figure out the root cause and
-        # remove this flag once fixed.
-        "--bamm2_void_client_use_trim=false",
-        # "--cache_root=$DATA_ROOT/$TMP_SUBDIR/ttl=1d/collective_ops_remote_cache_test"
+    env = {
+        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
+        # Alternatively, set it to a GCS directory.
+        # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/collective_ops_remote_cache_test"
         "",
-    ],
+    },
     main = "collective_ops_test.py",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 12,
@@ -141,7 +138,6 @@ torch_tpu_py_test(
     ],
     deps = [
         ":distributed_utils",
-        "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
