@@ -1755,6 +1755,18 @@ Please use clone() or contiguous() to copy the tensor before writing""",
       tt_testing.set_init_default_generator_failure("")
       tt_testing.reset_default_device_generators()
 
+  @et.why_tpu_only("Can only test device mismatch in a TPU test.")
+  def test_prod_mixed_device_error(self):
+    """Tests prod() with a TPU input and CPU out tensor."""
+    t = torch.tensor([1.0, 2.0, 3.0], device=et.device())
+    out = torch.empty(1, device="cpu")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""prod(): expected the output tensor to be on 'tpu', got 'cpu'""",
+    ):
+      torch.prod(t, dim=0, out=out)
+
 
 if __name__ == "__main__":
   absltest.main()

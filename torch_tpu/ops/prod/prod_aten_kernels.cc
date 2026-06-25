@@ -24,12 +24,18 @@
 #include "absl/status/statusor.h"
 #include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
+#include "torch_tpu/ops/copy_from/tpu_to_tpu.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -75,21 +81,52 @@ Dimensions GetSizesAfterProd(at::IntArrayRef self_size,
   return output_size;
 }
 
+// Helper function to handle 0-dimensional tensor (scalar) product reduction.
+// Since a 0-dimensional tensor contains only a single element, its product is
+// equivalent to a copy (if the dtype matches) or a type cast (if the dtype
+// differs).
+absl::StatusOr<at::Tensor> ProdZeroDim(const at::Tensor& self,
+                                       at::ScalarType inferred_dtype,
+                                       OpParamCacheKeys param_keys) {
+  if (self.scalar_type() == inferred_dtype) {
+    // If input and output dtypes match, wrap the existing DeviceBufferRef in
+    // a new ATen tensor. This avoids dispatching an identity copy op.
+    TT_ASSIGN_OR_RETURN(const DeviceBufferRef src_buf, GetBuffer(self));
+    return MakeTensor(src_buf, self.device().index());
+  }
+
+  // If the dtype differs, compile and dispatch a StableHLO ConvertElementType
+  // operation via UnaryOp to perform type conversion natively on TPU.
+  TT_ASSIGN_OR_RETURN(auto inferred_mlir_dtype,
+                      ConvertTo<mlir::ElementType>(inferred_dtype));
+  auto convert_builder =
+      [inferred_mlir_dtype](
+          mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
+    return mlir::stablehlo::ConvertElementType(input, inferred_mlir_dtype);
+  };
+  TT_ASSIGN_OR_RETURN(auto result,
+                      UnaryOp(self, convert_builder,
+                              {.op_param_cache_keys = std::move(param_keys),
+                               .out_dtype = inferred_mlir_dtype}));
+  return result;
+}
+
 absl::StatusOr<at::Tensor> AtenProdHelper(const at::Tensor& self,
                                           std::optional<int64_t> dim,
                                           bool keep_dim,
                                           std::optional<at::ScalarType> dtype,
                                           OpParamCacheKeys param_keys) {
   at::ScalarType inferred_dtype = InferProdDtype(self.scalar_type(), dtype);
+
   if (self.dim() == 0) {
-    // Force a clone to guarantee that the output of this out-of-place reduction
-    // does not share storage/alias with input `self` when no dtype cast occurs.
-    return self.to(inferred_dtype).clone();
+    return ProdZeroDim(self, inferred_dtype, std::move(param_keys));
   }
+
   std::optional<int64_t> normalized_dim = std::nullopt;
   if (dim.has_value()) {
     TT_ASSIGN_OR_RETURN(normalized_dim, SafeWrapDim(*dim, self.dim()));
   }
+
   std::optional<mlir::ElementType> dtype_mlir_type = std::nullopt;
   if (dtype.has_value()) {
     TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=there is no way to trigger
@@ -97,12 +134,15 @@ absl::StatusOr<at::Tensor> AtenProdHelper(const at::Tensor& self,
                           // tensor with this dtype and errors out early.
         dtype_mlir_type, ConvertTo<mlir::ElementType>(dtype.value()));
   }
+
   TT_ASSIGN_OR_RETURN(auto inferred_mlir_dtype,
                       ConvertTo<mlir::ElementType>(inferred_dtype));
+
   Dimensions output_dims =
       GetSizesAfterProd(self.sizes(), normalized_dim, keep_dim);
   ReductionMode mode =
       keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
+
   TT_ASSIGN_OR_RETURN(
       auto result, UnaryOp(self,
                            absl::bind_front(BuildProdShlo, normalized_dim, mode,
@@ -134,9 +174,11 @@ at::Tensor& AtenProdDimOut(const at::Tensor& self, int64_t dim, bool keep_dim,
         TT_ASSIGN_OR_THROW(
             at::Tensor result,
             AtenProdHelper(self, dim, keep_dim, dtype, std::move(param_keys)));
-        // Copy values instead of using AssignBufferToAtTensor() to prevent
-        // mutating the physical pointer of `out`.
-        AtenCopyFrom(result, out, /*non_blocking=*/true);
+        TT_CHECK_THROW(IsPrivateUse1Device(out), error::kInvalidArgument)
+            << "expected the output tensor to be on '"
+            << GetPrivateUse1DeviceDebugName() << "', got '" << out.device()
+            << "'";
+        TT_THROW_IF_ERROR(CopyTpuToTpu(result, out));
         return out;
       });
 }
