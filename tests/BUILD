@@ -706,6 +706,7 @@ torch_tpu_py_library(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:testing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",  # build_cleaner: keep
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -756,6 +757,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -820,6 +822,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -861,15 +864,21 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "errors_test_cpu",
+    name = "errors_test_gpu",
     srcs = ["errors_test.py"],
-    args = ["--test_mode=cpu"],
-    env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
+    args = ["--test_mode=gpu"],
+    env = {
+        "TORCH_SHOW_CPP_STACKTRACES": "0",
+        # Force synchronous CUDA kernel launches so device-side errors trigger
+        # immediately at the exact Python op call instead of asynchronously.
+        "CUDA_LAUNCH_BLOCKING": "1",
+    },
     main = "errors_test.py",
     notest_oss = "Low value in maintaining for both internal and OSS and they run different versions of PyTorch.",
     shard_count = 4,
     tags = [
         "nosan",  # *san builds are low-value for error tests.
+        "requires-gpu-nvidia",
         "wheel_test_excluded",
     ],
     deps = [
@@ -881,6 +890,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
