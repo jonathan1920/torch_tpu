@@ -848,6 +848,39 @@ def ml_layer_model_builder(
         ),
     )
 
+  elif model_name == "slice_scatter":
+    dim = kwargs["dim"]
+    start = kwargs["start"]
+    end = kwargs["end"]
+    step = kwargs["step"]
+    input_shape = kwargs["input_shape"]
+    src_shape = kwargs["src_shape"]
+
+    class SliceScatterModel(torch.nn.Module):
+
+      def __init__(self, dim, start, end, step):
+        super().__init__()
+        self.dim = dim
+        self.start = start
+        self.end = end
+        self.step = step
+
+      def forward(self, x, src):
+        return torch.slice_scatter(
+            x,
+            src,
+            dim=self.dim,
+            start=self.start,
+            end=self.end,
+            step=self.step,
+        )
+
+    model = SliceScatterModel(dim, start, end, step)
+    example_inputs = (
+        torch.randn(input_shape, dtype=weights_dtype, device=device),
+        torch.randn(src_shape, dtype=weights_dtype, device=device),
+    )
+
   elif model_name == "nn.AvgPool2d":
     kernel_size = kwargs["kernel_size"]
     stride = kwargs["stride"]
