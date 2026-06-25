@@ -314,8 +314,9 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
               << "lu_pivots must have at least 1 dimension, got "
               << lu_pivots.dim();
           // TODO: b/483972819 resize outputs instead of raising errors.
-          TT_CHECK_THROW(p.dim() == lu_pivots.dim() + 1,
-                         error::kInvalidArgument)
+          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
+                           // resizes the output, instead of raising an error.
+              p.dim() == lu_pivots.dim() + 1, error::kInvalidArgument)
               << "expected the first output tensor to be a "
               << lu_pivots.dim() + 1 << "D tensor (pivots dimension + 1), got "
               << p.dim() << "D of shape " << ToString(p.sizes());

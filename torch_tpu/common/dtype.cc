@@ -168,7 +168,7 @@ absl::StatusOr<mlir::ElementType> ToElementType(
       // Boolean.
     case at::kBool:
       return mlir::ElementType::PRED;
-#if TT_TORCH_VERSION_GE(2, 13) && !TT_IS_INTERNAL_TORCH_TPU
+#if TT_TORCH_VERSION_GE(2, 13)
     case at::ScalarType::BComplex32:
 #endif
       // These cases should never happen.

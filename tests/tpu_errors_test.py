@@ -831,53 +831,6 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       op(tensor, out=out)
 
-  @et.why_tpu_only(
-      "TODO: make the behavior consistent between TPU and CPU - the latter"
-      " doesn't check pivots rank."
-  )
-  def test_lu_unpack_pivots_invalid_rank(self):
-    data = torch.ones(2, 4, 4, device=et.device())
-
-    # TODO: b/485613841 remove this test when the divergence is resolved.
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""lu_unpack(): lu_pivots must have at least 1 dimension, got 0""",
-    ):
-      pivots = torch.tensor(1, device=et.device(), dtype=torch.int32)
-      torch.lu_unpack(data, pivots)
-
-    # TODO: b/483972819 remove this test when the divergence is resolved.
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""lu_unpack(): expected the first output tensor to be a 3D tensor (pivots dimension + 1), got 1D of shape [4]""",
-    ):
-      pivots = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
-      out = _make_lu_unpack_outputs(p=(4,), l=(2, 4, 4), u=(2, 4, 4))
-      torch.lu_unpack(data, pivots, out=out)
-
-  @et.why_tpu_only(
-      "TODO: make the behavior consistent between TPU and CPU - the latter"
-      " doesn't check pivots dimensions."
-  )
-  def test_lu_unpack_pivots_invalid_dimension(self):
-    data = torch.ones(2, 4, 4, device=et.device())
-
-    # TODO: b/485613841 remove this test when the divergence is resolved.
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""lu_unpack(): pivots size must be less than or equal to the size of the matrix, got 5 and 4""",
-    ):
-      pivots = torch.ones(2, 5, device=et.device(), dtype=torch.int32)
-      torch.lu_unpack(data, pivots)
-
-    # TODO: b/485613841 remove this test when the divergence is resolved.
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""lu_unpack(): pivots and tensor must have the same batch dimensions, got [2] and [3]""",
-    ):
-      pivots = torch.ones(3, 4, device=et.device(), dtype=torch.int32)
-      torch.lu_unpack(data, pivots)
-
   # CPU kernel raises an `IndexError`, instead of a `RuntimeError`, because it
   # tries to get `pivots.size(-1)` of a 0-dim tensor.
   @et.why_tpu_only("TODO: make the behavior consistent between TPU and CPU.")
@@ -896,6 +849,24 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         tpu="""linalg_lu_solve(): pivots must have at least 1 dimension, got 0""",
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
+
+  # CPU kernel raises an `IndexError`, instead of a `RuntimeError`, because it
+  # tries to get `pivots.size(-1)` of a 0-dim tensor.
+  @et.why_tpu_only("TODO: make the behavior consistent between TPU and CPU.")
+  def test_lu_unpack_pivots_rank_too_low(self):
+    lu_data = torch.ones(4, 4, device=et.device())
+    lu_pivots = torch.tensor(0, device=et.device(), dtype=torch.int32)
+
+    # Call the out overload of lu_unpack() op.
+    out = _make_lu_unpack_outputs(p=(4, 4), l=(4, 4), u=(4, 4))
+
+    # TODO: b/485613841 also test CPU when the TPU kernel is fixed, raising an
+    # `IndexError`, instead of an `RuntimeError`.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""lu_unpack(): lu_pivots must have at least 1 dimension, got 0""",
+    ):
+      torch.lu_unpack(lu_data, lu_pivots, out=out)
 
   # CPU kernel runs successfully, broadcasting the inputs.
   @et.why_tpu_only("TODO: make the behavior consistent between TPU and CPU.")
