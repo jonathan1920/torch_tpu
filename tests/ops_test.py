@@ -3257,8 +3257,6 @@ class TestOps(TorchTpuTestBase):
   def test_polar(self):
     self.do_test_op(
         "polar",
-        # TODO: fix polar(out=...) failing.
-        check_out_variant=False,
         # TODO: fix polar() succeeding with these dtypes (it
         # should fail).
         exclude_dtypes=INTEGRAL_DTYPES
