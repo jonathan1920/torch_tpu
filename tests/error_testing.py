@@ -64,16 +64,9 @@ def device():
   raise ValueError(f"Unsupported test mode: {TEST_MODE.value}")
 
 
-def set_up_module(init_torch_tpu: bool = True):
-  """Called by absltest after flags are parsed and before tests are run.
-
-  Args:
-    init_torch_tpu: Whether to initialize torch_tpu. This should be set to False
-      for distributed tests, which need to initialize torch_tpu by itself.
-  """
-
-  if TEST_MODE.value in ("tpu", "cov") and init_torch_tpu:
-    torch.device("tpu")  # Initialize torch_tpu.
+def set_up_module() -> None:
+  """Called by absltest after flags are parsed and before tests are run."""
+  pass
 
 
 # Matches a source location in the format of "file:line: ...".
