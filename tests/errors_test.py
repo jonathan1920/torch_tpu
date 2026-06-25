@@ -5676,7 +5676,7 @@ Supported combinations for non-constant padding:
       self.skipTest("GPU behavior difference")
     device = et.device()
     with et.assert_raises_message(
-        (RuntimeError, NotImplementedError),
+        RuntimeError,
         gpu=""""normal_kernel_cpu" not implemented for 'Int'""",
         tpu="""normal(): expected the mean tensor to be floating point or complex type, got int32""",
     ):
@@ -5851,7 +5851,7 @@ Supported combinations for non-constant padding:
 
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
-        (RuntimeError, IndexError),
+        RuntimeError,
         tpu="""avg_pool2d(): materialization failed with: input must be a 3-D or 4-D tensor, got 2-D tensor""",
         gpu="""Dimension out of range (expected to be in range of [-2, 1], but got -3)""",
     ):
@@ -6020,7 +6020,7 @@ Supported combinations for non-constant padding:
 
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
-        (RuntimeError, IndexError),
+        RuntimeError,
         tpu="""scatter(): materialization failed with: expected the self tensor of shape [5, 5] to have the same rank as the src tensor of shape [5], got 2 vs. 1""",
         gpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
     ):

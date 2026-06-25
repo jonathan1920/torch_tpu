@@ -246,7 +246,7 @@ In either case, just ignore the failure (the test is not currently enforced for 
 @_append_error_test_failure_protocol
 @contextlib.contextmanager
 def assert_raises_message(
-    exception_type,
+    exception_type: type[Exception],
     *,
     tpu: str | re.Pattern[str],
     gpu: str | re.Pattern[str] | None = None,
@@ -269,6 +269,12 @@ def assert_raises_message(
       reviewed by an engineer.
   """
 
+  # Check that exception_type is a class derived from BaseException.
+  assert issubclass(exception_type, BaseException), (
+      "exception_type must be a class derived from BaseException. "
+      "It cannot be anything else, including a tuple."
+  )
+
   del message_reviewed_by  # Unused for now.
 
   if not _allow_gpu_parameter and gpu is not None:
@@ -277,11 +283,6 @@ def assert_raises_message(
   if gpu is None:
     gpu = tpu
 
-  exp_name = (
-      "/".join(t.__name__ for t in exception_type)
-      if isinstance(exception_type, tuple)
-      else exception_type.__name__
-  )
   try:
     yield
   except exception_type as e:
@@ -292,11 +293,12 @@ def assert_raises_message(
       _check_error_message(msg, tpu, "tpu")
   except BaseException as e:
     raise AssertionError(
-        f"Expected {exp_name} but got {type(e).__name__}: {e}"
+        f"Expected {exception_type.__name__} but got {type(e).__name__}: {e}"
     ) from e
   else:
     raise AssertionError(
-        f"Expected {exp_name} to be raised, but no exception was raised."
+        f"Expected {exception_type.__name__} to be raised, but no exception was"
+        " raised."
     )
 
 
