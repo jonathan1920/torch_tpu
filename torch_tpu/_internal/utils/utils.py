@@ -434,7 +434,7 @@ def _assert_tensor_close(
 
       if np.isinf(max_rel):
         suggestion_lines.append(
-            "\n    - rtol check is IMPOSSIBLE because `expected` is 0 but"
+            "\n    - rtol check is impossible because `expected` is 0 but"
             " `actual` is not."
         )
         suggestion_lines.append("\n      (Use LOOSE mode or fix the values)")
