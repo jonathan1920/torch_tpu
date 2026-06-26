@@ -405,22 +405,29 @@ PerfStats CompilationCache::GetCacheStats() const {
   return stats;
 }
 
+const CacheEntry* CompilationCache::FindStaticCacheEntryOrNull(
+    CompilationCacheKey key) const {
+  const auto it = executable_cache_.find(key);
+  return it == executable_cache_.end() ? nullptr : &it->second;
+}
+
 std::optional<CompilationCache::CacheLookupInternal>
 CompilationCache::GetStaticCacheEntry(CompilationCacheKey key) const {
-  auto it = executable_cache_.find(key);
-  if (it == executable_cache_.end()) {
+  const CacheEntry* cache_entry = FindStaticCacheEntryOrNull(key);
+  if (cache_entry == nullptr) {
     return std::nullopt;
   }
 
   perf_stats_.num_cache_hits++;
-  it->second.stats().read_count++;
-  it->second.stats().last_read = absl::Now();
+  cache_entry->stats().read_count++;
+  cache_entry->stats().last_read = absl::Now();
   ABSL_VLOG(2) << "Compilation cache STATIC HIT for key: " << key;
   return CacheLookupInternal{
-      .executable_promise = it->second.executable_promise(),
-      .executable_future = it->second.executable_future(),
+      .executable_promise = cache_entry->executable_promise(),
+      .executable_future = cache_entry->executable_future(),
       .needs_compilation = false,
-      .dump_on_cache_miss = false};
+      .dump_on_cache_miss = false,
+  };
 }
 
 std::optional<CompilationCache::BoundedDynamicCache::iterator>
@@ -556,9 +563,9 @@ CompilationCache::GetOrCreateCacheEntry(
 
 bool CompilationCache::IsExecutableReady(CompilationCacheKey key) const {
   absl::MutexLock lock(cache_mutex_);
-  if (const auto it = executable_cache_.find(key);
-      it != executable_cache_.end()) {
-    return IsFutureReady(it->second.executable_future());
+  if (const CacheEntry* cache_entry = FindStaticCacheEntryOrNull(key);
+      cache_entry != nullptr) {
+    return IsFutureReady(cache_entry->executable_future());
   }
   return false;
 }
@@ -1033,8 +1040,15 @@ void CompilationCache::GetFromTier3OrCompile(
   SharedLoadedExecutableWithMetadataFuture f;
   {
     absl::MutexLock lock(cache_mutex_);
-    const CacheEntry& cache_entry = executable_cache_[key];
-    f = cache_entry.executable_future();
+    // Return early if the cache entry has been concurrently evicted.
+    const CacheEntry* cache_entry = FindStaticCacheEntryOrNull(key);
+    if (cache_entry == nullptr) {
+      ABSL_VLOG(1)
+          << "Cache entry already evicted before reading tier-1 cache for key: "
+          << key;
+      return;
+    }
+    f = cache_entry->executable_future();
   }
   // Important: the .get() must be called outside the lock region to avoid a
   // deadlock. For example, if this function (GetFromTier3OrCompile) scheduled
@@ -1070,13 +1084,16 @@ void CompilationCache::GetFromTier3OrCompile(
                  << "\n  Pre-compile wait: " << pre_compile_duration
                  << "\n  Write duration: " << write_duration;
     absl::MutexLock lock(cache_mutex_);
-    const CacheEntry& cache_entry = executable_cache_[key];
-    auto& tier2_stats = cache_entry.stats().tier2;
-    if (!tier2_stats.has_value()) {
-      tier2_stats.emplace();
+    // Skip updating stats if the cache entry has been concurrently evicted.
+    const CacheEntry* cache_entry = FindStaticCacheEntryOrNull(key);
+    if (cache_entry != nullptr) {
+      auto& tier2_stats = cache_entry->stats().tier2;
+      if (!tier2_stats.has_value()) {
+        tier2_stats.emplace();
+      }
+      tier2_stats->pre_compile_duration = pre_compile_duration;
+      tier2_stats->write_duration = write_duration;
     }
-    tier2_stats->pre_compile_duration = pre_compile_duration;
-    tier2_stats->write_duration = write_duration;
   }
 
   if (tier == CacheTier::kTier1 && uses_tier3) {

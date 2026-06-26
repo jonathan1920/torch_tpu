@@ -325,6 +325,12 @@ class CompilationCache {
     bool dump_on_cache_miss = false;
   };
 
+  // Returns a pointer to the cache entry for `key` if found, otherwise returns
+  // nullptr.
+  [[nodiscard]] const CacheEntry* FindStaticCacheEntryOrNull(
+      CompilationCacheKey key) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(cache_mutex_);
+
   // Retrieves a cache entry from the static cache. If the key is not found in
   // the static cache, returns nullopt.
   std::optional<CacheLookupInternal> GetStaticCacheEntry(
