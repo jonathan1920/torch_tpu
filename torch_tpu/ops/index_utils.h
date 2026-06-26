@@ -17,10 +17,12 @@
 #ifndef TORCH_TPU_OPS_INDEX_UTILS_H_
 #define TORCH_TPU_OPS_INDEX_UTILS_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "torch_tpu/common/dimension_types.h"
 
 namespace torch_tpu {
@@ -29,6 +31,11 @@ namespace torch_tpu {
 absl::Status ResolveNegativeIndices(std::vector<at::Tensor>& indices,
                                     const at::IntArrayRef& sizes,
                                     const Indices& dimensions);
+
+absl::StatusOr<int64_t> ValidateIndexInputsAndGetDim(const at::Tensor& self,
+                                                     int64_t dim,
+                                                     const at::Tensor& index,
+                                                     const at::Tensor& source);
 
 }  // namespace torch_tpu
 
