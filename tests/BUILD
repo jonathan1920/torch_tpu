@@ -924,6 +924,7 @@ torch_tpu_py_test(
         "CUDA_LAUNCH_BLOCKING": "1",
     },
     main = "errors_test.py",
+    nolocal = "Skipping in local runs by default as it requires --config=cuda.",
     notest_oss = "Low value in maintaining for both internal and OSS and they run different versions of PyTorch.",
     shard_count = 4,
     tags = [
