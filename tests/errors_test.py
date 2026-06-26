@@ -389,7 +389,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     neg_log_likelihood = torch.randn(2, device=et.device())
     log_alpha = torch.randn(2, 2, 7, device=et.device())
 
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
@@ -525,7 +525,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       t.masked_select(mask)
 
   def test_index_copy_rank_mismatch(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""index_copy_(): When source and destination are not scalars, their dimensionality must match. Source dimensionality (1), destination dimensionality (2)""",
@@ -539,7 +539,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       )
 
   def test_index_copy_index_rank_not_1(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""index_copy_(): Index should have dimension 1 or 0 (got 2)""",
@@ -567,7 +567,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       )
 
   def test_index_copy_source_dim_ne_index_size(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""index_copy_(): Number of indices (1) should be equal to source.size(dim) (2)""",
@@ -594,7 +594,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       )
 
   def test_index_copy_scalar_dim_out_of_range(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
@@ -621,7 +621,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       )
 
   def test_index_copy_scalar_index_size_ne_1(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""index_copy_(): When source is scalar, index should have one element (got 2)""",
@@ -653,7 +653,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     gpu_err = """index_fill_(): Expected dtype int64 for index."""
     t = torch.ones(2, 2, device=et.device())
     index = torch.tensor([0], device=et.device(), dtype=torch.int)
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
 
     # Scalar variant
     with et.assert_raises_message(err_type, tpu=tpu_err, gpu=gpu_err):
@@ -711,7 +711,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       torch.fill(t, value)
 
   def test_fmod_tensor_with_unsupported_dtype(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t = torch.tensor([1, 2, 3], device=et.device(), dtype=torch.complex64)
     other = torch.tensor([1, 2, 3], device=et.device(), dtype=torch.complex64)
@@ -962,7 +962,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
   def test_histc_bounds_overflow(self):
     """Tests that torch.histc() fails when the bounds overflow."""
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     max_int32 = torch.iinfo(torch.int32).max
     t = torch.tensor(
@@ -977,7 +977,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
   def test_histc_bounds_underflow(self):
     """Tests that torch.histc() fails when the bounds underflow."""
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     min_int32 = torch.iinfo(torch.int32).min
     t = torch.tensor(
@@ -1042,7 +1042,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
   def test_invalid_index_in_take(self):
     """Tests that torch.take() fails when the index is invalid."""
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t = torch.tensor([0, 1, 2], device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
@@ -1101,7 +1101,7 @@ Device-side assertion tracking was not enabled by user.""",
 
   def test_round_decimals_param_integer_input(self):
     """torch.round() errors when input is an integer and decimals is specified."""
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
 
     t = torch.ones(1, device=et.device(), dtype=torch.int64)
@@ -1322,7 +1322,7 @@ Device-side assertion tracking was not enabled by user.""",
         " freedom = 0"
     )
 
-    warn_msg = tpu_warn_msg if et.device().type == "tpu" else gpu_warn_msg
+    warn_msg = tpu_warn_msg if et.is_on_tpu() else gpu_warn_msg
 
     with self.assertWarnsRegex(UserWarning, re.escape(warn_msg)):
       result = torch.var(t, correction=1)
@@ -1334,7 +1334,7 @@ Device-side assertion tracking was not enabled by user.""",
         " be positive, got reduction size = 3, correction = 4, and degrees of"
         " freedom = -1"
     )
-    warn_msg = tpu_warn_msg if et.device().type == "tpu" else gpu_warn_msg
+    warn_msg = tpu_warn_msg if et.is_on_tpu() else gpu_warn_msg
 
     with self.assertWarnsRegex(UserWarning, re.escape(warn_msg)):
       result = torch.var(t, dim=0, correction=4)
@@ -1494,7 +1494,7 @@ Device-side assertion tracking was not enabled by user.""",
 
   def test_index_put_too_many_indices_error(self):
     # TODO(mkkhanna): Fix exception type for TPU.
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""too many indices for tensor of dimension 1 (got 2)""",
@@ -1510,7 +1510,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_index_put_index_dtype_error(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""tensors used as indices must be long, int, byte or bool tensors""",
@@ -1523,7 +1523,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_index_put_broadcast_indices_error(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""shape mismatch: indexing tensors could not be broadcast together with shapes [2], [3]""",
@@ -1569,7 +1569,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_index_put_index_or_indices_must_be_specified_error(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     with et.assert_raises_message(
         RuntimeError,
@@ -1583,7 +1583,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_index_put_decompose_with_mask_mask_shape_mismatch(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""The shape of the mask [3, 5] at index 0 does not match the shape of the indexed tensor [2, 5] at index 0""",
@@ -1597,7 +1597,7 @@ Device-side assertion tracking was not enabled by user.""",
   def test_index_put_decompose_with_mask_error_mask_dim_more_than_indexed_tensor_dim(
       self,
   ):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
@@ -1610,7 +1610,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_index_put_decompose_with_multiple_mask_error(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""The shape of the mask [3] at index 0 does not match the shape of the indexed tensor [2, 3, 5, 9] at index 2""",
@@ -1648,7 +1648,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_index_select_scalar_input(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
@@ -1674,7 +1674,7 @@ Device-side assertion tracking was not enabled by user.""",
 
   def test_cumsum_with_unsupported_dtype(self):
     with et.assert_raises_message(
-        NotImplementedError if et.device().type == "tpu" else RuntimeError,
+        NotImplementedError if et.is_on_tpu() else RuntimeError,
         gpu="""Expected out tensor to have dtype c10::dummy_int1_7_t<1>, but got float instead""",
         tpu="""cumsum(): TorchTPU does not yet support dtype int1""",
         message_reviewed_by="wan",
@@ -1726,7 +1726,7 @@ Device-side assertion tracking was not enabled by user.""",
 
   def test_prod_out_with_unsupported_dtype(self):
     with et.assert_raises_message(
-        NotImplementedError if et.device().type == "tpu" else RuntimeError,
+        NotImplementedError if et.is_on_tpu() else RuntimeError,
         gpu="""Expected out tensor to have dtype c10::dummy_int1_7_t<1>, but got float instead""",
         tpu="""prod(): TorchTPU does not yet support dtype int1""",
         message_reviewed_by="wan",
@@ -1749,7 +1749,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_index_add_index_rank_not_1(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""index_add_(): Index is supposed to be a vector, but got dim: 2 with type: Long and size: [1, 1]""",
@@ -1804,7 +1804,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_index_add_scalar_dim_out_of_range(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
@@ -1831,7 +1831,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_index_add_scalar_index_size_ne_1(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""Dimension specified as 0 but tensor has no dimensions""",
@@ -2000,7 +2000,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_index_put_too_many_indices_after_expanding_boolean_tensors(self):
-    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
         gpu="""Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
@@ -2069,7 +2069,7 @@ Device-side assertion tracking was not enabled by user.""",
   def test_elu_unsupported_dtypes(
       self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
   ):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     inp = torch.ones(4, device=et.device(), dtype=dtype)
 
@@ -2124,7 +2124,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_glu_unsupported_input_dtype(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t = torch.ones(2, 4, device=et.device(), dtype=torch.int32)
     out = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
@@ -2181,7 +2181,7 @@ Device-side assertion tracking was not enabled by user.""",
       torch.ops.aten.glu.out(t, dim=1, out=out)
 
   def test_glu_backward_unsupported_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     float_tensor = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     int_tensor = torch.ones(2, 4, device=et.device(), dtype=torch.int32)
@@ -2219,7 +2219,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_glu_backward_dtype_mismatch(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     float32_tensor = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     float64_tensor = torch.ones(2, 4, device=et.device(), dtype=torch.float64)
@@ -2430,7 +2430,7 @@ Device-side assertion tracking was not enabled by user.""",
       group_sizes_arg: The argument for the group sizes tensor.
       expected_error: The expected error message substring.
     """
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     lhs = torch.ones(*lhs_arg, dtype=torch.float32, device=et.device())
     rhs = torch.ones(*rhs_arg, dtype=torch.float32, device=et.device())
@@ -2597,7 +2597,7 @@ Device-side assertion tracking was not enabled by user.""",
     # Note that the CPU error message is different for the both cases mentioned
     # above.
 
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     x1 = torch.randn(2, 2, device=et.device())
     x2 = torch.randn(2, 2, device=et.device())
@@ -2663,7 +2663,7 @@ Device-side assertion tracking was not enabled by user.""",
   def test_cdist_backward_unsupported_floating_point_dtypes(
       self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
   ):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     grad = torch.randn(2, 2, device=et.device(), dtype=dtype)
     x1 = torch.randn(2, 2, device=et.device(), dtype=dtype)
@@ -2732,7 +2732,7 @@ Device-side assertion tracking was not enabled by user.""",
       torch.add(a, b, out=a[1:2])
 
   def test_avg_pool2d_unsupported_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t_complex = torch.zeros(
         (1, 1, 4, 4), device=et.device(), dtype=torch.complex64
@@ -2778,7 +2778,7 @@ Device-side assertion tracking was not enabled by user.""",
       torch.nn.functional.avg_pool2d(t_int32, kernel_size=3)
 
   def test_avg_pool3d_unsupported_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t_bool = torch.zeros((1, 1, 4, 4, 4), device=et.device(), dtype=torch.bool)
     t_bf16 = torch.zeros(
@@ -2864,7 +2864,7 @@ Device-side assertion tracking was not enabled by user.""",
   def test_pdist_forward_unsupported_dtypes(
       self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
   ):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     inp = torch.randn(2, 2, device=et.device(), dtype=dtype)
 
@@ -2885,7 +2885,7 @@ Device-side assertion tracking was not enabled by user.""",
   def test_pdist_backward_unsupported_dtypes(
       self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
   ):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     grad = torch.randn(1, device=et.device())
     self_tensor = (
@@ -2975,7 +2975,7 @@ Device-side assertion tracking was not enabled by user.""",
       ).backward(torch.randn(1, 6, 4, device=et.device()))
 
   def test_replication_pad_backward_unsupported_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     with et.assert_raises_message(
         RuntimeError,
@@ -3074,7 +3074,7 @@ Supported combinations for non-constant padding:
       ).backward(torch.randn(1, 6, 4, device=et.device()))
 
   def test_reflection_pad_backward_unsupported_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     with et.assert_raises_message(
         RuntimeError,
@@ -3110,7 +3110,7 @@ Supported combinations for non-constant padding:
       ).backward(torch.randn(1, 6, 4, 4, 4, device=et.device()))
 
   def test_adaptive_avg_pool2d_unsupported_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t_complex = torch.zeros(
         (1, 1, 4, 4), device=et.device(), dtype=torch.complex64
@@ -3164,7 +3164,7 @@ Supported combinations for non-constant padding:
       torch.nn.functional.adaptive_avg_pool2d(t_int64, output_size=2)
 
   def test_adaptive_avg_pool3d_unsupported_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t_complex = torch.zeros(
         (1, 1, 4, 4), device=et.device(), dtype=torch.complex64
@@ -3226,7 +3226,7 @@ Supported combinations for non-constant padding:
       torch.nn.functional.adaptive_avg_pool3d(t_int64, output_size=3)
 
   def test_floor_divide_complex64(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     lhs = torch.arange(5, device=et.device())
     rhs = torch.arange(5, device=et.device())
@@ -3248,7 +3248,7 @@ Supported combinations for non-constant padding:
       torch.floor_divide(lhs, rhs.to(torch.complex64))
 
   def test_atan2_complex(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     x = torch.tensor([1.0, 2.0], device=et.device())
     y = torch.tensor([1.0, 2.0], device=et.device())
@@ -3287,7 +3287,7 @@ Supported combinations for non-constant padding:
       },
   )
   def test_bitwise_ops_float64(self, op_name: str, op: Any):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     x = torch.ones(5, dtype=torch.int64, device=et.device())
     y = torch.ones(5, dtype=torch.int64, device=et.device())
@@ -3325,7 +3325,7 @@ Supported combinations for non-constant padding:
   def test_bitwise_shift_float64(
       self, op_name_tpu: str, op_name_cpu: str, op: Any
   ):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     x = torch.ones(5, dtype=torch.int64, device=et.device())
     y = torch.ones(5, dtype=torch.int64, device=et.device())
@@ -3478,7 +3478,7 @@ Supported combinations for non-constant padding:
       {"testcase_name": "lt", "op_name": "lt", "op": torch.lt},
   )
   def test_comparison_ops_complex(self, op_name: str, op: Any):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     lhs = torch.tensor([1.0, 2.0], device=et.device())
     rhs = torch.tensor([1.0, 2.0], device=et.device())
@@ -3555,7 +3555,7 @@ Supported combinations for non-constant padding:
       torch._foreach_add(self_list, other_list, alpha=1.5)
 
   def test_foreach_add_int_tensors_bool_alpha(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
 
     self_list = [torch.tensor([1, 2], dtype=torch.int32, device=et.device())]
@@ -3697,7 +3697,7 @@ Supported combinations for non-constant padding:
     """Tests that cat fails when the out tensor has an incompatible dtype."""
     t_f32 = torch.tensor([1.0, 2.0], device=et.device(), dtype=torch.float32)
     out_int32 = torch.zeros(2, device=et.device(), dtype=torch.int32)
-    err_type = RuntimeError if et.device().type == "tpu" else TypeError
+    err_type = RuntimeError if et.is_on_tpu() else TypeError
     with et.assert_raises_message(
         err_type,
         tpu="""cat(): expected the input to be castable to the desired dtype int32, got float32""",
@@ -3780,7 +3780,7 @@ Supported combinations for non-constant padding:
       },
   )
   def test_aminmax_complex(self, op_name_cpu: str, op_name_tpu: str, op: Any):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     tensor = torch.ones(5, device=et.device(), dtype=torch.complex64)
 
@@ -3835,7 +3835,7 @@ Supported combinations for non-constant padding:
       torch.polar(absv, angle.to(torch.int32), out=out)
 
   def test_polygamma_negative_n(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t = torch.tensor([1.0, 2.0], device=et.device())
     with et.assert_raises_message(
@@ -3856,7 +3856,7 @@ Supported combinations for non-constant padding:
       torch.polygamma(-1, t, out=out)
 
   def test_polygamma_complex(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t = torch.tensor([1.0 + 1.0j], device=et.device(), dtype=torch.complex64)
     with et.assert_raises_message(
@@ -3868,7 +3868,7 @@ Supported combinations for non-constant padding:
       torch.polygamma(2, t)
 
   def test_polygamma_invalid_out(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t = torch.tensor([1.0, 2.0], device=et.device())
     out = torch.empty(2, device=et.device(), dtype=torch.uint8)
@@ -4254,7 +4254,7 @@ Supported combinations for non-constant padding:
       },
   )
   def test_convolution_bool(self, convolution, tpu_fn: str, cpu_fn: str):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     inp = torch.ones(2, 3, 10, 10, device=et.device())
     w = torch.ones(1, 3, 3, 3, device=et.device())
@@ -4571,7 +4571,7 @@ Supported combinations for non-constant padding:
       torch.mm(lhs, rhs, out=out)
 
   def test_linalg_lu_factor_ex_no_pivoting(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     a = torch.ones(1, 2, 3, device=et.device())
 
@@ -4774,7 +4774,7 @@ Supported combinations for non-constant padding:
       torch.ops.aten.index.Tensor_out(t, indices, out=out)
 
   def test_index_no_indices(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t = torch.ones(2, device=et.device())
 
@@ -5151,7 +5151,7 @@ Supported combinations for non-constant padding:
       torch.lerp(t, t, t)
 
   def test_mse_loss_invalid_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     uint8 = torch.ones(2, 2, device=et.device(), dtype=torch.uint8)
     int8 = torch.ones(2, 2, device=et.device(), dtype=torch.int8)
@@ -5223,7 +5223,7 @@ Supported combinations for non-constant padding:
       torch.ops.aten.embedding_renorm_(inp, indices, max_norm, norm_type)
 
   def test_grid_sampler_invalid_input_dtype(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t = torch.randint(
         0, 10, (2, 3, 4, 4), device=et.device(), dtype=torch.int32
@@ -5258,7 +5258,7 @@ Supported combinations for non-constant padding:
       torch.grid_sampler(inp3d, grid3d, 0, 0, False)
 
   def test_native_dropout_invalid_p(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     inp = torch.ones(5, 3, device=et.device())
 
@@ -5277,7 +5277,7 @@ Supported combinations for non-constant padding:
         check(p)
 
   def test_weight_norm_interface_dim(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     v = torch.ones(2, 3, 4, 5, device=et.device(), dtype=torch.float32)
     g = torch.ones(3, device=et.device(), dtype=torch.float32)
@@ -5292,7 +5292,7 @@ Supported combinations for non-constant padding:
       torch.ops.aten._weight_norm_interface(v, g, dim)
 
   def test_weight_norm_interface_unsupported_dtype(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     v = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
     g = torch.ones(2, device=et.device(), dtype=torch.float32)
@@ -5316,7 +5316,7 @@ Supported combinations for non-constant padding:
       torch.ops.aten._weight_norm_interface(v, g, 0)
 
   def test_softplus_unsupported_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t_bool = torch.ones(2, 2, device=et.device(), dtype=torch.bool)
     t_uint8 = torch.ones(2, 2, device=et.device(), dtype=torch.uint8)
@@ -5383,7 +5383,7 @@ Supported combinations for non-constant padding:
       torch.nn.functional.softplus(t_complex64)
 
   def test_softplus_backward_unsupported_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t_bool = torch.ones(2, 2, device=et.device(), dtype=torch.bool)
     t_int32 = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
@@ -5414,14 +5414,8 @@ Supported combinations for non-constant padding:
       torch.ops.aten.softplus_backward(t_complex64, t_complex64, 1.0, 20.0)
 
   def test_softplus_backward_mismatched_dtypes(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
-    if et.TEST_MODE.value == "cpu":
-      # CPU pass succeeds and does not raise an exception!
-      grad_float = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
-      self_bfloat = torch.ones(2, 2, device=et.device(), dtype=torch.bfloat16)
-      torch.ops.aten.softplus_backward(grad_float, self_bfloat, 1.0, 20.0)
-      return
 
     # TPU pass raises the strict consistency validation error!
     grad_float = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
@@ -5469,7 +5463,7 @@ Supported combinations for non-constant padding:
 
   def test_hardtanh_backward_unsupported_integral_dtypes(self):
     # hardtanh_backward does not support integral types.
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     t_uint8 = torch.ones(2, device=et.device(), dtype=torch.uint8)
     with et.assert_raises_message(
@@ -5580,7 +5574,7 @@ Supported combinations for non-constant padding:
   def test_normal_errors_invalid_input_dtype(
       self, dtype: torch.dtype, *, gpu_msg: str, tpu_msg: str
   ):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     device = et.device()
     with et.assert_raises_message(
@@ -5672,7 +5666,7 @@ Supported combinations for non-constant padding:
       )
 
   def test_normal_errors_invalid_mean_dtype(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     device = et.device()
     with et.assert_raises_message(
@@ -5836,7 +5830,7 @@ Supported combinations for non-constant padding:
       indices.cpu()
 
   def test_pooling_create_batch_input_invalid_rank(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
 
     inp = torch.ones(10, 10, device=et.device())
@@ -6009,7 +6003,7 @@ Supported combinations for non-constant padding:
       torch.sign(t, out=out)
 
   def test_scatter_rank_src_rank_mismatch(self):
-    if et.TEST_MODE.value == "gpu":
+    if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
     self_t = torch.ones(5, 5, device=et.device())
     index = torch.zeros(5, 5, dtype=torch.int64, device=et.device())
@@ -6408,9 +6402,7 @@ Supported combinations for non-constant padding:
     scale_a = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
     scale_b = torch.tensor([1.0], dtype=torch.float32, device=device)
 
-    err_type = (
-        NotImplementedError if et.device().type == "tpu" else RuntimeError
-    )
+    err_type = NotImplementedError if et.is_on_tpu() else RuntimeError
     with et.assert_raises_message(
         err_type,
         tpu="""scaled_mm(): expected scale_a to have numel 1, got numel 2""",
@@ -6430,9 +6422,7 @@ Supported combinations for non-constant padding:
     scale_a = torch.tensor([1.0], dtype=torch.float32, device=device)
     scale_b = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
 
-    err_type = (
-        NotImplementedError if et.device().type == "tpu" else RuntimeError
-    )
+    err_type = NotImplementedError if et.is_on_tpu() else RuntimeError
     with et.assert_raises_message(
         err_type,
         tpu="""scaled_mm(): expected scale_b to have numel 1, got numel 2""",
@@ -6453,9 +6443,7 @@ Supported combinations for non-constant padding:
     scale_b = torch.tensor([1.0], dtype=torch.float32, device=device)
     scale_result = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
 
-    err_type = (
-        NotImplementedError if et.device().type == "tpu" else RuntimeError
-    )
+    err_type = NotImplementedError if et.is_on_tpu() else RuntimeError
     with et.assert_raises_message(
         err_type,
         tpu="""scaled_mm(): expected scale_result to have numel 1, got numel 2""",

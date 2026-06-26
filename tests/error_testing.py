@@ -69,6 +69,18 @@ def set_up_module() -> None:
   pass
 
 
+@functools.lru_cache(maxsize=1)
+def is_on_tpu() -> bool:
+  """Returns True if the test is running on TPU."""
+  return device().type == "tpu"
+
+
+@functools.lru_cache(maxsize=1)
+def is_on_gpu() -> bool:
+  """Returns True if the test is running on GPU."""
+  return device().type == "cuda"
+
+
 # Matches a source location in the format of "file:line: ...".
 _SOURCE_LOC_RE = re.compile(r"([/\w\.]+:\d+):.*")
 
