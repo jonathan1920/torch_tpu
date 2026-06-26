@@ -1526,7 +1526,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         err_type,
         gpu="""shape mismatch: indexing tensors could not be broadcast together with shapes [2], [3]""",
-        tpu="""index_put_(): index tensors not broadcastable, got index tensor shape [3] and broadcast shape [2]: The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0""",
+        tpu="""index_put_(): index tensors not broadcastable, got index tensor shape [3] and broadcast shape [2]: the size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0""",
     ):
       torch.index_put_(
           torch.tensor([[0, 1], [2, 3]], device=et.device()),
@@ -5658,7 +5658,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         gpu="""The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0""",
-        tpu="""The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0""",
+        tpu="""normal(): the size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0""",
     ):
       torch.normal(
           mean=torch.zeros(2, device=device), std=torch.ones(3, device=device)

@@ -153,6 +153,9 @@ absl::StatusOr<T> AdaptXlaError(absl::StatusOr<T> status_or) {
   return AdaptXlaError(std::move(status_or).status());
 }
 
+// Adapts an external error message to conform to guidelines.
+[[nodiscard]] std::string AdaptExternalErrorMessage(std::string_view message);
+
 // Formats the given number of items. E.g.
 //   FormatCount(1, "tensor", "tensors") -> "1 tensor"
 //   FormatCount(2, "tensor", "tensors") -> "2 tensors"

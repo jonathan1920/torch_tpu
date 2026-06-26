@@ -112,7 +112,8 @@ absl::StatusOr<Dimensions> InferSize(const Dims&... dims) {
     // (if requested by the user) when we eventually turn this Status error into
     // a Python exception. Therefore we just use what_without_backtrace() from
     // e.
-    return TT_ERROR(error::kInvalidArgument) << e.what_without_backtrace();
+    return TT_ERROR(error::kInvalidArgument)
+           << AdaptExternalErrorMessage(e.what_without_backtrace());
   }
 }
 

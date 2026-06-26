@@ -484,6 +484,8 @@ void CheckErrorMessageFollowsGuidelines(const TtError& error) {
 
 #endif  // TT_CHECK_ERROR_MESSAGE_FOLLOWS_GUIDELINES_
 
+}  // namespace
+
 // Adapts an external error message (e.g., from PyTorch or OpenXLA) to conform
 // to the TorchTPU error message guidelines (go/tt-error-guide).
 //
@@ -516,8 +518,6 @@ std::string AdaptExternalErrorMessage(const std::string_view message) {
 
   return new_message;
 }
-
-}  // namespace
 
 bool GetEnableDebugChecks() {
   const auto& env_var = GetEnvOnce<kTorchTpuInternalEnableDebugChecksEnvVar>();
