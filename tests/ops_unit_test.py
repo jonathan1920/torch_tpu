@@ -1522,6 +1522,24 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test)
 
+  def test_conj_transpose_view(self):
+    def test(device):
+      x = torch.tensor([[1 + 1j, 2 - 2j], [3 + 3j, 4 - 4j]], device=device)
+      y = torch.tensor([[2 + 1j, 4 + 3j], [3 - 2j, 5 - 4j]], device=device)
+
+      x1 = x.clone()
+      # Use transpose to make the view non-contiguous to avoid bypassing
+      # compilation via direct buffer pointer swap. Similar below.
+      x1.t().copy_(y)
+
+      x2 = x.clone()
+      x2.conj().t().copy_(y)
+
+      # Ensure writes to conjugate and non-conjugate views both succeed.
+      return x1, x2
+
+    self.assert_close_tpu_vs_cpu(test)
+
   def test_conj_chain(self):
     def test(device):
       x = torch.tensor([[1 + 1j, 2 - 2j], [3 + 3j, 4 - 4j]]).to(device=device)

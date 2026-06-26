@@ -51,6 +51,7 @@
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/repeated_ops_heuristic.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
+#include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -571,9 +572,8 @@ absl::StatusOr<DeviceBufferRef> CreateInverseViewDeviceBufferRef(
       std::move(write_buf));
 
   TT_ASSIGN_OR_RETURN(OpParamCacheKeys param_keys,
-                      *OpParamCacheKeysBuilder()
-                           .SetParam("strides", view_strides)
-                           .SetParam("storage_offset", view_storage_offset));
+                      TT_MAKE_OP_PARAM_CACHE_KEYS(
+                          view_strides, view_storage_offset, view_is_conj));
 
   // Create the deferred DeviceBufferRef.
   internal::DeferredOpParams params{
