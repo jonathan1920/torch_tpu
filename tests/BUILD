@@ -154,6 +154,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -183,6 +184,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -215,6 +217,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -244,6 +247,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -278,6 +282,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -292,6 +297,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--test_mode=torch_tpu_vs_gpu",
+        "--test_categories=-foreach",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
         ["--max_samples_per_op_dtype=16"],
@@ -315,6 +321,46 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "foreach_ops_test_tpu_vs_gpu",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--test_mode=torch_tpu_vs_gpu",
+        "--test_categories=foreach",
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=16"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
+    data = [
+        "ops_test_gpu_golden0.gz",
+        "ops_test_gpu_golden1.gz",
+        "ops_test_gpu_golden2.gz",
+    ],
+    main = "ops_test.py",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
+    shard_count = 10,
+    tags = [
+        "noasan",  # This test times out in asan mode.
+        "nomsan",  # This test times out in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -349,6 +395,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -395,6 +442,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -423,6 +471,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -459,6 +508,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",

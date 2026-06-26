@@ -22,12 +22,39 @@ import collections.abc
 import copy
 from typing import Any
 
+from absl import flags
 from absl.testing import absltest
 import torch
 from torch.nn import attention
 from torch_tpu._internal.utils import utils
 from tests import dynamism_test_utils
 from tests import op_testing
+
+_TEST_CATEGORIES = flags.DEFINE_list(
+    "test_categories",
+    [],
+    (
+        "List of test categories to include or exclude (prefixed with '-')."
+        " By default, all test categories are included. The order of entries"
+        " does not matter, and duplicates are ignored. If any category is"
+        " excluded (e.g., '-foreach'), any test in that category is skipped."
+        " If any categories are included, a test must belong to at least one"
+        " included category to run. Exclusions take precedence over"
+        " inclusions. E.g., --test_categories=foreach or"
+        " --test_categories=-foreach"
+    ),
+)
+
+
+def category(*names):
+  """Decorator to associate categories with test methods."""
+
+  def decorator(func):
+    func.categories = set(names)
+    return func
+
+  return decorator
+
 
 # In this file, we use the following naming convention for variables:
 # - golden_*: a value for the device used for computing the golden results
@@ -1627,6 +1654,23 @@ class TestOps(TorchTpuTestBase):
   def setUp(self):
     super().setUp()
 
+    if _TEST_CATEGORIES.value:
+      exclusions = {c[1:] for c in _TEST_CATEGORIES.value if c.startswith("-")}
+      inclusions = {c for c in _TEST_CATEGORIES.value if not c.startswith("-")}
+
+      method = getattr(self, self._testMethodName, None)
+      test_categories = getattr(method, "categories", set())
+
+      if any(cat in exclusions for cat in test_categories):
+        self.skipTest(
+            f"Skipping test because category is excluded: {test_categories}"
+        )
+
+      if inclusions and not any(cat in inclusions for cat in test_categories):
+        self.skipTest(
+            f"Skipping test because category is not included: {test_categories}"
+        )
+
     self.set_accuracy_overrides(
         tpu_cpu_overrides=ACCURACY_OVERRIDES_VS_CPU,
         tpu_gpu_overrides=ACCURACY_OVERRIDES_VS_GPU_COMPILED
@@ -2204,6 +2248,7 @@ class TestOps(TorchTpuTestBase):
   def test_fmod(self):
     self.do_test_op("fmod")
 
+  @category("foreach")
   def test_foreach_abs(self):
     self.do_test_op(
         "_foreach_abs",
@@ -2212,11 +2257,13 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes={"gpu": (torch.bool,)},
     )
 
+  @category("foreach")
   def test_foreach_acos(self):
     self.do_test_op(
         "_foreach_acos",
     )
 
+  @category("foreach")
   def test_foreach_add(self):
     self.do_test_op(
         "_foreach_add",
@@ -2226,6 +2273,7 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_addcdiv(self):
     self.do_test_op(
         "_foreach_addcdiv",
@@ -2237,6 +2285,7 @@ class TestOps(TorchTpuTestBase):
         check_dynamism=False,  # TODO(b/488338235): dynamism is flaky
     )
 
+  @category("foreach")
   def test_foreach_addcmul(self):
     # TODO(b/494218929): Fix the high tolerance of 1e-2.
     self.do_test_op(
@@ -2246,16 +2295,19 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_asin(self):
     self.do_test_op(
         "_foreach_asin",
     )
 
+  @category("foreach")
   def test_foreach_atan(self):
     self.do_test_op(
         "_foreach_atan",
     )
 
+  @category("foreach")
   def test_foreach_ceil(self):
     self.do_test_op(
         "_foreach_ceil",
@@ -2265,6 +2317,7 @@ class TestOps(TorchTpuTestBase):
         ],
     )
 
+  @category("foreach")
   def test_foreach_clamp_max(self):
     self.do_test_op(
         "_foreach_clamp_max",
@@ -2275,6 +2328,7 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_clamp_min(self):
     self.do_test_op(
         "_foreach_clamp_min",
@@ -2285,19 +2339,23 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_copy(self):
     self.do_test_op("_foreach_copy")
 
+  @category("foreach")
   def test_foreach_cos(self):
     self.do_test_op(
         "_foreach_cos",
     )
 
+  @category("foreach")
   def test_foreach_cosh(self):
     self.do_test_op(
         "_foreach_cosh",
     )
 
+  @category("foreach")
   def test_foreach_div(self):
     self.do_test_op(
         "_foreach_div",
@@ -2310,22 +2368,27 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_erf(self):
     self.do_test_op(
         "_foreach_erf",
     )
 
+  @category("foreach")
   def test_foreach_erfc(self):
     self.do_test_op("_foreach_erfc")
 
+  @category("foreach")
   def test_foreach_exp(self):
     self.do_test_op(
         "_foreach_exp",
     )
 
+  @category("foreach")
   def test_foreach_expm1(self):
     self.do_test_op("_foreach_expm1", check_value=CheckValueMode.LOOSE)
 
+  @category("foreach")
   def test_foreach_floor(self):
     self.do_test_op(
         "_foreach_floor",
@@ -2335,9 +2398,11 @@ class TestOps(TorchTpuTestBase):
         ],
     )
 
+  @category("foreach")
   def test_foreach_frac(self):
     self.do_test_op("_foreach_frac", check_value=CheckValueMode.LOOSE)
 
+  @category("foreach")
   def test_foreach_lerp(self):
     self.do_test_op(
         "_foreach_lerp",
@@ -2345,6 +2410,7 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.complex64,),
     )
 
+  @category("foreach")
   def test_foreach_lgamma(self):
     self.do_test_op(
         "_foreach_lgamma",
@@ -2353,30 +2419,36 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.float64,),
     )
 
+  @category("foreach")
   def test_foreach_log(self):
     self.do_test_op(
         "_foreach_log",
     )
 
+  @category("foreach")
   def test_foreach_log10(self):
     self.do_test_op(
         "_foreach_log10",
     )
 
+  @category("foreach")
   def test_foreach_log1p(self):
     self.do_test_op(
         "_foreach_log1p",
     )
 
+  @category("foreach")
   def test_foreach_log2(self):
     self.do_test_op(
         "_foreach_log2",
     )
 
+  @category("foreach")
   def test_foreach_max(self):
     # TODO(b/485291373): fix _foreach_max() failing with complex dtypes.
     self.do_test_op("_foreach_max", exclude_dtypes=COMPLEX_DTYPES)
 
+  @category("foreach")
   def test_foreach_maximum(self):
     self.do_test_op(
         "_foreach_maximum",
@@ -2390,6 +2462,7 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_minimum(self):
     self.do_test_op(
         "_foreach_minimum",
@@ -2403,6 +2476,7 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_mul(self):
     self.do_test_op(
         "_foreach_mul",
@@ -2418,9 +2492,11 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_neg(self):
     self.do_test_op("_foreach_neg")
 
+  @category("foreach")
   def test_foreach_norm(self):
 
     def skip_if(device_type, variant, op_input):
@@ -2450,6 +2526,7 @@ class TestOps(TorchTpuTestBase):
         skip_if=skip_if,
     )
 
+  @category("foreach")
   def test_foreach_pow(self):
     self.do_test_op(
         "_foreach_pow",
@@ -2458,38 +2535,47 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool, torch.int64, torch.complex64),
     )
 
+  @category("foreach")
   def test_foreach_reciprocal(self):
     self.do_test_op("_foreach_reciprocal")
 
+  @category("foreach")
   def test_foreach_round(self):
     self.do_test_op("_foreach_round")
 
+  @category("foreach")
   def test_foreach_rsqrt(self):
     self.do_test_op(
         "_foreach_rsqrt",
     )
 
+  @category("foreach")
   def test_foreach_sigmoid(self):
     self.do_test_op(
         "_foreach_sigmoid",
     )
 
+  @category("foreach")
   def test_foreach_sign(self):
     self.do_test_op("_foreach_sign")
 
+  @category("foreach")
   def test_foreach_sin(self):
     self.do_test_op(
         "_foreach_sin",
     )
 
+  @category("foreach")
   def test_foreach_sinh(self):
     self.do_test_op(
         "_foreach_sinh",
     )
 
+  @category("foreach")
   def test_foreach_sqrt(self):
     self.do_test_op("_foreach_sqrt")
 
+  @category("foreach")
   def test_foreach_sub(self):
     self.do_test_op(
         "_foreach_sub",
@@ -2499,19 +2585,23 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_tan(self):
     self.do_test_op(
         "_foreach_tan",
     )
 
+  @category("foreach")
   def test_foreach_tanh(self):
     self.do_test_op(
         "_foreach_tanh",
     )
 
+  @category("foreach")
   def test_foreach_trunc(self):
     self.do_test_op("_foreach_trunc")
 
+  @category("foreach")
   def test_foreach_zero(self):
     self.do_test_op("_foreach_zero")
 
