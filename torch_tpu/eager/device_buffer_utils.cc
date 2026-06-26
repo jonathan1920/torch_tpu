@@ -462,7 +462,7 @@ absl::StatusOr<DeviceBufferRef> CreateViewDeviceBufferRef(
        7) /
       8;
 
-  TT_RET_CHECK(required_bytes <= actual_bytes, error::kOutOfRange)
+  TT_RET_CHECK(required_bytes <= actual_bytes, error::kPythonIndexError)
       << "cannot read " << required_bytes << " bytes ("
       << c10::multiply_integers(view_dimensions) << " elements of type "
       << ToString(view_element_type) << " with an offset of "

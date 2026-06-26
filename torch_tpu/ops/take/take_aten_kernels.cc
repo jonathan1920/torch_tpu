@@ -100,14 +100,14 @@ absl::Status ValidateIndices(const int64_t num_elements,
   if (num_indices == 0) {  // No indices to check.
     return absl::OkStatus();
   }
-  TT_RET_CHECK(num_elements > 0, error::kOutOfRange)
+  TT_RET_CHECK(num_elements > 0, error::kPythonIndexError)
       << "input tensor must be non-empty when the index tensor is non-empty";
   const auto max_index = index.max().cpu().item<int64_t>();
-  TT_RET_CHECK(max_index < num_elements, error::kOutOfRange)
+  TT_RET_CHECK(max_index < num_elements, error::kPythonIndexError)
       << "expected indices to be in range [" << -num_elements << ", "
       << (num_elements - 1) << "], got " << max_index;
   const auto min_index = index.min().cpu().item<int64_t>();
-  TT_RET_CHECK(min_index >= -num_elements, error::kOutOfRange)
+  TT_RET_CHECK(min_index >= -num_elements, error::kPythonIndexError)
       << "expected indices to be in range [" << -num_elements << ", "
       << (num_elements - 1) << "], got " << min_index;
   return absl::OkStatus();

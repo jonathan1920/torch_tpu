@@ -144,7 +144,7 @@ absl::StatusOr<Dimensions> CanonicalizeDims(
 
   if (rank == 0) {
     for (const auto& d : *dim) {
-      TT_RET_CHECK(d == 0 || d == -1, error::kOutOfRange)
+      TT_RET_CHECK(d == 0 || d == -1, error::kPythonIndexError)
           << "expected dimension to be in range of [-1, 0], got " << d;
     }
     return log_and_return({});
@@ -157,7 +157,7 @@ absl::StatusOr<Dimensions> CanonicalizeDims(
   const int64_t min_value = -rank;
   const int64_t max_value = rank - 1;
   for (const auto& d : *dim) {
-    TT_RET_CHECK(d <= max_value && d >= min_value, error::kOutOfRange)
+    TT_RET_CHECK(d <= max_value && d >= min_value, error::kPythonIndexError)
         << "expected dimension to be in range of [" << min_value << ", "
         << max_value << "], got " << d;
     int64_t pos_dim = d < 0 ? d + rank : d;

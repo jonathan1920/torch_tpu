@@ -124,7 +124,7 @@ const at::Tensor& AtenResize_(
               TT_CHECK_THROW(
                   !memory_format_opt.has_value() ||
                       *memory_format_opt == at::MemoryFormat::Contiguous,
-                  error::kUnimplemented)
+                  error::kPythonNotImplementedError)
                   << "non-contiguous memory formats are not yet supported";
 
               TT_THROW_IF_ERROR(ResizeTensor(self, size));

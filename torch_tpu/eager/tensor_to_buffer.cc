@@ -195,7 +195,7 @@ absl::StatusOr<DeviceBufferRef> GetBaseBuffer(const c10::TensorImpl& tensor) {
       << ", got " << tensor.device().str();
 
   // This will trigger a device mismatch in Pytorch, with a good call stack.
-  TT_RET_CHECK(tensor.storage().data_ptr(), error::kUnimplemented)
+  TT_RET_CHECK(tensor.storage().data_ptr(), error::kPythonNotImplementedError)
       << "tensor is on the custom PrivateUse1 device. But its storage data_ptr "
          "is null. This is usually caused by FakeTensor being run on TPU ops. "
          "And it is not supported";
@@ -347,7 +347,7 @@ class TpuAllocator final : public c10::DeviceAllocator {
 
   void copy_data(void* dest, const void* src,
                  std::size_t count) const override {
-    TT_CHECK_THROW(false, error::kUnimplemented)
+    TT_CHECK_THROW(false, error::kPythonNotImplementedError)
         << "TpuAllocator::copy_data is not implemented and should not be "
            "called directly for this conceptual allocator type.";
   }
@@ -626,12 +626,12 @@ absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
     c10::optional<at::MemoryFormat> memory_format_opt) {
   TT_RET_CHECK(!dtype_opt.has_value() ||
                    dtype_opt.value() != at::ScalarType::ComplexHalf,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "TorchTPU does not yet support dtype complex32";
   // Check that we support all the provided options.
   CheckDeviceIsTpu(device_opt, "empty");
   TT_RET_CHECK(layout_opt.value_or(at::Layout::Strided) == at::Layout::Strided,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "only layout=torch.strided is supported by TorchTPU for now, "
          "got "
       << LayoutToString(layout_opt);

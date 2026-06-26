@@ -360,7 +360,7 @@ TEST_P(ScanBuilderTest, InvalidDimension) {
   const absl::StatusOr<DynamicMlirOpResults> result =
       Scan(builder(), input, /*dim=*/2, {carry_init}, {output_init},
            CreateAddBodyBuilder());
-  EXPECT_THAT(result, StatusIs(error::kOutOfRange,
+  EXPECT_THAT(result, StatusIs(error::kPythonIndexError,
                                HasSubstr("dimension out of range")));
 }
 
@@ -645,7 +645,7 @@ TEST_P(MultiScanBuilderTest, InvalidDimension) {
   const absl::StatusOr<DynamicMlirOpResults> result =
       Scan(builder(), {input}, /*dim=*/2, /*num_scan_inputs=*/1, {carry_init},
            {output_init}, CreateIdentityBodyBuilder());
-  EXPECT_THAT(result, StatusIs(error::kOutOfRange,
+  EXPECT_THAT(result, StatusIs(error::kPythonIndexError,
                                HasSubstr("dimension out of range")));
 }
 

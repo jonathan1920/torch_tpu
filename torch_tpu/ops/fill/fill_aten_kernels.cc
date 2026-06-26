@@ -47,7 +47,7 @@ absl::Status FillTensorHelper(at::Tensor& self, const at::Tensor& fill_value,
                               OpParamCacheKeys param_keys) {
   auto out_aten_type = self.scalar_type();
   TT_RET_CHECK(out_aten_type != at::ScalarType::ComplexDouble,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << ToString(at::ScalarType::ComplexDouble) << " dtype is not supported";
   TT_ASSIGN_OR_RETURN(mlir::ElementType out_mlir_element_type,
                       ConvertTo<mlir::ElementType>(out_aten_type));

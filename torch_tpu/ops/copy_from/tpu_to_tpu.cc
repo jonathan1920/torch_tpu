@@ -43,7 +43,8 @@ absl::Status CopyTpuToTpu(const at::Tensor& src, const at::Tensor& dest) {
   ABSL_VLOG(1) << "[AtenCopyFrom] TPU -> TPU copy path for "
                << ToString(src, "src");
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Can't use 2 TPUs in one host.
-      src.device().index() == dest.device().index(), error::kUnimplemented)
+      src.device().index() == dest.device().index(),
+      error::kPythonNotImplementedError)
       << "expected source and destination device indices to match, got source "
          "device '"
       << src.device() << "' vs destination device '" << dest.device() << "'";

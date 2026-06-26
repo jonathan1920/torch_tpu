@@ -169,7 +169,7 @@ absl::StatusOr<int64_t> ValidateIndexInputsAndGetDim(const at::Tensor& self,
 
   TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.dim()));
 
-  TT_RET_CHECK(source.dim() == self.dim(), error::kInvalidArgument)
+  TT_RET_CHECK(source.dim() == self.dim(), error::kPythonIndexError)
       << "self and source must have the same number of dimensions, got "
       << self.dim() << " and " << source.dim();
   TT_RET_CHECK(source.size(dim) == index.size(0), error::kInvalidArgument)

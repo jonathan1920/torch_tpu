@@ -85,7 +85,7 @@ absl::Status SoftmaxInternalOut(const at::Tensor& self, int64_t dim,
   // output non-floating point types. Instead of silent type casting, Pytorch
   // errors out. We should do the same here. Sample Error on CPU:
   // "log_softmax_lastdim_kernel_impl" not implemented for {Type}
-  TT_RET_CHECK(self.is_floating_point(), error::kUnimplemented)
+  TT_RET_CHECK(self.is_floating_point(), error::kPythonNotImplementedError)
       << "not implemented for input type " << ToString(self.scalar_type());
 
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
@@ -105,7 +105,7 @@ absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=input checked during forward
                  // pass. It is guaranteed to be floating point in the
                  // backward pass.
-      c10::isFloatingType(input_dtype), error::kUnimplemented)
+      c10::isFloatingType(input_dtype), error::kPythonNotImplementedError)
       << "not implemented for input type " << ToString(input_dtype);
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
       const auto input_mlir_type, ConvertTo<mlir::ElementType>(input_dtype));

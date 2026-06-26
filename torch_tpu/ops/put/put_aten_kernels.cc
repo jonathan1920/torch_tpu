@@ -148,7 +148,7 @@ absl::Status ValidateInputs(const at::Tensor& self, const at::Tensor& index,
          "elements, got source numel "
       << source_numel << " and index numel " << index_numel;
 
-  TT_RET_CHECK(!(self_numel == 0 && index_numel != 0), error::kOutOfRange)
+  TT_RET_CHECK(!(self_numel == 0 && index_numel != 0), error::kPythonIndexError)
       << "expected self to be non-empty, got self numel 0";
 
   return absl::OkStatus();

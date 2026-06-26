@@ -525,9 +525,8 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       t.masked_select(mask)
 
   def test_index_copy_rank_mismatch(self):
-    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
-        err_type,
+        IndexError,
         gpu="""index_copy_(): When source and destination are not scalars, their dimensionality must match. Source dimensionality (1), destination dimensionality (2)""",
         tpu="""index_copy(): self and source must have the same number of dimensions, got 2 and 1""",
     ):
@@ -1737,7 +1736,7 @@ Device-side assertion tracking was not enabled by user.""",
 
   def test_index_add_rank_mismatch(self):
     with et.assert_raises_message(
-        RuntimeError,
+        RuntimeError if et.is_on_gpu() else IndexError,
         gpu="""index_add_(): Number of indices (1) should be equal to source.size(dim): (2), for dim: 0""",
         tpu="""index_add(): self and source must have the same number of dimensions, got 2 and 1""",
     ):

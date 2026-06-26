@@ -441,17 +441,17 @@ absl::Status DeviceBufferList::MarkDynamic(int64_t index, int64_t dimension,
       << "trying to mark dimension " << dimension
       << " as dynamic with invalid bounds [" << lower_bound << ", "
       << upper_bound << "]";
-  TT_RET_CHECK(index >= 0 && index < shapes_.size(), error::kOutOfRange)
+  TT_RET_CHECK(index >= 0 && index < shapes_.size(), error::kPythonIndexError)
       << "index " << index << " is out of bounds for DeviceBufferList of size "
       << shapes_.size();
   Shape& shape = shapes_[index];
   TT_RET_CHECK(dimension >= 0 && dimension < shape.dimensions().size(),
-               error::kOutOfRange)
+               error::kPythonIndexError)
       << "dimension " << dimension << " is out of bounds for tensor of rank "
       << shape.dimensions().size();
   TT_RET_CHECK(shape.dimensions()[dimension] >= lower_bound &&
                    shape.dimensions()[dimension] <= upper_bound,
-               error::kOutOfRange)
+               error::kPythonIndexError)
       << "trying to mark dimension " << dimension << " as dynamic with bounds ["
       << lower_bound << ", " << upper_bound << "], but the dimension size is "
       << shape.dimensions()[dimension];
@@ -482,7 +482,7 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferRef::Create(
   // Gracefully return an error on creation, but crash hard if the bounds check
   // is violated afterwards, as that would indicate this check was bypassed.
   TT_RET_CHECK(index >= 0 && index < device_buffer_list->size(),
-               error::kOutOfRange)
+               error::kPythonIndexError)
       << "index " << index << " is out of bounds for DeviceBufferList of size "
       << device_buffer_list->size();
   return DeviceBufferRef(std::move(device_buffer_list), index);

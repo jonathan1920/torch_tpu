@@ -208,7 +208,7 @@ absl::StatusOr<mlir::ElementType> ToElementType(
       // switch statement, the C++ compiler will generate a warning (treated as
       // an error), forcing the author to handle the new case.
   }
-  return TT_ERROR(error::kUnimplemented)
+  return TT_ERROR(error::kPythonNotImplementedError)
          << "TorchTPU does not yet support dtype " << ToString(scalar_type);
 }
 
@@ -643,7 +643,8 @@ template <typename Container>
 
 absl::StatusOr<int64_t> ValidateTensorByteSize(at::IntArrayRef size,
                                                mlir::ElementType element_type) {
-  TT_RET_CHECK(IsSupportedBufferType(element_type), error::kUnimplemented)
+  TT_RET_CHECK(IsSupportedBufferType(element_type),
+               error::kPythonNotImplementedError)
       << "element type " << ToShortString(element_type)
       << " is not supported as a tensor element type";
   const auto negative_dims = GetNegativeValuesIn(size);

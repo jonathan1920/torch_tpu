@@ -68,7 +68,8 @@ TEST(OpParamCacheKeys, SetParamMaybePromotedScalar_Promoted) {
   auto dummy_promoter =
       [](const at::Scalar&,
          std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
-    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "Not implemented in test";
   };
   PromotedScalar ps(dummy_promoter, at::Scalar(5));
   MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
@@ -82,7 +83,8 @@ TEST(OpParamCacheKeys, SetParamMaybePromotedScalarExcludedZero) {
   auto dummy_promoter =
       [](const at::Scalar&,
          std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
-    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "Not implemented in test";
   };
   PromotedScalar ps(dummy_promoter, at::Scalar(0));
   MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
@@ -96,7 +98,8 @@ TEST(OpParamCacheKeys, SetParamMaybePromotedScalarExcludedOne) {
   auto dummy_promoter =
       [](const at::Scalar&,
          std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
-    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "Not implemented in test";
   };
   PromotedScalar ps(dummy_promoter, at::Scalar(1));
   MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
@@ -110,7 +113,8 @@ TEST(MaybePromotedScalar, IsZeroAndIsOne) {
   auto dummy_promoter =
       [](const at::Scalar&,
          std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
-    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "Not implemented in test";
   };
 
   {
@@ -152,7 +156,8 @@ void KernelWithMaybePromotedScalar(at::Scalar s) {
   auto dummy_promoter =
       [](const at::Scalar&,
          std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
-    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "Not implemented in test";
   };
   PromotedScalar ps(dummy_promoter, s);
   MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);

@@ -305,7 +305,7 @@ absl::StatusOr<xla::HostMemoryAllocator*> PjrtBackend::GetHostAllocator() {
       host_allocator != nullptr) {
     return host_allocator;
   }
-  return TT_ERROR(error::kUnimplemented)
+  return TT_ERROR(error::kPythonNotImplementedError)
          << "host memory allocator is not implemented for this client";
 }
 

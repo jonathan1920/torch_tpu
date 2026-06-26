@@ -548,7 +548,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allreduce(
     TT_SET_PROCESS_GROUP_ID(param_keys);
     // TODO(vladbelous): Implement support for multiple input/output
     // tensors:
-    TT_CHECK_THROW(tensors.size() == 1, error::kUnimplemented)
+    TT_CHECK_THROW(tensors.size() == 1, error::kPythonNotImplementedError)
         << "does not yet support multiple tensors";
 
     at::Tensor& tensor = tensors[0];
@@ -734,7 +734,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
         TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch only ever passes
                          // single-element input lists.
             input_tensors.size() == 1 && output_tensors.size() == 1,
-            error::kUnimplemented)
+            error::kPythonNotImplementedError)
             << "multiple input tensors not supported";
 
         auto& input_tensor = input_tensors[0];
@@ -1116,9 +1116,11 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
       {
         // NOTE: Python side API only exposes single-element reduce_scatter op.
         // Same validation is done in NCCL backend.
-        TT_CHECK_THROW(input_tensors.size() == 1, error::kUnimplemented)
+        TT_CHECK_THROW(input_tensors.size() == 1,
+                       error::kPythonNotImplementedError)
             << "multiple input tensor lists not supported";
-        TT_CHECK_THROW(output_tensors.size() == 1, error::kUnimplemented)
+        TT_CHECK_THROW(output_tensors.size() == 1,
+                       error::kPythonNotImplementedError)
             << "multiple output tensor lists not supported";
 
         std::vector<at::Tensor>& inputs = input_tensors[0];
@@ -1325,7 +1327,8 @@ absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseUnevenSplits(
     at::Tensor& output, at::Tensor& input,
     const std::vector<int64_t>& output_split_sizes,   // INT_VEC_OK
     const std::vector<int64_t>& input_split_sizes) {  // INT_VEC_OK
-  return TT_ERROR(error::kUnimplemented) << "uneven splits is not implemented";
+  return TT_ERROR(error::kPythonNotImplementedError)
+         << "uneven splits is not implemented";
 }
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(
@@ -1403,11 +1406,12 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::barrier(
     const c10d::BarrierOptions& opts) {
   TT_KERNEL(OpName::kDistributedBarrier, _, (opts), {
     // Check for unsupported options.
-    TT_CHECK_THROW(opts.device_ids.empty(), error::kUnimplemented)
+    TT_CHECK_THROW(opts.device_ids.empty(), error::kPythonNotImplementedError)
         << "device_ids in barrier options is not supported.";
-    TT_CHECK_THROW(opts.timeout == c10d::kUnsetTimeout, error::kUnimplemented)
+    TT_CHECK_THROW(opts.timeout == c10d::kUnsetTimeout,
+                   error::kPythonNotImplementedError)
         << "timeout in barrier options is not supported.";
-    TT_CHECK_THROW(!opts.device.has_value(), error::kUnimplemented)
+    TT_CHECK_THROW(!opts.device.has_value(), error::kPythonNotImplementedError)
         << "device in barrier options is not supported.";
 
     // A barrier is implemented by performing an all-reduce operation on a dummy

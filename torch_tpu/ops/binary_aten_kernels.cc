@@ -234,7 +234,7 @@ absl::Status CheckAlphaTypeSupported(const at::Scalar& alpha) {
     // TODO: add support to complex alpha on TPU.
     TT_ASSIGN_OR_RETURN(const auto alpha_element_type,
                         internal::ToElementType(alpha.type()));
-    return TT_ERROR(error::kUnimplemented)
+    return TT_ERROR(error::kPythonNotImplementedError)
            << ToString(alpha_element_type)
            << " alpha value is not yet supported";
   }

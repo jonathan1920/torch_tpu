@@ -47,7 +47,7 @@ absl::StatusOr<DeviceBufferRef> Gather(const at::Tensor& self, int64_t dim,
                                        const at::Tensor& index,
                                        bool sparse_grad,
                                        OpParamCacheKeys&& param_keys) {
-  TT_RET_CHECK(sparse_grad == false, error::kUnimplemented)
+  TT_RET_CHECK(sparse_grad == false, error::kPythonNotImplementedError)
       << "sparse_grad is not yet supported";
 
   TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.dim()));

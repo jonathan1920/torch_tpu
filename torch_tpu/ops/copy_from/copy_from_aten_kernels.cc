@@ -68,7 +68,7 @@ absl::StatusOr<CopyType> GetCopyType(const at::Tensor& src,
 
   return TT_ERROR(  // ERROR_COV_INFEASIBLE=Can't test with TPU and another
                     // device except for CPU.
-             error::kUnimplemented)
+             error::kPythonNotImplementedError)
          << "expected copy of either (i) '" << device_name << "' to '"
          << device_name << "'; (ii) '" << device_name
          << "' to 'cpu'; or (iii) 'cpu' to '" << device_name << "', got '"

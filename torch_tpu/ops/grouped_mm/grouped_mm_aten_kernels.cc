@@ -227,7 +227,8 @@ absl::StatusOr<DeviceBufferRef> GroupedMm(
   // token count. To optimize performance, PyTorch CUDA/CPU kernels
   // explicitly reject bias.
   // Eager models also perform out.add_(bias) externally.
-  TT_RET_CHECK(!bias.has_value() || !bias->defined(), error::kUnimplemented)
+  TT_RET_CHECK(!bias.has_value() || !bias->defined(),
+               error::kPythonNotImplementedError)
       << "expected bias to be undefined, got defined tensor";
 
   const bool a_is_2d = self.dim() == 2;

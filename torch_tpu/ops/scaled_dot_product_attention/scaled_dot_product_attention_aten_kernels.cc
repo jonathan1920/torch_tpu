@@ -98,7 +98,7 @@ absl::StatusOr<std::string_view> GetSdpaForwardKernel(at::ScalarType dtype,
 
   auto it = kKernelMap->find({dtype, is_causal});
   if (it == kKernelMap->end()) {
-    return TT_ERROR(error::kUnimplemented)
+    return TT_ERROR(error::kPythonNotImplementedError)
            << "Unsupported dtype for SDPA custom kernel";
   }
   return it->second;
@@ -129,7 +129,7 @@ absl::StatusOr<std::string_view> GetSdpaBackwardKernel(at::ScalarType dtype,
 
   auto it = kKernelMap->find({dtype, is_causal});
   if (it == kKernelMap->end()) {
-    return TT_ERROR(error::kUnimplemented)
+    return TT_ERROR(error::kPythonNotImplementedError)
            << "Unsupported dtype for SDPA custom kernel";
   }
   return it->second;

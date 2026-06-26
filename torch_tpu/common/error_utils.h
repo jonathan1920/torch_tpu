@@ -58,31 +58,37 @@ namespace error {
 // go/keep-sorted start
 inline constexpr absl::StatusCode kAborted = absl::StatusCode::kAborted;
 inline constexpr absl::StatusCode kAlreadyExists =
-    absl::StatusCode::kAlreadyExists;
+    absl::StatusCode::kAlreadyExists;  // STATUS_CODE_OK=for alias
 inline constexpr absl::StatusCode kCancelled = absl::StatusCode::kCancelled;
 inline constexpr absl::StatusCode kDataLoss = absl::StatusCode::kDataLoss;
 inline constexpr absl::StatusCode kDeadlineExceeded =
-    absl::StatusCode::kDeadlineExceeded;
+    absl::StatusCode::kDeadlineExceeded;  // STATUS_CODE_OK=for alias
 inline constexpr absl::StatusCode kFailedPrecondition =
-    absl::StatusCode::kFailedPrecondition;
+    absl::StatusCode::kFailedPrecondition;  // STATUS_CODE_OK=for alias
 inline constexpr absl::StatusCode kIndexError =
-    absl::StatusCode::kOutOfRange;  // STATUS_CODE_OK
+    absl::StatusCode::kOutOfRange;  // STATUS_CODE_OK=for alias
 inline constexpr absl::StatusCode kInternal = absl::StatusCode::kInternal;
 inline constexpr absl::StatusCode kInvalidArgument =
-    absl::StatusCode::kInvalidArgument;
+    absl::StatusCode::kInvalidArgument;  // STATUS_CODE_OK=for alias
 inline constexpr absl::StatusCode kNotFound = absl::StatusCode::kNotFound;
 inline constexpr absl::StatusCode kOk = absl::StatusCode::kOk;
-inline constexpr absl::StatusCode kOutOfRange = absl::StatusCode::kOutOfRange;
 inline constexpr absl::StatusCode kPermissionDenied =
-    absl::StatusCode::kPermissionDenied;
+    absl::StatusCode::kPermissionDenied;  // STATUS_CODE_OK=for alias
 inline constexpr absl::StatusCode kResourceExhausted =
-    absl::StatusCode::kResourceExhausted;
+    absl::StatusCode::kResourceExhausted;  // STATUS_CODE_OK=for alias
 inline constexpr absl::StatusCode kUnauthenticated =
-    absl::StatusCode::kUnauthenticated;
+    absl::StatusCode::kUnauthenticated;  // STATUS_CODE_OK=for alias
 inline constexpr absl::StatusCode kUnavailable = absl::StatusCode::kUnavailable;
-inline constexpr absl::StatusCode kUnimplemented =
-    absl::StatusCode::kUnimplemented;
-inline constexpr absl::StatusCode kUnknown = absl::StatusCode::kUnknown;
+// go/keep-sorted end
+
+// StatusCode aliases for Python error kinds.
+// go/keep-sorted start
+inline constexpr absl::StatusCode kPythonIndexError =
+    absl::StatusCode::kOutOfRange;  // STATUS_CODE_OK=for alias
+inline constexpr absl::StatusCode kPythonNotImplementedError =
+    absl::StatusCode::kUnimplemented;  // STATUS_CODE_OK=for alias
+inline constexpr absl::StatusCode kPythonRuntimeError =
+    absl::StatusCode::kUnknown;  // STATUS_CODE_OK=for alias
 // go/keep-sorted end
 
 }  // namespace error

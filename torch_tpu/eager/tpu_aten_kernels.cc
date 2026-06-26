@@ -931,7 +931,7 @@ void TpuMissingOpFallback(const c10::OperatorHandle& op,
                           torch::jit::Stack* const stack) {
   const auto& op_name = op.schema().operator_name();
   if (!IsCpuFallbackEnabled()) {
-    TT_CHECK_THROW(false, error::kUnimplemented)
+    TT_CHECK_THROW(false, error::kPythonNotImplementedError)
         << "operator '" << op_name
         << "' is not implemented for TPU. Please file a feature request";
   } else {

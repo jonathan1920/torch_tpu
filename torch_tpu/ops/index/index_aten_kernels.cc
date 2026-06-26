@@ -75,7 +75,7 @@ absl::StatusOr<IndicesInfo> CheckedGetIndicesInfo(
     if (tensor.has_value() && tensor->defined()) {
       // TODO(unda): Add support for more than one bool index tensor.
       TT_RET_CHECK(!IsBool(*tensor) || info.indices.empty(),
-                   error::kUnimplemented)
+                   error::kPythonNotImplementedError)
           << "indexing with more than one bool tensor is not yet supported";
 
       info.dimensions.push_back(i);
