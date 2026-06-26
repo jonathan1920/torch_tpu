@@ -695,8 +695,7 @@ class Gemma3DecoderLayer(nn.Module):
   def forward(
       self,
       hidden_states: torch.Tensor,
-      position_embeddings_global: torch.Tensor,
-      position_embeddings_local: torch.Tensor,
+      position_embeddings: torch.Tensor,
       attention_mask: Optional[torch.Tensor] = None,
       position_ids: Optional[torch.LongTensor] = None,
   ) -> tuple[torch.Tensor]:
@@ -704,12 +703,6 @@ class Gemma3DecoderLayer(nn.Module):
     residual = hidden_states
 
     hidden_states = self.input_layernorm(hidden_states)
-
-    # apply global RoPE to non-sliding layer only
-    if self.self_attn.is_sliding:
-      position_embeddings = position_embeddings_local
-    else:
-      position_embeddings = position_embeddings_global
 
     hidden_states, _ = self.self_attn(
         hidden_states=hidden_states,
@@ -839,16 +832,20 @@ class Gemma3TextModel(nn.Module):
     hidden_states = self.embed_tokens(input_ids)
 
     # create position embeddings to be shared across the decoder layers
-    position_embeddings_global = self.rotary_emb(hidden_states, position_ids)
-    position_embeddings_local = self.rotary_emb_local(
-        hidden_states, position_ids
-    )
+    rope_mapping = {
+        "full_attention": self.rotary_emb,
+        "sliding_attention": self.rotary_emb_local,
+    }
+    position_embeddings = {}
+    for layer_type in set(self.config.layer_types):
+      position_embeddings[layer_type] = rope_mapping[layer_type](
+          hidden_states, position_ids
+      )
 
     for decoder_layer in self.layers[: self.config.num_hidden_layers]:
       hidden_states = decoder_layer(
           hidden_states,
-          position_embeddings_global=position_embeddings_global,
-          position_embeddings_local=position_embeddings_local,
+          position_embeddings=position_embeddings[decoder_layer.attention_type],
           attention_mask=causal_mask_mapping[decoder_layer.attention_type],
           position_ids=position_ids,
       )
