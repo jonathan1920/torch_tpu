@@ -445,6 +445,135 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.ops.tpu.dynamic_arange(start, end, step, 5, torch.int32)
 
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_shape_size_mismatch(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [torch.tensor(3, device=device, dtype=torch.int32)]
+    broadcast_dims = [1]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): shape list size must match static_shape size, got shape list size 1 and static_shape size 2""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_is_dynamic_size_mismatch(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [
+        torch.tensor(3, device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1]
+    static_shape = [3, 2]
+    is_dynamic = [True]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): is_dynamic size must match static_shape size, got is_dynamic size 1 and static_shape size 2""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_shape_not_0d(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [
+        torch.tensor([3], device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): shape tensor at index 0 must be a 0-D (scalar) tensor, got 1-D tensor""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_shape_not_int32(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [
+        torch.tensor(3.0, device=device, dtype=torch.float32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): shape must be a list of int32 tensors, got float32 tensor at index 0""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_broadcast_dims_size_mismatch(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [
+        torch.tensor(3, device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1, 0]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): broadcast_dims size must match input rank, got broadcast_dims size 2 and input rank 1""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_broadcast_dims_out_of_range(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [
+        torch.tensor(3, device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [2]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): broadcast_dims must be in range [0, 2), got 2 for broadcast dim at index 0""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_is_nonzero_with_more_than_one_value(self):
     with et.assert_raises_message(

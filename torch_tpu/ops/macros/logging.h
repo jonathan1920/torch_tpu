@@ -525,6 +525,10 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
                   "torch::autograd::AutogradContext *")
         << message();
+  } else if constexpr (std::is_same_v<T, c10::List<bool>>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "c10::List<bool>")
+        << message();
   } else {
     static_assert(false, "Unsupported argument type.");
   }

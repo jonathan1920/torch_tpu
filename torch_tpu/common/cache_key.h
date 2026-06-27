@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/List.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -437,6 +438,12 @@ FormattedKey<T> FormatParamCacheKey(const std::vector<T>& value) {
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value) {
   return FormatParamCacheKey(absl::MakeConstSpan(value));
+}
+
+template <typename T>
+FormattedKey<T> FormatParamCacheKey(const c10::List<T>& value) {
+  return FormatParamCacheKeyForRange<T, FormattedKey<T>>(value.begin(),
+                                                         value.end());
 }
 
 [[nodiscard]] inline std::string FormatParamCacheKey(

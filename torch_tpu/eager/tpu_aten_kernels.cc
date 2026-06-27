@@ -70,6 +70,7 @@
 #include "torch_tpu/ops/dot/vdot_aten_kernels.h"
 #include "torch_tpu/ops/dropout/dropout_aten_kernels.h"
 #include "torch_tpu/ops/dynamic/dynamic_arange/dynamic_arange.h"
+#include "torch_tpu/ops/dynamic/dynamic_broadcast/dynamic_broadcast.h"
 #include "torch_tpu/ops/dynamic/set_dimension_logical_size/set_dimension_logical_size.h"
 #include "torch_tpu/ops/elu/elu_aten_kernels.h"
 #include "torch_tpu/ops/embedding/embedding_aten_kernels.h"
@@ -1039,6 +1040,30 @@ TORCH_LIBRARY(tpu, m) {
       "dynamic_arange(Tensor start, Tensor end, Tensor step, "
       "int max_length, ScalarType dtype) -> Tensor");
 
+  // Broadcasts the input tensor to a dynamic output shape.
+  //
+  // This operator is used in torch.compile() mode to support broadcasting
+  // tensors with bounded dynamism on TPU. It lowers to
+  // stablehlo.broadcast_in_dim followed by stablehlo.set_dimension_size for
+  // dynamic dimensions.
+  //
+  // Args:
+  //   input: The input tensor to broadcast.
+  //   shape: List of 0-D (scalar) int32 tensors containing the runtime sizes of
+  //     the output dimensions.
+  //   broadcast_dims: Specifies which dimensions of the output correspond to
+  //     dimensions of the input.
+  //   static_shape: The static upper bound for the output shape. Used for
+  //     static allocation.
+  //   is_dynamic: List of booleans indicating which output dimensions are
+  //     dynamic.
+  //
+  // Returns:
+  //   The broadcasted tensor, bounded to its dynamic shape.
+  m.def(
+      "dynamic_broadcast(Tensor input, Tensor[] shape, int[] broadcast_dims, "
+      "int[] static_shape, bool[] is_dynamic) -> Tensor");
+
   // Experimental P2P communication ops for ProcessGroupTpu.
   // Isolated from the public torch.distributed API to safely prototype new
   // behaviors.
@@ -1156,6 +1181,7 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
   ImplExperimental<OpName::kSetDimensionLogicalSize>(m,
                                                      SetDimensionLogicalSize);
   ImplExperimental<OpName::kDynamicArange>(m, DynamicArange);
+  ImplExperimental<OpName::kDynamicBroadcast>(m, DynamicBroadcast);
   ImplExperimental<OpName::kSparseDenseMatmul>(m, AtenSparseDenseMatmul);
   ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
       m, AtenSparseDenseMatmulGradWithSgd);

@@ -32,6 +32,7 @@ from absl.testing import parameterized
 from scipy import stats
 import torch
 from torch.testing._internal import common_methods_invocations
+from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import utils
@@ -6230,6 +6231,114 @@ module {
     )
     expected = torch.tensor([], dtype=torch.int32)
     self.assert_close(golden_result=expected, torch_tpu_result=out[:0].cpu())
+
+  def test_dynamic_broadcast_output_matches_static_bound(self):
+    """Tests dynamic_broadcast when runtime output shape matches static bounds."""
+    device = torch.device("tpu")
+    x = torch.tensor([1.0, 2.0], device=device, dtype=torch.float32)
+
+    shape = [
+        torch.tensor(3, device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+
+    out = torch.ops.tpu.dynamic_broadcast(
+        x, shape, broadcast_dims, static_shape, is_dynamic
+    )
+    expected = x.unsqueeze(0).expand(3, 2)
+    self.assert_close(golden_result=expected.cpu(), torch_tpu_result=out.cpu())
+
+  def test_dynamic_broadcast_output_below_static_bound(self):
+    """Tests dynamic_broadcast when runtime output shape is below static bounds."""
+    device = torch.device("tpu")
+    x = torch.tensor([1.0, 2.0], device=device, dtype=torch.float32)
+
+    shape = [
+        torch.tensor(3, device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1]
+    static_shape = [5, 2]
+    is_dynamic = [True, False]
+
+    out = torch.ops.tpu.dynamic_broadcast(
+        x, shape, broadcast_dims, static_shape, is_dynamic
+    )
+    expected = x.unsqueeze(0).expand(3, 2)
+    self.assert_close(
+        golden_result=expected.cpu(),
+        torch_tpu_result=out.cpu().flatten()[:6].reshape(3, 2),
+    )
+
+  def test_dynamic_broadcast_dynamic_input_mapped(self):
+    """Tests dynamic_broadcast when dynamic input dim maps to dynamic output dim."""
+    device = torch.device("tpu")
+    x = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float32)
+    size = torch.tensor(2, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3], logical [2] (dim 0 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
+
+      # Broadcast to physical [3, 4], logical [2, 4]
+      # Input dim 0 (dynamic) maps to output dim 0 (dynamic)
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(4, device=device, dtype=torch.int32),
+      ]
+      broadcast_dims = [0]
+      static_shape = [3, 4]
+      is_dynamic = [True, False]
+
+      out = torch.ops.tpu.dynamic_broadcast(
+          x_dynamic, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [2] expanded to [2, 4]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:2]
+    expected = x_logical_cpu.unsqueeze(1).expand(2, 4)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:8].reshape(2, 4),
+    )
+
+  def test_dynamic_broadcast_dynamic_input_and_new_dim_dynamic(self):
+    """Tests dynamic_broadcast with dynamic input and a new dynamic output dim."""
+    device = torch.device("tpu")
+    x = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float32)
+    size = torch.tensor(2, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3], logical [2] (dim 0 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
+
+      # Broadcast to physical [3, 3], logical [2, 2]
+      # Input dim 0 (dynamic) maps to output dim 1 (dynamic)
+      # Output dim 0 is new dim, dynamic
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(2, device=device, dtype=torch.int32),
+      ]
+      broadcast_dims = [1]
+      static_shape = [3, 3]
+      is_dynamic = [True, True]
+
+      out = torch.ops.tpu.dynamic_broadcast(
+          x_dynamic, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [2] expanded to [2, 2]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:2]
+    expected = x_logical_cpu.unsqueeze(0).expand(2, 2)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:4].reshape(2, 2),
+    )
 
   @parameterized.product(
       dtype=[torch.float32, torch.bfloat16],
