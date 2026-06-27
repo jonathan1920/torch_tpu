@@ -61,10 +61,14 @@ absl::Status CopyTpuToTpu(const at::Tensor& src, const at::Tensor& dest) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(dest.scalar_type()));
   Dimensions dest_sizes = CopyIntVector(dest.sizes());
+  const bool shapes_match = (src.sizes() == dest.sizes());
   auto copy_op_builder =
-      [dest_sizes,
+      [dest_sizes, shapes_match,
        out_dtype](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
-    TT_ASSIGN_OR_RETURN(auto formatted, BroadcastIfNeeded(input, dest_sizes));
+    mlir::MlirOp formatted = input;
+    if (!shapes_match) {
+      TT_ASSIGN_OR_RETURN(formatted, BroadcastIfNeeded(input, dest_sizes));
+    }
     if (GetElementTypeOrDie(formatted) != out_dtype) {
       formatted = mlir::stablehlo::ConvertElementType(formatted, out_dtype);
     }
