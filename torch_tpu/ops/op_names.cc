@@ -303,6 +303,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "dynamic_arange";
     case OpName::kDynamicBroadcast:
       return "dynamic_broadcast";
+    case OpName::kDynamicReshape:
+      return "dynamic_reshape";
     case OpName::kEfficientZeroTensor:
       return "_efficientzerotensor";
     case OpName::kEluBackwardGradInput:

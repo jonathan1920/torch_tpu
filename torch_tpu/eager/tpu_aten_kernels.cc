@@ -71,6 +71,7 @@
 #include "torch_tpu/ops/dropout/dropout_aten_kernels.h"
 #include "torch_tpu/ops/dynamic/dynamic_arange/dynamic_arange.h"
 #include "torch_tpu/ops/dynamic/dynamic_broadcast/dynamic_broadcast.h"
+#include "torch_tpu/ops/dynamic/dynamic_reshape/dynamic_reshape.h"
 #include "torch_tpu/ops/dynamic/set_dimension_logical_size/set_dimension_logical_size.h"
 #include "torch_tpu/ops/elu/elu_aten_kernels.h"
 #include "torch_tpu/ops/embedding/embedding_aten_kernels.h"
@@ -1064,6 +1065,23 @@ TORCH_LIBRARY(tpu, m) {
       "dynamic_broadcast(Tensor input, Tensor[] shape, int[] broadcast_dims, "
       "int[] static_shape, bool[] is_dynamic) -> Tensor");
 
+  // This op is a torch_tpu custom op for use in torch.compile() mode to handle
+  // dynamic reshape operations on TPU. It reshapes the input tensor to the
+  // specified shape.
+  // Args:
+  //   input: The input tensor to reshape.
+  //   shape: List of 0-D (scalar) int32 tensors containing the runtime sizes of
+  //     the output dimensions.
+  //   static_shape: The static upper bound for the output shape. Used for
+  //     static allocation.
+  //   is_dynamic: List of booleans indicating which output dimensions are
+  //     dynamic.
+  // Returns:
+  //   The reshaped tensor, bounded to its dynamic shape.
+  m.def(
+      "dynamic_reshape(Tensor input, Tensor[] shape, int[] static_shape, "
+      "bool[] is_dynamic) -> Tensor");
+
   // Experimental P2P communication ops for ProcessGroupTpu.
   // Isolated from the public torch.distributed API to safely prototype new
   // behaviors.
@@ -1182,6 +1200,7 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
                                                      SetDimensionLogicalSize);
   ImplExperimental<OpName::kDynamicArange>(m, DynamicArange);
   ImplExperimental<OpName::kDynamicBroadcast>(m, DynamicBroadcast);
+  ImplExperimental<OpName::kDynamicReshape>(m, DynamicReshape);
   ImplExperimental<OpName::kSparseDenseMatmul>(m, AtenSparseDenseMatmul);
   ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
       m, AtenSparseDenseMatmulGradWithSgd);

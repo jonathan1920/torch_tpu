@@ -165,6 +165,7 @@ enum class OpName {
   kDropout,
   kDynamicArange,
   kDynamicBroadcast,
+  kDynamicReshape,
   kEfficientZeroTensor,
   kEluBackwardGradInput,
   kEluOut,

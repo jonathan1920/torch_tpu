@@ -6340,6 +6340,188 @@ module {
         torch_tpu_result=out.cpu().flatten()[:4].reshape(2, 2),
     )
 
+  def test_dynamic_reshape_flatten(self):
+    """Tests dynamic_reshape flattening a dynamic input."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32).reshape(3, 4)
+    size = torch.tensor(3, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3, 4], logical [3, 3] (dim 1 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 1, size)
+
+      # Target shape: physical [12], logical [9] (dim 0 is dynamic)
+      shape = [torch.tensor(9, device=device, dtype=torch.int32)]
+      static_shape = [12]
+      is_dynamic = [True]
+
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical is [3, 3], flattening it should
+    # give 9 elements.
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:, :3]
+    expected = x_logical_cpu.flatten()
+    self.assert_close(
+        golden_result=expected, torch_tpu_result=out.cpu().flatten()[:9]
+    )
+
+  def test_dynamic_reshape_change_dims(self):
+    """Tests dynamic_reshape changing dimensions of a 2D dynamic input to another 2D dynamic shape."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32).reshape(3, 4)
+    size = torch.tensor(2, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3, 4], logical [3, 2] (dim 1 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 1, size)
+
+      # Target shape: physical [2, 6], logical [2, 3] (dim 1 is dynamic)
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(3, device=device, dtype=torch.int32),
+      ]
+      static_shape = [2, 6]
+      is_dynamic = [False, True]
+
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [3, 2] reshaped to [2, 3]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:, :2]
+    expected = x_logical_cpu.reshape(2, 3)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:6].reshape(2, 3),
+    )
+
+  def test_dynamic_reshape_add_singleton_dims(self):
+    """Tests dynamic_reshape adding singleton dimensions to a dynamic input."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32).reshape(3, 4)
+    size = torch.tensor(2, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3, 4], logical [3, 2] (dim 1 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 1, size)
+
+      # Target shape: physical [1, 3, 1, 4], logical [1, 3, 1, 2]
+      shape = [
+          torch.tensor(1, device=device, dtype=torch.int32),
+          torch.tensor(3, device=device, dtype=torch.int32),
+          torch.tensor(1, device=device, dtype=torch.int32),
+          torch.tensor(2, device=device, dtype=torch.int32),
+      ]
+      static_shape = [1, 3, 1, 4]
+      is_dynamic = [False, False, False, True]
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [3, 2] reshaped to [1, 3, 1, 2]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:, :2]
+    expected = x_logical_cpu.reshape(1, 3, 1, 2)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:6].reshape(1, 3, 1, 2),
+    )
+
+  def test_dynamic_reshape_unflatten(self):
+    """Tests dynamic_reshape unflattening a 1D dynamic input to a 2D dynamic output."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32)
+    size = torch.tensor(8, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [12], logical [8] (dim 0 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
+
+      # Target shape: physical [2, 6], logical [2, 4] (dim 1 is dynamic)
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(4, device=device, dtype=torch.int32),
+      ]
+      static_shape = [2, 6]
+      is_dynamic = [False, True]
+
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    expected = torch.arange(8, dtype=torch.float32).reshape(2, 4)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:8].reshape(2, 4),
+    )
+
+  def test_dynamic_reshape_move_dynamic_dim(self):
+    """Tests dynamic_reshape moving the dynamic property from one dim to another."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32).reshape(3, 4)
+    size = torch.tensor(2, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3, 4], logical [2, 4] (dim 0 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
+
+      # Target shape: physical [2, 6], logical [2, 4] (dim 1 is dynamic)
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(4, device=device, dtype=torch.int32),
+      ]
+      static_shape = [2, 6]
+      is_dynamic = [False, True]
+
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [2, 4] reshaped to [2, 4]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:2, :]
+    expected = x_logical_cpu.reshape(2, 4)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:8].reshape(2, 4),
+    )
+
+  def test_dynamic_reshape_unflatten_dynamic_dim(self):
+    """Tests dynamic_reshape unflattening (splitting) a dynamic dimension."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32).reshape(2, 6)
+    size = torch.tensor(4, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [2, 6], logical [2, 4] (dim 1 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 1, size)
+
+      # Target shape: physical [2, 2, 3], logical [2, 2, 2] (dim 2 is dynamic)
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(2, device=device, dtype=torch.int32),
+      ]
+      static_shape = [2, 2, 3]
+      is_dynamic = [False, False, True]
+
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [2, 4] reshaped to [2, 2, 2]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:, :4]
+    expected = x_logical_cpu.reshape(2, 2, 2)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:8].reshape(2, 2, 2),
+    )
+
   @parameterized.product(
       dtype=[torch.float32, torch.bfloat16],
   )

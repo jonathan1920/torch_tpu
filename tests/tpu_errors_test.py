@@ -1435,6 +1435,71 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.ops.tpu.set_dimension_logical_size(inp, 0, size)
 
+  @et.why_tpu_only(
+      "The op dynamic_reshape is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_reshape_shape_size_mismatch(self):
+    inp = torch.ones(2, 2, device=et.device())
+    shape = [torch.tensor(2, device=et.device(), dtype=torch.int32)]
+    static_shape = [2, 2]
+    is_dynamic = [False, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_reshape(): shape list size must match static_shape size, got shape list size 1 and static_shape size 2""",
+    ):
+      torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
+
+  @et.why_tpu_only(
+      "The op dynamic_reshape is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_reshape_is_dynamic_size_mismatch(self):
+    inp = torch.ones(2, 2, device=et.device())
+    shape = [
+        torch.tensor(2, device=et.device(), dtype=torch.int32),
+        torch.tensor(2, device=et.device(), dtype=torch.int32),
+    ]
+    static_shape = [2, 2]
+    is_dynamic = [False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_reshape(): is_dynamic size must match static_shape size, got is_dynamic size 1 and static_shape size 2""",
+    ):
+      torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
+
+  @et.why_tpu_only(
+      "The op dynamic_reshape is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_reshape_shape_not_0d(self):
+    inp = torch.ones(2, 2, device=et.device())
+    shape = [
+        torch.tensor([2], device=et.device(), dtype=torch.int32),
+        torch.tensor(2, device=et.device(), dtype=torch.int32),
+    ]
+    static_shape = [2, 2]
+    is_dynamic = [False, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_reshape(): shape tensor at index 0 must be a 0-D (scalar) tensor, got 1-D tensor""",
+    ):
+      torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
+
+  @et.why_tpu_only(
+      "The op dynamic_reshape is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_reshape_shape_not_int32(self):
+    inp = torch.ones(2, 2, device=et.device())
+    shape = [
+        torch.tensor(2.0, device=et.device(), dtype=torch.float32),
+        torch.tensor(2, device=et.device(), dtype=torch.int32),
+    ]
+    static_shape = [2, 2]
+    is_dynamic = [False, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_reshape(): shape must be a list of int32 tensors, got float32 tensor at index 0""",
+    ):
+      torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
+
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_leaky_relu_backward_negative_slope_with_self_is_result(self):
     grad_output = torch.ones(2, device=et.device())
