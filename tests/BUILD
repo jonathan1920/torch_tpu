@@ -137,7 +137,11 @@ torch_tpu_py_test(
         "--print_op_inputs=1",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
+        # TODO(b/529376045): re-enable associative scan emitter in OSS after libtpu update
+        [
+            "--max_samples_per_op_dtype=16",
+            "--xla_tpu_use_associative_scan_emitter=false",
+        ],
         # Forge has more resources, allowing a larger sample size.
         ["--max_samples_per_op_dtype=20"],
     ),
@@ -201,7 +205,11 @@ torch_tpu_py_test(
         "--compute_grad=True",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
+        # TODO(b/529376045): re-enable associative scan emitter in OSS after libtpu update
+        [
+            "--max_samples_per_op_dtype=16",
+            "--xla_tpu_use_associative_scan_emitter=false",
+        ],
         # Forge has more resources, allowing a larger sample size.
         ["--max_samples_per_op_dtype=20"],
     ),
@@ -300,7 +308,11 @@ torch_tpu_py_test(
         "--test_categories=-foreach",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
+        # TODO(b/529376045): re-enable associative scan emitter in OSS after libtpu update
+        [
+            "--max_samples_per_op_dtype=16",
+            "--xla_tpu_use_associative_scan_emitter=false",
+        ],
         # Forge has more resources, allowing a larger sample size.
         ["--max_samples_per_op_dtype=20"],
     ),
