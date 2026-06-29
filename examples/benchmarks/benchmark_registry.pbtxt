@@ -6,7 +6,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -30,7 +30,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -55,7 +55,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -79,7 +79,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -103,7 +103,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -127,7 +127,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -151,7 +151,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -175,7 +175,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -199,7 +199,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -223,7 +223,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -247,7 +247,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -273,7 +273,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -297,7 +297,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -322,7 +322,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -346,7 +346,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -370,7 +370,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -395,7 +395,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -421,7 +421,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -446,7 +446,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
@@ -471,7 +471,7 @@ benchmarks {
   owner: "TorchTPU"
 
   workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action: "./ml_actions/actions/workload_executors/bazel"
     action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
   }
 
