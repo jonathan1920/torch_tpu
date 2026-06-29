@@ -2270,16 +2270,6 @@ class TorchTpuTestBase(TestCase):
       return
 
     op_name = _op_name_for_logging(op, variant)
-    # TODO: Remove this check once we have recorded GPU results for all
-    # out_variant_types.
-    if _torch_tpu_vs_gpu_mode() and out_variant_type != OutVariantType.CORRECT:
-      print(
-          f"Skipping test for {op_name}() with dtype {dtype} on TorchTPU as we"
-          " don't have recorded GPU results for out_variant_type"
-          f" {out_variant_type.value}.",
-          flush=True,
-      )
-      return
 
     print(
         f">>> Testing {op_name}() (variant={out_variant_type.value}) with dtype"

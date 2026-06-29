@@ -280,7 +280,7 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    shard_count = 40,
+    shard_count = 50,
     tags = [
         "noasan",  # TODO: fix the timeout of test_grid_sampler in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.

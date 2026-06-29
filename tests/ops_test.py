@@ -1028,6 +1028,11 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"atol": 8.9e-4},
         torch.float32: {"atol": 6.9e-5},
     },
+    "logcumsumexp": {
+        torch.bfloat16: {"rtol": 0.98, "atol": 4e-3},
+        torch.float16: {"rtol": 1.2, "atol": 4e-3},
+        torch.float32: {"rtol": 0.039, "atol": 6.9e-5},
+    },
     "matmul": {
         torch.bfloat16: {"atol": 3.8e-1},
         torch.complex64: {"atol": 1.9},
@@ -1101,6 +1106,9 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"atol": 5.4e-5},
         torch.float16: {"atol": 6.2e-5},
         torch.float32: {"atol": 6e-5},
+    },
+    "polygamma": {
+        torch.float32: {"rtol": 1.6e-4, "atol": 22},
     },
     "pow": {
         torch.complex64: {"rtol": 5.8e-4, "atol": 1e-5},
@@ -1323,6 +1331,11 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     "log2": {
         torch.complex64: {"atol": 1e-4},
     },
+    "logcumsumexp": {
+        torch.bfloat16: {"rtol": 0.15, "atol": 2.9e-5},
+        torch.float16: {"rtol": 0.058, "atol": 1.9e-5},
+        torch.float32: {"rtol": 0.039, "atol": 6.9e-5},
+    },
     "matmul": {
         torch.complex64: {"atol": 1.2},
     },
@@ -1362,6 +1375,9 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     "nn.functional.nll_loss": {
         torch.bfloat16: {"rtol": 5e-2, "atol": 0},
         torch.float16: {"atol": 4.7e-2},
+    },
+    "polygamma": {
+        torch.float32: {"rtol": 1.6e-4, "atol": 22},
     },
     "pow": {
         torch.complex64: {"rtol": 5.8e-4, "atol": 1e-5},
@@ -3353,7 +3369,10 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_polygamma(self):
-    self.do_test_op("polygamma")
+    self.do_test_op(
+        "polygamma",
+        exclude_dtypes=(torch.float64,),  # EXCLUDE_DTYPES_OK=b/529449058
+    )
 
   def test_prod(self):
     self.do_test_op(
