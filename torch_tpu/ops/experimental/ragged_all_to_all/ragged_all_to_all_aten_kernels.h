@@ -17,6 +17,8 @@
 #ifndef TORCH_TPU_OPS_EXPERIMENTAL_RAGGED_ALL_TO_ALL_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_EXPERIMENTAL_RAGGED_ALL_TO_ALL_ATEN_KERNELS_H_
 
+#include <string_view>
+
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 
@@ -36,20 +38,19 @@ namespace torch_tpu {
 //
 // Returns:
 //   A tensor containing the gathered data.
-at::Tensor AtenRaggedAllToAll(const at::Tensor& operand,
-                              const at::Tensor& output,
-                              const at::Tensor& input_offsets,
-                              const at::Tensor& send_sizes,
-                              const at::Tensor& output_offsets,
-                              const at::Tensor& recv_sizes,
-                              const at::Tensor& replica_groups);
+at::Tensor AtenRaggedAllToAll(
+    const at::Tensor& operand, const at::Tensor& output,
+    const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+    const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+    const at::Tensor& replica_groups, std::string_view process_group_name);
 
 // RaggedAllToAll collective operation (out variant).
 at::Tensor& AtenRaggedAllToAllOut(
     const at::Tensor& operand, const at::Tensor& output,
     const at::Tensor& input_offsets, const at::Tensor& send_sizes,
     const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-    const at::Tensor& replica_groups, at::Tensor& out);
+    const at::Tensor& replica_groups, std::string_view process_group_name,
+    at::Tensor& out);
 
 }  // namespace torch_tpu
 

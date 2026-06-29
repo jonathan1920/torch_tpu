@@ -75,6 +75,10 @@ class ProcessGroupTpu : public c10d::Backend {
 
   const std::string getBackendName() const override { return "tpu_dist"; }
 
+  // Maps the PyTorch rank to the physical TPU device id.
+  // Returns an error if the rank is out of bounds.
+  absl::StatusOr<int64_t> GetDeviceIdFromRank(int64_t rank) const;
+
   c10::intrusive_ptr<c10d::Work> allreduce(
       std::vector<at::Tensor>& tensors,
       const c10d::AllreduceOptions& opts) override;

@@ -556,12 +556,12 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "ragged_all_to_all_test",
     srcs = ["ragged_all_to_all_test.py"],
-    notap = "Requires 4 tpu v5p chips.",
+    notap = "Requires 4 tpu v7x chips.",
     tags = [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        "requires-tpu-v5p:4",
+        "requires-tpu-v7x:4",
     ],
     deps = [
         ":distributed_utils",

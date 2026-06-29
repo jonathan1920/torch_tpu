@@ -995,11 +995,13 @@ TORCH_LIBRARY(tpu, m) {
   m.def(
       "ragged_all_to_all(Tensor operand, Tensor output, Tensor "
       "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
-      "recv_sizes, Tensor replica_groups) -> Tensor");
+      "recv_sizes, Tensor replica_groups, str process_group_name) -> "
+      "Tensor");
   m.def(
       "ragged_all_to_all.out(Tensor operand, Tensor output, Tensor "
       "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
-      "recv_sizes, Tensor replica_groups, *, Tensor(a!) out) "
+      "recv_sizes, Tensor replica_groups, str process_group_name, *, "
+      "Tensor(a!) out) "
       "-> Tensor(a!)");
   m.def("optimization_barrier(Tensor[] inputs) -> Tensor[]");
   // This op is a torch_tpu custom op for use in torch.compile() mode to handle
@@ -1167,17 +1169,20 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
         return out;
       });
   ImplStable<OpName::kRaggedAllToAll>(
-      m,
-      +[](const at::Tensor& operand, const at::Tensor& output,
-          const at::Tensor& input_offsets, const at::Tensor& send_sizes,
-          const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-          const at::Tensor& replica_groups) { return at::empty_like(output); });
+      m, +[](const at::Tensor& operand, const at::Tensor& output,
+             const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+             const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+             const at::Tensor& replica_groups,
+             std::string_view process_group_name) {
+        return at::empty_like(output);
+      });
   ImplStable<OpName::kRaggedAllToAllOut>(
       m,
       +[](const at::Tensor& operand, const at::Tensor& output,
           const at::Tensor& input_offsets, const at::Tensor& send_sizes,
           const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-          const at::Tensor& replica_groups, at::Tensor& out) -> at::Tensor& {
+          const at::Tensor& replica_groups, std::string_view process_group_name,
+          at::Tensor& out) -> at::Tensor& {
         at::native::resize_output(out, output.sizes());
         return out;
       });
