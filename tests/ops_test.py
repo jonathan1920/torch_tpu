@@ -479,10 +479,6 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1e-3, "atol": 8e-1},
         torch.float32: {"rtol": 4.5, "atol": 8.5e-1},
     },
-    "mean": {
-        torch.bfloat16: {"rtol": 1.4e-1, "atol": 4e-3},
-        torch.float16: {"rtol": 3.8e-3, "atol": 2e-3},
-    },
     "mm": {
         torch.complex64: {"rtol": 1.4e-2, "atol": 1.5},
         torch.float16: {"rtol": 5e-2, "atol": 4.1e-1},
@@ -2997,9 +2993,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_mean(self):
-    self.do_test_op(
-        "mean",
-    )
+    self.do_test_op("mean")
 
   def test_min(self):
     self.do_test_op("min")
