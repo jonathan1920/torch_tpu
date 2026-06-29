@@ -507,6 +507,27 @@ class TestPallasKernels(absltest.TestCase):
     utils.assert_close(actual_add, add_expected)
     utils.assert_close(actual_sub, sub_expected)
 
+  def test_jax_kernel_retains_unused_operands(self):
+    """jax_op retains operands the traced function does not use.
+
+    A JAX function that does not reference one of its tensor arguments would
+    normally have that argument dead-code-eliminated by jax.jit, leaving the
+    exported kernel with fewer operands than the torch wrapper passes (which
+    then fails to specialize). jax_op always builds the kernel with
+    keep_unused so the operand is retained.
+    """
+
+    def ignore_second(x: jax.Array, y: jax.Array) -> jax.Array:
+      # y is intentionally unused; it must not be pruned from the kernel.
+      return jax.numpy.multiply(x, 2.0)
+
+    op = pallas.jax_op("keep_unused_test::ignore_second", ignore_second)
+    x = torch.ones((16, 8), dtype=torch.float32, device=self.device)
+    y = torch.ones((16, 8), dtype=torch.float32, device=self.device)
+    expected = (x * 2).to("cpu")
+    actual = op(x, y).to("cpu")
+    utils.assert_close(actual, expected)
+
   def test_jax_kernel_with_static_argnums(self):
     """Test custom_jax_kernel with static_argnums."""
     kernel = pallas.jax_op(

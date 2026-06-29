@@ -658,6 +658,7 @@ def custom_jax_kernel(
         jax_fn,
         static_argnums=static_argnums,
         donate_argnums=donate_argnums,
+        keep_unused=True,
     )
     return JaxCallable(
         name=name,
