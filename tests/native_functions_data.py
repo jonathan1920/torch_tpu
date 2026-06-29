@@ -449,8 +449,6 @@ UNREGISTERED_OPS = frozenset([
     'unique_consecutive',
     'unique_dim',
     'unique_dim_consecutive',
-    'upsample_bicubic2d.out',
-    'upsample_bicubic2d_backward.grad_input',
     'upsample_linear1d.out',
     'upsample_linear1d_backward.grad_input',
     'upsample_trilinear3d.out',

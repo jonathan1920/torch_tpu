@@ -667,6 +667,8 @@ enum class OpName {
   kUnsqueezeCopyOut,
   kUnsqueeze_,
   kUntypedStorageResize_,
+  kUpsampleBicubic2dBackwardGradInput,
+  kUpsampleBicubic2dOut,
   kUpsampleBilinear2dBackwardGradInput,
   kUpsampleBilinear2dOut,
   kUpsampleNearest1dBackwardGradInput,

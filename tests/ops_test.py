@@ -557,6 +557,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     "nn.functional.hardswish": {
         torch.bfloat16: {"rtol": 3e-2, "atol": 3.2e-2},
     },
+    "nn.functional.interpolate": {
+        torch.bfloat16: {"rtol": 5e-2, "atol": 2e-2},
+        torch.float16: {"rtol": 2e-2, "atol": 5e-3},
+    },
     "nn.functional.logsigmoid": {
         torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
         torch.float16: {"rtol": 1e-3, "atol": 1e-3},
@@ -3634,6 +3638,15 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "nn.functional.upsample_nearest",
         exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  def test_upsample_bicubic2d(self):
+    self.do_test_op(
+        "nn.functional.interpolate",
+        variant_test_name="bicubic",
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=CPU interpolate unsupported dtypes
+            COMPLEX_DTYPES + INTEGRAL_DTYPES
+        ),
     )
 
   def test_upsample_bilinear(self):

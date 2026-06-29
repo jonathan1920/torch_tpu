@@ -176,6 +176,7 @@
 #include "torch_tpu/ops/uniform/uniform_aten_kernels.h"
 #include "torch_tpu/ops/unique/unique_aten_kernels.h"
 #include "torch_tpu/ops/upsample/upsample_aten_kernels.h"
+#include "torch_tpu/ops/upsample/upsample_bicubic2d_aten_kernels.h"
 #include "torch_tpu/ops/view/view_aten_kernels.h"
 #include "torch_tpu/ops/weight_norm/weight_norm_aten_kernels.h"
 #include "torch_tpu/ops/where/where_aten_kernels.h"
@@ -884,6 +885,9 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kUnfoldBackward>(m, AtenUnfoldBackward);
   ImplStable<OpName::kUniform_>(m, AtenUniform_);
   ImplStable<OpName::kUnique2>(m, AtenUnique2);
+  ImplStable<OpName::kUpsampleBicubic2dBackwardGradInput>(
+      m, AtenUpsampleBicubic2dBackwardGradInput);
+  ImplStable<OpName::kUpsampleBicubic2dOut>(m, AtenUpsampleBicubic2dOut);
   ImplStable<OpName::kUpsampleBilinear2dBackwardGradInput>(
       m, AtenUpsampleBilinear2dBackwardGradInput);
   ImplStable<OpName::kUpsampleBilinear2dOut>(m, AtenUpsampleBilinear2dOut);

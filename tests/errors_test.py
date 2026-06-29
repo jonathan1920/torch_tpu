@@ -314,6 +314,80 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.triu(t, 1)
 
+  def test_upsample_bicubic2d_invalid_rank(self):
+    t = torch.ones(1, 2, 3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""It is expected input_size equals to 4, but got size 3""",
+        tpu="""It is expected input_size equals to 4, but got size 3""",
+    ):
+      torch.ops.aten.upsample_bicubic2d(t, [10, 10], False)
+
+  def test_upsample_bicubic2d_invalid_output_size(self):
+    t = torch.ones(1, 1, 4, 4, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""It is expected output_size equals to 2, but got size 1""",
+        tpu="""It is expected output_size equals to 2, but got size 1""",
+    ):
+      torch.ops.aten.upsample_bicubic2d(t, [10], False)
+
+  def test_upsample_bicubic2d_dtype_mismatch(self):
+    t = torch.ones(1, 1, 4, 4, device=et.device(), dtype=torch.float32)
+    out = torch.empty(1, 1, 10, 10, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""upsample_bicubic2d(): expected out dtype float32, got int32""",
+        gpu="""Expected out tensor to have dtype float, but got int instead""",
+    ):
+      torch.ops.aten.upsample_bicubic2d.out(
+          t, [10, 10], False, None, None, out=out
+      )
+
+  def test_upsample_bicubic2d_backward_invalid_grad_output_rank(self):
+    grad_output = torch.ones(1, 2, 3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Expected grad_output to be a tensor of dimension 4 but got: dimension 3""",
+        tpu="""Expected grad_output to be a tensor of dimension 4 but got: dimension 3""",
+    ):
+      torch.ops.aten.upsample_bicubic2d_backward(
+          grad_output, [10, 10], [1, 1, 4, 4], False
+      )
+
+  def test_upsample_bicubic2d_backward_invalid_input_size(self):
+    grad_output = torch.ones(
+        1, 1, 10, 10, device=et.device(), dtype=torch.float32
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""It is expected input_size equals to 4, but got size 3""",
+        tpu="""It is expected input_size equals to 4, but got size 3""",
+    ):
+      torch.ops.aten.upsample_bicubic2d_backward(
+          grad_output, [10, 10], [1, 1, 4], False
+      )
+
+  def test_upsample_bicubic2d_backward_dtype_mismatch(self):
+    grad_output = torch.ones(
+        1, 1, 10, 10, device=et.device(), dtype=torch.float32
+    )
+    grad_input = torch.empty(1, 1, 4, 4, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""upsample_bicubic2d_backward(): expected grad_input dtype float32, got int32""",
+        gpu="""Expected out tensor to have dtype float, but got int instead""",
+    ):
+      torch.ops.aten.upsample_bicubic2d_backward.grad_input(
+          grad_output,
+          [10, 10],
+          [1, 1, 4, 4],
+          False,
+          None,
+          None,
+          grad_input=grad_input,
+      )
+
   def test_ctc_loss_log_probs_3d(self):
     log_probs = torch.randn(2, 3, device=et.device())
     targets = torch.randint(1, 3, (2, 3), dtype=torch.int32, device=et.device())
