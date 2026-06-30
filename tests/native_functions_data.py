@@ -495,6 +495,11 @@ REGISTRATION_OVERRIDES = frozenset([
     # Gelu is registered to handle type promotion for integer and boolean
     # inputs to match PyTorch GPU behavior for functional calls.
     'gelu',
+    # TODO(b/525550199): Remove ldexp overrides once we upgrade to PyTorch
+    # v2.13.
+    'ldexp.Tensor',
+    'ldexp.out',
+    'ldexp_',
     'native_layer_norm',  # pending removal
     # repeat_interleave.self_Tensor is registered to provide an optimized TPU
     # implementation, overriding the default decomposition.

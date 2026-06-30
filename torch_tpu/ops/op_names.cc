@@ -815,6 +815,12 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "isposinf.out";
     case OpName::kLayerNorm:
       return "layer_norm";
+    case OpName::kLdexpOut:
+      return "ldexp.out";
+    case OpName::kLdexpTensor:
+      return "ldexp.Tensor";
+    case OpName::kLdexp_:
+      return "ldexp_";
     case OpName::kLe:
       return "le";
     case OpName::kLeOut:

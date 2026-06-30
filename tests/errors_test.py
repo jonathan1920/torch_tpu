@@ -6631,6 +6631,20 @@ Supported combinations for non-constant padding:
     ):
       self_t.put_(index, source)
 
+  def test_ldexp_invalid_output_type(self):
+    out = torch.empty((2,), dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""ldexp(): ldexp can't be cast to the desired output type int32""",
+        gpu="""ldexp can't be cast to the desired output type Int""",
+        message_reviewed_by="jparkerh",
+    ):
+      torch.ldexp(
+          torch.tensor([1.0, 2.0], device=et.device()),
+          torch.tensor([1, 2], device=et.device()),
+          out=out,
+      )
+
 
 if __name__ == "__main__":
   g3_multiprocessing.handle_test_main(absltest.main)

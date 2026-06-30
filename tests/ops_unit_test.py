@@ -85,6 +85,124 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   add it here.
   """
 
+  def test_ldexp_overflow_float16(self):
+    """Tests that ldexp avoids intermediate overflow for float16."""
+    # 2^16 overflows float16 (max 65504), but 1e-4 * 2^16 = 6.5536 doesn't.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([1e-4], dtype=torch.float16, device=device),
+            torch.tensor([16], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_underflow_float16(self):
+    """Tests that ldexp avoids intermediate underflow for float16."""
+    # 2^-25 underflows float16 to 0, but 1e4 * 2^-25 = 2.98e-4 doesn't.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([10000.0], dtype=torch.float16, device=device),
+            torch.tensor([-25], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_overflow_float32(self):
+    """Tests that ldexp avoids intermediate overflow for float32."""
+    # 2^130 overflows float32, but 1e-10 * 2^130 = 1.36e29 doesn't.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([1e-10], dtype=torch.float32, device=device),
+            torch.tensor([130], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_underflow_float32(self):
+    """Tests that ldexp avoids intermediate underflow for float32."""
+    # 2^-150 underflows float32 to 0, but 1e10 * 2^-150 = 7e-36 doesn't.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([1e10], dtype=torch.float32, device=device),
+            torch.tensor([-150], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_inplace(self):
+    """Tests the inplace ldexp_ variant."""
+
+    def test_inplace(device):
+      x = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
+      exp = torch.tensor([1, 2], dtype=torch.int32, device=device)
+      x.ldexp_(exp)
+      return x
+
+    self.assert_close_tpu_vs_cpu(test_inplace)
+
+  def test_ldexp_out(self):
+    """Tests the out-variant ldexp.out."""
+
+    def test_out(device):
+      x = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
+      exp = torch.tensor([1, 2], dtype=torch.int32, device=device)
+      out = torch.empty_like(x)
+      torch.ldexp(x, exp, out=out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(test_out)
+
+  def test_ldexp_integer_promotion(self):
+    """Tests that ldexp promotes integer base and exponent to float."""
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([1, 2], dtype=torch.int32, device=device),
+            torch.tensor([2, 3], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_extreme_exponents_float16(self):
+    """Tests extreme exponent cases with zero base for float16."""
+    # Float16: exp=50 (exceeds max_exp=14). scale must not overflow to inf.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([0.0], dtype=torch.float16, device=device),
+            torch.tensor([50], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_extreme_exponents_float32(self):
+    """Tests extreme exponent cases with zero base for float32."""
+    # Float32: exp=400 (exceeds max_exp=120). scale must not overflow to inf.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([0.0], dtype=torch.float32, device=device),
+            torch.tensor([400], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_extreme_exponents_float64(self):
+    """Tests extreme exponent cases with zero base for float64."""
+    if torch.tensor([1e100], dtype=torch.float64, device="tpu").isinf().any():
+      self.skipTest("float64 is downcasted to float32 on this device")
+    # Float64: exp=3000 (exceeds max_exp=1000). scale must not overflow to inf.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([0.0], dtype=torch.float64, device=device),
+            torch.tensor([3000], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_large_exponent_float64(self):
+    """Tests large exponent scaling for float64 to ensure it covers up to 3000."""
+    if torch.tensor([1e100], dtype=torch.float64, device="tpu").isinf().any():
+      self.skipTest("float64 is downcasted to float32 on this device")
+    # 2^900 is ~ 8.41e270. 1e-100 * 2^900 is ~ 8.41e170, which is representable.
+    # If scaling limit is 360, it will return 1e-100 * 2^360 = 2.34e8,
+    # which is wrong.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([1e-100], dtype=torch.float64, device=device),
+            torch.tensor([900], dtype=torch.int32, device=device),
+        )
+    )
+
   def test_addmm_input_broadcasting(self):
     """Tests torch.addmm input broadcasting rules."""
     mat1 = torch.arange(6, dtype=torch.float32).reshape(2, 3)

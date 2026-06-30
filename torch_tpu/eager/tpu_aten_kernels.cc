@@ -664,6 +664,9 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kIsNan>(m, AtenIsNan);
   ImplStable<OpName::kIsNegInfOut>(m, AtenIsNegInfOut);
   ImplStable<OpName::kIsPosInfOut>(m, AtenIsPosInfOut);
+  ImplStable<OpName::kLdexpOut>(m, AtenLdexpOut);
+  ImplStable<OpName::kLdexpTensor>(m, AtenLdexpTensor);
+  ImplStable<OpName::kLdexp_>(m, AtenLdexp_);
   ImplStable<OpName::kLeScalarOut>(m, AtenLeScalarOut);
   ImplStable<OpName::kLeTensorOut>(m, AtenLeTensorOut);
   ImplStable<OpName::kLeakyReluBackward>(m, AtenLeakyReluBackwardGradInput);

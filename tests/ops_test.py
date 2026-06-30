@@ -404,6 +404,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.int8: {"rtol": 3.7e-6, "atol": 2.4e-3},
         torch.uint8: {"rtol": 3.7e-6, "atol": 2.4e-3},
     },
+    "ldexp": {
+        torch.float32: {"rtol": 3e-6, "atol": 1.5e-3},
+        torch.complex64: {"rtol": 4e-6, "atol": 1.5e-2},
+    },
     "lgamma": {
         torch.float16: {"rtol": 1.2e-3, "atol": 2.5e-4},
         torch.float32: {"rtol": 8.2e-4, "atol": 1.8e-4},
@@ -2650,6 +2654,9 @@ class TestOps(TorchTpuTestBase):
         # TODO: fix kron(out=...) having huge numeric errors.
         check_out_variant=False,
     )
+
+  def test_ldexp(self):
+    self.do_test_op("ldexp")
 
   def test_le(self):
     self.do_test_op("le")

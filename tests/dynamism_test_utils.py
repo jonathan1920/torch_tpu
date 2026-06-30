@@ -162,6 +162,7 @@ def verify_op_supports_dynamism(
       "index_select",  # invalid gather
       "isin",  # materialization failure (negative dimension size)
       "kron",  # dynamic triage (invalid result)
+      "ldexp",  # dynamic shape value permutation mismatch
       "linalg.lu_factor_ex",  # materialization failure (negative dim size)
       "logical_and",  # dynamic triage (invalid result)
       "masked_scatter",  # unflatten ambiguous error
