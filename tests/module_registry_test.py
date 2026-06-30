@@ -22,6 +22,7 @@ underlying providers (Torchvision, TIMM, and Transformers). It ensures that:
     successfully with their generated sample inputs.
 """
 
+import tempfile
 from absl.testing import absltest
 from etils import epath
 from PIL import Image
@@ -55,36 +56,60 @@ class ModuleRegistryTest(absltest.TestCase):
 
     self.assertEqual(registry.list_all_modules(), [])
 
-  def test_list_all_modules(self):
-    modules = self.module_registry.list_all_modules()
+  def _create_mock_registry(self, temp_dir):
+    path = epath.Path(temp_dir)
+    (path / "torchvision" / "resnet50").mkdir(parents=True)
+    (path / "timm" / "convnext_small.in12k_ft_in1k").mkdir(parents=True)
+    (path / "timm" / "resnet50d.ra2_in1k").mkdir(parents=True)
+    (path / "timm" / "vgg16.tv_in1k").mkdir(parents=True)
+    (path / "transformers" / "openai" / "gpt-oss-120b").mkdir(parents=True)
+    (path / "transformers" / "meta-llama" / "Llama-3.2-3B").mkdir(parents=True)
+    (path / "transformers" / "google" / "gemma-3-270m").mkdir(parents=True)
+    (path / "diffusers" / "stabilityai" / "stable-diffusion-xl-base-1.0").mkdir(
+        parents=True
+    )
+    return module_registry.ModuleRegistry(base_path=temp_dir)
 
-    self.assertIn("torchvision/resnet50", modules)
-    self.assertIn("timm/convnext_small.in12k_ft_in1k", modules)
-    self.assertIn("timm/resnet50d.ra2_in1k", modules)
-    self.assertIn("timm/vgg16.tv_in1k", modules)
-    self.assertIn("transformers/openai/gpt-oss-120b", modules)
-    self.assertIn("transformers/meta-llama/Llama-3.2-3B", modules)
-    self.assertIn("transformers/google/gemma-3-270m", modules)
-    self.assertIn("diffusers/stabilityai/stable-diffusion-xl-base-1.0", modules)
+  def test_list_all_modules(self):
+    with tempfile.TemporaryDirectory() as temp_dir:
+      registry = self._create_mock_registry(temp_dir)
+      modules = registry.list_all_modules()
+
+      self.assertIn("torchvision/resnet50", modules)
+      self.assertIn("timm/convnext_small.in12k_ft_in1k", modules)
+      self.assertIn("timm/resnet50d.ra2_in1k", modules)
+      self.assertIn("timm/vgg16.tv_in1k", modules)
+      self.assertIn("transformers/openai/gpt-oss-120b", modules)
+      self.assertIn("transformers/meta-llama/Llama-3.2-3B", modules)
+      self.assertIn("transformers/google/gemma-3-270m", modules)
+      self.assertIn(
+          "diffusers/stabilityai/stable-diffusion-xl-base-1.0", modules
+      )
 
   def test_torchvision_list_modules(self):
-    modules = self.module_registry.list_modules("torchvision")
+    with tempfile.TemporaryDirectory() as temp_dir:
+      registry = self._create_mock_registry(temp_dir)
+      modules = registry.list_modules("torchvision")
 
-    self.assertIn("resnet50", modules)
+      self.assertIn("resnet50", modules)
 
   def test_timm_list_modules(self):
-    modules = self.module_registry.list_modules("timm")
+    with tempfile.TemporaryDirectory() as temp_dir:
+      registry = self._create_mock_registry(temp_dir)
+      modules = registry.list_modules("timm")
 
-    self.assertIn("convnext_small.in12k_ft_in1k", modules)
-    self.assertIn("resnet50d.ra2_in1k", modules)
-    self.assertIn("vgg16.tv_in1k", modules)
+      self.assertIn("convnext_small.in12k_ft_in1k", modules)
+      self.assertIn("resnet50d.ra2_in1k", modules)
+      self.assertIn("vgg16.tv_in1k", modules)
 
   def test_transformers_list_modules(self):
-    modules = self.module_registry.list_modules("transformers")
+    with tempfile.TemporaryDirectory() as temp_dir:
+      registry = self._create_mock_registry(temp_dir)
+      modules = registry.list_modules("transformers")
 
-    self.assertIn("openai/gpt-oss-120b", modules)
-    self.assertIn("meta-llama/Llama-3.2-3B", modules)
-    self.assertIn("google/gemma-3-270m", modules)
+      self.assertIn("openai/gpt-oss-120b", modules)
+      self.assertIn("meta-llama/Llama-3.2-3B", modules)
+      self.assertIn("google/gemma-3-270m", modules)
 
   def test_torchvision_get_module_spec(self):
     module_spec = self.module_registry.get_module_spec(
