@@ -93,6 +93,9 @@ class PjrtBackend {
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats()
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Clears allocator stats for the current PjRt device.
+  absl::Status ClearAllocatorStats() ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Returns the PjRt host allocator from the PjRt client.
   absl::StatusOr<xla::HostMemoryAllocator*> GetHostAllocator()
       ABSL_LOCKS_EXCLUDED(mutex_);

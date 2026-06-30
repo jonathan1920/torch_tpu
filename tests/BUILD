@@ -27,6 +27,27 @@ package(
 )
 
 torch_tpu_py_library(
+    name = "oss_utils",
+    testonly = True,
+    srcs = ["oss_utils.py"],
+    visibility = ["//:__subpackages__"],
+    deps = if_oss(
+        ["//shims/libtpu"],
+        [],
+    ),
+)
+
+torch_tpu_py_test(
+    name = "oss_utils_test",
+    srcs = ["oss_utils_test.py"],
+    deps = [
+        ":oss_utils",
+        "//shims/absl_py/testing:absltest",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_library(
     name = "module_registry",
     srcs = ["module_registry.py"],
     data = [
