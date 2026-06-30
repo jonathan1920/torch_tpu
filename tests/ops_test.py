@@ -1715,19 +1715,13 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_acos(self):
-    self.do_test_op(
-        "acos",
-    )
+    self.do_test_op("acos")
 
   def test_acosh(self):
-    self.do_test_op(
-        "acosh",
-    )
+    self.do_test_op("acosh")
 
   def test_adaptive_avg_pool2d(self):
-    self.do_test_op(
-        "nn.functional.adaptive_avg_pool2d",
-    )
+    self.do_test_op("nn.functional.adaptive_avg_pool2d")
 
   def test_adaptive_avg_pool3d(self):
     self.do_test_op(
@@ -1738,19 +1732,13 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_add(self):
-    self.do_test_op(
-        "add",
-    )
+    self.do_test_op("add")
 
   def test_addcdiv(self):
-    self.do_test_op(
-        "addcdiv",
-    )
+    self.do_test_op("addcdiv")
 
   def test_addcmul(self):
-    self.do_test_op(
-        "addcmul",
-    )
+    self.do_test_op("addcmul")
 
   def test_addmm(self):
     self.do_test_op(
@@ -1829,27 +1817,19 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("as_strided")
 
   def test_asin(self):
-    self.do_test_op(
-        "asin",
-    )
+    self.do_test_op("asin")
 
   def test_asinh(self):
-    self.do_test_op(
-        "asinh",
-    )
+    self.do_test_op("asinh")
 
   def test_atan(self):
-    self.do_test_op(
-        "atan",
-    )
+    self.do_test_op("atan")
 
   def test_atan2(self):
     self.do_test_op("atan2")
 
   def test_atanh(self):
-    self.do_test_op(
-        "atanh",
-    )
+    self.do_test_op("atanh")
 
   def test_avg_pool2d(self):
     self.do_test_op(
@@ -2011,19 +1991,13 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_constant_pad_nd(self):
-    self.do_test_op(
-        "constant_pad_nd",
-    )
+    self.do_test_op("constant_pad_nd")
 
   def test_cos(self):
-    self.do_test_op(
-        "cos",
-    )
+    self.do_test_op("cos")
 
   def test_cosh(self):
-    self.do_test_op(
-        "cosh",
-    )
+    self.do_test_op("cosh")
 
   def test_count_nonzero(self):
     self.do_test_op("count_nonzero")
@@ -2049,24 +2023,16 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_cumprod(self):
-    self.do_test_op(
-        "cumprod",
-    )
+    self.do_test_op("cumprod")
 
   def test_cummax(self):
-    self.do_test_op(
-        "cummax",
-    )
+    self.do_test_op("cummax")
 
   def test_cumsum(self):
-    self.do_test_op(
-        "cumsum",
-    )
+    self.do_test_op("cumsum")
 
   def test_cummin(self):
-    self.do_test_op(
-        "cummin",
-    )
+    self.do_test_op("cummin")
 
   def test_diagonal(self):
     self.do_test_op("diagonal")
@@ -2075,9 +2041,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("digamma")
 
   def test_div(self):
-    self.do_test_op(
-        "div",
-    )
+    self.do_test_op("div")
 
   def test_dot(self):
     self.do_test_op(
@@ -2146,27 +2110,19 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("equal")
 
   def test_erf(self):
-    self.do_test_op(
-        "erf",
-    )
+    self.do_test_op("erf")
 
   def test_erfinv(self):
-    self.do_test_op(
-        "erfinv",
-    )
+    self.do_test_op("erfinv")
 
   def test_exp(self):
-    self.do_test_op(
-        "exp",
-    )
+    self.do_test_op("exp")
 
   def test_exp2(self):
     self.do_test_op("exp2")
 
   def test_expm1(self):
-    self.do_test_op(
-        "expm1",
-    )
+    self.do_test_op("expm1")
 
   def test_expand(self):
     self.do_test_op("expand")
@@ -2254,9 +2210,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("flip")
 
   def test_fmax(self):
-    self.do_test_op(
-        "fmax",
-    )
+    self.do_test_op("fmax")
 
   def test_fmin(self):
     self.do_test_op("fmin")
@@ -2275,9 +2229,7 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_acos(self):
-    self.do_test_op(
-        "_foreach_acos",
-    )
+    self.do_test_op("_foreach_acos")
 
   @category("foreach")
   def test_foreach_add(self):
@@ -2313,15 +2265,11 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_asin(self):
-    self.do_test_op(
-        "_foreach_asin",
-    )
+    self.do_test_op("_foreach_asin")
 
   @category("foreach")
   def test_foreach_atan(self):
-    self.do_test_op(
-        "_foreach_atan",
-    )
+    self.do_test_op("_foreach_atan")
 
   @category("foreach")
   def test_foreach_ceil(self):
@@ -2361,15 +2309,11 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_cos(self):
-    self.do_test_op(
-        "_foreach_cos",
-    )
+    self.do_test_op("_foreach_cos")
 
   @category("foreach")
   def test_foreach_cosh(self):
-    self.do_test_op(
-        "_foreach_cosh",
-    )
+    self.do_test_op("_foreach_cosh")
 
   @category("foreach")
   def test_foreach_div(self):
@@ -2386,9 +2330,7 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_erf(self):
-    self.do_test_op(
-        "_foreach_erf",
-    )
+    self.do_test_op("_foreach_erf")
 
   @category("foreach")
   def test_foreach_erfc(self):
@@ -2396,9 +2338,7 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_exp(self):
-    self.do_test_op(
-        "_foreach_exp",
-    )
+    self.do_test_op("_foreach_exp")
 
   @category("foreach")
   def test_foreach_expm1(self):
@@ -2437,27 +2377,19 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_log(self):
-    self.do_test_op(
-        "_foreach_log",
-    )
+    self.do_test_op("_foreach_log")
 
   @category("foreach")
   def test_foreach_log10(self):
-    self.do_test_op(
-        "_foreach_log10",
-    )
+    self.do_test_op("_foreach_log10")
 
   @category("foreach")
   def test_foreach_log1p(self):
-    self.do_test_op(
-        "_foreach_log1p",
-    )
+    self.do_test_op("_foreach_log1p")
 
   @category("foreach")
   def test_foreach_log2(self):
-    self.do_test_op(
-        "_foreach_log2",
-    )
+    self.do_test_op("_foreach_log2")
 
   @category("foreach")
   def test_foreach_max(self):
@@ -2561,15 +2493,11 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_rsqrt(self):
-    self.do_test_op(
-        "_foreach_rsqrt",
-    )
+    self.do_test_op("_foreach_rsqrt")
 
   @category("foreach")
   def test_foreach_sigmoid(self):
-    self.do_test_op(
-        "_foreach_sigmoid",
-    )
+    self.do_test_op("_foreach_sigmoid")
 
   @category("foreach")
   def test_foreach_sign(self):
@@ -2577,15 +2505,11 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_sin(self):
-    self.do_test_op(
-        "_foreach_sin",
-    )
+    self.do_test_op("_foreach_sin")
 
   @category("foreach")
   def test_foreach_sinh(self):
-    self.do_test_op(
-        "_foreach_sinh",
-    )
+    self.do_test_op("_foreach_sinh")
 
   @category("foreach")
   def test_foreach_sqrt(self):
@@ -2603,15 +2527,11 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_tan(self):
-    self.do_test_op(
-        "_foreach_tan",
-    )
+    self.do_test_op("_foreach_tan")
 
   @category("foreach")
   def test_foreach_tanh(self):
-    self.do_test_op(
-        "_foreach_tanh",
-    )
+    self.do_test_op("_foreach_tanh")
 
   @category("foreach")
   def test_foreach_trunc(self):
@@ -2622,14 +2542,10 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("_foreach_zero")
 
   def test_full(self):
-    self.do_test_op(
-        "full",
-    )
+    self.do_test_op("full")
 
   def test_full_like(self):
-    self.do_test_op(
-        "full_like",
-    )
+    self.do_test_op("full_like")
 
   def test_gather(self):
     self.do_test_op("gather")
@@ -2723,14 +2639,10 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("isnan")
 
   def test_isneginf(self):
-    self.do_test_op(
-        "isneginf",
-    )
+    self.do_test_op("isneginf")
 
   def test_isposinf(self):
-    self.do_test_op(
-        "isposinf",
-    )
+    self.do_test_op("isposinf")
 
   def test_kron(self):
     self.do_test_op(
@@ -2743,9 +2655,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("le")
 
   def test_leaky_relu(self):
-    self.do_test_op(
-        "nn.functional.leaky_relu",
-    )
+    self.do_test_op("nn.functional.leaky_relu")
 
   def test_lerp(self):
     self.do_test_op(
@@ -2849,32 +2759,22 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("lt")
 
   def test_log(self):
-    self.do_test_op(
-        "log",
-    )
+    self.do_test_op("log")
 
   def test_log1p(self):
-    self.do_test_op(
-        "log1p",
-    )
+    self.do_test_op("log1p")
 
   def test_log10(self):
-    self.do_test_op(
-        "log10",
-    )
+    self.do_test_op("log10")
 
   def test_log2(self):
-    self.do_test_op(
-        "log2",
-    )
+    self.do_test_op("log2")
 
   def test_log_sigmoid(self):
     self.do_test_op("nn.functional.logsigmoid")
 
   def test_log_softmax(self):
-    self.do_test_op(
-        "log_softmax",
-    )
+    self.do_test_op("log_softmax")
 
   def test_log_softmax_backward_data(self):
     self.do_test_op(
@@ -3121,9 +3021,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("neg")
 
   def test_nll_loss(self):
-    self.do_test_op(
-        "nn.functional.nll_loss",
-    )
+    self.do_test_op("nn.functional.nll_loss")
 
   def test_nonzero(self):
     self.do_test_op("nonzero")
@@ -3147,9 +3045,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("permute")
 
   def test_pow(self):
-    self.do_test_op(
-        "pow",
-    )
+    self.do_test_op("pow")
 
   def test_nn_functional_conv1d(self):
     self.do_test_op(
@@ -3300,34 +3196,22 @@ class TestOps(TorchTpuTestBase):
       )
 
   def test_nn_functional_batch_norm(self):
-    self.do_test_op(
-        "nn.functional.batch_norm",
-    )
+    self.do_test_op("nn.functional.batch_norm")
 
   def test_nn_functional_elu(self):
-    self.do_test_op(
-        "nn.functional.elu",
-    )
+    self.do_test_op("nn.functional.elu")
 
   def test_nn_functional_gelu(self):
-    self.do_test_op(
-        "nn.functional.gelu",
-    )
+    self.do_test_op("nn.functional.gelu")
 
   def test_nn_functional_glu(self):
-    self.do_test_op(
-        "nn.functional.glu",
-    )
+    self.do_test_op("nn.functional.glu")
 
   def test_nn_functional_hardsigmoid(self):
-    self.do_test_op(
-        "nn.functional.hardsigmoid",
-    )
+    self.do_test_op("nn.functional.hardsigmoid")
 
   def test_nn_functional_hardswish(self):
-    self.do_test_op(
-        "nn.functional.hardswish",
-    )
+    self.do_test_op("nn.functional.hardswish")
 
   def test_nn_functional_hardtanh(self):
     self.do_test_op("nn.functional.hardtanh")
@@ -3346,17 +3230,13 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_nn_functional_softplus(self):
-    self.do_test_op(
-        "nn.functional.softplus",
-    )
+    self.do_test_op("nn.functional.softplus")
 
   def test_nn_functional_mse_loss(self):
     self.do_test_op("nn.functional.mse_loss")
 
   def test_pdist_forward(self):
-    self.do_test_op(
-        "nn.functional.pdist",
-    )
+    self.do_test_op("nn.functional.pdist")
 
   def test_polar(self):
     self.do_test_op(
@@ -3375,9 +3255,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_prod(self):
-    self.do_test_op(
-        "prod",
-    )
+    self.do_test_op("prod")
 
   def test_put(self):
     self.do_test_op("put")
@@ -3447,19 +3325,13 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("round")
 
   def test_rsqrt(self):
-    self.do_test_op(
-        "rsqrt",
-    )
+    self.do_test_op("rsqrt")
 
   def test_rsub(self):
-    self.do_test_op(
-        "rsub",
-    )
+    self.do_test_op("rsub")
 
   def test_scatter(self):
-    self.do_test_op(
-        "scatter",
-    )
+    self.do_test_op("scatter")
 
   def test_scatter_add(self):
     self.do_test_op("scatter_add")
@@ -3474,17 +3346,13 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("select_scatter")
 
   def test_safe_softmax(self):
-    self.do_test_op(
-        "torch.ops.aten._safe_softmax.default",
-    )
+    self.do_test_op("torch.ops.aten._safe_softmax.default")
 
   def test_scalar_tensor(self):
     self.do_test_op("scalar_tensor")
 
   def test_sigmoid(self):
-    self.do_test_op(
-        "sigmoid",
-    )
+    self.do_test_op("sigmoid")
 
   def test_sgn(self):
     self.do_test_op("sgn")
@@ -3496,22 +3364,16 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("signbit")
 
   def test_sin(self):
-    self.do_test_op(
-        "sin",
-    )
+    self.do_test_op("sin")
 
   def test_sinh(self):
-    self.do_test_op(
-        "sinh",
-    )
+    self.do_test_op("sinh")
 
   def test_slice(self):
     self.do_test_op("slice")
 
   def test_softmax(self):
-    self.do_test_op(
-        "softmax",
-    )
+    self.do_test_op("softmax")
 
   def test_softmax_backward_data(self):
     self.do_test_op(
@@ -3553,14 +3415,10 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_sub(self):
-    self.do_test_op(
-        "sub",
-    )
+    self.do_test_op("sub")
 
   def test_sum(self):
-    self.do_test_op(
-        "sum",
-    )
+    self.do_test_op("sum")
 
   def test_stack(self):
     self.do_test_op("stack")
@@ -3572,14 +3430,10 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("take")
 
   def test_tan(self):
-    self.do_test_op(
-        "tan",
-    )
+    self.do_test_op("tan")
 
   def test_tanh(self):
-    self.do_test_op(
-        "tanh",
-    )
+    self.do_test_op("tanh")
 
   def test_threshold(self):
     self.do_test_op("nn.functional.threshold")
