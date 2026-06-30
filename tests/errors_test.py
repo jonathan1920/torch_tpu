@@ -1413,6 +1413,24 @@ Device-side assertion tracking was not enabled by user.""",
       result = torch.var(t, dim=0, correction=4)
     self.assertTrue(torch.all(torch.isnan(result)), f"Got {result.to('cpu')}")
 
+  def test_var_mean_invalid_dtype(self):
+    t = torch.randint(0, 10, (5, 5), dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""var_mean(): expected a floating point or complex dtype, got int32""",
+        gpu="""var_mean only support floating point and complex dtypes""",
+    ):
+      torch.var_mean(t)
+
+  def test_var_mean_duplicate_dims(self):
+    t = torch.randn(5, 5, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""var_mean(): dim 0 appears multiple times in the list of dims""",
+        gpu="""dim 0 appears multiple times in the list of dims""",
+    ):
+      torch.var_mean(t, dim=(0, 0))
+
   def test_view_not_contiguity_like(self):
     t = torch.randn(2, 3).T
     with et.assert_raises_message(

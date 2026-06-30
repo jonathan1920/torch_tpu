@@ -1355,6 +1355,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "var.correction";
     case OpName::kVarCorrectionOut:
       return "var.correction_out";
+    case OpName::kVarMeanCorrection:
+      return "var_mean.correction";
     case OpName::kVarOut:
       return "var.out";
     case OpName::kVdot:

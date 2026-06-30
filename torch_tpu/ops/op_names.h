@@ -689,6 +689,7 @@ enum class OpName {
   kVar,
   kVarCorrection,
   kVarCorrectionOut,
+  kVarMeanCorrection,
   kVarOut,
   kVdot,
   kView,

@@ -453,7 +453,6 @@ UNREGISTERED_OPS = frozenset([
     'upsample_linear1d_backward.grad_input',
     'upsample_trilinear3d.out',
     'upsample_trilinear3d_backward.grad_input',
-    'var_mean.correction',
     # go/keep-sorted end
 ])
 

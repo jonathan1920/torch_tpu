@@ -917,6 +917,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
                                                  AtenUpsampleNearestExact3dOut);
   ImplStable<OpName::kVarCorrection>(m, AtenVar);
   ImplStable<OpName::kVarCorrectionOut>(m, AtenVarOut);
+  ImplStable<OpName::kVarMeanCorrection>(m, AtenVarMeanCorrection);
   ImplStable<OpName::kVdot>(m, AtenVdot);
   ImplStable<OpName::kView>(m, AtenView);
   ImplStable<OpName::kViewAsComplex>(m, AtenViewAsComplex);
