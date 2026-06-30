@@ -45,6 +45,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/precision_context.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -297,6 +298,8 @@ at::Tensor& AtenBaddbmmDtypeOut(const at::Tensor& self,
                                  std::move(promoted_alpha), out_dtype,
                                  param_keys, OpName::kBaddbmmOut));
         TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
+        TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(result_buffer), out));
         return out;
       });
@@ -318,6 +321,8 @@ at::Tensor& AtenBaddbmmOut(const at::Tensor& self, const at::Tensor& batch1,
             ResolveAndRunBaddbmm(self, batch1, batch2, std::move(promoted_beta),
                                  std::move(promoted_alpha), out.scalar_type(),
                                  param_keys));
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(result_buffer), out));
         return out;

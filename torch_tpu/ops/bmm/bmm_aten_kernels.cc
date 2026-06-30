@@ -40,6 +40,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/precision_context.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -121,6 +122,8 @@ absl::Status BmmOut(const at::Tensor& self, const at::Tensor& mat2,
   TT_RETURN_IF_ERROR(CheckBmmOut(out));
   TT_ASSIGN_OR_RETURN(auto result_buffer,
                       Bmm(self, mat2, out_dtype, std::move(param_keys)));
+  TT_RETURN_IF_ERROR(
+      ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
   return AssignBufferToAtTensor(std::move(result_buffer), out);
 }
 
