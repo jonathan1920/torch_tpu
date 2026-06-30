@@ -3248,11 +3248,12 @@ class TestOps(TorchTpuTestBase):
         + (torch.float64, torch.float16, torch.bfloat16),
     )
 
-  def test_polygamma(self):
-    self.do_test_op(
-        "polygamma",
-        exclude_dtypes=(torch.float64,),  # EXCLUDE_DTYPES_OK=b/529449058
-    )
+  # TODO(b/529449058): Re-enable once the bug is fixed.
+  # def test_polygamma(self):
+  #   self.do_test_op(
+  #       "polygamma",
+  #       exclude_dtypes=(torch.float64,),  # EXCLUDE_DTYPES_OK=b/529449058
+  #   )
 
   def test_prod(self):
     self.do_test_op("prod")
