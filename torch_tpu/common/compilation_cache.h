@@ -260,7 +260,8 @@ class CompilationCache {
       CompilationCacheKey key, const std::vector<Shape>& input_shapes,
       const std::vector<Shape>& output_shapes,
       MlirComputationBuilder computation_builder,
-      UniqueCompileOptions compile_options) ABSL_LOCKS_EXCLUDED(cache_mutex_);
+      UniqueCompileOptions compile_options, bool use_dynamic_adapters = true)
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Schedules compilation of the given module associated to the key.
   //

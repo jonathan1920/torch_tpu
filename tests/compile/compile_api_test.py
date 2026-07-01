@@ -14,6 +14,7 @@
 
 """Directly test the PyBind11 API for compiled mode, without using Dynamo."""
 
+import re
 import textwrap
 from typing import TypeAlias
 from absl.testing import absltest
@@ -625,6 +626,92 @@ class CompileApiTest(absltest.TestCase):
     # instead of being contiguous (2, 1)
     self.assertEqual(res.shape, (2, 2))
     self.assertEqual(res.stride(), (1, 2))
+
+  def test_dynamic_placeholder(self):
+    max_dynamic_dim = 22
+    static_dim_1 = 128
+    static_dim_2 = 64
+    logical_dynamic_dim = 5
+
+    with eager_mode_defer_all():
+      sizes = [max_dynamic_dim, static_dim_1]
+      dtype = torch.bfloat16
+      bounds = ([0], [max_dynamic_dim])
+      dynamic_placeholder = tpu_torch_compile.dynamic_placeholder(
+          sizes, dtype, bounds
+      )
+      static_placeholder = torch.ones(
+          static_dim_1,
+          static_dim_2,
+          dtype=torch.bfloat16,
+          device='cpu',
+      ).to(device=torch.device('tpu'))
+      res = torch.matmul(dynamic_placeholder, static_placeholder)
+
+    result_tensors = [res]
+    argument_tensors = [dynamic_placeholder, static_placeholder]
+    mlir = tpu_torch_compile.build_mlir(
+        result_tensors, argument_tensors, use_stablehlo_bounds=True
+    )
+    mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
+
+    # Compare complete MLIR (ignoring dynamic module name)
+    normalized_mlir_text = re.sub(
+        r'module @tt_jit_[a-zA-Z0-9_]+ {',
+        'module @tt_jit_compile_api_test_test_dynamic_placeholder_mm {',
+        mlir_text,
+    )
+    expected_mlir = textwrap.dedent("""\
+        module @tt_jit_compile_api_test_test_dynamic_placeholder_mm {
+          func.func @main(%arg0: tensor<?x128xbf16, #stablehlo.bounds<22, ?>>, %arg1: tensor<128x64xbf16>) -> tensor<?x64xbf16, #stablehlo.bounds<22, ?>> {
+            %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<?x128xbf16, #stablehlo.bounds<22, ?>>, tensor<128x64xbf16>) -> tensor<?x64xbf16, #stablehlo.bounds<22, ?>>
+            return %0 : tensor<?x64xbf16, #stablehlo.bounds<22, ?>>
+          }
+        }""")
+
+    self.assertEqual(normalized_mlir_text.strip(), expected_mlir.strip())
+
+    # Compile and execute to verify the result
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    physical_dynamic_input = torch.randn(
+        max_dynamic_dim,
+        static_dim_1,
+        dtype=torch.bfloat16,
+        device=torch.device('tpu'),
+    )
+    logical_size = torch.tensor(
+        logical_dynamic_dim, dtype=torch.int32, device=torch.device('tpu')
+    )
+    dynamic_input = torch.ops.tpu.set_dimension_logical_size(
+        physical_dynamic_input, 0, logical_size
+    )
+
+    static_input = torch.randn(
+        static_dim_1,
+        static_dim_2,
+        dtype=torch.bfloat16,
+        device=torch.device('tpu'),
+    )
+
+    results = tpu_torch_compile.execute(
+        executable, [dynamic_input, static_input]
+    )
+    self.assertLen(results, 1)
+    self.assertEqual(results[0].shape, (max_dynamic_dim, static_dim_2))
+
+    # Copy to CPU first (might fail if ToLiteral checks shapes, but let's see)
+    res_cpu = results[0].cpu()
+    actual_res = res_cpu[:logical_dynamic_dim, :]
+    self.assertEqual(actual_res.shape, (logical_dynamic_dim, static_dim_2))
+
+    expected_dynamic_input = physical_dynamic_input[
+        :logical_dynamic_dim, :
+    ].cpu()
+    expected_static_input = static_input.cpu()
+    expected_res = torch.matmul(expected_dynamic_input, expected_static_input)
+
+    utils.assert_close(actual_res, expected_res, rtol=1e-2, atol=1e-2)
 
 
 if __name__ == '__main__':

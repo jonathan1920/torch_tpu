@@ -134,9 +134,23 @@ absl::StatusOr<at::Tensor> MakePlaceholder(absl::Span<const int64_t> sizes,
   return new_tensor;
 }
 
+absl::StatusOr<at::Tensor> MakePlaceholder(Shape shape, bool requires_grad) {
+  TT_ASSIGN_OR_RETURN(
+      DeviceBufferRef placeholder,
+      DeviceBufferList::CreatePlaceholder(shape.dimensions(), shape.dtype()));
+  for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
+    TT_RETURN_IF_ERROR(placeholder.MarkDynamic(dynamic_dim.dimension,
+                                               dynamic_dim.lower_bound,
+                                               dynamic_dim.upper_bound));
+  }
+  auto new_tensor = MakeTensor(std::move(placeholder));
+  new_tensor.set_requires_grad(requires_grad);
+  return new_tensor;
+}
+
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
     mlir::MLIRContext& mlir_context, const std::vector<at::Tensor>& arg_tensors,
-    const std::vector<at::Tensor>& result_tensors) {
+    const std::vector<at::Tensor>& result_tensors, bool use_stablehlo_bounds) {
   // Use artificial python context for compiled mode to that modules have better
   // names when dumped. Currently this will always point to `_export_to_fx`, and
   // can be improved in the future, but it is useful for distinguishing torch
@@ -184,8 +198,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
       traversal->ValidateAndReorderArguments(std::move(argument_refs)))
           .SetPrepend()
       << "failed to validate and reorder inputs: ";
-  TT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                      traversal->BuildMlirModule(mlir_context));
+  TT_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+      traversal->BuildMlirModule(mlir_context, use_stablehlo_bounds));
 
   return mlir_module;
 }
@@ -240,15 +255,13 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
       traversal->ValidateAndReorderArguments(std::move(argument_refs)))
       << "failed to validate and reorder traversal inputs";
 
-  ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
-      !traversal->IsBoundedDynamic())
-      << "bounded dynamic shapes are not supported in TraverseAndCompile yet";
-
   // 2. Compile Traversal and get exec
   auto compilation_spec = GetCompilationSpec(options.compilation_mode);
   TT_ASSIGN_OR_CRASH(  // CRASH_OK=implies a bug in compile backend if this
                        // happens
-      auto compiled_kernel, traversal->Compile(std::move(compilation_spec)),
+      auto compiled_kernel,
+      traversal->Compile(std::move(compilation_spec), nullptr,
+                         options.use_stablehlo_bounds),
       _ << "failed to compile traversal");
 
   TT_ASSIGN_OR_RETURN(auto executable, compiled_kernel.fixed_shape_kernel.get(),
@@ -264,7 +277,8 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
         ContextedModule::Make(
             [&](mlir::MLIRContext& mlir_context)
                 -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
-              return traversal->BuildMlirModule(mlir_context);
+              return traversal->BuildMlirModule(mlir_context,
+                                                options.use_stablehlo_bounds);
             }),
         _ << "failed to build MLIR module");
     module = std::make_shared<ContextedModule>(std::move(contexted_module));

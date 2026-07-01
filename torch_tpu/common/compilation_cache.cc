@@ -790,7 +790,7 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
     const CompilationCacheKey key, const std::vector<Shape>& input_shapes,
     const std::vector<Shape>& output_shapes,
     MlirComputationBuilder computation_builder,
-    UniqueCompileOptions compile_options) {
+    UniqueCompileOptions compile_options, bool use_dynamic_adapters) {
   // Critical section for cache lookups and insertion.
   TT_ASSIGN_OR_RETURN(
       auto cache_lookup, [&]() -> absl::StatusOr<CacheLookupInternal> {
@@ -807,7 +807,8 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
   CompiledKernel compiled_kernel{.fixed_shape_kernel =
                                      cache_lookup.executable_future};
   CompilationCacheKey storage_key = key;
-  if (cache_lookup.shape_dynamism_metadata.has_value()) {
+  if (use_dynamic_adapters &&
+      cache_lookup.shape_dynamism_metadata.has_value()) {
     ABSL_VLOG(1) << "Found shape dynamism metadata for key: " << key;
     // Create a copy of the compile options for the adapter.
     auto adapter_compile_options =

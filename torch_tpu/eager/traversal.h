@@ -179,18 +179,19 @@ class Traversal {
 
   // Builds the MLIR module for the Traversal.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> BuildMlirModule(
-      mlir::MLIRContext& mlir_context) const;
+      mlir::MLIRContext& mlir_context, bool use_stablehlo_bounds = false) const;
 
   // Compiles the Traversal into a CompiledKernel. For static graphs, this will
   // be a single executable future. For bounded dynamic graphs, this will
-  // in addition contain futures for dynamic adapters.
+  // in addition contain futures for dynamic adapters (unless
+  // `use_stablehlo_bounds` is true).
   //
   // If `out_mlir_text` is non-null and Compile is a cache miss (i.e. the
   // MLIR module is actually built), it is populated with the textual
   // representation of that module.
   absl::StatusOr<CompiledKernel> Compile(
-      CompilationSpec spec,
-      std::string* absl_nullable out_mlir_text = nullptr) const;
+      CompilationSpec spec, std::string* absl_nullable out_mlir_text = nullptr,
+      bool use_stablehlo_bounds = false) const;
 
   // Returns true if any argument to the traversal has bounded dynamic
   // dimensions marked.

@@ -84,11 +84,41 @@ namespace py = pybind11;
 
 namespace {
 
+struct TensorInfo {
+  std::vector<int64_t> shape;  // INT_VEC_OK
+  at::ScalarType dtype;
+};
+
+struct TensorBounds {
+  std::vector<int64_t> dynamic_dims;  // INT_VEC_OK
+  std::vector<int64_t> upper_bounds;  // INT_VEC_OK
+};
+
 at::Tensor PyMakePlaceholder(const std::vector<int64_t>& sizes,  // INT_VEC_OK
                              at::ScalarType dtype, bool requires_grad) {
   TT_ASSIGN_OR_THROW(at::Tensor prepared_tensor,
                      MakePlaceholder(sizes, dtype, requires_grad),
                      _.SetPrepend() << "failed to create placeholder tensor: ");
+  return prepared_tensor;
+}
+
+at::Tensor PyMakeDynamicPlaceholder(
+    const std::vector<int64_t>& sizes,  // INT_VEC_OK
+    at::ScalarType dtype, const TensorBounds& bounds, bool requires_grad) {
+  TT_ASSIGN_OR_THROW(mlir::ElementType element_type,
+                     ConvertTo<mlir::ElementType>(dtype));
+  Shape shape(CopyIntVector(sizes), element_type);
+  shape.dynamic_dimensions().reserve(bounds.dynamic_dims.size());
+  for (size_t i = 0; i < bounds.dynamic_dims.size(); ++i) {
+    shape.dynamic_dimensions().push_back(
+        BoundedDynamicDimension{.dimension = bounds.dynamic_dims[i],
+                                .lower_bound = 2,  // Default lower bound
+                                .upper_bound = bounds.upper_bounds[i]});
+  }
+  TT_ASSIGN_OR_THROW(at::Tensor prepared_tensor,
+                     MakePlaceholder(std::move(shape), requires_grad),
+                     _.SetPrepend()
+                         << "failed to create dynamic placeholder tensor: ");
   return prepared_tensor;
 }
 
@@ -164,11 +194,13 @@ py::object PyGetDeviceLayoutIfMaterialized(const at::Tensor& tensor) {
 // result_tensors and taking argument_tensors as inputs.
 std::shared_ptr<ContextedModule> PyBuildMlir(
     const std::vector<at::Tensor>& result_tensors,
-    const std::vector<at::Tensor>& argument_tensors) {  // INT_VEC_OK
+    const std::vector<at::Tensor>& argument_tensors,
+    bool use_stablehlo_bounds) {  // INT_VEC_OK
   TT_ASSIGN_OR_THROW(ContextedModule module,
                      ContextedModule::Make([&](mlir::MLIRContext& context) {
                        return ExtractMlirFromGraph(context, argument_tensors,
-                                                   result_tensors);
+                                                   result_tensors,
+                                                   use_stablehlo_bounds);
                      }));
 
   mlir::BaseScopedDiagnosticHandler diag_handler(&module.context());
@@ -258,7 +290,7 @@ SharedLoadedExecutableWithMetadata PyCompileMlir(
 CompileResult PyTraverseAndCompile(
     const std::vector<at::Tensor>& result_tensors,
     const std::vector<at::Tensor>& argument_tensors, bool fast_compile,
-    bool build_mlir_module) {
+    bool build_mlir_module, bool use_stablehlo_bounds) {
   TT_ASSIGN_OR_THROW(
       CompileResult result,
       TraverseAndCompile(
@@ -267,6 +299,7 @@ CompileResult PyTraverseAndCompile(
               .compilation_mode = fast_compile ? CompilationMode::kFastCompile
                                                : CompilationMode::kFastRuntime,
               .build_mlir_module = build_mlir_module,
+              .use_stablehlo_bounds = use_stablehlo_bounds,
           }),
       _.SetPrepend() << "Failed to traverse and compile: ");
   return result;
@@ -314,17 +347,6 @@ void PySetDeviceStateTensor(at::Generator gen, at::Tensor rng_state) {
 }
 
 namespace {
-
-struct TensorInfo {
-  std::vector<int64_t> shape;  // INT_VEC_OK
-  at::ScalarType dtype;
-};
-
-struct TensorBounds {
-  std::vector<int64_t> dynamic_dims;  // INT_VEC_OK
-  std::vector<int64_t> upper_bounds;  // INT_VEC_OK
-};
-
 std::vector<Shape> MakePadDynamicShapes(
     const std::vector<TensorInfo>& tensor_info,
     const std::vector<TensorBounds>& bounds_list) {
@@ -466,7 +488,7 @@ absl::StatusOr<CompileResult> CompileModuleWithCache(
     const std::vector<Shape>& input_shapes,
     const std::vector<Shape>& output_shapes,
     UniqueCompileOptions compile_options, bool build_mlir_module,
-    bool is_caching_disabled) {
+    bool is_caching_disabled, bool compile_dynamic_adapter = false) {
   CompileResult result;
   std::optional<ContextedModule> contexted_module;
 
@@ -483,10 +505,11 @@ absl::StatusOr<CompileResult> CompileModuleWithCache(
                             xla::MaybeOwningMlirModule(contexted_module->get()),
                             std::move(compile_options)));
   } else {
-    TT_ASSIGN_OR_RETURN(CompiledKernel compiled_kernel,
-                        CompilationCache::GetInstance().GetOrCompile(
-                            cache_key, input_shapes, output_shapes,
-                            std::move(builder), std::move(compile_options)));
+    TT_ASSIGN_OR_RETURN(
+        CompiledKernel compiled_kernel,
+        CompilationCache::GetInstance().GetOrCompile(
+            cache_key, input_shapes, output_shapes, std::move(builder),
+            std::move(compile_options), compile_dynamic_adapter));
 
     TT_ASSIGN_OR_RETURN(result.executable,
                         compiled_kernel.fixed_shape_kernel.get(),
@@ -907,15 +930,28 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("placeholder", PyMakePlaceholder, py::arg("sizes"), py::arg("dtype"),
         py::arg("requires_grad"));
   m.def("placeholder_like", PyMakePlaceholderLike, py::arg("arg_tensor"));
+  m.def("dynamic_placeholder", PyMakeDynamicPlaceholder, py::arg("sizes"),
+        py::arg("dtype"), py::arg("tensor_bounds"),
+        py::arg("requires_grad") = false);
   m.def("get_device_layout_if_materialized", &PyGetDeviceLayoutIfMaterialized,
         py::arg("tensor"));
   m.def("traverse_and_compile", PyTraverseAndCompile, py::arg("result_tensors"),
         py::arg("argument_tensors"), py::arg("fast_compile") = false,
         py::arg("build_mlir_module") = false,
-        "Traverses the graph from outputs to arguments and compiles it.");
+        py::arg("use_stablehlo_bounds") = false,
+        "Traverses the graph from outputs to arguments and compiles it. \n\n"
+        "Args:"
+        "  result_tensors: The output tensors to compile."
+        "  argument_tensors: The input tensors to compile."
+        "  fast_compile: Whether to use the fast compile mode."
+        "  build_mlir_module: Whether to build the MLIR module."
+        "  use_stablehlo_bounds: Whether to use the StableHLO bounds for"
+        "    dynamic inputs.\nReturns:"
+        "  CompileResult: The compiled module and executable.");
 
   m.def("build_mlir", PyBuildMlir, py::arg("result_tensors"),
-        py::arg("argument_tensors"));  // INT_VEC_OK
+        py::arg("argument_tensors"), py::arg("use_stablehlo_bounds") = false,
+        "Builds an MLIR module from the graph.");
   // Returns: PjRtLoadedExecutable
   m.def("compile_mlir", PyCompileMlir, py::arg("module"),
         py::arg("fast_compile") = false);
