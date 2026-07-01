@@ -112,7 +112,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> AtenEmbeddingBag(
         Dimensions d0 = {batch_size, emb_dim};
         Dimensions d1 = {indices.numel()};
         Dimensions d2 = {batch_size};
-        Dimensions d3 = {batch_size, emb_dim};
+        Dimensions d3 = (mode == static_cast<int64_t>(EmbeddingBagMode::kMax))
+                            ? Dimensions{batch_size, emb_dim}
+                            : Dimensions{batch_size};
         std::array<absl::Span<const int64_t>, 4> out_dims_list = {d0, d1, d2,
                                                                   d3};
 

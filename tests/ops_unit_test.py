@@ -5591,6 +5591,27 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  @parameterized.product(mode=[0, 1])
+  def test_embedding_bag_max_indices_sum_mean(self, mode):
+    """Tests that max_indices has shape [batch_size] when mode is sum or mean."""
+    weight = torch.tensor(
+        [[1.0, 5.0], [10.0, 2.0], [10.0, 8.0]], dtype=torch.float32
+    )
+    indices = torch.tensor([0, 1, 2], dtype=torch.long)
+    offsets = torch.tensor([0], dtype=torch.long)
+
+    def test_fn(device):
+      w = weight.clone().detach().to(device).requires_grad_(True)
+      output, _, _, max_indices = torch.ops.aten._embedding_bag(
+          w, indices.to(device), offsets.to(device), mode=mode
+      )
+      expected_shape = (offsets.numel(),)
+      self.assertEqual(max_indices.shape, expected_shape)
+      output.sum().backward()
+      return output, max_indices, w.grad
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
   def test_embedding_bag_empty_bag(self):
     """Tests that empty bags are handled correctly in _embedding_bag."""
     weight = torch.randn(5, 2).to(torch.device("tpu"))
