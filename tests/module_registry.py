@@ -72,7 +72,6 @@ try:
 except ImportError:
   _HAS_TRANSFORMERS = False
 
-_MULTIMODAL_MODEL_TYPES = ("clip", "llava", "paligemma")
 _AUDIO_MODEL_TYPES = ("whisper", "wav2vec2", "audio", "hubert")
 _VISION_MODEL_TYPES = (
     "vit",
@@ -82,8 +81,12 @@ _VISION_MODEL_TYPES = (
     "clip",
     "siglip",
     "dino",
+    "dinov2",
     "detr",
     "table-transformer",
+    "deit",
+    "beit",
+    "convnext",
 )
 _CAUSAL_LM_MODEL_TYPES = (
     "llama",
@@ -94,8 +97,21 @@ _CAUSAL_LM_MODEL_TYPES = (
     "falcon",
     "gemma",
 )
-_SEQ2SEQ_MODEL_TYPES = ("t5", "whisper", "bart", "marian", "nllb", "m2m")
-
+_SEQ2SEQ_MODEL_TYPES = (
+    "t5",
+    "whisper",
+    "bart",
+    "marian",
+    "nllb",
+    "m2m",
+    "m2m_100",
+    "mbart",
+    "pegasus",
+    "encoder-decoder",
+)
+_VISION_LANGUAGE_MODEL_TYPES = ("clip", "llava", "paligemma", "blip", "mllama")
+# Multimodal is the union of all multimodal subtypes
+_MULTIMODAL_MODEL_TYPES = _VISION_LANGUAGE_MODEL_TYPES
 
 _MAX_SEQ_LEN_HEURISTIC_CAP = 100_000
 
@@ -493,6 +509,54 @@ def _generate_transformers_inputs(
         actual_shape, device=device, dtype=torch.long
     )
 
+    if any(k in model_type for k in _VISION_LANGUAGE_MODEL_TYPES):
+      image_size = 224
+      vision_config = getattr(config, "vision_config", None)
+      if vision_config:
+        if isinstance(vision_config, dict):
+          val = vision_config.get("image_size", 224)
+          num_channels = vision_config.get("num_channels", 3)
+        else:
+          val = getattr(vision_config, "image_size", 224)
+          num_channels = getattr(vision_config, "num_channels", 3)
+      else:
+        val = getattr(config, "image_size", 224)
+        num_channels = getattr(config, "num_channels", 3)
+
+      if isinstance(val, int):
+        image_size = val
+      elif isinstance(val, (list, tuple)) and len(val) > 0:
+        image_size = val[0]
+
+      batch_size = shape[0] if shape else 1
+      if "mllama" in model_type:
+        num_images = 1
+        if isinstance(vision_config, dict):
+          num_tiles = vision_config.get("max_num_tiles", 4)
+        else:
+          num_tiles = getattr(vision_config, "max_num_tiles", 4)
+        dummy_img = torch.randn(
+            batch_size,
+            num_images,
+            num_tiles,
+            num_channels,
+            image_size,
+            image_size,
+            device=device,
+        )
+        input_kwargs["pixel_values"] = dummy_img
+        input_kwargs["aspect_ratio_ids"] = torch.ones(
+            (batch_size, num_images), device=device, dtype=torch.long
+        )
+        input_kwargs["aspect_ratio_mask"] = torch.ones(
+            (batch_size, num_images, num_tiles), device=device, dtype=torch.long
+        )
+      else:
+        dummy_img = torch.randn(
+            batch_size, num_channels, image_size, image_size, device=device
+        )
+        input_kwargs["pixel_values"] = dummy_img
+
   elif modality == Modality.VISION:
     image_size = 224
     if hasattr(config, "image_size"):
@@ -558,6 +622,19 @@ def _generate_transformers_inputs(
     input_kwargs["attention_mask"] = torch.ones(
         actual_shape, device=device, dtype=torch.long
     )
+
+    if model_type == "tapas":
+      type_vocab_sizes = getattr(
+          config, "type_vocab_sizes", [3, 256, 256, 2, 256, 256, 10]
+      )
+      token_type_ids = []
+      for size in type_vocab_sizes:
+        token_type_ids.append(
+            torch.randint(
+                0, size, actual_shape, device=device, dtype=torch.long
+            )
+        )
+      input_kwargs["token_type_ids"] = torch.stack(token_type_ids, dim=-1)
 
     if modality == Modality.SEQ2SEQ and getattr(
         config, "is_encoder_decoder", False
