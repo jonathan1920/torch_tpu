@@ -66,6 +66,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "view_primitive_error_utils_test",
     srcs = ["view_primitive_error_utils_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     nobuild_oss = "Use oss_view_primitive_error_utils_test instead in OSS CI",
     deps = [
         ":reshape_primitive",
@@ -269,6 +272,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "bitcast_primitive_test",
     srcs = ["bitcast_primitive_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     nobuild_oss = "Use oss_bitcast_primitive_test instead in OSS CI",
     deps = [
         ":bitcast_primitive",
@@ -344,6 +350,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "view_sequence_test",
     srcs = ["view_sequence_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     nobuild_oss = "Use oss_view_sequence_test instead in OSS CI",
     deps = [
         ":bitcast_primitive",
@@ -400,6 +409,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "decomposition_test",
     srcs = ["decomposition_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     nobuild_oss = "Use oss_decomposition_test instead in OSS CI",
     deps = [
         ":decomposition",
@@ -454,6 +466,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "inversion_test",
     srcs = ["inversion_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     nobuild_oss = "Use oss_inversion_test instead in OSS CI",
     deps = [
         ":bitcast_primitive",

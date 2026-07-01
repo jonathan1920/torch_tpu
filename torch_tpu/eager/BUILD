@@ -120,6 +120,9 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "shutdown_test",
     srcs = ["shutdown_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
     tags = [
         "requires-tpu-v5lite",
