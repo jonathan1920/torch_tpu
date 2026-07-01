@@ -24,6 +24,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -34,6 +35,7 @@
 #include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_buffer_utils.h"
@@ -60,6 +62,18 @@ class MaterializeTest : public testing::Test {
     ASSERT_EQ(AddTpuHooks(), absl::OkStatus());
     RegisterTpuAllocator();
     CompilationCache::GetInstance().SetOptions({});
+  }
+
+  static void TearDownTestSuite() {
+    // Shuts down the runtime in the correct order to mimic the python bindings
+    // runtime shutdown sequence (_shutdown_runtime):
+    // 1. Terminate materialization worker threads so no new compilation or
+    //    execution tasks are processed.
+    // 2. Clear the compilation cache.
+    // 3. Shut down the PjRtBackend (destroying client & devices).
+    ShutDownMaterializationState();
+    CompilationCache::ShutDown();
+    PjrtBackend::GetInstance().Shutdown();
   }
 };
 

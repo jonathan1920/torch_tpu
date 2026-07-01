@@ -100,6 +100,7 @@ torch_tpu_cc_test(
         "//torch_tpu/common:compile_options_key",
         "//torch_tpu/common:context_states",
         "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
@@ -112,6 +113,36 @@ torch_tpu_cc_test(
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
+        "@xla//xla/tsl/platform:statusor",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "shutdown_test",
+    srcs = ["shutdown_test.cc"],
+    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":device_buffer",
+        ":materialize",
+        ":structured_log_buffer",
+        ":tensor_to_buffer",
+        ":tpu_hooks",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:shape",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
         "@xla//xla/tsl/platform:statusor",
     ],
 )
@@ -136,6 +167,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:absl_check",

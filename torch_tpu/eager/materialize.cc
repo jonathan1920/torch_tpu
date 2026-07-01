@@ -19,9 +19,11 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <string_view>
@@ -181,6 +183,13 @@ absl::StatusOr<std::vector<ExecutionTask>> ProcessMaterializationTask(
                         task.compilation_spec, task.reason, mlir_context);
 }
 
+// Signals that a shutdown has been initiated.
+enum class ShutdownSentinel {};
+
+using MaterializationOrShutdown =
+    std::variant<ShutdownSentinel, MaterializationTask>;
+using ExecutionOrShutdown = std::variant<ShutdownSentinel, ExecutionTask>;
+
 class MaterializationWorker {
  public:
   // This class is move-only.
@@ -191,6 +200,32 @@ class MaterializationWorker {
 
   MaterializationWorker() { StartThreads(); }
 
+  ~MaterializationWorker() { Shutdown(); }
+
+  // Shuts down the worker threads. Reordering the shutdown sequence ensures
+  // that materialize_thread_ finishes enqueuing tasks before execute_thread_
+  // shuts down.
+  void Shutdown() {
+    bool expected_shutdown = false;
+    // The shutdown_ flag prevents duplicate shutdown runs.
+    if (shutdown_.compare_exchange_strong(expected_shutdown, true)) {
+      {
+        absl::MutexLock lock(materialize_mu_);
+        materialize_tasks_.push(ShutdownSentinel{});
+      }
+      if (materialize_thread_.joinable()) {
+        materialize_thread_.join();
+      }
+      {
+        absl::MutexLock lock(execute_mu_);
+        execute_tasks_.push(ShutdownSentinel{});
+      }
+      if (execute_thread_.joinable()) {
+        execute_thread_.join();
+      }
+    }
+  }
+
   xla::Future<void> EnqueueNodes(std::vector<SharedDeviceBufferList> nodes,
                                  MaterializationReason reason,
                                  MaterializationMode materialization_mode) {
@@ -200,7 +235,7 @@ class MaterializationWorker {
     const CompilationMode compilation_mode = GetCompilationMode(GetEagerMode());
 
     absl::MutexLock lock(materialize_mu_);
-    materialize_jobs_.push(MaterializationTask{
+    materialize_tasks_.push(MaterializationTask{
         .nodes_to_materialize = std::move(nodes),
         .completion_promise = std::move(promise),
         .materialization_mode = materialization_mode,
@@ -235,107 +270,122 @@ class MaterializationWorker {
             task_name));
 
     absl::MutexLock lock(execute_mu_);
-    execute_jobs_.push(std::move(task));
+    execute_tasks_.push(std::move(task));
 
     return outputs;
   }
 
- private:
-  MaterializationTask DequeueMaterializationJob() {
+  // Dequeues a materialization task or a shutdown signal.
+  MaterializationOrShutdown DequeueMaterializationTask() {
     absl::MutexLock lock(materialize_mu_);
-    if (materialize_jobs_.empty()) {
-      materialize_mu_.Await(absl::Condition(
-          +[](std::queue<MaterializationTask>* jobs) { return !jobs->empty(); },
-          &materialize_jobs_));
-    }
-    MaterializationTask popped_job = std::move(materialize_jobs_.front());
-    materialize_jobs_.pop();
-    return popped_job;
+    materialize_mu_.Await(absl::Condition(
+        +[](std::queue<MaterializationOrShutdown>* tasks) {
+          return !tasks->empty();
+        },
+        &materialize_tasks_));
+    auto popped_task = std::move(materialize_tasks_.front());
+    materialize_tasks_.pop();
+    return popped_task;
   }
 
-  ExecutionTask DequeueExecutionJob() {
+  // Dequeues an execution task or a shutdown signal.
+  ExecutionOrShutdown DequeueExecutionTask() {
     absl::MutexLock lock(execute_mu_);
-    if (execute_jobs_.empty()) {
-      execute_mu_.Await(absl::Condition(
-          +[](std::queue<ExecutionTask>* jobs) { return !jobs->empty(); },
-          &execute_jobs_));
-    }
-    ExecutionTask popped_job = std::move(execute_jobs_.front());
-    execute_jobs_.pop();
-    return popped_job;
+    execute_mu_.Await(absl::Condition(
+        +[](std::queue<ExecutionOrShutdown>* tasks) { return !tasks->empty(); },
+        &execute_tasks_));
+    auto popped_task = std::move(execute_tasks_.front());
+    execute_tasks_.pop();
+    return popped_task;
   }
 
   void StartThreads() {
-    materialize_thread_ =
-        std::thread(
-            [this]() {
-              // Prevent materialization worker threads from accessing
-              // thread-local context states to enforce they always rely on
-              // resolved configurations passed down from the dispatch thread.
-              DisallowThisThreadToAccessContextState();
+    materialize_thread_ = std::thread([this]() { MaterializeLoop(); });
+    execute_thread_ = std::thread([this]() { ExecuteLoop(); });
+  }
 
-              // Create the MLIR context outside the loop once and reuse for
-              // materialization tasks.
-              absl_nonnull std::unique_ptr<mlir::MLIRContext> mlir_context =
-                  MakeMlirContext();
-              while (true) {
-                MaterializationTask job = DequeueMaterializationJob();
-                ABSL_VLOG(1)
-                    << "[MaterializationWorker] Processing MaterializationTask";
-                absl::StatusOr<std::vector<ExecutionTask>> tasks =
-                    ProcessMaterializationTask(job, *mlir_context);
+ private:
+  void MaterializeLoop() {
+    // Prevent materialization worker threads from accessing
+    // thread-local context states to enforce they always rely on
+    // resolved configurations passed down from the dispatch thread.
+    DisallowThisThreadToAccessContextState();
 
-                if (tasks.ok()) {
-                  ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing "
-                               << tasks->size() << " ExecutionTasks";
-                  {
-                    absl::MutexLock lock(execute_mu_);
-                    for (auto& task : *tasks) {
-                      execute_jobs_.push(std::move(task));
-                    }
-                  }
-                } else {
-                  // This typically indicates a compilation failure, rather than
-                  // an execution failure.
-                  // Mark all nodes in the job as materialization failures so
-                  // that AwaitBuffer() will return the compilation error
-                  // instead of hanging.
-                  for (const auto& node : job.nodes_to_materialize) {
-                    node->SetAsError(tasks.status());
-                  }
-                }
+    // Create the MLIR context outside the loop once and reuse for
+    // materialization tasks.
+    absl_nonnull std::unique_ptr<mlir::MLIRContext> mlir_context =
+        MakeMlirContext();
+    while (true) {
+      auto task_or_shutdown = DequeueMaterializationTask();
+      if (std::holds_alternative<ShutdownSentinel>(task_or_shutdown)) {
+        break;
+      }
+      auto& task = std::get<MaterializationTask>(task_or_shutdown);
+      ABSL_VLOG(1) << "[MaterializationWorker] Processing MaterializationTask";
+      absl::StatusOr<std::vector<ExecutionTask>> execution_tasks =
+          ProcessMaterializationTask(task, *mlir_context);
 
-                job.completion_promise.Set(tasks.status());
-              }
-            });
-
-    execute_thread_ = std::thread([this]() {
-      // Prevent execution worker threads from accessing thread-local context
-      // states to enforce they always rely on resolved configurations passed
-      // down from the dispatch thread.
-      DisallowThisThreadToAccessContextState();
-
-      while (true) {
-        ExecutionTask job = DequeueExecutionJob();
-        ABSL_VLOG(1) << "[MaterializationWorker] Processing ExecutionTask";
-        auto status = job.Run();
-        if (!status.ok()) {
-          ABSL_LOG(ERROR) << "[MaterializationWorker] ExecutionTask failed: "
-                          << status;
+      if (execution_tasks.ok()) {
+        ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing "
+                     << execution_tasks->size() << " ExecutionTasks";
+        {
+          absl::MutexLock lock(execute_mu_);
+          for (auto& execution_task : *execution_tasks) {
+            execute_tasks_.push(std::move(execution_task));
+          }
+        }
+      } else {
+        // This typically indicates a compilation failure, rather than
+        // an execution failure.
+        // Mark all nodes in the job as materialization failures so
+        // that AwaitBuffer() will return the compilation error
+        // instead of hanging.
+        for (const auto& node : task.nodes_to_materialize) {
+          node->SetAsError(execution_tasks.status());
         }
       }
-    });
+      task.completion_promise.Set(execution_tasks.status());
+    }
+  }
+
+  void ExecuteLoop() {
+    // Prevent execution worker threads from accessing thread-local context
+    // states to enforce they always rely on resolved configurations passed
+    // down from the dispatch thread.
+    DisallowThisThreadToAccessContextState();
+
+    while (true) {
+      auto task_or_shutdown = DequeueExecutionTask();
+      if (std::holds_alternative<ShutdownSentinel>(task_or_shutdown)) {
+        break;
+      }
+      auto& task = std::get<ExecutionTask>(task_or_shutdown);
+      ABSL_VLOG(1) << "[MaterializationWorker] Processing ExecutionTask";
+      auto status = task.Run();
+      if (!status.ok()) {
+        ABSL_LOG(ERROR) << "[MaterializationWorker] ExecutionTask failed: "
+                        << status;
+      }
+    }
   }
 
   std::thread materialize_thread_;
   std::thread execute_thread_;
 
+  // Set to true when the MaterializationWorker is undergoing shutdown,
+  // preventing concurrent or duplicate shutdown sequences from executing.
+  std::atomic<bool> shutdown_{false};
+
   absl::Mutex materialize_mu_;
-  std::queue<MaterializationTask> materialize_jobs_
+  // Queue of materialization tasks. Storing std::variant allows enqueuing
+  // ShutdownSentinel as a shutdown sentinel / poison pill.
+  std::queue<MaterializationOrShutdown> materialize_tasks_
       ABSL_GUARDED_BY(materialize_mu_);
 
   absl::Mutex execute_mu_;
-  std::queue<ExecutionTask> execute_jobs_ ABSL_GUARDED_BY(execute_mu_);
+  // Queue of execution tasks. Storing std::variant allows enqueuing
+  // ShutdownSentinel as a shutdown sentinel / poison pill.
+  std::queue<ExecutionOrShutdown> execute_tasks_ ABSL_GUARDED_BY(execute_mu_);
 };
 
 MaterializationWorker& GetMaterializationWorker() {
@@ -391,6 +441,8 @@ absl::Status MaterializeImpl(
 }
 
 }  // namespace
+
+void ShutDownMaterializationState() { GetMaterializationWorker().Shutdown(); }
 
 absl::Status Materialize(absl::Span<const SharedDeviceBufferList> nodes,
                          MaterializationReason reason,

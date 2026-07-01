@@ -42,6 +42,7 @@
 #include "torch_tpu/common/discovery.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_gen_impl.h"
+#include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/tpu_hooks.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
@@ -190,6 +191,7 @@ PYBIND11_MODULE(_device_ops_backend, m) {
   m.def(
       "_shutdown_runtime",
       []() {
+        ShutDownMaterializationState();
         CompilationCache::ShutDown();
         PjrtBackend::GetInstance().Shutdown();
       },

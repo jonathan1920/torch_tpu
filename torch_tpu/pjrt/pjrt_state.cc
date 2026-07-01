@@ -256,6 +256,13 @@ xla::PjRtClient* absl_nullable PjrtBackend::GetClient() {
   return client_.get();
 }
 
+absl::StatusOr<absl_nonnull std::shared_ptr<xla::PjRtClient>>
+PjrtBackend::GetSharedClient() {
+  TT_RETURN_IF_ERROR(EnsureInitialized());
+  absl::ReaderMutexLock lock(mutex_);
+  return client_;
+}
+
 xla::PjRtDevice* absl_nullable PjrtBackend::GetDevice() {
   if (const absl::Status s = EnsureInitialized(); !s.ok()) {
     ABSL_LOG(ERROR) << "PjrtBackend::GetDevice failed to initialize: " << s;
@@ -324,8 +331,7 @@ void PjrtBackend::Shutdown() {
   }
   ABSL_VLOG(1) << "ShutdownPjRt";
 
-  // TODO(503040602): This is causing segfaults at shutdown
-  // client_.reset();
+  client_.reset();
   device_ = nullptr;
   device_type_ = PjRtDeviceType::kUnknown;
   global_device_count_ = 0;

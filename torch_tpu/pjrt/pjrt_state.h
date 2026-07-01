@@ -75,6 +75,11 @@ class PjrtBackend {
   [[nodiscard]] xla::PjRtClient* absl_nullable GetClient()
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Returns a shared pointer to the PjRtClient. Triggers lazy initialization if
+  // needed.
+  absl::StatusOr<absl_nonnull std::shared_ptr<xla::PjRtClient>>
+  GetSharedClient() ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Returns the PjRtDevice singleton. Triggers lazy initialization if needed.
   [[nodiscard]] xla::PjRtDevice* absl_nullable GetDevice()
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -113,7 +118,9 @@ class PjrtBackend {
   absl::Status InitializeInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
-  std::unique_ptr<xla::PjRtClient> absl_nullable client_
+  // The PjRtClient singleton. Nullable because it is lazily initialized on the
+  // first device/client request and is reset to nullptr on Shutdown.
+  std::shared_ptr<xla::PjRtClient> absl_nullable client_
       ABSL_GUARDED_BY(mutex_);
   xla::PjRtDevice* absl_nullable device_ ABSL_GUARDED_BY(mutex_) = nullptr;
   PjRtDeviceType device_type_ ABSL_GUARDED_BY(mutex_) =
