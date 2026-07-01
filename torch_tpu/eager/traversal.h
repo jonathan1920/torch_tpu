@@ -38,6 +38,7 @@
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/compile_options_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/ops/python_context.h"
@@ -191,7 +192,8 @@ class Traversal {
   // representation of that module.
   absl::StatusOr<CompiledKernel> Compile(
       CompilationSpec spec, std::string* absl_nullable out_mlir_text = nullptr,
-      bool use_stablehlo_bounds = false) const;
+      bool use_stablehlo_bounds = false,
+      absl::Span<const Indices> argument_layouts = {}) const;
 
   // Returns true if any argument to the traversal has bounded dynamic
   // dimensions marked.

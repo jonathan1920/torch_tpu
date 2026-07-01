@@ -700,6 +700,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:compile_options_key",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
+        "//torch_tpu/common:env_vars",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
         "//torch_tpu/common:to_string",
@@ -726,6 +727,7 @@ torch_tpu_cc_library(
         "@stablehlo//:stablehlo_ops",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:traceme",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
     ],
 )

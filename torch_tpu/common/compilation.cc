@@ -461,13 +461,21 @@ absl::Status ApplyCompilerOptionOverrides(
 // LINT.IfChange(compile_options_key)
 [[nodiscard]] static FingerprintType Fingerprint(
     const xla::CompileOptions& options) {
-  return FingerprintCat(
+  FingerprintType fp = FingerprintCat(
       // Fingerprint of XLA executable build options, mainly device-related
       // information.
       Fingerprint(options.executable_build_options),
       // Fingerprint of resolved eventual compiler option overrides, including
       // TorchTPU defaults, TorchTPU-internal and explicit user overrides.
       Fingerprint(options.env_option_overrides));
+
+  if (options.argument_layouts.has_value()) {
+    for (const auto& shape : *options.argument_layouts) {
+      fp = FingerprintCat(fp,
+                          Fingerprint(shape.ToString(/*print_layout=*/true)));
+    }
+  }
+  return fp;
 }
 
 [[nodiscard]] CompileOptionsKey MakeCompileOptionsKey(

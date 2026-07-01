@@ -62,6 +62,7 @@
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
@@ -72,6 +73,9 @@
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "xla/layout_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -585,6 +589,19 @@ std::vector<Shape> GetShapes(absl::Span<const DeviceBufferRef> buffers) {
   return shapes;
 }
 
+std::vector<xla::Shape> GetXlaShapes(
+    absl::Span<const DeviceBufferRef> buffers) {
+  std::vector<xla::Shape> shapes;
+  shapes.reserve(buffers.size());
+  for (const auto& buffer : buffers) {
+    xla::PrimitiveType primitive_type =
+        ConvertTo<xla::PrimitiveType>(buffer.element_type());
+    shapes.push_back(
+        xla::ShapeUtil::MakeShape(primitive_type, buffer.dimensions()));
+  }
+  return shapes;
+}
+
 std::string MlirModuleToString(mlir::ModuleOp module) {
   mlir::OpPrintingFlags flags;
   flags.elideLargeElementsAttrs(100);
@@ -597,7 +614,8 @@ std::string MlirModuleToString(mlir::ModuleOp module) {
 
 absl::StatusOr<CompiledKernel> Traversal::Compile(
     CompilationSpec spec, std::string* absl_nullable out_mlir_text,
-    bool use_stablehlo_bounds) const {
+    bool use_stablehlo_bounds,
+    absl::Span<const Indices> argument_layouts) const {
   // Prepare a computation builder closure to be called on a cache miss.  Okay
   // to capture this here since CompilationCache::GetOrCompile() will call this
   // builder before the function returns and in the same thread it is invoked.
@@ -614,6 +632,26 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   };
   std::vector<Shape> argument_shapes = GetShapes(arguments_);
   std::vector<Shape> output_shapes = GetShapes(outputs_);
+
+  if (!argument_layouts.empty()) {
+    std::vector<xla::Shape> xla_argument_shapes = GetXlaShapes(arguments_);
+    TT_RET_CHECK(xla_argument_shapes.size() == argument_layouts.size(),
+                 error::kInvalidArgument)
+        << "argument layouts size must match, got "
+        << xla_argument_shapes.size() << " layouts and "
+        << argument_layouts.size() << " arguments";
+    for (size_t i = 0; i < xla_argument_shapes.size(); ++i) {
+      const auto& layout_indices = argument_layouts[i];
+      if (!layout_indices.empty()) {
+        xla_argument_shapes[i].clear_layout();
+        *xla_argument_shapes[i].mutable_layout() =
+            xla::LayoutUtil::MakeLayout(layout_indices);
+      }
+    }
+    spec.xla_compile_options->argument_layouts = std::move(xla_argument_shapes);
+    spec.compile_options_key = MakeCompileOptionsKey(
+        GetEnvOnce<kXlaFlagsEnvVar>().value_or(""), *spec.xla_compile_options);
+  }
 
   CompilationCacheKey compilation_cache_key =
       GetCacheKey(spec.compile_options_key);

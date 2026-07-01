@@ -1684,6 +1684,144 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       tpu_torch_compile.execute(executable, [x, y], [[15]])
 
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_traverse_and_compile_invalid_layout_size(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(2, 3, device="cpu").to(device=et.device())
+      z = x + x
+
+    # 1 argument, but 2 layouts provided. Should fail.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""number of argument_layouts must match with the number of argument_tensors, got number of argument_layouts 2 and number of argument_tensors 1""",
+    ):
+      tpu_torch_compile.traverse_and_compile(
+          [z], [x], argument_layouts=[[1, 0], [0, 1]]
+      )
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_traverse_and_compile_invalid_layout_values(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(2, 3, device="cpu").to(device=et.device())
+      z = x + x
+
+    # Rank mismatch: shape [2, 3] (rank 2), layout [0] (rank 1)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""invalid layout for argument 0, got layout [0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.traverse_and_compile([z], [x], argument_layouts=[[0]])
+
+    # Out of bounds index: shape [2, 3], layout [2, 0]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""invalid layout for argument 0, got layout [2, 0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.traverse_and_compile(
+          [z], [x], argument_layouts=[[2, 0]]
+      )
+
+    # Duplicate index: shape [2, 3], layout [0, 0]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""invalid layout for argument 0, got layout [0, 0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.traverse_and_compile(
+          [z], [x], argument_layouts=[[0, 0]]
+      )
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_missing_input_to_build_mlir(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(10, device="cpu").to(device=et.device())
+      y = torch.ones(10, device="cpu").to(device=et.device())
+      z = x + y
+    result_tensors = [z]
+    argument_tensors = [x]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=re.compile(
+            r"compile_mlir\(\): failed to validate and reorder inputs: "
+            r"identified an argument that was not provided:"
+            r" DeviceBufferRef:[\s\S]*"
+        ),
+    ):
+      tpu_torch_compile.build_mlir(result_tensors, argument_tensors)
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_compile_mlir_invalid_layout_size(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(2, 3, device="cpu").to(device=et.device())
+      z = x + x
+    mlir = tpu_torch_compile.build_mlir([z], [x])
+
+    # 1 argument, but 2 layouts provided. Should fail.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): number of argument layouts (2) does not match number of arguments in MLIR main function (1)""",
+    ):
+      tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[1, 0], [0, 1]])
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_compile_mlir_invalid_layout_values(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(2, 3, device="cpu").to(device=et.device())
+      z = x + x
+    mlir = tpu_torch_compile.build_mlir([z], [x])
+
+    # Rank mismatch: shape [2, 3] (rank 2), layout [0] (rank 1)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): invalid layout for argument 0, got layout [0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[0]])
+
+    # Out of bounds index: shape [2, 3], layout [2, 0]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): invalid layout for argument 0, got layout [2, 0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[2, 0]])
+
+    # Duplicate index: shape [2, 3], layout [0, 0]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): invalid layout for argument 0, got layout [0, 0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[0, 0]])
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_compile_mlir_missing_main(self):
+    mlir_text = """
+module {
+  func.func @not_main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+    return %arg0 : tensor<2x3xf32>
+  }
+}
+"""
+    module = tpu_torch_compile.parse_mlir_text(mlir_text)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): could not find 'main' function in MLIR module""",
+    ):
+      tpu_torch_compile.compile_mlir(module, argument_layouts=[[1, 0]])
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_compile_mlir_invalid_argument_type(self):
+    mlir_text = """
+module {
+  func.func @main(%arg0: tensor<2x3xi17>) {
+    return
+  }
+}
+"""
+    module = tpu_torch_compile.parse_mlir_text(mlir_text)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): failed to convert MLIR type to XLA shape""",
+    ):
+      tpu_torch_compile.compile_mlir(module, argument_layouts=[[1, 0]])
+
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_mm_dtype_outdtype_mismatch(self):
     lhs = torch.ones(3, 4, device=et.device(), dtype=torch.int32)

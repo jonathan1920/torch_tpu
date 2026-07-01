@@ -22,6 +22,7 @@
 #include <future>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -33,6 +34,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/compilation_spec.h"
+#include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -180,6 +182,9 @@ void SetAllowExcessPrecision(bool allow);
 
 // Returns whether XLA is allowed to use excess precision for all compilations.
 [[nodiscard]] bool GetAllowExcessPrecision();
+
+[[nodiscard]] CompileOptionsKey MakeCompileOptionsKey(
+    std::string_view xla_flags, const xla::CompileOptions& options);
 
 }  // namespace torch_tpu
 

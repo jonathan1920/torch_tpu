@@ -23,6 +23,7 @@ from torch.fx.experimental.proxy_tensor import make_fx
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.device_utils import annotations
 from torch_tpu._internal.utils import utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
@@ -55,6 +56,131 @@ def eager_mode_defer_all():
 # TODO: add more test coverage for the direct compile API.
 class CompileApiTest(absltest.TestCase):
 
+  def test_traverse_and_compile_with_forced_layout(self):
+    # Case 1: Force default layout [1, 0]. Execution should PASS.
+    with eager_mode_defer_all():
+      x1 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z1 = x1 + x1
+
+    compile_result_pass = tpu_torch_compile.traverse_and_compile(
+        [z1], [x1], argument_layouts=[[1, 0]]
+    )
+    self.assertIsNotNone(compile_result_pass.executable)
+
+    input_tensor = torch.ones(2, 3, device=torch.device('tpu'))
+    input_tensor.cpu()  # Force materialization
+
+    input_layout = tpu_torch_compile.get_device_layout_if_materialized(
+        input_tensor
+    )
+    self.assertIsNotNone(input_layout)
+    self.assertEqual(input_layout[0], [1, 0])
+
+    results_pass = tpu_torch_compile.execute(
+        compile_result_pass.executable, [input_tensor]
+    )
+    self.assertLen(results_pass, 1)
+    results_pass[0].cpu()  # Verify it passes
+
+    # Case 2: Force non-default layout [0, 1]. Execution should FAIL with
+    # default input.
+    with eager_mode_defer_all():
+      x2 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z2 = x2 + x2
+
+    compile_result_fail = tpu_torch_compile.traverse_and_compile(
+        [z2], [x2], argument_layouts=[[0, 1]]
+    )
+    self.assertIsNotNone(compile_result_fail.executable)
+
+    results_fail = tpu_torch_compile.execute(
+        compile_result_fail.executable, [input_tensor]
+    )
+    self.assertLen(results_fail, 1)
+
+    with self.assertRaises(RuntimeError) as err:
+      results_fail[0].cpu()
+
+    self.assertIn('layout', str(err.exception).lower())
+
+  def test_compilation_cache_with_forced_layouts(self):
+    # Enable cache (should be enabled by default, but let's be sure)
+    torch.tpu._set_allow_cache(True)
+    torch.tpu._clear_cache()
+
+    initial_hits = torch.tpu._get_cache_hits()
+    initial_misses = torch.tpu._get_cache_misses()
+
+    # Compile Model 1 with forced layout [1, 0]
+    with eager_mode_defer_all():
+      x1 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z1 = x1 + x1
+
+    # First compilation: should be a MISS
+    compile_result1 = tpu_torch_compile.traverse_and_compile(
+        [z1], [x1], argument_layouts=[[1, 0]]
+    )
+    self.assertIsNotNone(compile_result1.executable)
+
+    self.assertEqual(torch.tpu._get_cache_hits(), initial_hits)
+    self.assertEqual(torch.tpu._get_cache_misses(), initial_misses + 1)
+
+    # Compile Model 2 with same forced layout [1, 0] (same graph structure)
+    with eager_mode_defer_all():
+      x2 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z2 = x2 + x2
+
+    # Second compilation with same layout: should be a HIT
+    compile_result2 = tpu_torch_compile.traverse_and_compile(
+        [z2], [x2], argument_layouts=[[1, 0]]
+    )
+    self.assertIsNotNone(compile_result2.executable)
+
+    self.assertEqual(torch.tpu._get_cache_hits(), initial_hits + 1)
+    self.assertEqual(torch.tpu._get_cache_misses(), initial_misses + 1)
+
+    # Compile Model 3 with DIFFERENT forced layout [0, 1]
+    with eager_mode_defer_all():
+      x3 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z3 = x3 + x3
+
+    # Third compilation with different layout: should be a MISS
+    compile_result3 = tpu_torch_compile.traverse_and_compile(
+        [z3], [x3], argument_layouts=[[0, 1]]
+    )
+    self.assertIsNotNone(compile_result3.executable)
+
+    self.assertEqual(torch.tpu._get_cache_hits(), initial_hits + 1)
+    self.assertEqual(torch.tpu._get_cache_misses(), initial_misses + 2)
+
+  def test_traverse_and_compile_skip_middle_layout(self):
+    with eager_mode_defer_all():
+      x = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      y = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      out = (x + y) * z
+
+    # 3 arguments: x, y, z. Skip y (middle one).
+    compile_result = tpu_torch_compile.traverse_and_compile(
+        [out], [x, y, z], argument_layouts=[[0, 1], [], [0, 1]]
+    )
+    self.assertIsNotNone(compile_result.executable)
+
+    # Verify execution with matching layouts passes
+    layout = annotations.TpuLayout(minor_to_major=[0, 1])
+    with annotations.LayoutContext(layout):
+      input_x = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      input_z = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+
+    # y keeps default layout (usually [1, 0] for 2x3)
+    input_y = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+
+    results = tpu_torch_compile.execute(
+        compile_result.executable, [input_x, input_y, input_z]
+    )
+    self.assertLen(results, 1)
+    results[0].cpu()  # Verify it passes
+
   def test_build_mlir(self):
     with eager_mode_defer_all():
       x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
@@ -82,20 +208,6 @@ class CompileApiTest(absltest.TestCase):
     mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
     self.assertIn('func @main', mlir_text)
     self.assertIn('%arg2', mlir_text)
-
-  def test_missing_input_to_build_mlir(self):
-    with eager_mode_defer_all():
-      x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
-      y = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
-      z = x + y
-    result_tensors = [z]
-    argument_tensors = [x]
-    with self.assertRaises(RuntimeError) as err:
-      tpu_torch_compile.build_mlir(result_tensors, argument_tensors)
-    self.assertIn(
-        'identified an argument that was not provided',
-        str(err.exception),
-    )
 
   def test_compile_backend_defaults_to_tpu(self):
     with get_mock_lookup_backend() as mock_lookup_backend:

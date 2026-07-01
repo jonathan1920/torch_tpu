@@ -97,6 +97,8 @@ struct TraverseAndCompileOptions {
   // If true, use StableHLO style bounds in the generated MLIR for dynamic
   // inputs
   bool use_stablehlo_bounds = false;
+  // Forced layouts for arguments.
+  std::vector<Indices> argument_layouts;
 };
 
 // Traverses the graph from outputs to arguments and compiles it.

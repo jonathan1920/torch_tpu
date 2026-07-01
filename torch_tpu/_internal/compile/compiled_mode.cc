@@ -261,7 +261,8 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
                        // happens
       auto compiled_kernel,
       traversal->Compile(std::move(compilation_spec), nullptr,
-                         options.use_stablehlo_bounds),
+                         options.use_stablehlo_bounds,
+                         options.argument_layouts),
       _ << "failed to compile traversal");
 
   TT_ASSIGN_OR_RETURN(auto executable, compiled_kernel.fixed_shape_kernel.get(),

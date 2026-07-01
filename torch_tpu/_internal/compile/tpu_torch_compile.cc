@@ -34,10 +34,12 @@
 #include "absl/status/statusor.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
@@ -73,7 +75,9 @@
 #include "torch_tpu/ops/view_decomposition/decomposition.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -93,6 +97,24 @@ struct TensorBounds {
   std::vector<int64_t> dynamic_dims;  // INT_VEC_OK
   std::vector<int64_t> upper_bounds;  // INT_VEC_OK
 };
+
+bool IsValidLayout(const std::vector<int64_t>& layout,  // INT_VEC_OK
+                   int64_t rank) {
+  if (layout.size() != rank) {
+    return false;
+  }
+  std::vector<bool> seen(rank, false);
+  for (int64_t dim : layout) {
+    if (dim < 0 || dim >= rank) {
+      return false;
+    }
+    if (seen[dim]) {
+      return false;
+    }
+    seen[dim] = true;
+  }
+  return true;
+}
 
 at::Tensor PyMakePlaceholder(const std::vector<int64_t>& sizes,  // INT_VEC_OK
                              at::ScalarType dtype, bool requires_grad) {
@@ -266,10 +288,12 @@ py::bytes PySerializePortableArtifact(std::shared_ptr<ContextedModule> module) {
 //   fast_compile: If true, use the compiler profile optimized for eager
 //         execution; otherwise, use the profile optimized for
 //         torch.compile.
+//   argument_layouts: Optional layout of the input arguments
 // Returns:
 //   The compiled executable.
 SharedLoadedExecutableWithMetadata PyCompileMlir(
-    std::shared_ptr<ContextedModule> module, const bool fast_compile) {
+    std::shared_ptr<ContextedModule> module, const bool fast_compile,
+    const std::vector<std::vector<int64_t>>& argument_layouts) {  // INT_VEC_OK
   ScopedPythonContextCapturer capturer(OpName::kCompileMlir);
   // Provide the current python context to the compilation function so that
   // it can generate readable Mlir module names.
@@ -279,6 +303,48 @@ SharedLoadedExecutableWithMetadata PyCompileMlir(
   const auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
                                              : CompilationMode::kFastRuntime;
   auto compilation_spec = GetCompilationSpec(compilation_mode);
+
+  if (!argument_layouts.empty()) {
+    mlir::ModuleOp module_op = module->get();
+    auto main_func = module_op.lookupSymbol<mlir::func::FuncOp>("main");
+    TT_CHECK_THROW(main_func, error::kInvalidArgument)
+        << "could not find 'main' function in MLIR module";
+
+    auto arg_types = main_func.getArgumentTypes();
+    TT_CHECK_THROW(arg_types.size() == argument_layouts.size(),
+                   error::kInvalidArgument)
+        << "number of argument layouts (" << argument_layouts.size()
+        << ") does not match number of arguments in MLIR main function ("
+        << arg_types.size() << ")";
+
+    std::vector<xla::Shape> xla_arg_layouts;
+    xla_arg_layouts.reserve(arg_types.size());
+
+    for (size_t i = 0; i < arg_types.size(); ++i) {
+      mlir::Type type = arg_types[i];
+      xla::Shape shape = xla::TypeToShape(type);
+      TT_CHECK_THROW(
+          shape.element_type() != xla::PrimitiveType::PRIMITIVE_TYPE_INVALID,
+          error::kInvalidArgument)
+          << "failed to convert MLIR type to XLA shape";
+
+      const std::vector<int64_t>& layout_indices =  // INT_VEC_OK
+          argument_layouts[i];
+      if (!layout_indices.empty()) {
+        int64_t rank = shape.dimensions().size();
+        TT_CHECK_THROW(IsValidLayout(layout_indices, rank),
+                       error::kInvalidArgument)
+            << "invalid layout for argument " << i << ", got layout "
+            << ToString(layout_indices) << " for shape "
+            << ToString(shape.dimensions());
+        shape.clear_layout();
+        *shape.mutable_layout() = xla::LayoutUtil::MakeLayout(layout_indices);
+      }
+      xla_arg_layouts.push_back(shape);
+    }
+    compilation_spec.xla_compile_options->argument_layouts =
+        std::move(xla_arg_layouts);
+  }
 
   TT_ASSIGN_OR_THROW(
       auto executable,
@@ -290,7 +356,33 @@ SharedLoadedExecutableWithMetadata PyCompileMlir(
 CompileResult PyTraverseAndCompile(
     const std::vector<at::Tensor>& result_tensors,
     const std::vector<at::Tensor>& argument_tensors, bool fast_compile,
-    bool build_mlir_module, bool use_stablehlo_bounds) {
+    bool build_mlir_module, bool use_stablehlo_bounds,
+    const std::vector<std::vector<int64_t>>& argument_layouts) {  // INT_VEC_OK
+  if (!argument_layouts.empty()) {
+    TT_CHECK_THROW(argument_layouts.size() == argument_tensors.size(),
+                   error::kInvalidArgument)
+        << "number of argument_layouts must match with the number of "
+           "argument_tensors, got number of argument_layouts "
+        << argument_layouts.size() << " and number of argument_tensors "
+        << argument_tensors.size();
+
+    for (size_t i = 0; i < argument_layouts.size(); ++i) {
+      const auto& layout = argument_layouts[i];
+      if (!layout.empty()) {
+        int64_t rank = argument_tensors[i].dim();
+        TT_CHECK_THROW(IsValidLayout(layout, rank), error::kInvalidArgument)
+            << "invalid layout for argument " << i << ", got layout "
+            << ToString(layout) << " for shape "
+            << ToString(argument_tensors[i].sizes());
+      }
+    }
+  }
+  std::vector<Indices> converted_layouts;
+  converted_layouts.reserve(argument_layouts.size());
+  for (const auto& layout : argument_layouts) {
+    converted_layouts.push_back(Indices(layout.begin(), layout.end()));
+  }
+
   TT_ASSIGN_OR_THROW(
       CompileResult result,
       TraverseAndCompile(
@@ -300,6 +392,7 @@ CompileResult PyTraverseAndCompile(
                                                : CompilationMode::kFastRuntime,
               .build_mlir_module = build_mlir_module,
               .use_stablehlo_bounds = use_stablehlo_bounds,
+              .argument_layouts = converted_layouts,
           }),
       _.SetPrepend() << "Failed to traverse and compile: ");
   return result;
@@ -939,14 +1032,19 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         py::arg("argument_tensors"), py::arg("fast_compile") = false,
         py::arg("build_mlir_module") = false,
         py::arg("use_stablehlo_bounds") = false,
+        py::arg("argument_layouts") =
+            std::vector<std::vector<int64_t>>{},  // INT_VEC_OK
         "Traverses the graph from outputs to arguments and compiles it. \n\n"
-        "Args:"
-        "  result_tensors: The output tensors to compile."
-        "  argument_tensors: The input tensors to compile."
-        "  fast_compile: Whether to use the fast compile mode."
-        "  build_mlir_module: Whether to build the MLIR module."
+        "Args:\n"
+        "  result_tensors: The output tensors to compile.\n"
+        "  argument_tensors: The input tensors to compile.\n"
+        "  fast_compile: Whether to use the fast compile mode.\n"
+        "  build_mlir_module: Whether to build the MLIR module.\n"
         "  use_stablehlo_bounds: Whether to use the StableHLO bounds for"
-        "    dynamic inputs.\nReturns:"
+        "    dynamic inputs.\n"
+        "  argument_layouts: Optional layout of the input arguments. If not"
+        "    empty, the size must match the number of arguments.\n"
+        "Returns:\n"
         "  CompileResult: The compiled module and executable.");
 
   m.def("build_mlir", PyBuildMlir, py::arg("result_tensors"),
@@ -954,7 +1052,10 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         "Builds an MLIR module from the graph.");
   // Returns: PjRtLoadedExecutable
   m.def("compile_mlir", PyCompileMlir, py::arg("module"),
-        py::arg("fast_compile") = false);
+        py::arg("fast_compile") = false,
+        py::arg("argument_layouts") =
+            std::vector<std::vector<int64_t>>{},  // INT_VEC_OK
+        "Compiles an MLIR module to a PjRtLoadedExecutable.");
   m.def("parse_mlir_text", PyParseMlirText, py::arg("mlir_text"),
         "Parses a StableHLO MLIR text string and returns a ContextedModule.");
   m.def("serialize_mlir_text", PySerializeMlirText, py::arg("module"),
