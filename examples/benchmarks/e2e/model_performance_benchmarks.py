@@ -406,6 +406,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
+        # Temporarily disable fused optimizer due to XLA SRAM register
+        # spilling on compact models in eager mode.
+        use_fused_optim=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="google/gemma-3-270m",
             sequence_length=512,
@@ -430,6 +433,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
+        # Temporarily disable fused optimizer due to XLA SRAM register
+        # spilling on compact models in eager mode.
+        use_fused_optim=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="google/gemma-3-270m",
             sequence_length=512,
@@ -1226,6 +1232,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
+        # Temporarily disable fused optimizer due to host dispatch
+        # overhead exceeding device gains on micro-models in compiled mode.
+        use_fused_optim=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="microsoft/resnet-50",
             sequence_length=512,
@@ -1272,6 +1281,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.TIMM,
         run_mode=run_mode,
         is_training=True,
+        # Temporarily disable fused optimizer due to host dispatch
+        # overhead exceeding device gains on micro-models in compiled mode.
+        use_fused_optim=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="timm/vit_small_patch8_224.dino",
             custom_kwargs={"input_shape": (1, 3, 224, 224)},

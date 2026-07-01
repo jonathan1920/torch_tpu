@@ -731,6 +731,20 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "fused_adamw_test",
+    srcs = ["fused_adamw_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu:_loader",
+    ],
+)
+
+torch_tpu_py_test(
     name = "nn_test",
     srcs = ["nn_test.py"],
     tags = [

@@ -129,6 +129,7 @@ class PerformanceBenchmarkConfig:
   sync_params: bool = False
   train_factory: Optional[Callable[[], Callable[..., Any]]] = None
   eval_factory: Optional[Callable[[], Callable[..., Any]]] = None
+  use_fused_optim: bool = True
 
 
 # LINT.ThenChange(../../../g3doc/benchmarking.md)
@@ -307,6 +308,7 @@ def run_single_process_benchmark(
       model_and_input.model,
       is_training=config.is_training,
       use_torch_compile=common.is_torch_compile(config.run_mode),
+      use_fused_optim=config.use_fused_optim,
   )
   # Only enable xprof for rank 0 process.
   enable_xprof = ENABLE_XPROF.value and rank == 0
@@ -533,7 +535,11 @@ def run_benchmark(
 
 
 def _get_optimizer(
-    model: torch.nn.Module, *, is_training: bool, use_torch_compile: bool
+    model: torch.nn.Module,
+    *,
+    is_training: bool,
+    use_torch_compile: bool,
+    use_fused_optim: bool = True,
 ) -> torch.optim.Optimizer | None:
   """Returns optimizer for training, or None for inference."""
   if not is_training:
@@ -542,12 +548,9 @@ def _get_optimizer(
       model.parameters(),
       lr=0.1,  # Gigantic LR for testing.
       capturable=use_torch_compile,
-      # The non-fused version of adam will expand foreach into loops and
-      # increase the graph size. The compile time increase is especially
-      # obvious when compiling AdamW with torch.compile.
-      # We should consider implementing 'aten::_fused_adamw_' to both
-      # improve compile time and increase performance.
-      fused=False,
+      # Using native 'aten::_fused_adamw_' kernel improves both compilation
+      # time and runtime throughput over non-fused foreach loop expansion.
+      fused=use_fused_optim,
   )
 
 
