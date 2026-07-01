@@ -3034,6 +3034,7 @@ class TestOps(TorchTpuTestBase):
   def test_nll_loss(self):
     self.do_test_op("nn.functional.nll_loss")
 
+  @category("nonzero")
   def test_nonzero(self):
     self.do_test_op("nonzero")
 
