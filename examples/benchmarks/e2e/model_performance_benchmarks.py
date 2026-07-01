@@ -1109,6 +1109,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
             grad_accumulation_steps=1,
+            use_math_attention_fallback=True,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GPT2_BENCHMARK_NAME)

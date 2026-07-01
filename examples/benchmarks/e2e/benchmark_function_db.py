@@ -22,7 +22,9 @@ import torch
 
 
 @contextlib.contextmanager
-def _sdpa_kernel_if_not_cuda(model: torch.nn.Module):
+def _sdpa_kernel_if_not_cuda(
+    model: torch.nn.Module, use_math_attention_fallback: bool = False
+):
   try:
     is_cuda = next(model.parameters()).device.type == "cuda"
   except StopIteration:
@@ -31,9 +33,12 @@ def _sdpa_kernel_if_not_cuda(model: torch.nn.Module):
   if is_cuda:
     yield
   else:
-    with torch.nn.attention.sdpa_kernel(
-        torch.nn.attention.SDPBackend.OVERRIDEABLE
-    ):
+    attention_kernels = [
+        torch.nn.attention.SDPBackend.OVERRIDEABLE,
+    ]
+    if use_math_attention_fallback:
+      attention_kernels.append(torch.nn.attention.SDPBackend.MATH)
+    with torch.nn.attention.sdpa_kernel(attention_kernels):
       yield
 
 
@@ -71,6 +76,7 @@ def huggingface_eval_factory() -> Callable[..., Any]:
 
 def huggingface_llm_train_factory(
     grad_accumulation_steps: int,
+    use_math_attention_fallback: bool = False,
 ) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], torch.Tensor]:
   """Returns the benchmark function for training a Hugging Face LLM.
 
@@ -91,7 +97,7 @@ def huggingface_llm_train_factory(
     optimizer.zero_grad()
     for _ in range(grad_accumulation_steps):
       # Dynamic attention kernel overrides for HuggingFace training.
-      with _sdpa_kernel_if_not_cuda(model):
+      with _sdpa_kernel_if_not_cuda(model, use_math_attention_fallback):
         output = model(**inputs)
         output.loss.backward()
       accumulated_losses.append(output.loss.detach())
