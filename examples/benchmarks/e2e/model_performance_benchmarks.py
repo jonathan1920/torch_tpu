@@ -468,7 +468,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       return config
 
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[common.Platform.GFC_1X1X1],
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
         benchmark_category=benchmark_utils.BenchmarkCategory.GEMMA_RAGGED_MOE,
         run_mode=run_mode,
         is_training=False,
@@ -476,7 +479,15 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="google/gemma-4-26B-A4B",
             sequence_length=2048,
             batch_size=8,
-            custom_kwargs={"modify_config_hook": modify_config_hook},
+            custom_kwargs={
+                "modify_config_hook": modify_config_hook,
+                # FIXME: Disable vision inputs under COMPILED mode because static
+                # XLA graph compilation (TpuBackend) does not yet support dynamic
+                # pre-patchified image grid slicing (pixel_values and
+                # image_position_ids). Re-enable once TpuBackend supports dynamic
+                # multimodal patch slicing.
+                "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
+            },
         ),
         model_and_input_factory=model_utils.gemma_ragged_moe_model_builder,
         eval_factory=benchmark_function_db.huggingface_eval_factory,

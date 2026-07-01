@@ -2086,4 +2086,7 @@ def gemma_ragged_moe_model_builder(
       (batch_size, sequence_length), str(device)
   )
   example_inputs.pop("attention_mask", None)
+  if model_and_input_args.custom_kwargs.get("disable_vision_inputs", False):
+    example_inputs.pop("pixel_values", None)
+    example_inputs.pop("image_position_ids", None)
   return ModelAndInput(model=model, example_inputs=example_inputs)

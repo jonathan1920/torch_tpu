@@ -421,8 +421,8 @@ class ModuleRegistryTest(absltest.TestCase):
     _, kwargs = module_spec.sample_inputs_factory()
     self.assertIn("input_ids", kwargs)
     self.assertIn("attention_mask", kwargs)
-    self.assertNotIn("pixel_values", kwargs)
-    self.assertNotIn("image_position_ids", kwargs)
+    self.assertIn("pixel_values", kwargs)
+    self.assertIn("image_position_ids", kwargs)
 
   def test_transformers_qwen3_5_moe_get_module_spec(self):
     module_spec = self.module_registry.get_module_spec(

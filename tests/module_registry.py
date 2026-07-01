@@ -470,6 +470,138 @@ def _determine_modality(config: Any) -> Modality:
     return Modality.TEXT_DEFAULT
 
 
+def _parse_image_size(config: Any, default_size: int = 224) -> int:
+  """Extracts image_size as an integer from config or vision_config."""
+  vision_config = getattr(config, "vision_config", None)
+  val = None
+  if isinstance(vision_config, dict):
+    val = vision_config.get("image_size")
+  elif vision_config is not None:
+    val = getattr(vision_config, "image_size", None)
+  if val is None:
+    val = getattr(config, "image_size", default_size)
+
+  if isinstance(val, (list, tuple)) and val:
+    return val[0]
+  elif isinstance(val, int):
+    return val
+  return default_size
+
+
+def _get_num_channels(config: Any, default_channels: int = 3) -> int:
+  """Extracts num_channels from config or vision_config."""
+  vision_config = getattr(config, "vision_config", None)
+  if isinstance(vision_config, dict):
+    return vision_config.get("num_channels", default_channels)
+  elif vision_config is not None:
+    return getattr(vision_config, "num_channels", default_channels)
+  return getattr(config, "num_channels", default_channels)
+
+
+def _generate_gemma4_inputs(
+    config: Any,
+    batch_size: int,
+    image_size: int,
+    device: str,
+    input_kwargs: dict[str, Any],
+) -> None:
+  """Generates gemma4 specific inputs (patchified image and position ids).
+
+  Unlike standard Vision Transformers that take raw images of shape (B, C, H, W)
+  and perform patchification internally (e.g. via Conv2d), Gemma 4 expects
+  pre-patchified images from the image processor.
+
+  Specifically:
+  - pixel_values: Shape (B, max_patches, patch_pixels) where patch_pixels is
+    C * patch_size * patch_size (e.g., 3 * 16 * 16 = 768). Each patch is
+    flattened.
+  - image_position_ids: Shape (B, max_patches, 2) containing the (x, y) grid
+    coordinates of each patch in the original image. This is needed because
+    the flattened patch sequence loses spatial structure. Padding patches
+    are indicated by (-1, -1).
+
+  It also expects input_ids to contain placeholders (image_token_id) for the
+  pooled image tokens, which will be replaced by the vision features in the
+  model.
+
+  Args:
+    config: The model configuration.
+    batch_size: The batch size.
+    image_size: The size of the input image.
+    device: The device to place the tensors on.
+    input_kwargs: The dictionary to populate with the generated inputs.
+  """
+  vision_config = getattr(config, "vision_config", None)
+  patch_size = getattr(vision_config, "patch_size", 16)
+  pooling_kernel_size = getattr(vision_config, "pooling_kernel_size", 3)
+
+  # Default max_soft_tokens from Gemma4ImageProcessor.
+  # This is the budget of soft tokens for the model.
+  max_soft_tokens = 280
+  max_patches = max_soft_tokens * pooling_kernel_size**2
+
+  # Determine real patches based on image_size.
+  grid_size = image_size // patch_size
+  num_real_patches = grid_size * grid_size
+
+  # If the dummy image size results in more patches than the budget,
+  # we cap it to the budget to simulate the image processor behavior.
+  if num_real_patches > max_patches:
+    num_real_patches = max_patches
+    grid_size = int(num_real_patches**0.5)
+    num_real_patches = grid_size * grid_size
+
+  # Generate pixel_values: (batch_size, max_patches, patch_pixels).
+  # Unlike standard ViT models that take raw images and do patchification
+  # in the model (e.g. via Conv2d), Gemma 4 expects patchified inputs.
+  num_channels = (
+      getattr(config, "num_channels", None)
+      or getattr(vision_config, "num_channels", None)
+      or 3
+  )
+  patch_pixels = num_channels * patch_size * patch_size
+
+  input_kwargs["pixel_values"] = torch.randn(
+      batch_size, max_patches, patch_pixels, device=device
+  )
+
+  # Generate image_position_ids: (batch_size, max_patches, 2).
+  # We initialize with -1 (padding).
+  image_position_ids = torch.full(
+      (batch_size, max_patches, 2), -1, device=device, dtype=torch.long
+  )
+
+  # Fill in real positions (grid coordinates).
+  grid_x, grid_y = torch.meshgrid(
+      torch.arange(grid_size, device=device),
+      torch.arange(grid_size, device=device),
+      indexing="ij",
+  )
+  coords = torch.stack([grid_x, grid_y], dim=-1)  # (grid_size, grid_size, 2)
+  coords = coords.view(-1, 2)  # (grid_size^2, 2)
+
+  # Copy coordinates to the valid part of image_position_ids.
+  image_position_ids[:, :num_real_patches, :] = coords.unsqueeze(0).expand(
+      batch_size, -1, -1
+  )
+
+  input_kwargs["image_position_ids"] = image_position_ids
+
+  # Calculate number of pooled features mathematically.
+  # The model pools patches using avg pooling with kernel size
+  # pooling_kernel_size.
+  # We need to know how many valid features will remain after pooling to
+  # insert the correct number of placeholders in input_ids.
+  pooled_dim = grid_size // pooling_kernel_size
+  num_features = pooled_dim * pooled_dim
+
+  # Overwrite input_ids to have num_features copies of image_token_id.
+  # The model expects to find these placeholders to merge text and image
+  # features.
+  image_token_id = getattr(config, "image_token_id", 258880)
+  input_kwargs["input_ids"][:, :num_features] = image_token_id
+
+
 def _generate_transformers_inputs(
     config: Any,
     modality: Modality,
@@ -509,26 +641,19 @@ def _generate_transformers_inputs(
         actual_shape, device=device, dtype=torch.long
     )
 
-    if any(k in model_type for k in _VISION_LANGUAGE_MODEL_TYPES):
-      image_size = 224
-      vision_config = getattr(config, "vision_config", None)
-      if vision_config:
-        if isinstance(vision_config, dict):
-          val = vision_config.get("image_size", 224)
-          num_channels = vision_config.get("num_channels", 3)
-        else:
-          val = getattr(vision_config, "image_size", 224)
-          num_channels = getattr(vision_config, "num_channels", 3)
-      else:
-        val = getattr(config, "image_size", 224)
-        num_channels = getattr(config, "num_channels", 3)
-
-      if isinstance(val, int):
-        image_size = val
-      elif isinstance(val, (list, tuple)) and len(val) > 0:
-        image_size = val[0]
-
+    if model_type.startswith("gemma4"):
+      if hasattr(config, "output_proj_dims"):
+        delattr(config, "output_proj_dims")
+      image_size = _parse_image_size(config)
+      _generate_gemma4_inputs(
+          config, actual_shape[0], image_size, device, input_kwargs
+      )
+    elif any(k in model_type for k in _VISION_LANGUAGE_MODEL_TYPES):
+      image_size = _parse_image_size(config)
+      num_channels = _get_num_channels(config)
       batch_size = shape[0] if shape else 1
+      vision_config = getattr(config, "vision_config", None)
+
       if "mllama" in model_type:
         num_images = 1
         if isinstance(vision_config, dict):
@@ -558,13 +683,7 @@ def _generate_transformers_inputs(
         input_kwargs["pixel_values"] = dummy_img
 
   elif modality == Modality.VISION:
-    image_size = 224
-    if hasattr(config, "image_size"):
-      val = getattr(config, "image_size")
-      if isinstance(val, int):
-        image_size = val
-      elif isinstance(val, (list, tuple)) and len(val) > 0:
-        image_size = val[0]
+    image_size = _parse_image_size(config)
 
     processor = None
     if model_dir and _HAS_TRANSFORMERS:
