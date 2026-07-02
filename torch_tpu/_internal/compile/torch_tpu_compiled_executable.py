@@ -266,7 +266,7 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
     # aot_autograd with SerializableAOTDispatchCompiler passes args as a
     # single list: fn([t1, t2, ...]). Unwrap when we detect this pattern.
     if len(args) == 1 and isinstance(args[0], (list, tuple)):
-      args = args[0]
+      args = args[0]  # pyrefly: ignore[bad-assignment]
 
     device = torch.accelerator.current_accelerator()
     device_module = getattr(torch, device.type)

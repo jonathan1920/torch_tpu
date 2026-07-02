@@ -48,7 +48,7 @@ _torch_compile = torch.compile
 # Register the TPU backend.
 # pylint: disable=protected-access
 if not hasattr(torch.backends, "tpu"):
-  torch.backends.tpu = _tpu_backend_config._TpuBackendConfig()
+  torch.backends.tpu = _tpu_backend_config._TpuBackendConfig()  # pyrefly: ignore[missing-attribute]
 
 
 def _get_default_backend_impl() -> backend_registry.CompilerFn:
@@ -139,7 +139,7 @@ def _init_device_impl(device: str) -> torch.device:
   )
 
   # pylint: disable=protected-access
-  torch._register_device_module(device, device_module)
+  torch._register_device_module(device, device_module)  # pyrefly: ignore[bad-argument-type]
   print(f"Registered Python module for '{device}'.", file=sys.stderr)
 
   print(

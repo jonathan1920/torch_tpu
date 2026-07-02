@@ -158,7 +158,7 @@ def stop_trace() -> None:
     if _profile_state.profile_session is None:
       raise RuntimeError('No profile started')
     timestamp = datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-    plugin_dir = os.path.join(
+    plugin_dir = os.path.join(  # pyrefly: ignore[no-matching-overload]
         _profile_state.log_dir, 'plugins', 'profile', timestamp
     )
     hostname = socket.gethostname() or 'localhost'

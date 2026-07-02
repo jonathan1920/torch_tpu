@@ -109,7 +109,7 @@ class DistributedMetaLlama3QualityBenchmarkModel(
 
   def _compile_model_once(self) -> None:
     """Compiles the model for the target device."""
-    self._model = device_utils.torch_compile(self._model, self._device)
+    self._model = device_utils.torch_compile(self._model, self._device)  # pyrefly: ignore[bad-assignment]
 
   def format(self, raw_input: Any) -> quality_benchmark_model.FormattedInput:
     """Encodes text for meta llama3 model.

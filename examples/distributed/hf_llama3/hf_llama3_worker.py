@@ -159,7 +159,7 @@ def worker_fn(argv=None):
           config, dtype=torch.bfloat16
       )
     model = _shard_and_materialize_model(
-        model, device, model_dir, not USE_RANDOM_WEIGHTS
+        model, device, model_dir, not USE_RANDOM_WEIGHTS  # pyrefly: ignore[bad-argument-type]
     )
   else:
     if USE_RANDOM_WEIGHTS:
@@ -200,7 +200,7 @@ def worker_fn(argv=None):
   torch.manual_seed(rank)
 
   # Generate random input and target tokens.
-  data = torch.randint(0, vocab_size, (batch_size, seq_len + 1), device=device)
+  data = torch.randint(0, vocab_size, (batch_size, seq_len + 1), device=device)  # pyrefly: ignore[no-matching-overload]
   input_tokens = data[:, :seq_len]
   target_tokens = data[:, 1:]
 

@@ -110,7 +110,7 @@ class SDPAKernelReferenceJax:
     assert attn_mask is None
 
     return jnp.swapaxes(
-        jnn.dot_product_attention(
+        jnn.dot_product_attention(  # pyrefly: ignore[no-matching-overload]
             jnp.swapaxes(query, -3, -2),
             jnp.swapaxes(key, -3, -2),
             jnp.swapaxes(value, -3, -2),

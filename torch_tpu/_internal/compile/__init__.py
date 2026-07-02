@@ -20,7 +20,7 @@ from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile._backend import TpuBackend
 
 # Register "tpu" backend
-registry.register_backend(compiler_fn=TpuBackend(), name="tpu")
+registry.register_backend(compiler_fn=TpuBackend(), name="tpu")  # pyrefly: ignore[bad-argument-type]
 
 
 def _initialize_graphsafe_rng():

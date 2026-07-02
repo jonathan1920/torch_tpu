@@ -119,4 +119,4 @@ class Llama321BQualityBenchmarkModel(
 
   def get_model(self) -> torch.nn.Module:
     """Gets the model."""
-    return self._model
+    return self._model  # pyrefly: ignore[bad-return]

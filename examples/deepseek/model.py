@@ -166,7 +166,7 @@ class ParallelEmbedding(nn.Module):
       x[mask] = 0
     y = F.embedding(x, self.weight)
     if world_size > 1:
-      y[mask] = 0  # pylint: disable=undefined-variable
+      y[mask] = 0  # pylint: disable=undefined-variable  # pyrefly: ignore[unbound-name]
       dist.all_reduce(y)
     return y
 
@@ -638,7 +638,7 @@ class MLA(nn.Module):
     else:
       x = torch.einsum("bsht,btc->bshc", scores, self.kv_cache[:bsz, :end_pos])
       try:
-        x = torch.einsum("bshc,hdc->bshd", x, wkv_b[:, -self.v_head_dim :])
+        x = torch.einsum("bshc,hdc->bshd", x, wkv_b[:, -self.v_head_dim :])  # pyrefly: ignore[bad-index]
       except NameError as e:
         raise e
     x = self.wo(x.flatten(2))
@@ -814,7 +814,7 @@ class MoE(nn.Module):
     self.experts_start_idx = rank * self.n_local_experts
     self.experts_end_idx = self.experts_start_idx + self.n_local_experts
     self.gate = Gate(args)
-    self.experts = nn.ModuleList([
+    self.experts = nn.ModuleList([  # pyrefly: ignore[bad-argument-type]
         Expert(args.dim, args.moe_inter_dim)
         if self.experts_start_idx <= i < self.experts_end_idx
         else None

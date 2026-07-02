@@ -31,5 +31,5 @@ def main(_):
 
 
 if __name__ == "__main__":
-  mp.set_start_method("spawn")
+  mp.set_start_method("spawn")  # pyrefly: ignore[missing-attribute]
   g3_multiprocessing.handle_main(main)

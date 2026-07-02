@@ -83,7 +83,7 @@ def replace_rope_impl() -> None:
 
 def undo_inference_mode(model: m.Transformer) -> None:
   """Bypass @torch.inference_mode decorator - needed for trainloop."""
-  model.forward = functools.partial(model.forward.__wrapped__, model)
+  model.forward = functools.partial(model.forward.__wrapped__, model)  # pyrefly: ignore[missing-attribute]
 
 
 def reset_kv_cache(model: m.Transformer) -> None:

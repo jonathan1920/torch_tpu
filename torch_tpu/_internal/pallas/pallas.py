@@ -137,7 +137,7 @@ def jax_placeholder(
     return jax.ShapeDtypeStruct(
         get_global_shape(tensor.shape, mesh, partition_spec),
         jax_dtype,
-        sharding=jax.sharding.NamedSharding(mesh, partition_spec),
+        sharding=jax.sharding.NamedSharding(mesh, partition_spec),  # pyrefly: ignore[bad-argument-type]
     )
   else:
     return jax.ShapeDtypeStruct(tensor.shape, jax_dtype)
@@ -154,7 +154,7 @@ def jax_placeholders(
   if mesh is not None:
     return [
         jax_placeholder(tensor, mesh, partition_spec)
-        for tensor, partition_spec in zip(tensors, partition_specs)
+        for tensor, partition_spec in zip(tensors, partition_specs)  # pyrefly: ignore[bad-argument-type]
     ]
   else:
     return [jax_placeholder(tensor) for tensor in tensors]
@@ -374,7 +374,7 @@ def _get_torch_signature(signature: inspect.Signature):
       return _map_jax_to_torch(underling) | types.NoneType
     if (origin := typing.get_origin(typ)) is tuple:
       mapped_args = (_map_jax_to_torch(arg) for arg in typing.get_args(typ))
-      return origin[*mapped_args]
+      return origin[*mapped_args]  # pyrefly: ignore[not-a-type]
 
     return typ
 

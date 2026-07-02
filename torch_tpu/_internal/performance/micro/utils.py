@@ -41,7 +41,7 @@ def _get_device() -> torch.device:
 
 
 def _run_and_time_model(
-    model: torch.nn.Module = None,
+    model: torch.nn.Module = None,  # pyrefly: ignore[bad-function-definition]
     input_tensor: torch.Tensor | None = None,
     warmup: int = 1,
     iterations: int = 1,
@@ -68,7 +68,7 @@ def _run_and_time_model(
       output = model(input_tensor)
       total_time += time.time() - start_time
 
-  return total_time / iterations, output.to("cpu")
+  return total_time / iterations, output.to("cpu")  # pyrefly: ignore[unbound-name]
 
 
 def run_model_cpu_acc(

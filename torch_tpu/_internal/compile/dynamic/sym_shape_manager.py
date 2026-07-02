@@ -98,7 +98,7 @@ class _OutputSymShape:
         continue
       kwargs = {
           s: (
-              inputs[idx].shape[dim]
+              inputs[idx].shape[dim]  # pyrefly: ignore[missing-attribute]
               if isinstance(inputs[idx], torch.Tensor)
               else inputs[idx]
           )

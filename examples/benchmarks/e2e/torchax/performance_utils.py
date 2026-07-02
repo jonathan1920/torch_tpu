@@ -262,7 +262,7 @@ def _run_torchax_forward_pass(
       num_warmup_steps=len(warmup_timings),
       first_step_time_seconds=first_step_time,
       warmup_overhead_seconds=max(0.0, warmup_overhead),
-      post_warmup_step_time_seconds=eval_time,
+      post_warmup_step_time_seconds=eval_time,  # pyrefly: ignore[bad-argument-type]
       e2e_wall_time_seconds=time.perf_counter() - e2e_start,
       warmup_session_xprof_url=warmup_session_xprof_url,
       post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
@@ -396,7 +396,7 @@ def _run_torchax_backward_pass(
       num_warmup_steps=len(warmup_timings),
       first_step_time_seconds=first_step_time,
       warmup_overhead_seconds=max(0.0, warmup_overhead),
-      post_warmup_step_time_seconds=eval_time,
+      post_warmup_step_time_seconds=eval_time,  # pyrefly: ignore[bad-argument-type]
       e2e_wall_time_seconds=time.perf_counter() - e2e_start,
       warmup_session_xprof_url=warmup_session_xprof_url,
       post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,

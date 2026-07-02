@@ -49,7 +49,7 @@ def apply(
 
     for attr_target in unique_attr_targets:
       # pylint: disable-next=protected-access
-      target = torch.fx.graph_module._get_attr(gm, attr_target)
+      target = torch.fx.graph_module._get_attr(gm, attr_target)  # pyrefly: ignore[bad-argument-type]
       if not isinstance(target, torch.Tensor):
         continue
 
@@ -57,4 +57,4 @@ def apply(
       # transfer it back to CPU so that we can access the data.
       new_target = tpu_torch_compile.make_constant_tensor(target.to("cpu"))
       # pylint: disable-next=protected-access
-      _assign_attr(new_target, gm, attr_target, _AttrKind.CONSTANT)
+      _assign_attr(new_target, gm, attr_target, _AttrKind.CONSTANT)  # pyrefly: ignore[bad-argument-type]
