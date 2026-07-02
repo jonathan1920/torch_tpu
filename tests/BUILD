@@ -981,6 +981,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:hardware",
+        "//torch_tpu/ops/experimental/sparse_dense_matmul:input_preprocessing_kernels",
         "@pypi//numpy",
     ],
 )
