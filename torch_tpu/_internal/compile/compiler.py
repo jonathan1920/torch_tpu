@@ -40,6 +40,7 @@ from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.fx_passes import mark_activation_checkpoints
 from torch_tpu._internal.compile.fx_passes import mark_embedded_constants
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import CompiledArtifact
+from torch_tpu._internal.compile.torch_tpu_compiled_executable import NoOpCompiledArtifact
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import TorchTpuCompiledExecutable
 
 
@@ -260,6 +261,14 @@ class StaticCompiler(Compiler):
             placeholder_args,
             build_mlir_module=(tracing_enabled or self._debug),
         )
+
+    if exported_mlir.is_noop:
+      # The FX graph produced no computed output tensors (e.g. a
+      # fullgraph=False seam between two graph breaks). There is nothing to
+      # compile; return a callable that reconstructs the graph's (all-None /
+      # passthrough) output and runs nothing on device, rather than compiling a
+      # trivial executable.
+      return NoOpCompiledArtifact(exported_mlir.reconstruct_fx_outputs_fn)
 
     mlir_module = exported_mlir.module
 

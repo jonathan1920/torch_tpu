@@ -373,3 +373,61 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
 
   def set_triton_bundle(self, triton_bundle: Any) -> None:
     pass
+
+
+def _unpickle_noop_compiled_artifact(
+    reconstruct_fx_outputs_fn: _ReconstructFxOutputsFn | None,
+) -> "NoOpCompiledArtifact":
+  """Reconstructs a NoOpCompiledArtifact when unpickling (Dynamo/AOT cache)."""
+  return NoOpCompiledArtifact(reconstruct_fx_outputs_fn)
+
+
+class NoOpCompiledArtifact(CompiledArtifact):
+  """Callable for an FX graph that produces no computed output tensors.
+
+  A ``torch.compile(fullgraph=False)`` partition can yield a segment that
+  threads a live input through but contains no traceable ops -- e.g. a seam
+  between two graph breaks, ``def forward(x): return ()``. There is nothing to
+  lower to MLIR, so rather than compile a trivial executable the backend returns
+  this object. When Dynamo invokes it, it reconstructs the graph's original
+  output structure (all ``None`` and/or input passthroughs) and runs nothing on
+  device.
+  """
+
+  def __init__(
+      self,
+      reconstruct_fx_outputs_fn: _ReconstructFxOutputsFn | None,
+  ) -> None:
+    self._reconstruct_fx_outputs_fn = reconstruct_fx_outputs_fn
+
+  def __call__(
+      self, *args: Any, output_shapes: Sequence[list[int]] | None = None
+  ) -> Any:
+    del output_shapes  # Unused
+    if len(args) == 1 and isinstance(args[0], (list, tuple)):
+      args = args[0]
+    if self._reconstruct_fx_outputs_fn is None:
+      return ()
+    # No compiled result tensors: reconstruct the FX output structure (Nones
+    # and input passthroughs) from an empty output list.
+    return self._reconstruct_fx_outputs_fn(args, [])
+
+  def __reduce__(self) -> tuple[Callable[..., Any], tuple[Any, ...]]:
+    return (
+        _unpickle_noop_compiled_artifact,
+        (self._reconstruct_fx_outputs_fn,),
+    )
+
+  def prepare_for_serialization(self) -> None:
+    pass
+
+  def post_compile(
+      self,
+      example_inputs: Sequence[Any],
+      constants: Any,
+      graph_kwargs: Any,
+  ) -> None:
+    pass
+
+  def set_triton_bundle(self, triton_bundle: Any) -> None:
+    pass

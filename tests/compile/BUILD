@@ -55,6 +55,7 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/compile:compiler",
+        "//torch_tpu/_internal/compile:torch_tpu_compiled_executable",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils",
     ],

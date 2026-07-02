@@ -106,6 +106,7 @@ class ExportedMlir:
       generator state. If so, one additional input tensor as the last argument
       is expected for the generator state tensor, and the one additional tensor
       as the last output is expected for the updated generator state tensor.
+    is_noop: Whether the FX graph is a no-op (i.e. has no output tensors).
   """
 
   module: tpu_torch_compile.ContextedModule | None
@@ -115,6 +116,7 @@ class ExportedMlir:
       [Sequence[Any], Sequence[torch.Tensor]], Any
   ]
   updates_default_generator_state: bool
+  is_noop: bool = False
 
   def serialize_text(self, enable_debug_info: bool = False) -> str:
     """Returns the MLIR representation of the graph as text."""
@@ -524,18 +526,15 @@ def fx_to_mlir(
         argument_tensors.pop()
         result_tensors.pop()
       else:
-        # No-op graph: result_tensors holds only the default generator-state
-        # tensor, i.e. the graph produces no computed output tensors (e.g. a
-        # torch.compile(fullgraph=False) seam between two graph breaks that
-        # captures a live input but no traceable ops -- "def forward(x):
-        # return ()"). traverse_and_compile requires >=1 result tensor and
-        # aborts on an empty list (compiled_mode.cc: "no result tensors
-        # provided"). Keep the generator-state tensor purely as a placeholder
-        # output to make result_tensors non-empty so compilation succeeds -- it
-        # is not actually used; it is returned unchanged, yielding a no-op
-        # executable that preserves RNG state. Setting the flag is what keeps
-        # the placeholder plumbed in and out.
-        updates_default_generator_state = True
+        # No RNG update and nothing to compute: this graph is a no-op.
+        return ExportedMlir(
+            module=None,
+            executable=None,
+            mlir_result_tensors=[],
+            reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
+            updates_default_generator_state=False,
+            is_noop=True,
+        )
 
     compile_result = tpu_torch_compile.traverse_and_compile(
         result_tensors=result_tensors,
