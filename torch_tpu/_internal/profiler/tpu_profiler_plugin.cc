@@ -18,8 +18,10 @@
 
 #include <kineto/ActivityType.h>
 #include <kineto/Config.h>
+#include <kineto/GenericTraceActivity.h>
 #include <kineto/IActivityProfiler.h>
 #include <kineto/output_base.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -29,20 +31,22 @@
 #include <functional>
 #include <ios>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
@@ -389,6 +393,8 @@ void TpuKinetoProfilerSession::start() {
   TT_THROW_IF_ERROR(
       UpdateProfileOptions(config_.getCustomConfig(), opts, run_dir_));
 
+  start_time_ns_ = absl::GetCurrentTimeNanos();
+
   session_ = tsl::ProfilerSession::Create(opts);
   if (session_ == nullptr) {
     ABSL_LOG(ERROR) << "Failed to create Tpu ProfilerSession!";
@@ -405,6 +411,7 @@ void TpuKinetoProfilerSession::start() {
   } else {
     ABSL_LOG(INFO) << "Successfully created Tpu ProfilerSession!";
     status_ = libkineto::TraceStatus::RECORDING;
+    XProfCallbackHandler::Register();
     callback_handler_ = std::make_unique<XProfCallbackHandler>();
   }
 }
@@ -461,8 +468,228 @@ void TpuKinetoProfilerSession::stop() {
   session_.reset();
 }
 
+namespace {
+std::optional<uint64_t> GetXProfSessionStartTimeNs(
+    const tensorflow::profiler::XSpace& space) {
+  for (const auto& plane : space.planes()) {
+    if (plane.name() == "Task Environment") {
+      int64_t start_time_metadata_id = -1;
+      for (const auto& [id, meta] : plane.stat_metadata()) {
+        if (meta.name() == "profile_start_time") {
+          start_time_metadata_id = id;
+          break;
+        }
+      }
+      if (start_time_metadata_id != -1) {
+        for (const auto& stat : plane.stats()) {
+          if (stat.metadata_id() == start_time_metadata_id) {
+            if (stat.value_case() ==
+                tensorflow::profiler::XStat::kUint64Value) {
+              return stat.uint64_value();
+            } else if (stat.value_case() ==
+                       tensorflow::profiler::XStat::kInt64Value) {
+              return stat.int64_value();
+            }
+          }
+        }
+      }
+    }
+  }
+  return std::nullopt;
+}
+}  // namespace
+
 void TpuKinetoProfilerSession::processTrace(libkineto::ActivityLogger& logger) {
-  // TODO(b/499240330): implement this.
+  auto start_time_ns = GetXProfSessionStartTimeNs(xspace_);
+  for (auto& plane : *xspace_.mutable_planes()) {
+    for (auto& line : *plane.mutable_lines()) {
+      if (start_time_ns.has_value()) {
+        int64_t line_start_time_ns =
+            start_time_ns.value() + line.timestamp_ns();
+        line.set_timestamp_ns(line_start_time_ns);
+      }
+    }
+  }
+
+  constexpr int64_t kMaxEvents = 1000000;
+  int64_t processed_events = 0;
+
+  for (auto& plane : *xspace_.mutable_planes()) {
+    if (processed_events >= kMaxEvents) {
+      break;
+    }
+
+    bool is_device =
+        absl::StartsWith(plane.name(), "/device:") || plane.name() == "TPU";
+
+    // For device planes, use the XPlane ID as the device ID.
+    // For host planes, map them directly to the main process PID so they
+    // visually merge into the PyTorch CPU process span in Chrome Tracing.
+    int32_t device_id = is_device ? plane.id() : getpid();
+
+    if (is_device) {
+      libkineto::DeviceInfo device_info = {device_id, device_id,
+                                           std::string(plane.name()),
+                                           std::string(plane.name())};
+      logger.handleDeviceInfo(device_info, 0);
+    }
+
+    libkineto::ActivityType type =
+        is_device ? libkineto::ActivityType::CONCURRENT_KERNEL
+                  : libkineto::ActivityType::CPU_OP;
+
+    absl::flat_hash_map<int64_t, std::string_view> event_name_map;
+    for (const auto& [id, metadata] : plane.event_metadata()) {
+      std::string_view name = metadata.name();
+      if (name.empty()) {
+        name = metadata.display_name();
+      }
+      if (name.empty()) {
+        name = "Unknown";
+      }
+      event_name_map[id] = name;
+    }
+
+    absl::flat_hash_map<int64_t, std::string_view> stat_name_map;
+    for (const auto& [id, metadata] : plane.stat_metadata()) {
+      stat_name_map[id] = metadata.name();
+    }
+
+    for (const auto& line : plane.lines()) {
+      if (processed_events >= kMaxEvents) {
+        break;
+      }
+
+      uint32_t thread_id = static_cast<uint32_t>(
+          line.display_id() ? line.display_id() : line.id());
+
+      libkineto::ResourceInfo resource_info = {thread_id, thread_id, device_id,
+                                               std::string(line.name())};
+      resource_infos_.push_back(resource_info);
+      logger.handleResourceInfo(resource_info, 0);
+
+      for (const auto& event : line.events()) {
+        if (!event.has_offset_ps()) {
+          continue;  // Skip stateless/aggregated events that don't have
+                     // timeline
+        }
+
+        if (processed_events >= kMaxEvents) {
+          ABSL_LOG(WARNING) << "Hit maximum event limit of " << kMaxEvents
+                            << ", truncating trace parsing to avoid OOM.";
+          break;
+        }
+
+        bool is_mirrored_kineto_event = false;
+        std::vector<const tensorflow::profiler::XStat*> all_stats;
+
+        auto meta_it = plane.event_metadata().find(event.metadata_id());
+        size_t total_stats =
+            event.stats().size() + (meta_it != plane.event_metadata().end()
+                                        ? meta_it->second.stats().size()
+                                        : 0);
+        all_stats.reserve(total_stats);
+
+        if (meta_it != plane.event_metadata().end()) {
+          for (const auto& stat : meta_it->second.stats()) {
+            all_stats.push_back(&stat);
+          }
+        }
+        for (const auto& stat : event.stats()) {
+          all_stats.push_back(&stat);
+        }
+
+        for (const auto* stat : all_stats) {
+          auto it = stat_name_map.find(stat->metadata_id());
+          if (it != stat_name_map.end() && it->second == "pt_correlation_id") {
+            is_mirrored_kineto_event = true;
+            break;
+          }
+        }
+
+        if (!is_device && is_mirrored_kineto_event) {
+          // Skip events that Kineto already natively captured on the host
+          // (mirrored to XProf by xprof_callback_handler.cc) to avoid
+          // duplicates.
+          continue;
+        }
+
+        std::string_view activity_name = "Unknown";
+        if (meta_it != plane.event_metadata().end()) {
+          activity_name = meta_it->second.name();
+          if (activity_name.empty()) {
+            activity_name = meta_it->second.display_name();
+          }
+        }
+        if (activity_name.empty()) activity_name = "Unknown";
+
+        libkineto::GenericTraceActivity activity;
+        activity.activityName = activity_name;
+        activity.activityType = type;
+
+        int64_t duration_ps = event.duration_ps();
+
+        int64_t event_start_realtime_ns =
+            line.timestamp_ns() + (event.offset_ps() / 1000);
+
+        // Kineto PyTorch expects absolute time in NANOSECONDS.
+        activity.startTime = event_start_realtime_ns;
+        activity.endTime = event_start_realtime_ns + (duration_ps / 1000);
+
+        activity.device = device_id;
+        activity.resource = thread_id;
+        activity.threadId = is_device ? 0 : thread_id;
+
+        for (const auto* stat : all_stats) {
+          std::string_view stat_name = "Unknown";
+          if (auto it = stat_name_map.find(stat->metadata_id());
+              it != stat_name_map.end()) {
+            stat_name = it->second;
+          }
+          std::string stat_name_str(stat_name);
+
+          switch (stat->value_case()) {
+            case tensorflow::profiler::XStat::kStrValue:
+              activity.addMetadataQuoted(stat_name_str, stat->str_value());
+              break;
+            case tensorflow::profiler::XStat::kInt64Value:
+              activity.addMetadataQuoted(stat_name_str,
+                                         std::to_string(stat->int64_value()));
+              break;
+            case tensorflow::profiler::XStat::kUint64Value:
+              activity.addMetadataQuoted(stat_name_str,
+                                         std::to_string(stat->uint64_value()));
+              break;
+            case tensorflow::profiler::XStat::kDoubleValue:
+              activity.addMetadataQuoted(stat_name_str,
+                                         std::to_string(stat->double_value()));
+              break;
+            case tensorflow::profiler::XStat::kBytesValue:
+              // Kineto JSON exporter cannot handle raw binary data (invalid
+              // UTF-8). Furthermore, Kineto has no visualizer for XLA HLO
+              // graphs.
+              activity.addMetadataQuoted(stat_name_str, "<binary_data>");
+              break;
+            case tensorflow::profiler::XStat::kRefValue: {
+              if (auto ref_it = stat_name_map.find(stat->ref_value());
+                  ref_it != stat_name_map.end()) {
+                activity.addMetadataQuoted(stat_name_str,
+                                           std::string(ref_it->second));
+              }
+              break;
+            }
+            default:
+              break;
+          }
+        }
+
+        logger.handleGenericActivity(activity);
+        processed_events++;
+      }
+    }
+    plane.Clear();  // Clear the proto after processing to reclaim memory
+  }
+  xspace_.Clear();
 }
 
 namespace {

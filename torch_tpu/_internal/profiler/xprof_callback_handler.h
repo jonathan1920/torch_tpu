@@ -41,6 +41,10 @@ class XProfCallbackHandler {
   XProfCallbackHandler(XProfCallbackHandler&&) = delete;
   XProfCallbackHandler& operator=(XProfCallbackHandler&&) = delete;
 
+  // Registers the global callback handler. Should be called explicitly to avoid
+  // Static Initialization Order Fiasco (SIOF) risks.
+  static void Register();
+
  private:
   const at::CallbackHandle handle_ = at::INVALID_CALLBACK_HANDLE;
 };
