@@ -42,6 +42,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/ops/scatter/scatter.h"
 
 namespace torch_tpu {
@@ -120,6 +121,7 @@ at::Tensor& AtenScatterSrcOut(const at::Tensor& self, int64_t dim,
       OpName::kScatterSrcOut, _,
       (self, IgnoreInCacheKey(dim, "delegates to Scatter()"), index, src, out),
       {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
         TT_ASSIGN_OR_THROW(DeviceBufferRef result,
                            Scatter(self, dim, index, src));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
@@ -135,6 +137,7 @@ at::Tensor& AtenScatterValueOut(const at::Tensor& self, int64_t dim,
             (self, IgnoreInCacheKey(dim, "delegates to Scatter()"), index,
              promoted_value, out),
             {
+              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
               auto promoted_type = out.scalar_type();
               TT_ASSIGN_OR_THROW(at::Tensor value_tensor,
                                  promoted_value.GetTensor(promoted_type));
@@ -153,6 +156,7 @@ at::Tensor& AtenScatterReduceOut(const at::Tensor& self, int64_t dim,
             (self, IgnoreInCacheKey(dim, "delegates to Scatter()"), index, src,
              IgnoreInCacheKey(reduction_op, "delegates to Scatter()"), out),
             {
+              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
               TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
                                  ParseScatterOp(reduction_op));
               TT_ASSIGN_OR_THROW(DeviceBufferRef result,
@@ -173,6 +177,7 @@ at::Tensor& AtenScatterReduceTwoOut(const at::Tensor& self, int64_t dim,
        IgnoreInCacheKey(reduction, "delegates to Scatter()"),
        IgnoreInCacheKey(include_self, "delegates to Scatter()"), out),
       {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
         TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
                            ParseScatterOp(reduction, ScatterVersion::kV2));
         TT_ASSIGN_OR_THROW(DeviceBufferRef result,
@@ -196,6 +201,7 @@ at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,
        promoted_value, IgnoreInCacheKey(reduction_op, "delegates to Scatter()"),
        out),
       {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
         auto promoted_type = out.scalar_type();
         TT_ASSIGN_OR_THROW(at::Tensor value_tensor,
                            promoted_value.GetTensor(promoted_type));

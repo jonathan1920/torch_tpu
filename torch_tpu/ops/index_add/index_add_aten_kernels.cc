@@ -40,6 +40,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -88,6 +89,7 @@ at::Tensor& TpuAtenIndexAddOut(const at::Tensor& self, int64_t dim,
   TT_KERNEL(
       OpName::kIndexAddOut, param_keys,
       (self, dim, index, source, promoted_alpha, out), {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
         TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
                            IndexAdd(self, dim, index, source, promoted_alpha,
                                     out.scalar_type(), std::move(param_keys)));

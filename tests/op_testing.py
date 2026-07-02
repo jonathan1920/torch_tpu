@@ -283,9 +283,6 @@ _OPS_WITHOUT_OUT_SHAPE_RESIZING: Final[set[str]] = {
     "bucketize",
     "clamp_max",
     "clamp_min",
-    "gather",
-    "index_add",
-    "index_copy",
     "lerp",
     "lgamma",
     "linalg.inv",
@@ -295,11 +292,7 @@ _OPS_WITHOUT_OUT_SHAPE_RESIZING: Final[set[str]] = {
     "linalg.solve_ex",
     "log_softmax",
     "lu_unpack",
-    "scatter",
-    "scatter_add",
-    "scatter_reduce",
     "split_with_sizes_copy",
-    "take",
 }
 
 

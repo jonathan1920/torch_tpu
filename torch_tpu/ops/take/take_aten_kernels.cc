@@ -40,6 +40,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -155,6 +156,7 @@ at::Tensor AtenTake(const at::Tensor& self, const at::Tensor& index) {
 at::Tensor& AtenTakeOut(const at::Tensor& self, const at::Tensor& index,
                         at::Tensor& out) {
   TT_KERNEL(OpName::kTakeOut, _, (self, index, out), {
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, index.sizes()));
     out.copy_(AtenTake(self, index));
     return out;
   });

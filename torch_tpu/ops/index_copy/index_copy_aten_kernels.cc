@@ -29,9 +29,11 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -40,6 +42,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -48,7 +51,6 @@ namespace {
 absl::StatusOr<DeviceBufferRef> IndexCopy(const at::Tensor& self, int64_t dim,
                                           const at::Tensor& index,
                                           const at::Tensor& source,
-                                          at::Tensor& out,
                                           OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(dim,
                       ValidateIndexInputsAndGetDim(self, dim, index, source));
@@ -65,8 +67,8 @@ absl::StatusOr<DeviceBufferRef> IndexCopy(const at::Tensor& self, int64_t dim,
       };
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
-                      ConvertTo<mlir::ElementType>(out.scalar_type()));
-  absl::Span<const int64_t> output_dims = out.sizes();
+                      ConvertTo<mlir::ElementType>(self.scalar_type()));
+  Dimensions output_dims = CopyIntVector(self.sizes());
 
   return DispatchOp<3>(std::move(index_copy_op_builder), {self, index, source},
                        {.out_dtype = output_dtype,
@@ -81,9 +83,10 @@ at::Tensor& AtenIndexCopyOut(const at::Tensor& self, int64_t dim,
                              at::Tensor& out) {
   TT_KERNEL(
       OpName::kIndexCopyOut, param_keys, (self, dim, index, source, out), {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
-            IndexCopy(self, dim, index, source, out, std::move(param_keys)));
+            IndexCopy(self, dim, index, source, std::move(param_keys)));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });
