@@ -524,7 +524,10 @@ torch_tpu_py_library(
     name = "benchmark_function_db",
     testonly = 1,
     srcs = ["benchmark_function_db.py"],
-    deps = ["//shims/torch:pytorch"],
+    deps = [
+        ":common",
+        "//shims/torch:pytorch",
+    ],
 )
 
 torch_tpu_py_library(

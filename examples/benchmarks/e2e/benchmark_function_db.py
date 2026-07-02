@@ -19,16 +19,13 @@ import contextlib
 from typing import Any, Callable
 
 import torch
+from examples.benchmarks.e2e import common
 
 
 @contextlib.contextmanager
-def _sdpa_kernel_if_not_cuda(
-    model: torch.nn.Module, use_math_attention_fallback: bool = False
-):
-  try:
-    is_cuda = next(model.parameters()).device.type == "cuda"
-  except StopIteration:
-    is_cuda = False
+def _sdpa_kernel_if_not_cuda(use_math_attention_fallback: bool = False):
+  device = common.get_torch_device(common.PLATFORM.value)
+  is_cuda = device.type == "cuda"
 
   if is_cuda:
     yield
@@ -65,7 +62,7 @@ def huggingface_eval_factory() -> Callable[..., Any]:
     # torch.inference_mode(). Currently it raises: RuntimeError: Cannot set
     # version_counter for inference tensor in torch.embedding.
     with torch.no_grad():
-      with _sdpa_kernel_if_not_cuda(model):
+      with _sdpa_kernel_if_not_cuda():
         result = model(**inputs)
       if hasattr(result, "logits"):
         result = result.logits
@@ -97,7 +94,7 @@ def huggingface_llm_train_factory(
     optimizer.zero_grad()
     for _ in range(grad_accumulation_steps):
       # Dynamic attention kernel overrides for HuggingFace training.
-      with _sdpa_kernel_if_not_cuda(model, use_math_attention_fallback):
+      with _sdpa_kernel_if_not_cuda(use_math_attention_fallback):
         output = model(**inputs)
         output.loss.backward()
       accumulated_losses.append(output.loss.detach())
@@ -129,7 +126,7 @@ def meta_llama_eval_factory() -> Callable[..., Any]:
     del optimizer  # Unused
     tokens, start_pos = inputs
     with torch.no_grad():
-      with _sdpa_kernel_if_not_cuda(model):
+      with _sdpa_kernel_if_not_cuda():
         result = model(tokens, start_pos)
     return result
 
@@ -162,7 +159,7 @@ def huggingface_diffuser_train_factory(
     accumulated_losses = []
     optimizer.zero_grad()
     for _ in range(grad_accumulation_steps):
-      with _sdpa_kernel_if_not_cuda(model):
+      with _sdpa_kernel_if_not_cuda():
         output = model(**inputs)
       if hasattr(output, "sample"):
         loss = torch.mean(output.sample)
@@ -199,7 +196,7 @@ def timm_eval_factory() -> Callable[..., Any]:
   ) -> torch.Tensor:
     del optimizer  # Unused
     with torch.inference_mode():
-      with _sdpa_kernel_if_not_cuda(model):
+      with _sdpa_kernel_if_not_cuda():
         out = model(inputs)
     return out
 
@@ -226,7 +223,7 @@ def simple_eval_factory() -> Callable[..., Any]:
   ) -> torch.Tensor:
     del optimizer  # Unused
     with torch.inference_mode():
-      with _sdpa_kernel_if_not_cuda(model):
+      with _sdpa_kernel_if_not_cuda():
         if isinstance(inputs, tuple):
           return model(*inputs)
         return model(inputs)
@@ -250,7 +247,7 @@ def simple_train_factory() -> (
       optimizer: torch.optim.Optimizer | None = None,
   ) -> torch.Tensor:
     del optimizer  # Unused in simple training step
-    with _sdpa_kernel_if_not_cuda(model):
+    with _sdpa_kernel_if_not_cuda():
       if isinstance(inputs, tuple):
         y_pred = model(*inputs)
       else:
@@ -287,7 +284,7 @@ def generic_train_factory(
     optimizer.zero_grad()
     for _ in range(grad_accumulation_steps):
       # Forward pass based on input format
-      with _sdpa_kernel_if_not_cuda(model):
+      with _sdpa_kernel_if_not_cuda():
         if isinstance(inputs, dict):
           output = model(**inputs)
         elif isinstance(inputs, tuple):
