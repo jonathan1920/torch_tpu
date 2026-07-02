@@ -26,6 +26,7 @@
 #include "ATen/Context.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBase.h"
+#include "ATen/core/grad_mode.h"
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -133,11 +134,19 @@ enum class SdpaPromotionType {
 // with an optimized kernel. We have a simple huerstic informed by empirical
 // evidence to determine if this will be beneficial for performance.
 // The fallback is to run all the attn math in full precision for accuracy.
-SdpaPromotionType GetSdpaPromotionType(
-    mlir::MlirOp query, mlir::MlirOp key,
-    bool allow_half_precision_reduction_math) {
+SdpaPromotionType GetSdpaPromotionType(mlir::MlirOp query, mlir::MlirOp key,
+                                       bool allow_half_precision_reduction_math,
+                                       bool q_needs_grad) {
   if (allow_half_precision_reduction_math) {
     return SdpaPromotionType::kNone;
+  }
+
+  if (q_needs_grad) {
+    // Since the backward pass recomputes softmax with sum_exp, it will compute
+    // it with slightly different numerics causing non zero Q grad on first
+    // token of causal models. We conservatively limit targeting the custom
+    // kernel in inference only, relaxation may be explored in the future.
+    return SdpaPromotionType::kWholeModule;
   }
 
   auto query_shape = GetTensorTypeOrDie(query).getShape();
@@ -313,9 +322,10 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
   Dimensions out_dims(query.sizes().begin(), query.sizes().end() - 1);
   out_dims.push_back(value.sizes().back());
   Dimensions lse_dims(query.sizes().begin(), query.sizes().end() - 1);
+  const bool q_needs_grad = at::GradMode::is_enabled() && query.requires_grad();
 
   auto op_builder =
-      [out_dims, lse_dims, is_causal, scale](
+      [out_dims, lse_dims, is_causal, scale, q_needs_grad](
           absl::Span<mlir::MlirOp> inputs,
           mlir::MlirBuilder& builder) -> absl::StatusOr<MlirOpResults<2>> {
     mlir::MlirOp query_mlir = inputs[0];
@@ -335,8 +345,9 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
       return GetTensorTypeOrDie(op).getElementType();
     };
 
-    SdpaPromotionType promotion_type = GetSdpaPromotionType(
-        query_mlir, key_mlir, allow_half_precision_reduction_math);
+    SdpaPromotionType promotion_type =
+        GetSdpaPromotionType(query_mlir, key_mlir,
+                             allow_half_precision_reduction_math, q_needs_grad);
 
     auto should_promote_input = [&](mlir::MlirOp op) {
       auto type = get_element_type(op);
