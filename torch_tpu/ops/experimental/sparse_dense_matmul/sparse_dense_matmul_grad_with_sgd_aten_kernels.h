@@ -22,6 +22,38 @@
 
 namespace torch_tpu {
 
+/**
+ * @brief Computes gradients and updates the embedding table using Exact SGD.
+ *
+ *
+ * @details
+ * This is a fused backward pass operator that propagates gradients from
+ * activations back to the embedding table and applies the exact SGD update. It
+ * guarantees mathematical exactness by aggregating gradients for duplicate
+ * embedding IDs within the same batch before updating the parameters.
+ *
+ * @param row_pointers Integer 1D tensor containing indices that represent row
+ * pointers in CSR format.
+ * @param embedding_ids Integer 1D tensor of the local embedding IDs within each
+ * SparseCore to be looked up (local column indices of the embedding matrix).
+ * @param sample_ids Integer 1D tensor of sample/batch indices associated with
+ * each lookup (row indices of the sparse matrix).
+ * @param gains Float 1D tensor of weights/coefficients applied to each
+ * looked-up embedding vector.
+ * @param embedding_table The dense 2D tensor containing the actual embedding
+ * vectors of shape [V, D].
+ * @param activations_grad Gradients of the loss with respect to the output
+ * activations, shape [B, D] where B is the device_batch_size.
+ * @param learning_rate Learning rate scalar or tensor (applied to all updates).
+ * @param device_batch_size The logical batch size processed by this device.
+ * @param max_ids_per_partition Hardware constraint: Maximum total IDs allowed
+ * per processing partition.
+ * @param max_unique_ids_per_partition Hardware constraint: Maximum unique IDs
+ * allowed per processing partition, influencing deduplication.
+ *
+ * @return The updated \p embedding_table tensor.
+ */
+
 at::Tensor AtenSparseDenseMatmulGradWithSgd(
     const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
     const at::Tensor& sample_ids, const at::Tensor& gains,
