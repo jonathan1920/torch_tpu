@@ -77,6 +77,7 @@ _HF_T5_BASE_BENCHMARK_NAME = "hf_t5_base"
 _HF_BART_BASE_BENCHMARK_NAME = "hf_bart_base"
 _HF_STARCODER2_3B_BENCHMARK_NAME = "hf_starcoder2_3b"
 
+
 class BenchmarkTest(test_utils.BenchmarkTest):
   """Tests for end-to-end model performance benchmarks."""
 
@@ -569,8 +570,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="google/gemma-4-31B",
-            sequence_length=512,
-            batch_size=1,
+            sequence_length=2048,
+            batch_size=8,
             custom_kwargs={
                 "modify_config_hook": _modify_gemma4_config_to_small
             },
@@ -598,8 +599,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         is_training=True,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="google/gemma-4-31B",
-            sequence_length=512,
-            batch_size=1,
+            sequence_length=1024,
+            batch_size=4,
             custom_kwargs={
                 "modify_config_hook": _modify_gemma4_config_to_small
             },
@@ -657,8 +658,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="google/gemma-4-e2b",
-            sequence_length=512,
-            batch_size=1,
+            sequence_length=2048,
+            batch_size=8,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         eval_factory=benchmark_function_db.huggingface_eval_factory,
@@ -1028,8 +1029,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         is_training=True,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="google/gemma-4-e2b",
-            sequence_length=512,
-            batch_size=1,
+            sequence_length=1024,
+            batch_size=4,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=functools.partial(
@@ -1844,6 +1845,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the forward pass of NVIDIA-Nemotron-3-Nano-30B-A3B-BF16."""
     if self._is_torchax_backend():
       self.skipTest("Not supported on TorchAX")
+
     def modify_config_hook(config):
       config.layers_block_type = config.layers_block_type[:6]
       return config
