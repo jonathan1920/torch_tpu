@@ -336,7 +336,9 @@ class TpuBackend:
           fw_compiler=fw_compiler,
           bw_compiler=bw_compiler,
           keep_inference_input_mutations=False,
-      )(graph_module, example_inputs)
+      )(
+          graph_module, example_inputs
+      )  # pytype: disable=wrong-arg-types
 
       if captured_entry is not None and captured_entry[0] is not None:
         entry = captured_entry[0]
