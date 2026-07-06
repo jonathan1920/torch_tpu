@@ -3174,7 +3174,6 @@ class TestOps(TorchTpuTestBase):
           exclude_dtypes=(torch.int64,),
       )
 
-  @absltest.skip("EFFICIENT_ATTENTION is not supported on TPU.")
   # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
   # and dtype only causes comparison of outputs of different tests.
   @op_testing.skip_if_torch_tpu_vs_gpu_mode

@@ -84,6 +84,15 @@ AtenScaledDotProductEfficientAttention(
     const std::optional<at::Tensor>& attn_bias, bool compute_log_sumexp,
     double dropout_p, bool is_causal, std::optional<double> scale);
 
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
+AtenScaledDotProductEfficientAttentionBackward(
+    const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
+    const at::Tensor& value, const at::Tensor& attn_bias, const at::Tensor& out,
+    const at::Tensor& logsumexp, const at::Tensor& philox_seed,
+    const at::Tensor& philox_offset, double dropout_p,
+    std::array<bool, 4> grad_input_mask, bool is_causal,
+    std::optional<double> scale);
+
 std::tuple<at::Tensor, at::Tensor> AtenScaledDotProductFlashAttention(
     const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
     double dropout_p, bool is_causal,

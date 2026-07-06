@@ -19,7 +19,6 @@
 #include <array>
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -31,14 +30,13 @@
 #include "ATen/ops/zeros.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/flags/flag.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/core/DeviceType.h"
 #include "c10/core/ScalarType.h"
 #include "c10/util/Exception.h"
-#include "c10/util/StringUtil.h"
+#include "c10/util/Optional.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -51,9 +49,9 @@
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
-#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/custom_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
+#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/helpers.h"
@@ -99,7 +97,7 @@ absl::StatusOr<std::string_view> GetSdpaForwardKernel(at::ScalarType dtype,
   auto it = kKernelMap->find({dtype, is_causal});
   if (it == kKernelMap->end()) {
     return TT_ERROR(error::kPythonNotImplementedError)
-           << "Unsupported dtype for SDPA custom kernel";
+           << "unsupported dtype for sdpa custom kernel";
   }
   return it->second;
 }
@@ -130,7 +128,7 @@ absl::StatusOr<std::string_view> GetSdpaBackwardKernel(at::ScalarType dtype,
   auto it = kKernelMap->find({dtype, is_causal});
   if (it == kKernelMap->end()) {
     return TT_ERROR(error::kPythonNotImplementedError)
-           << "Unsupported dtype for SDPA custom kernel";
+           << "unsupported dtype for sdpa custom kernel";
   }
   return it->second;
 }
@@ -539,6 +537,37 @@ AtenScaledDotProductEfficientAttention(
                                      std::move(philox_seed),
                                      std::move(philox_offset));
             });
+}
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
+AtenScaledDotProductEfficientAttentionBackward(
+    const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
+    const at::Tensor& value, const at::Tensor& attn_bias, const at::Tensor& out,
+    const at::Tensor& logsumexp, const at::Tensor& philox_seed,
+    const at::Tensor& philox_offset, double dropout_p,
+    std::array<bool, 4> grad_input_mask, bool is_causal,
+    std::optional<double> scale) {
+  TT_KERNEL(
+      OpName::kScaledDotProductEfficientAttentionBackward, _,
+      (grad_out, query, key, value, attn_bias, out, logsumexp, philox_seed,
+       philox_offset, IgnoreInCacheKey(dropout_p, "Unused"),
+       IgnoreInCacheKey(grad_input_mask, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(is_causal, "Delegates to implementation"),
+       IgnoreInCacheKey(scale, "Delegates to implementation")),
+      {
+        TT_ASSIGN_OR_THROW(auto result,
+                           ScaledDotProductFusedAttentionBackwardImpl(
+                               grad_out, query, key, value, scale, is_causal));
+
+        const at::Tensor zero = AtenEfficientZeroTensor(
+            {0}, grad_out.scalar_type(), /*layout_opt=*/c10::nullopt,
+            grad_out.device(), /*pin_memory_opt=*/c10::nullopt);
+
+        return std::make_tuple(grad_input_mask[0] ? std::get<0>(result) : zero,
+                               grad_input_mask[1] ? std::get<1>(result) : zero,
+                               grad_input_mask[2] ? std::get<2>(result) : zero,
+                               zero);
+      });
 }
 
 std::tuple<at::Tensor, at::Tensor> AtenScaledDotProductFlashAttention(
