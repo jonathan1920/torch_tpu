@@ -37,6 +37,7 @@
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/native_scan_support.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
@@ -491,8 +492,11 @@ absl::StatusOr<DynamicMlirOpResults> BuildScanShlo(
   };
 
   // Associative scan -> chlo.ScanOp (native scan emitter). This overload's body
-  // takes size-1 (non-squeezed) slices and returns the outputs only.
-  if (options.is_associative) {
+  // takes size-1 (non-squeezed) slices and returns the outputs only. Falls back
+  // to the while loop below when the compiler (libtpu) is too old to compile
+  // the native scan emitter (b/529376045); the results are identical either
+  // way.
+  if (options.is_associative && NativeScanEmitterSupported()) {
     const ScanOptions emit_options = {.direction = options.direction,
                                       .should_squeeze = false,
                                       .is_associative = true};
@@ -557,8 +561,10 @@ absl::StatusOr<DynamicMlirOpResults> BuildScanShlo(
   }
 
   // Associative scans go to the native scan emitter via chlo.ScanOp;
-  // non-associative scans use the StableHLO while loop below.
-  if (options.is_associative) {
+  // non-associative scans use the StableHLO while loop below. When the compiler
+  // (libtpu) is too old to compile the native scan emitter, associative scans
+  // also fall back to the while loop (b/529376045); the results are identical.
+  if (options.is_associative && NativeScanEmitterSupported()) {
     return BuildAssociativeScanChlo(builder, scan_inputs, scan_dim,
                                     num_scan_inputs, carry_inits, output_inits,
                                     body_builder, options);

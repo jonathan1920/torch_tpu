@@ -112,6 +112,7 @@ torch_tpu_cc_library(
     deps = [
         ":op_builder_utils",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:native_scan_support",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -132,7 +133,9 @@ torch_tpu_cc_test(
         ":op_builder_utils",
         ":scan_builder",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:native_scan_support",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",

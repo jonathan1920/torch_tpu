@@ -29,6 +29,7 @@
 // clang-format on
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "gmock/gmock.h"
@@ -58,6 +59,7 @@
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "stablehlo/transforms/Passes.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/native_scan_support.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/scan_builder.h"
 #include "xla/tsl/platform/statusor.h"
@@ -403,6 +405,43 @@ TEST_P(ScanBuilderTest, StaticShape1D) {
                           Scan(function_builder, input, /*dim=*/0, {carry_init},
                                {output_init}, CreateAddBodyBuilder()));
   ASSERT_EQ(result.size(), 1);
+
+  const mlir::MlirOp out(builder(), result[0].getValue());
+  mlir::func::Return(function_builder, out);
+  const mlir::OwningOpRef<mlir::ModuleOp> module = module_builder().build();
+  EvaluateAndVerifyOutputs(*module, {1, 3, 6, 10});
+}
+
+// When the compiler (libtpu) is too old to compile the native scan emitter, an
+// associative scan must fall back to the StableHLO while loop (b/529376045)
+// instead of emitting chlo.ScanOp, and still produce the correct result. Not
+// parameterized on IsEmitter(): it drives the emitter path explicitly and
+// toggles the global gate. Independent of the test parameter, so running it
+// under both instantiations is harmless.
+TEST_P(ScanBuilderTest, NativeScanUnsupportedFallsBackToWhileLoop) {
+  // Restore the default (supported) even if an assertion below fails, so this
+  // process-global gate never leaks into other tests.
+  const absl::Cleanup restore = [] { SetNativeScanEmitterSupported(true); };
+  SetNativeScanEmitterSupported(false);
+
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+  const mlir::MlirOp input =
+      MakeDenseConstant(function_builder, {4}, {1, 2, 3, 4});
+  const mlir::MlirOp output_init = MakeConstant(function_builder, 0, i32, {4});
+  const mlir::MlirOp carry_init = MakeConstant(function_builder, 0, i32, {1});
+
+  // Request the native scan emitter explicitly; the gate must downgrade it.
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults result,
+      BuildScanShlo(function_builder, input, /*dim=*/0, {carry_init},
+                    {output_init}, CreateAddBodyBuilder(),
+                    ScanOptions{.is_associative = true}));
+  ASSERT_EQ(result.size(), 1);
+
+  mlir::Operation* const op = result[0].getValue().getDefiningOp();
+  EXPECT_TRUE(mlir::isa<mlir::stablehlo::WhileOp>(op));
+  EXPECT_FALSE(mlir::isa<mlir::chlo::ScanOp>(op));
 
   const mlir::MlirOp out(builder(), result[0].getValue());
   mlir::func::Return(function_builder, out);

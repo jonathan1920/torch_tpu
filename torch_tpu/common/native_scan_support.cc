@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Google LLC
+ * Copyright 2026 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,19 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "pybind11/pybind11.h"
+
 #include "torch_tpu/common/native_scan_support.h"
-#include "torch_tpu/common/utils.h"
+
+#include <atomic>
 
 namespace torch_tpu {
+namespace {
 
-PYBIND11_MODULE(env, m) {
-  m.attr("IS_INTERNAL_TORCH_TPU") = static_cast<bool>(TT_IS_INTERNAL_TORCH_TPU);
-  // Gates whether cumulative ops emit the native scan emitter (chlo.ScanOp);
-  // set from Python at import time based on the libtpu version (b/529376045).
-  m.def("set_native_scan_emitter_supported", &SetNativeScanEmitterSupported,
-        pybind11::arg("supported"));
-  m.def("native_scan_emitter_supported", &NativeScanEmitterSupported);
+std::atomic<bool>& SupportedFlag() {
+  static std::atomic<bool> supported(true);
+  return supported;
+}
+
+}  // namespace
+
+bool NativeScanEmitterSupported() {
+  return SupportedFlag().load(std::memory_order_relaxed);
+}
+
+void SetNativeScanEmitterSupported(bool supported) {
+  SupportedFlag().store(supported, std::memory_order_relaxed);
 }
 
 }  // namespace torch_tpu

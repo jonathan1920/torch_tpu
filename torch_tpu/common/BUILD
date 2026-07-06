@@ -56,6 +56,12 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "native_scan_support",
+    srcs = ["native_scan_support.cc"],
+    hdrs = ["native_scan_support.h"],
+)
+
+torch_tpu_cc_library(
     name = "dtype",
     srcs = ["dtype.cc"],
     hdrs = ["dtype.h"],
