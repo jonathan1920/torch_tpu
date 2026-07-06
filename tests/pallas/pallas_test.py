@@ -517,7 +517,7 @@ class TestPallasKernels(absltest.TestCase):
     keep_unused so the operand is retained.
     """
 
-    def ignore_second(x: jax.Array, y: jax.Array) -> jax.Array:
+    def ignore_second(x: jax.Array, y: jax.Array) -> jax.Array:  # pylint: disable=unused-argument
       # y is intentionally unused; it must not be pruned from the kernel.
       return jax.numpy.multiply(x, 2.0)
 
