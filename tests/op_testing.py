@@ -276,7 +276,6 @@ class OutVariantType(enum.Enum):
 # crashes, or incorrect decomposition.
 # TODO: fix these ops and remove them from this list.
 _OPS_WITHOUT_OUT_SHAPE_RESIZING: Final[set[str]] = {
-    "_log_softmax_backward_data",
     "addcdiv",
     "addcmul",
     "bernoulli",
@@ -290,9 +289,7 @@ _OPS_WITHOUT_OUT_SHAPE_RESIZING: Final[set[str]] = {
     "linalg.lu_factor_ex",
     "linalg.lu_solve",
     "linalg.solve_ex",
-    "log_softmax",
     "lu_unpack",
-    "split_with_sizes_copy",
 }
 
 
