@@ -60,6 +60,22 @@ _HF_PHI_3_MINI_4K_INSTRUCT_BENCHMARK_NAME = "hf_phi_3_mini_4k_instruct"
 _HF_RESNET_50_BENCHMARK_NAME = "hf_resnet_50"
 _TIMM_VIT_SMALL_DINO_BENCHMARK_NAME = "timm_vit_small_dino"
 _HF_NEMOTRON_3_NANO_30B_BENCHMARK_NAME = "hf_nemotron_3_nano_30b"
+_HF_PALIGEMMA_3B_BENCHMARK_NAME = "hf_paligemma_3b"
+_HF_MLLAMA_11B_BENCHMARK_NAME = "hf_mllama_11b"
+_HF_LLAVA_7B_BENCHMARK_NAME = "hf_llava_7b"
+_HF_CLIP_BASE_BENCHMARK_NAME = "hf_clip_base"
+_HF_VIT_BASE_BENCHMARK_NAME = "hf_vit_base"
+_HF_SIGLIP_BASE_BENCHMARK_NAME = "hf_siglip_base"
+_HF_DINOV2_BASE_BENCHMARK_NAME = "hf_dinov2_base"
+_HF_DEIT_BASE_BENCHMARK_NAME = "hf_deit_base"
+_HF_SWIN_BASE_BENCHMARK_NAME = "hf_swin_base"
+_HF_SEGFORMER_B2_BENCHMARK_NAME = "hf_segformer_b2"
+_HF_WAV2VEC2_BASE_BENCHMARK_NAME = "hf_wav2vec2_base"
+_HF_WHISPER_BASE_BENCHMARK_NAME = "hf_whisper_base"
+_HF_BERT_BASE_BENCHMARK_NAME = "hf_bert_base"
+_HF_T5_BASE_BENCHMARK_NAME = "hf_t5_base"
+_HF_BART_BASE_BENCHMARK_NAME = "hf_bart_base"
+_HF_STARCODER2_3B_BENCHMARK_NAME = "hf_starcoder2_3b"
 
 class BenchmarkTest(test_utils.BenchmarkTest):
   """Tests for end-to-end model performance benchmarks."""
@@ -648,6 +664,356 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         eval_factory=benchmark_function_db.huggingface_eval_factory,
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_paligemma_3b_forward(self, run_mode):
+    """Tests the forward pass of PaliGemma-3B."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/paligemma-3b-pt-224",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_PALIGEMMA_3B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_mllama_11b_forward(self, run_mode):
+    """Tests the forward pass of mLlama-11B-Vision."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="meta-llama/Llama-3.2-11B-Vision",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_MLLAMA_11B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_llava_7b_forward(self, run_mode):
+    """Tests the forward pass of LLaVA-1.5-7B."""
+    # FIXME: LLaVA requires multi-modal input dictionary key mapping (pixel_values and image_position_ids).
+    self.skipTest("LLaVA requires specialized multimodal input builder.")
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="liuhaotian/llava-v1.5-7b",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_LLAVA_7B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_clip_base_forward(self, run_mode):
+    """Tests the forward pass of CLIP-ViT-Base."""
+    # FIXME: CLIP dual-encoder architecture requires both text (input_ids) and vision (pixel_values) inputs.
+    self.skipTest("CLIP requires dual-modality (text+vision) input generator.")
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="openai/clip-vit-base-patch16",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_CLIP_BASE_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_vit_base_forward(self, run_mode):
+    """Tests the forward pass of ViT-Base."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/vit-base-patch16-224",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_VIT_BASE_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_siglip_base_forward(self, run_mode):
+    """Tests the forward pass of SigLIP-Base."""
+    # FIXME: SigLIP vision-language model requires pixel_values tensor input.
+    self.skipTest("SigLIP requires vision pixel_values input generator.")
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/siglip-base-patch16-224",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_SIGLIP_BASE_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_dinov2_base_forward(self, run_mode):
+    """Tests the forward pass of DINOv2-Base."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="facebook/dinov2-base",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_DINOV2_BASE_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_deit_base_forward(self, run_mode):
+    """Tests the forward pass of DeiT-Base."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="facebook/deit-base-patch16-224",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_DEIT_BASE_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_swin_base_forward(self, run_mode):
+    """Tests the forward pass of Swin-Base."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="microsoft/swin-base-patch4-window7-224",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_SWIN_BASE_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_segformer_b2_forward(self, run_mode):
+    """Tests the forward pass of SegFormer-B2."""
+    # FIXME: SegFormer vision encoder requires pixel_values image tensor input.
+    self.skipTest("SegFormer requires vision pixel_values input generator.")
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nvidia/segformer-b2-finetuned-ade-512-512",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_SEGFORMER_B2_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_wav2vec2_base_forward(self, run_mode):
+    """Tests the forward pass of Wav2Vec2-Base."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="facebook/wav2vec2-base-960h",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(
+        config, _HF_WAV2VEC2_BASE_BENCHMARK_NAME
+    )
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_whisper_base_forward(self, run_mode):
+    """Tests the forward pass of Whisper-Base."""
+    # FIXME: Whisper speech-to-text encoder requires input_features audio spectrogram input.
+    self.skipTest("Whisper requires audio input_features generator.")
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="openai/whisper-base",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_WHISPER_BASE_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_bert_base_forward(self, run_mode):
+    """Tests the forward pass of BERT-Base."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="bert-base-uncased",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_BERT_BASE_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_t5_base_forward(self, run_mode):
+    """Tests the forward pass of T5-Base."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="t5-base",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_T5_BASE_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_bart_base_forward(self, run_mode):
+    """Tests the forward pass of BART-Base."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="facebook/bart-base",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_BART_BASE_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_starcoder2_3b_forward(self, run_mode):
+    """Tests the forward pass of StarCoder2-3B."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="bigcode/starcoder2-3b",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(
+        config, _HF_STARCODER2_3B_BENCHMARK_NAME
+    )
 
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gemma_4_e2b_train_1_step(self, run_mode: common.RunMode) -> None:
