@@ -602,7 +602,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             sequence_length=1024,
             batch_size=4,
             custom_kwargs={
-                "modify_config_hook": _modify_gemma4_config_to_small
+                "modify_config_hook": _modify_gemma4_config_to_small,
+                "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
             },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
@@ -634,7 +635,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             sequence_length=512,
             batch_size=1,
             custom_kwargs={
-                "modify_config_hook": _modify_gemma4_config_to_small
+                "modify_config_hook": _modify_gemma4_config_to_small,
+                "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
             },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
@@ -1031,6 +1033,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="google/gemma-4-e2b",
             sequence_length=1024,
             batch_size=4,
+            custom_kwargs={
+                "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=functools.partial(
@@ -1057,6 +1062,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="google/gemma-4-e2b",
             sequence_length=512,
             batch_size=1,
+            custom_kwargs={
+                "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=functools.partial(

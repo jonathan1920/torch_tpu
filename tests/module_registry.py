@@ -642,9 +642,7 @@ def _generate_transformers_inputs(
     )
 
     if model_type.startswith("gemma4"):
-      if hasattr(config, "output_proj_dims"):
-        delattr(config, "output_proj_dims")
-      image_size = _parse_image_size(config)
+      image_size = _parse_image_size(config, default_size=288)
       _generate_gemma4_inputs(
           config, actual_shape[0], image_size, device, input_kwargs
       )

@@ -318,6 +318,9 @@ def huggingface_llm_model_builder(
   # control-flow tracing errors in masking_utils.py while keeping identical
   # benchmark workload/math.
   example_inputs.pop("attention_mask", None)
+  if model_and_input_args.custom_kwargs.get("disable_vision_inputs", False):
+    example_inputs.pop("pixel_values", None)
+    example_inputs.pop("image_position_ids", None)
 
   if is_training:
     vocab_size = get_vocab_size(model_cpu.config)
