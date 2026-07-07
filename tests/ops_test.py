@@ -1863,9 +1863,11 @@ class TestOps(TorchTpuTestBase):
         # TODO(b/495524286): Failed to generate integral golden results on GPU
         # GPU (CUDA) does not support integral dtypes for baddbmm.
         exclude_dtypes={
+            "cpu": (torch.bool,),
             "gpu": INTEGRAL_DTYPES,
         },
         exclude_inplace_dtypes={
+            "cpu": (torch.bool,),
             "gpu": INTEGRAL_DTYPES,
         },
     )

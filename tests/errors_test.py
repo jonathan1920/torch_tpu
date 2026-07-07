@@ -5799,7 +5799,9 @@ Supported combinations for non-constant padding:
     out = torch.empty(2, device=device)
     with et.assert_raises_message(
         RuntimeError,
-        gpu="""normal expects all elements of std >= 0.0""",
+        gpu="""CUDA error: device-side assert triggered
+Search for `cudaErrorAssert' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+Device-side assertion tracking was not enabled by user.""",
         tpu="""normal(): expected all elements of std >= 0.0, got min element: -1""",
     ):
       torch.normal(
