@@ -155,8 +155,8 @@ class ModuleListModule(torch.nn.Module, IntWeightInitMixin):
     """See IntWeightInitMixin."""
     # Explicitly initialize Linear layers in the ModuleList
     linear1, _, linear2 = self.layers
-    self._init_linear(linear1)
-    self._init_linear(linear2)
+    self._init_linear(linear1)  # pyrefly: ignore[bad-argument-type]
+    self._init_linear(linear2)  # pyrefly: ignore[bad-argument-type]
 
 
 class UnusualSequence:
@@ -242,7 +242,7 @@ class CrashBackwardFunction(torch.autograd.Function):
 
   # Cannot avoid staticmethod because torch.autograd.Function requires it.
   @staticmethod
-  def backward(ctx: Any, grad_output: Any) -> None:
+  def backward(ctx: Any, grad_output: Any) -> None:  # pyrefly: ignore[bad-override]
     """The backward pass intentionally raises an exception.
 
     Args:

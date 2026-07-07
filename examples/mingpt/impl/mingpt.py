@@ -140,17 +140,17 @@ class GPT(nn.Module):
   def get_default_config():
     C = CN()
     # either model_type or (n_layer, n_head, n_embd) must be given in the config
-    C.model_type = 'gpt'
-    C.n_layer = None
-    C.n_head = None
-    C.n_embd = None
+    C.model_type = 'gpt'  # pyrefly: ignore[missing-attribute]
+    C.n_layer = None  # pyrefly: ignore[missing-attribute]
+    C.n_head = None  # pyrefly: ignore[missing-attribute]
+    C.n_embd = None  # pyrefly: ignore[missing-attribute]
     # these options must be filled in externally
-    C.vocab_size = None
-    C.block_size = None
+    C.vocab_size = None  # pyrefly: ignore[missing-attribute]
+    C.block_size = None  # pyrefly: ignore[missing-attribute]
     # dropout hyperparameters
-    C.embd_pdrop = 0.1
-    C.resid_pdrop = 0.1
-    C.attn_pdrop = 0.1
+    C.embd_pdrop = 0.1  # pyrefly: ignore[missing-attribute]
+    C.resid_pdrop = 0.1  # pyrefly: ignore[missing-attribute]
+    C.attn_pdrop = 0.1  # pyrefly: ignore[missing-attribute]
     return C
 
   def __init__(self, config, device):

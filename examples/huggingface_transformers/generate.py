@@ -104,7 +104,7 @@ def _get_model_and_tokenizer(model_id: str, device: Device) -> Tuple[
 
   logging.info("Model loaded on %s", device)
   logging.info("Number of parameters: %s", model.num_parameters())
-  return model, tokenizer, device
+  return model, tokenizer, device  # pyrefly: ignore[bad-return]
 
 
 def _check_prompt_length(prompt_token_count: int, max_tokens: int):

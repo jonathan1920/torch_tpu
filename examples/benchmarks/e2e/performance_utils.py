@@ -285,9 +285,9 @@ def run_single_process_benchmark(
 
   use_torch_compile = common.is_torch_compile(config.run_mode)
   if config.is_training:
-    func = config.train_factory()
+    func = config.train_factory()  # pyrefly: ignore[not-callable]
   else:
-    func = config.eval_factory()
+    func = config.eval_factory()  # pyrefly: ignore[not-callable]
   model_and_input = config.model_and_input_factory(
       model_and_input_args=config.model_and_input_args,
       device=device,
@@ -465,7 +465,7 @@ def _run_distributed_benchmark(
     # A single B200 device is roughly equivalent to two GFC devices,
     # so double the batch size on B200 to make a fairer comparison.
     config.model_and_input_args.batch_size = (
-        config.model_and_input_args.batch_size * 2
+        config.model_and_input_args.batch_size * 2  # pyrefly: ignore[unsupported-operation]
     )
     distributed_utils.dist_run(
         4,

@@ -503,7 +503,7 @@ class ForEachDynamicOpInfo(DynamicOpInfo):
         rhs_vals = args[0] if len(args) >= 1 else None
         ehs_vals = args[1] if len(args) >= 2 else None
         TernaryElementwiseDynamicOpInfo(self.op_info).mark_dynamic(
-            seed, value, (rhs_vals[idx], ehs_vals[idx])
+            seed, value, (rhs_vals[idx], ehs_vals[idx])  # pyrefly: ignore[unsupported-operation]
         )
         continue
 

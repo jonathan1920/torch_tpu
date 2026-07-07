@@ -549,7 +549,7 @@ def meta_llama_model_builder(
   # restricted to that host. Since Data Parallelism requires no
   # communication in a forward pass, this means no cross-host communication
   # will occur in such cases.
-  mp_size = math.gcd(world_size, args.n_kv_heads)
+  mp_size = math.gcd(world_size, args.n_kv_heads)  # pyrefly: ignore[bad-argument-type]
 
   # Ensure model parallel is initialized
   if not fairscale_init.model_parallel_is_initialized():
@@ -1438,7 +1438,7 @@ def ml_layer_model_builder(
   elif model_name == "Qwen3RotaryEmbedding":
     config = configuration_qwen3.Qwen3Config(
         max_position_embeddings=kwargs["max_position_embeddings"],
-        rope_theta=kwargs["rope_theta"],
+        rope_theta=kwargs["rope_theta"],  # pyrefly: ignore[unexpected-keyword]
     )
     model = modeling_qwen3.Qwen3RotaryEmbedding(config)
     head_dim = kwargs["head_dim"]
@@ -1885,7 +1885,7 @@ def _apply_tensor_parallel_plan(
       continue
 
     if isinstance(child, torch.nn.Linear):
-      for pattern, tp_type in tp_plan.items():
+      for pattern, tp_type in tp_plan.items():  # pyrefly: ignore[missing-attribute]
         if re.fullmatch(pattern, full_name):
           original_linear = child
           new_linear = None

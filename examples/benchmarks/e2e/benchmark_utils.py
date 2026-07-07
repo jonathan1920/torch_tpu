@@ -462,9 +462,9 @@ def _warmup_run(
     )
 
   return _WarmupRunResult(
-      num_warmup_steps=num_warmup_steps,
+      num_warmup_steps=num_warmup_steps,  # pyrefly: ignore[bad-argument-type]
       first_step_time_seconds=timings[0],
-      warmup_overhead_seconds=_get_warmup_overhead(timings, num_warmup_steps),
+      warmup_overhead_seconds=_get_warmup_overhead(timings, num_warmup_steps),  # pyrefly: ignore[bad-argument-type]
       warmup_session_xprof_url=warmup_session_xprof_url,
   )
 
@@ -818,7 +818,7 @@ def run_quality_benchmark(
         benchmark_model, model_compile, dataset_loader, benchmark_metric
     )
     # Add metric to score map. Furthermore, it materializes the score.
-    metric_scores[benchmark_metric.get_name()] = score.item()
+    metric_scores[benchmark_metric.get_name()] = score.item()  # pyrefly: ignore[missing-attribute]
   logging.info("Metric scores (device: %s): %s", device, metric_scores)
 
   return QualityBenchmarkResult(

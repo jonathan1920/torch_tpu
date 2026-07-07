@@ -463,7 +463,7 @@ class PerfResult:
   def __repr__(self) -> str:
     return self.__str__()
 
-  def __eq__(self, other: "PerfResult") -> bool:
+  def __eq__(self, other: "PerfResult") -> bool:  # pyrefly: ignore[bad-override]
     return (
         self.op_name == other.op_name
         and self.dtype == other.dtype
@@ -2098,10 +2098,10 @@ class TorchTpuTestBase(TestCase):
       self.assert_close(
           golden_result=golden_result_i,
           torch_tpu_result=torch_tpu_result_tuple[i],
-          check_value=check_value[i],
+          check_value=check_value[i],  # pyrefly: ignore[bad-index]
           check_dtype=check_dtype,
           preamble=preamble,
-          **accuracy_override,
+          **accuracy_override,  # pyrefly: ignore[bad-argument-type]
       )
 
   def _sub_test(
@@ -2806,19 +2806,19 @@ def set_up_test_module() -> None:
   global _RANDOM_SEED
   if absltest.FLAGS["test_random_seed"].present:
     # The user explicitly passed --test_random_seed=N, so we use that value.
-    _RANDOM_SEED = absltest.FLAGS.test_random_seed
+    _RANDOM_SEED = absltest.FLAGS.test_random_seed  # pyrefly: ignore[bad-assignment]
   elif (
       _torch_tpu_vs_cpu_mode()
       and _device_ops_backend._is_optimized_build()  # pylint: disable=protected-access
   ):
     # In postsubmit (optimized build), we keep the random time-based seed
     # to continuously explore different inputs and maintain test coverage.
-    _RANDOM_SEED = time.time_ns() % 100000
+    _RANDOM_SEED = time.time_ns() % 100000  # pyrefly: ignore[bad-assignment]
   else:
     # The user did not pass --test_random_seed and we are in presubmit
     # (fastbuild) or other modes, so we pick a fixed seed to prevent flaky
     # tests.
-    _RANDOM_SEED = 1234
+    _RANDOM_SEED = 1234  # pyrefly: ignore[bad-assignment]
 
   # Set the random seed for Python and Torch.
   _seed_rngs(_RANDOM_SEED)

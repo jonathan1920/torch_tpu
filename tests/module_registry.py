@@ -849,7 +849,7 @@ class TransformersProvider(BaseProvider):
     config = None
 
     if self.has_cache_dir:
-      model_dir_or_repo_id = self._base_path / name
+      model_dir_or_repo_id = self._base_path / name  # pyrefly: ignore[unsupported-operation]
       try:
         if model_dir_or_repo_id.exists():
           config = transformers.AutoConfig.from_pretrained(
@@ -911,7 +911,7 @@ class TransformersProvider(BaseProvider):
       else:
         model_cls = transformers.AutoModel
 
-      model_fn = lambda: model_cls.from_pretrained(
+      model_fn = lambda: model_cls.from_pretrained(  # pyrefly: ignore[missing-attribute]
           str(model_dir_or_repo_id), **kwargs
       )
 
@@ -1027,7 +1027,7 @@ class DiffusersProvider(BaseProvider):
     raw_config = None
 
     if self.has_cache_dir:
-      model_path = self._base_path / name
+      model_path = self._base_path / name  # pyrefly: ignore[unsupported-operation]
       try:
         if model_path.exists():
           raw_config = auto_model.AutoModel.load_config(
@@ -1069,7 +1069,7 @@ class DiffusersProvider(BaseProvider):
             "modify_config_hook is not supported when load_weights is True."
         )
       raw_config = modify_config_hook(raw_config)
-    config_dict = dict(raw_config)
+    config_dict = dict(raw_config)  # pyrefly: ignore[no-matching-overload]
 
     def _module_factory():
       if load_weights:

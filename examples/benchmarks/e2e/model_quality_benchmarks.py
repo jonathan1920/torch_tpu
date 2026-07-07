@@ -338,7 +338,7 @@ class BenchmarkTest(absltest.TestCase):
 
 
 if __name__ == "__main__":
-  mp.set_start_method("spawn")
+  mp.set_start_method("spawn")  # pyrefly: ignore[missing-attribute]
   # g3_multiprocessing is required to run absltest.main() in a multiprocess
   # environment. It doesn't affect single process runs.
   # See: go/g3_multiprocessing#resolution.
