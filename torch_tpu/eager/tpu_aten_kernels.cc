@@ -317,6 +317,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kAddRelu_Tensor>(m, AtenAddRelu_Tensor);
   ImplStable<OpName::kAddcdivOut>(m, AtenAddcdivOut);
   ImplStable<OpName::kAddcmulOut>(m, AtenAddcmulOut);
+  ImplStable<OpName::kAddmmActivationOut>(m, AtenAddmmActivationOut);
   ImplStable<OpName::kAddmmDtype>(m, AtenAddmmDtype);
   ImplStable<OpName::kAddmmDtypeOut>(m, AtenAddmmDtypeOut);
   ImplStable<OpName::kAddmmOut>(m, AtenAddmmOut);

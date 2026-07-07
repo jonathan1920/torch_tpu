@@ -2019,8 +2019,8 @@ Device-side assertion tracking was not enabled by user.""",
     mat1 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     mat2 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     tpu_msg = (
-        "addmm(): input and out tensors expected to have the same dtype, got"
-        " input dtype float32 and out dtype int32"
+        "addmm(): expected input and out tensors to have the same dtype, got"
+        " float32 vs int32"
     )
     gpu_msg = "Expected out tensor to have dtype float, but got int instead"
 
@@ -2058,6 +2058,116 @@ Device-side assertion tracking was not enabled by user.""",
         message_reviewed_by="wan",
     ):
       torch.addmm(input_, mat1, mat2, out_dtype=out_dtype)
+
+  def test__addmm_activation_mismatched_inner_dimensions(self):
+    input_ = torch.ones(3, 2, device=et.device(), dtype=torch.float32)
+    mat1 = torch.ones(3, 4, device=et.device(), dtype=torch.float32)
+    mat2 = torch.ones(5, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""mat1 and mat2 shapes cannot be multiplied (3x4 and 5x2)""",
+    ):
+      torch.ops.aten._addmm_activation(
+          input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False
+      )
+
+  def test__addmm_activation_out_mismatched_inner_dimensions(self):
+    input_ = torch.ones(3, 2, device=et.device(), dtype=torch.float32)
+    mat1 = torch.ones(3, 4, device=et.device(), dtype=torch.float32)
+    mat2 = torch.ones(5, 2, device=et.device(), dtype=torch.float32)
+    out = torch.empty(3, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""mat1 and mat2 shapes cannot be multiplied (3x4 and 5x2)""",
+        tpu="""addmm_activation(): size 1 of mat1 must be same as size 0 of mat2, got 4 and 5 respectively""",
+    ):
+      torch.ops.aten._addmm_activation.out(
+          input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False, out=out
+      )
+
+  def test__addmm_activation_non_matrix_mat1(self):
+    input_ = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    mat1 = torch.ones(2, device=et.device(), dtype=torch.float32)
+    mat2 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""mat1 must be a matrix, got 1-D tensor""",
+    ):
+      torch.ops.aten._addmm_activation(
+          input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False
+      )
+
+  def test__addmm_activation_out_non_matrix_mat1(self):
+    input_ = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    mat1 = torch.ones(2, device=et.device(), dtype=torch.float32)
+    mat2 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    out = torch.empty(2, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""mat1 must be a matrix, got 1-D tensor""",
+        tpu="""addmm_activation(): mat1 must be a matrix, got 1-D tensor""",
+    ):
+      torch.ops.aten._addmm_activation.out(
+          input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False, out=out
+      )
+
+  def test__addmm_activation_non_matrix_mat2(self):
+    input_ = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    mat1 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    mat2 = torch.ones(2, 2, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""mat2 must be a matrix, got 3-D tensor""",
+    ):
+      torch.ops.aten._addmm_activation(
+          input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False
+      )
+
+  def test__addmm_activation_out_non_matrix_mat2(self):
+    input_ = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    mat1 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    mat2 = torch.ones(2, 2, 2, device=et.device(), dtype=torch.float32)
+    out = torch.empty(2, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""mat2 must be a matrix, got 3-D tensor""",
+        tpu="""addmm_activation(): mat2 must be a matrix, got 3-D tensor""",
+    ):
+      torch.ops.aten._addmm_activation.out(
+          input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False, out=out
+      )
+
+  def test__addmm_activation_out_mismatched_dtype_int32(self):
+    input_ = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    out = torch.empty(2, 2, device=et.device(), dtype=torch.int32)
+    mat1 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    mat2 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    tpu_msg = (
+        "addmm_activation(): expected input and out tensors to have the"
+        " same dtype, got float32 vs int32"
+    )
+    gpu_msg = "Expected out tensor to have dtype float, but got int instead"
+    with et.assert_raises_message(RuntimeError, gpu=gpu_msg, tpu=tpu_msg):
+      torch.ops.aten._addmm_activation.out(
+          input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False, out=out
+      )
+
+  def test__addmm_activation_out_mismatched_dtype_float16(self):
+    input_ = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    out = torch.empty(2, 2, device=et.device(), dtype=torch.float16)
+    mat1 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    mat2 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    tpu_msg = (
+        "addmm_activation(): expected input and out tensors to have the"
+        " same dtype, got float32 vs float16"
+    )
+    gpu_msg = (
+        "Expected out tensor to have dtype float, but got c10::Half instead"
+    )
+    with et.assert_raises_message(RuntimeError, gpu=gpu_msg, tpu=tpu_msg):
+      torch.ops.aten._addmm_activation.out(
+          input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False, out=out
+      )
 
   def test_empty_strided_size_stride_mismatch(self):
     """Tests that empty_strided fails with expected error when size and stride arrays have different lengths."""

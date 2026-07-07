@@ -71,6 +71,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "addcmul.out";
     case OpName::kAddmm:
       return "addmm";
+    case OpName::kAddmmActivationOut:
+      return "_addmm_activation.out";
     case OpName::kAddmmDtype:
       return "addmm.dtype";
     case OpName::kAddmmDtypeOut:

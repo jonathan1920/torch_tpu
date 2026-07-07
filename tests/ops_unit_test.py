@@ -85,6 +85,160 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   add it here.
   """
 
+  def _run_addmm_activation_test(
+      self,
+      self_shape,
+      m1_shape,
+      m2_shape,
+      beta,
+      alpha,
+      use_gelu,
+      dtype,
+      rtol,
+      atol,
+  ):
+    def _make_tensor(shape, device, offset=0.0):
+      numel = 1
+      for s in shape:
+        numel *= s
+      return (
+          torch.arange(numel, dtype=dtype, device=device) * 0.15 - offset
+      ).reshape(shape)
+
+    def compute(device):
+      self_val = _make_tensor(self_shape, device, offset=0.5)
+      m1_val = _make_tensor(m1_shape, device, offset=0.2)
+      m2_val = _make_tensor(m2_shape, device, offset=0.8)
+      return torch.ops.aten._addmm_activation(
+          self_val,
+          m1_val,
+          m2_val,
+          beta=beta,
+          alpha=alpha,
+          use_gelu=use_gelu,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute, rtol=rtol, atol=atol)
+
+  def _run_addmm_activation_out_test(
+      self,
+      self_shape,
+      m1_shape,
+      m2_shape,
+      target_out_shape,
+      beta,
+      alpha,
+      use_gelu,
+      dtype,
+      rtol,
+      atol,
+  ):
+    def _make_tensor(shape, device, offset=0.0):
+      numel = 1
+      for s in shape:
+        numel *= s
+      return (
+          torch.arange(numel, dtype=dtype, device=device) * 0.15 - offset
+      ).reshape(shape)
+
+    def compute(device):
+      self_val = _make_tensor(self_shape, device, offset=0.5)
+      m1_val = _make_tensor(m1_shape, device, offset=0.2)
+      m2_val = _make_tensor(m2_shape, device, offset=0.8)
+      out_val = torch.empty(target_out_shape, dtype=dtype, device=device)
+      torch.ops.aten._addmm_activation.out(
+          self_val,
+          m1_val,
+          m2_val,
+          beta=beta,
+          alpha=alpha,
+          use_gelu=use_gelu,
+          out=out_val,
+      )
+      return out_val
+
+    self.assert_close_tpu_vs_cpu(compute, rtol=rtol, atol=atol)
+
+  @parameterized.product(
+      use_gelu=[True, False],
+      dtype=[torch.float32, torch.bfloat16, torch.float16],
+  )
+  def test__addmm_activation(self, use_gelu, dtype):
+    """Tests torch.ops.aten._addmm_activation with deterministic values."""
+    shapes = [
+        ((3, 4), (3, 5), (5, 4)),  # matching 2D
+        ((4,), (3, 5), (5, 4)),  # 1D bias broadcast
+        ((1, 4), (3, 5), (5, 4)),  # 2D bias broadcast col
+        ((3, 1), (3, 5), (5, 4)),  # 2D bias broadcast row
+        ((1,), (3, 5), (5, 4)),  # 1D scalar broadcast
+    ]
+    multipliers = [
+        (0.0, 1.0),
+        (1.0, 1.0),
+        (0.5, 2.0),
+        (2.0, 0.5),
+        (-1.0, 1.5),
+    ]
+    rtol = 1.3e-2 if dtype == torch.float32 else 1.5e-2
+    atol = 1.3e-1 if dtype == torch.float32 else 1.6e-1
+
+    for self_shape, m1_shape, m2_shape in shapes:
+      for beta, alpha in multipliers:
+        self._run_addmm_activation_test(
+            self_shape,
+            m1_shape,
+            m2_shape,
+            beta,
+            alpha,
+            use_gelu,
+            dtype,
+            rtol,
+            atol,
+        )
+
+  @parameterized.product(
+      use_gelu=[True, False],
+      dtype=[torch.float32, torch.bfloat16, torch.float16],
+  )
+  def test__addmm_activation_out(self, use_gelu, dtype):
+    """Tests torch.ops.aten._addmm_activation.out with deterministic values."""
+    shapes = [
+        ((3, 4), (3, 5), (5, 4)),
+        ((4,), (2, 6), (6, 4)),
+        ((1, 3), (2, 5), (5, 3)),
+    ]
+    multipliers = [
+        (0.0, 1.0),
+        (1.0, 2.0),
+        (0.5, 0.5),
+    ]
+    out_shapes = [
+        None,  # Same shape as expected output
+        (1,),  # Smaller 1D shape (must resize up)
+        (10, 10),  # Larger 2D shape (must resize down/differently)
+        (2, 3, 4),  # 3D shape (must change rank and dimensions)
+    ]
+    rtol = 1.3e-2 if dtype == torch.float32 else 1.5e-2
+    atol = 1.3e-1 if dtype == torch.float32 else 1.6e-1
+
+    for self_shape, m1_shape, m2_shape in shapes:
+      expected_shape = (m1_shape[0], m2_shape[1])
+      for beta, alpha in multipliers:
+        for out_shape in out_shapes:
+          target_out_shape = expected_shape if out_shape is None else out_shape
+          self._run_addmm_activation_out_test(
+              self_shape,
+              m1_shape,
+              m2_shape,
+              target_out_shape,
+              beta,
+              alpha,
+              use_gelu,
+              dtype,
+              rtol,
+              atol,
+          )
+
   def test_ldexp_overflow_float16(self):
     """Tests that ldexp avoids intermediate overflow for float16."""
     # 2^16 overflows float16 (max 65504), but 1e-4 * 2^16 = 6.5536 doesn't.

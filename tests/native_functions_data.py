@@ -25,7 +25,6 @@ that determines which ops need a C++ registration.
 
 UNREGISTERED_OPS = frozenset([
     # go/keep-sorted start
-    '_addmm_activation.out',
     '_aminmax',
     '_aminmax.dim',
     '_amp_foreach_non_finite_check_and_unscale_',

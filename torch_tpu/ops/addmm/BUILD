@@ -40,6 +40,8 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:precision_context",
+        "//torch_tpu/ops:unary",
+        "//torch_tpu/ops/gelu",
         "//torch_tpu/ops/macros:kernel",
         "//torch_tpu/ops/resize:resize_aten_kernels",
         "@com_google_absl//absl/log:absl_log",

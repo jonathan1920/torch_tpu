@@ -49,6 +49,7 @@ enum class OpName {
   kAddcdivOut,
   kAddcmulOut,
   kAddmm,
+  kAddmmActivationOut,
   kAddmmDtype,
   kAddmmDtypeOut,
   kAddmmOut,
