@@ -20,14 +20,12 @@
 #include <complex>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <tuple>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "ATen/ops/full.h"
 #include "absl/status/statusor.h"
 #include "c10/core/ScalarType.h"
 #include "c10/util/Exception.h"
@@ -145,10 +143,13 @@ at::Tensor AtenVar(const at::Tensor& self, c10::OptionalArrayRef<int64_t> dim,
         if (c10::isComplexType(scalar_dtype)) {
           scalar_dtype = c10::toRealValueType(scalar_dtype);
         }
-        if (self.numel() == 0) {
-          return at::full({}, std::numeric_limits<double>::quiet_NaN(),
-                          self.options().dtype(scalar_dtype));
-        }
+
+        const ReductionMode reduction_mode =
+            keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
+        TT_ASSIGN_OR_THROW(Dimensions canonicalized_dims,
+                           CanonicalizeDims(self, dim));
+        Dimensions output_dims = GetSizesAfterReduction(
+            self.sizes(), reduction_mode, canonicalized_dims);
 
         TT_ASSIGN_OR_THROW(at::Tensor correction_tensor,
                            promoted_correction.GetTensor(scalar_dtype));
@@ -160,12 +161,6 @@ at::Tensor AtenVar(const at::Tensor& self, c10::OptionalArrayRef<int64_t> dim,
         TT_ASSIGN_OR_THROW(mlir::ElementType scalar_dtype_mlir,
                            internal::ToElementType(scalar_dtype));
 
-        TT_ASSIGN_OR_THROW(Dimensions canonicalized_dims,
-                           CanonicalizeDims(self, dim));
-        const ReductionMode reduction_mode =
-            keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
-        Dimensions output_dims = GetSizesAfterReduction(
-            self.sizes(), reduction_mode, canonicalized_dims);
         auto var_builder =
             CreateVarBuilder(std::move(canonicalized_dims), reduction_mode,
                              reduction_size, scalar_dtype_mlir);
@@ -192,10 +187,13 @@ at::Tensor& AtenVarOut(const at::Tensor& self,
       (self, dim, promoted_correction, keep_dim, out), {
         c10::ScalarType scalar_dtype = out.scalar_type();
         TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
-        if (self.numel() == 0) {
-          at::full_out(out, {}, std::numeric_limits<double>::quiet_NaN());
-          return out;
-        }
+
+        const ReductionMode reduction_mode =
+            keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
+        TT_ASSIGN_OR_THROW(Dimensions canonicalized_dims,
+                           CanonicalizeDims(self, dim));
+        Dimensions output_dims = GetSizesAfterReduction(
+            self.sizes(), reduction_mode, canonicalized_dims);
 
         TT_ASSIGN_OR_THROW(at::Tensor correction_tensor,
                            promoted_correction.GetTensor(scalar_dtype));
@@ -208,12 +206,6 @@ at::Tensor& AtenVarOut(const at::Tensor& self,
         TT_ASSIGN_OR_THROW(mlir::ElementType scalar_dtype_mlir,
                            internal::ToElementType(scalar_dtype));
 
-        TT_ASSIGN_OR_THROW(Dimensions canonicalized_dims,
-                           CanonicalizeDims(self, dim));
-        const ReductionMode reduction_mode =
-            keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
-        Dimensions output_dims = GetSizesAfterReduction(
-            self.sizes(), reduction_mode, canonicalized_dims);
         auto var_builder =
             CreateVarBuilder(std::move(canonicalized_dims), reduction_mode,
                              reduction_size, scalar_dtype_mlir);

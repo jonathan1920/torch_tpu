@@ -17,6 +17,8 @@
 #ifndef TORCH_TPU_COMMON_ATEN_UTILS_H_
 #define TORCH_TPU_COMMON_ATEN_UTILS_H_
 
+#include <cmath>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -187,12 +189,23 @@ H AbslHashValue(H h, const HashableScalar& hashable_scalar) {
 
   switch (host_scalar_type) {
     case c10::ScalarType::ComplexDouble: {
-      auto real = scalar.toComplexDouble().real();
-      auto imag = scalar.toComplexDouble().imag();
+      double real = scalar.toComplexDouble().real();
+      double imag = scalar.toComplexDouble().imag();
+      if (std::isnan(real)) {
+        real = std::numeric_limits<double>::quiet_NaN();
+      }
+      if (std::isnan(imag)) {
+        imag = std::numeric_limits<double>::quiet_NaN();
+      }
       return H::combine(std::move(h), desired_scalar_type, real, imag);
     }
-    case c10::ScalarType::Double:
-      return H::combine(std::move(h), desired_scalar_type, scalar.toDouble());
+    case c10::ScalarType::Double: {
+      double val = scalar.toDouble();
+      if (std::isnan(val)) {
+        val = std::numeric_limits<double>::quiet_NaN();
+      }
+      return H::combine(std::move(h), desired_scalar_type, val);
+    }
     case c10::ScalarType::UInt64:
       return H::combine(std::move(h), desired_scalar_type, scalar.toUInt64());
     case c10::ScalarType::Long:

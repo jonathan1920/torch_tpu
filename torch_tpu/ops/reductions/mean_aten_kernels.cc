@@ -77,10 +77,6 @@ at::Tensor& AtenMeanOut(const at::Tensor& self,
             (self, canonical_dims, keep_dim, dtype, out), {
               TT_ASSIGN_OR_THROW(c10::ScalarType scalar_dtype,
                                  GetOutputScalarType(out, dtype));
-              if (self.numel() == 0) {
-                at::full_out(out, {}, std::numeric_limits<double>::quiet_NaN());
-                return out;
-              }
 
               const ReductionMode reduction_mode =
                   keep_dim ? ReductionMode::kKeepDims
