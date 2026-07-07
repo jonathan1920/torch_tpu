@@ -285,11 +285,7 @@ _OPS_WITHOUT_OUT_SHAPE_RESIZING: Final[set[str]] = {
     "lerp",
     "lgamma",
     "linalg.inv",
-    "linalg.lu",
-    "linalg.lu_factor_ex",
-    "linalg.lu_solve",
     "linalg.solve_ex",
-    "lu_unpack",
 }
 
 

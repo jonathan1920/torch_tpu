@@ -48,7 +48,6 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
@@ -58,10 +57,12 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
+#include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
 #include "torch_tpu/ops/linalg/solve_triangular/linalg_solve_triangular_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -222,13 +223,9 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
                        .out_dims_list = {a.sizes(), pivot_dims},
                        .op_param_cache_keys = std::move(param_keys)})));
 
-              if (lu.sizes() != a.sizes()) {
-                lu.resize_(a.sizes());
-              }
+              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(lu, a.sizes()));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[0], lu));
-              if (!pivots.sizes().equals(pivot_dims)) {
-                pivots.resize_(pivot_dims);
-              }
+              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(pivots, pivot_dims));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[1], pivots));
               // Pivots are 0-based, but torch uses 1-based indexing.
               pivots.add_(1);
@@ -236,9 +233,10 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
               auto diagonal = at::diagonal(lu, /*offset=*/0, -2, -1);
               auto zeros = at::eq(diagonal, 0).to(c10::ScalarType::Double);
               auto has_zeros = at::any(zeros, -1);
+              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(info, batch_dims));
               info.zero_();
               auto indices = at::add(at::argmax(zeros, -1), 1);
-              info = at::where(has_zeros, indices, 0).to(c10::kInt);
+              CopyTensor(at::where(has_zeros, indices, 0).to(c10::kInt), info);
               if (check_errors) {
                 at::_linalg_check_errors(info, "lu_factor", a.dim() == 2);
               }
@@ -260,46 +258,25 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
               << lu_data.dim();
         }
 
+        int64_t m = lu_data.size(-2);
+        int64_t n = lu_data.size(-1);
+        int64_t k = std::min(m, n);
+        Dimensions batch_dims(lu_data.sizes().begin(),
+                              lu_data.sizes().end() - 2);
+
         if (unpack_data) {
-          // Check ranks match
-          // TODO: b/483972819 resize outputs instead of raising errors.
-          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
-                           // resizes the output, instead of raising an error.
-              l.dim() == lu_data.dim() && u.dim() == lu_data.dim(),
-              error::kInvalidArgument)
-              << "l, u, and lu_data must have the same rank, got " << l.dim()
-              << ", " << u.dim() << ", and " << lu_data.dim();
-          // Check last two dimensions match LU decomposition.
-          int64_t m = lu_data.size(-2);
-          int64_t n = lu_data.size(-1);
-          int64_t k = std::min(m, n);
-          // TODO: b/483972819 resize outputs instead of raising errors.
-          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
-                           // resizes the output, instead of raising an error.
-              l.size(-2) == m && l.size(-1) == k, error::kInvalidArgument)
-              << "L must have shape (..., m, k), got " << ToString(l.sizes())
-              << " and " << m << " and " << k;
-          // TODO: b/483972819 resize outputs instead of raising errors.
-          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
-                           // resizes the output, instead of raising an error.
-              u.size(-2) == k && u.size(-1) == n, error::kInvalidArgument)
-              << "U must have shape (..., k, n), got " << ToString(u.sizes())
-              << " and " << k << " and " << n;
-          // Check batch dimensions match.
-          Dimensions L_batch_dims(l.sizes().begin(), l.sizes().end() - 2);
-          Dimensions U_batch_dims(u.sizes().begin(), u.sizes().end() - 2);
-          Dimensions LU_data_batch_dims(lu_data.sizes().begin(),
-                                        lu_data.sizes().end() - 2);
-          // TODO: b/483972819 resize outputs instead of raising errors.
-          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
-                           // resizes the output, instead of raising an error.
-              L_batch_dims == U_batch_dims &&
-                  U_batch_dims == LU_data_batch_dims,
-              error::kInvalidArgument)
-              << "l, u, and lu_data must have the same batch "
-                 "dimensions, got "
-              << ToString(L_batch_dims) << ", " << ToString(U_batch_dims)
-              << ", and " << ToString(LU_data_batch_dims);
+          Dimensions l_dims = batch_dims;
+          l_dims.reserve(l_dims.size() + 2);
+          l_dims.push_back(m);
+          l_dims.push_back(k);
+          TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(l, l_dims));
+
+          Dimensions u_dims = batch_dims;
+          u_dims.reserve(u_dims.size() + 2);
+          u_dims.push_back(k);
+          u_dims.push_back(n);
+          TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(u, u_dims));
+
           l.zero_();
           l.add_(at::tril(lu_data.narrow(-1, 0, k), /*diagonal=*/-1));
           // at::eye is not implemented yet.
@@ -313,22 +290,12 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
           TT_CHECK_THROW(lu_pivots.dim() >= 1, error::kInvalidArgument)
               << "lu_pivots must have at least 1 dimension, got "
               << lu_pivots.dim();
-          // TODO: b/483972819 resize outputs instead of raising errors.
-          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
-                           // resizes the output, instead of raising an error.
-              p.dim() == lu_pivots.dim() + 1, error::kInvalidArgument)
-              << "expected the first output tensor to be a "
-              << lu_pivots.dim() + 1 << "D tensor (pivots dimension + 1), got "
-              << p.dim() << "D of shape " << ToString(p.sizes());
-          // TODO: b/483972819 resize outputs instead of raising errors.
-          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
-                           // resizes the output, instead of raising an
-                           // error.
-              p.size(-1) == lu_data.size(-2) && p.size(-2) == lu_data.size(-2),
-              error::kInvalidArgument)
-              << "p must be square and of size equal to number of (non-batch) "
-                 "rows of LU_data, got "
-              << ToString(p.sizes()) << " and " << ToString(lu_data.size(-2));
+
+          Dimensions p_dims = batch_dims;
+          p_dims.reserve(p_dims.size() + 2);
+          p_dims.push_back(m);
+          p_dims.push_back(m);
+          TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(p, p_dims));
 
           // Build permutation matrix from pivots.
           // pivots[..., i] = j means that in the i-th step of the
@@ -349,6 +316,7 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
   TT_KERNEL(
       OpName::kLinalgLuSolveOut, param_keys,
       (lu, pivots, b, left, adjoint, out), {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, b.sizes()));
         TT_CHECK_THROW(lu.dim() >= 2, error::kInvalidArgument)
             << "lu must have at least 2 dimensions, got " << lu.dim();
         TT_CHECK_THROW(lu.size(-2) == lu.size(-1), error::kInvalidArgument)
