@@ -206,6 +206,7 @@ torch_tpu_cc_library(
         "@xla//xla/pjrt:maybe_owning_mlir_module",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
+        "@xla//xla/pjrt:pjrt_layout",
     ],
 )
 
@@ -273,6 +274,7 @@ pybind_extension(
         "@xla//xla/pjrt:maybe_owning_mlir_module",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
+        "@xla//xla/pjrt:pjrt_layout",
     ],
 )
 

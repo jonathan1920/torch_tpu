@@ -304,6 +304,8 @@ class CompileApiTest(absltest.TestCase):
       padded_tensor = result[0]
       self.assertEqual(padded_tensor.shape, (1, 8))
       self.assertEqual(padded_tensor.dtype, torch.int64)
+      expected = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], dtype=torch.int64)
+      utils.assert_close(padded_tensor.cpu(), expected)
 
   def test_get_or_compile_slice_module(self):
     target_shapes = [[1, 4]]
@@ -824,6 +826,90 @@ class CompileApiTest(absltest.TestCase):
     expected_res = torch.matmul(expected_dynamic_input, expected_static_input)
 
     utils.assert_close(actual_res, expected_res, rtol=1e-2, atol=1e-2)
+
+  def test_get_default_layout(self):
+    layout = tpu_torch_compile.get_default_layout(torch.float32, [2, 3])
+    self.assertIsInstance(layout, tuple)
+    self.assertLen(layout, 3)
+    minor_to_major, tiles, element_size_in_bits = layout
+    self.assertIsInstance(minor_to_major, list)
+    self.assertIsInstance(tiles, list)
+    self.assertIsInstance(element_size_in_bits, int)
+    self.assertEqual(minor_to_major, [1, 0])
+
+  def test_is_device_shape_dynamic(self):
+    x_static = torch.ones(2, 3, device='tpu')
+    self.assertFalse(tpu_torch_compile.is_device_shape_dynamic(x_static))
+
+    max_dynamic_dim = 22
+    static_dim_1 = 128
+    logical_dynamic_dim = 5
+
+    physical_dynamic_input = torch.randn(
+        max_dynamic_dim,
+        static_dim_1,
+        device=torch.device('tpu'),
+    )
+    logical_size = torch.tensor(
+        logical_dynamic_dim, dtype=torch.int32, device=torch.device('tpu')
+    )
+    dynamic_input = torch.ops.tpu.set_dimension_logical_size(
+        physical_dynamic_input, 0, logical_size
+    )
+    self.assertTrue(tpu_torch_compile.is_device_shape_dynamic(dynamic_input))
+
+  def test_get_dynamic_pad_module(self):
+    tensor_info = [([1, 4], torch.int64)]
+    bounds_list = [([1], [8])]
+
+    compile_result = tpu_torch_compile.get_dynamic_pad_module(
+        tensor_info, bounds_list
+    )
+    self.assertIsNotNone(compile_result.executable)
+    self.assertIsNotNone(compile_result.module)
+
+    mlir_text = tpu_torch_compile.serialize_mlir_text(compile_result.module)
+    self.assertIn('stablehlo.set_dimension_size', mlir_text)
+    self.assertIn('stablehlo.get_dimension_size', mlir_text)
+
+    input_tensor = torch.ones(1, 4, dtype=torch.int64, device='tpu')
+    result = tpu_torch_compile.execute(
+        compile_result.executable, [input_tensor]
+    )
+    self.assertLen(result, 1)
+    padded_tensor = result[0]
+    self.assertEqual(padded_tensor.shape, (1, 8))
+    self.assertTrue(tpu_torch_compile.is_device_shape_dynamic(padded_tensor))
+
+    expected = torch.tensor([[1, 1, 1, 1]], dtype=torch.int64)
+    utils.assert_close(padded_tensor.cpu()[:, :4], expected)
+
+  def test_executable_layouts(self):
+    with eager_mode_defer_all():
+      x = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      y = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z = x + y
+
+    mlir = tpu_torch_compile.build_mlir([z], [x, y])
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    param_layouts = executable.get_parameter_layouts()
+    output_layouts = executable.get_output_layouts()
+
+    self.assertIsInstance(param_layouts, list)
+    self.assertLen(param_layouts, 2)
+    self.assertIsInstance(output_layouts, list)
+    self.assertLen(output_layouts, 1)
+
+    for layout in param_layouts + output_layouts:
+      if layout is not None:
+        self.assertIsInstance(layout, tuple)
+        self.assertLen(layout, 3)
+        minor_to_major, tiles, element_size_in_bits = layout
+        self.assertIsInstance(minor_to_major, list)
+        self.assertIsInstance(tiles, list)
+        self.assertIsInstance(element_size_in_bits, int)
+        self.assertEqual(minor_to_major, [1, 0])
 
 
 if __name__ == '__main__':

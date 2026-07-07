@@ -807,23 +807,26 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
   CompiledKernel compiled_kernel{.fixed_shape_kernel =
                                      cache_lookup.executable_future};
   CompilationCacheKey storage_key = key;
-  if (use_dynamic_adapters &&
-      cache_lookup.shape_dynamism_metadata.has_value()) {
-    ABSL_VLOG(1) << "Found shape dynamism metadata for key: " << key;
-    // Create a copy of the compile options for the adapter.
-    auto adapter_compile_options =
-        std::make_unique<xla::CompileOptions>(*compile_options);
-    TT_ASSIGN_OR_RETURN(
-        compiled_kernel.dynamic_kernel_adapter,
-        CreateDynamicKernelAdapter(
-            *cache_lookup.shape_dynamism_metadata, input_shapes, output_shapes,
-            key.compile_options_key(), std::move(adapter_compile_options)));
+  if (cache_lookup.shape_dynamism_metadata.has_value()) {
     // Create a key for the storage of the dynamic executable.
     const GraphKey graph_key(
         key.graph_key().shapeless_key(),
         DimensionsKey(*cache_lookup.shape_dynamism_metadata));
     storage_key = CompilationCacheKey(graph_key, key.compile_options_key());
     ABSL_VLOG(2) << "Storage key for dynamic executable: " << storage_key;
+
+    if (use_dynamic_adapters) {
+      ABSL_VLOG(1) << "Found shape dynamism metadata for key: " << key;
+      // Create a copy of the compile options for the adapter.
+      auto adapter_compile_options =
+          std::make_unique<xla::CompileOptions>(*compile_options);
+      TT_ASSIGN_OR_RETURN(
+          compiled_kernel.dynamic_kernel_adapter,
+          CreateDynamicKernelAdapter(*cache_lookup.shape_dynamism_metadata,
+                                     input_shapes, output_shapes,
+                                     key.compile_options_key(),
+                                     std::move(adapter_compile_options)));
+    }
   }
 
   if (cache_lookup.needs_compilation) {

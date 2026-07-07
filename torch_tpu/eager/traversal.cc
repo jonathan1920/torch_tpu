@@ -589,15 +589,21 @@ std::vector<Shape> GetShapes(absl::Span<const DeviceBufferRef> buffers) {
   return shapes;
 }
 
-std::vector<xla::Shape> GetXlaShapes(
-    absl::Span<const DeviceBufferRef> buffers) {
+std::vector<xla::Shape> GetXlaShapes(absl::Span<const DeviceBufferRef> buffers,
+                                     bool use_stablehlo_bounds) {
   std::vector<xla::Shape> shapes;
   shapes.reserve(buffers.size());
   for (const auto& buffer : buffers) {
     xla::PrimitiveType primitive_type =
         ConvertTo<xla::PrimitiveType>(buffer.element_type());
-    shapes.push_back(
-        xla::ShapeUtil::MakeShape(primitive_type, buffer.dimensions()));
+    xla::Shape shape =
+        xla::ShapeUtil::MakeShape(primitive_type, buffer.dimensions());
+    if (use_stablehlo_bounds) {
+      for (const auto& dynamic_dim : buffer.dynamic_dimensions()) {
+        shape.set_dynamic_dimension(dynamic_dim.dimension, true);
+      }
+    }
+    shapes.push_back(std::move(shape));
   }
   return shapes;
 }
@@ -634,7 +640,8 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   std::vector<Shape> output_shapes = GetShapes(outputs_);
 
   if (!argument_layouts.empty()) {
-    std::vector<xla::Shape> xla_argument_shapes = GetXlaShapes(arguments_);
+    std::vector<xla::Shape> xla_argument_shapes =
+        GetXlaShapes(arguments_, use_stablehlo_bounds);
     TT_RET_CHECK(xla_argument_shapes.size() == argument_layouts.size(),
                  error::kInvalidArgument)
         << "argument layouts size must match, got "

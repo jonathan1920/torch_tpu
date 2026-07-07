@@ -211,6 +211,54 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetPadModule(
   return module;
 }
 
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetDynamicPadModule(
+    mlir::MLIRContext& mlir_context, absl::Span<const Shape> shapes) {
+  ABSL_VLOG(2)
+      << "[GetDynamicPadModule] Creating a padding module for dynamism with "
+      << shapes.size() << " shapes.";
+  TT_RET_CHECK(!shapes.empty(), error::kInvalidArgument)
+      << "DynamicPadModule requires at least one shape.";
+  std::string module_name = "dynamic_pad_module";
+  mlir::ModuleBuilder mb(mlir_context, module_name);
+  mlir::func::FunctionBuilder fb(mb, "main");
+  DynamicMlirOpResults results;
+  results.reserve(shapes.size());
+  // Add a function parameter for each input shape.
+  for (int i = 0; i < shapes.size(); ++i) {
+    const Shape& shape = shapes[i];
+    auto type = makeTensorType(mlir_context, shape.dimensions(), shape.dtype());
+    // Zero-sized tensors are not passed to the executable.
+    if (type.getNumElements() == 0) {
+      continue;
+    }
+    auto input_op = mlir::func::Argument(fb, type);
+    if (shape.dynamic_dimensions().empty()) {
+      results.push_back(input_op);
+      continue;
+    }
+    Dimensions padded_dimensions = shape.dimensions();
+    for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
+      padded_dimensions[dynamic_dim.dimension] = dynamic_dim.upper_bound;
+    }
+    TT_ASSIGN_OR_RETURN(auto padded_op, Pad(input_op, padded_dimensions));
+    if (shape.dynamic_dimensions().empty()) {
+      results.push_back(padded_op);
+    } else {
+      auto current_op = padded_op;
+      for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
+        auto size_op =
+            mlir::stablehlo::GetDimensionSize(input_op, dynamic_dim.dimension);
+        current_op = mlir::stablehlo::SetDimensionSize(current_op, size_op,
+                                                       dynamic_dim.dimension);
+      }
+      results.push_back(current_op);
+    }
+  }
+  mlir::func::Return(fb, results);
+  auto module = mb.build();
+  return module;
+}
+
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetSliceModule(
     mlir::MLIRContext& mlir_context,
     absl::Span<const Dimensions> dimensions_vec,

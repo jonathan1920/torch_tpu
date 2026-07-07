@@ -44,6 +44,18 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetPadModule(
     mlir::MLIRContext& mlir_context, absl::Span<const Shape> shapes,
     bool pad_only_module = false);
 
+// Universal dynamic pad module. Given a list of shapes with dynamic dimensions,
+// returns a module with as many inputs as the number of non-zero-sized shapes
+// (Note rank 0 shapes are not zero-sized). For each such shape, we output a
+// dynamic shape (where the dynamic dimensions are set to their upper bounds)
+// with the real shape padded to the upper bound in the dynamic dimensions.
+// E.g., for input shapes
+//   {[3, 5 ; dim=0,ub=10], [], [8, 2, 2 ; dim1,ub=5; dim2,ub=7]
+// we get a module with the following signature:
+//   ([3, 5], [], [8, 2, 2]) -> ([10 (<=10), 5], [], [8, 5(<=5), 7(<=7)])
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetDynamicPadModule(
+    mlir::MLIRContext& mlir_context, absl::Span<const Shape> shapes);
+
 // Universal slice module. Given a list of padded and unpadded shapes, returns a
 // module that converts padded dynamic dimensions into static dimensions and
 // then slices the tensors to the desired unpadded shapes.

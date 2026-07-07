@@ -82,6 +82,7 @@
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 
 namespace torch_tpu {
 namespace py = pybind11;
@@ -97,6 +98,11 @@ struct TensorBounds {
   std::vector<int64_t> dynamic_dims;  // INT_VEC_OK
   std::vector<int64_t> upper_bounds;  // INT_VEC_OK
 };
+
+using PyLayout =
+    std::tuple<std::vector<int64_t>,               // minor_to_major, INT_VEC_OK
+               std::vector<std::vector<int64_t>>,  // tiles, INT_VEC_OK
+               int64_t>;                           // element_size_in_bits
 
 bool IsValidLayout(const std::vector<int64_t>& layout,  // INT_VEC_OK
                    int64_t rank) {
@@ -184,32 +190,109 @@ at::Tensor PyMakePlaceholderLike(const at::Tensor& arg_tensor) {
   return view_tensor;
 }
 
-py::object PyGetDeviceLayoutIfMaterialized(const at::Tensor& tensor) {
-  TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBuffer(tensor));
-  // TODO(bawilson): better clarify "materializing" vs "materialized" states
-  if (!buffer_ref.is_materializing()) {
-    return py::none();
-  }
-  TT_ASSIGN_OR_THROW(auto* pjrt_buffer, buffer_ref.AwaitBuffer());
-  const auto pjrt_layout = pjrt_buffer->layout();
-  if (!pjrt_layout) {
-    return py::none();
-  }
-  const xla::Layout& layout = pjrt_layout->xla_layout();
-
+PyLayout ToPyLayout(const xla::Layout& layout) {
   std::vector<int64_t>  // INT_VEC_OK
       minor_to_major(layout.minor_to_major().begin(),
                      layout.minor_to_major().end());
-
   std::vector<std::vector<int64_t>> tiles;  // INT_VEC_OK
   tiles.reserve(layout.tiles().size());
   for (const auto& tile : layout.tiles()) {
     tiles.push_back(std::vector<int64_t>  // INT_VEC_OK
                     (tile.dimensions().begin(), tile.dimensions().end()));
   }
+  return std::make_tuple(minor_to_major, tiles, layout.element_size_in_bits());
+}
 
-  return py::cast(
-      std::make_tuple(minor_to_major, tiles, layout.element_size_in_bits()));
+std::vector<std::optional<PyLayout>> ToPyLayouts(
+    const std::vector<std::shared_ptr<const xla::PjRtLayout>>& layouts) {
+  std::vector<std::optional<PyLayout>> result;
+  result.reserve(layouts.size());
+  for (const auto& pjrt_layout : layouts) {
+    if (pjrt_layout == nullptr) {
+      result.push_back(std::nullopt);
+      continue;
+    }
+    result.push_back(ToPyLayout(pjrt_layout->xla_layout()));
+  }
+  return result;
+}
+
+std::optional<PyLayout> PyGetDeviceLayoutIfMaterialized(
+    const at::Tensor& tensor) {
+  auto buffer_ref_or = GetBuffer(tensor);
+  if (!buffer_ref_or.ok()) {
+    TT_THROW_TT_ERROR_(buffer_ref_or.status(), TT_SOURCE_LOCATION);
+  }
+  DeviceBufferRef buffer_ref = std::move(buffer_ref_or).value();
+
+  // TODO(bawilson): better clarify "materializing" vs "materialized" states
+  if (!buffer_ref.is_materializing()) {
+    return std::nullopt;
+  }
+
+  auto pjrt_buffer_or = buffer_ref.AwaitBuffer();
+  if (!pjrt_buffer_or.ok()) {
+    TT_THROW_TT_ERROR_(pjrt_buffer_or.status(), TT_SOURCE_LOCATION);
+  }
+  auto* pjrt_buffer = std::move(pjrt_buffer_or).value();
+
+  const auto pjrt_layout = pjrt_buffer->layout();
+  if (!pjrt_layout) {
+    return std::nullopt;
+  }
+  return ToPyLayout(pjrt_layout->xla_layout());
+}
+
+PyLayout PyGetDefaultLayout(at::ScalarType dtype,
+                            const std::vector<int64_t>& shape) {  // INT_VEC_OK
+  xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
+  if (client == nullptr) {
+    return PyLayout();
+  }
+  xla::PjRtClient& checked_client = *client;
+  TT_ASSIGN_OR_THROW(auto element_type, ConvertTo<xla::PrimitiveType>(dtype));
+
+  TT_ASSIGN_OR_THROW(const auto& layout,
+                     checked_client.GetDefaultLayout(element_type, shape));
+  return ToPyLayout(layout);
+}
+
+bool PyIsDeviceShapeDynamic(const at::Tensor& tensor) {
+  TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBuffer(tensor));
+  if (!buffer_ref.dynamic_dimensions().empty()) {
+    return true;
+  }
+  if (!buffer_ref.is_materializing()) {
+    return false;
+  }
+  TT_ASSIGN_OR_THROW(auto* pjrt_buffer, buffer_ref.AwaitBuffer());
+  return pjrt_buffer->on_device_shape().is_dynamic();
+}
+
+std::vector<std::optional<PyLayout>> PyGetParameterLayouts(
+    const xla::PjRtLoadedExecutable& executable) {
+  TT_ASSIGN_OR_THROW(const auto& layouts, executable.GetParameterLayouts());
+  return ToPyLayouts(layouts);
+}
+
+std::vector<std::optional<PyLayout>> PyGetOutputLayouts(
+    const xla::PjRtLoadedExecutable& executable) {
+  TT_ASSIGN_OR_THROW(const auto& layouts, executable.GetOutputLayouts());
+  return ToPyLayouts(layouts);
+}
+
+std::vector<std::optional<PyLayout>> PyGetParameterLayoutsFromMetadata(
+    const LoadedExecutableWithMetadata& executable_metadata) {
+  const xla::PjRtLoadedExecutable* executable =
+      executable_metadata.GetLoadedExecutable();
+  return PyGetParameterLayouts(*executable);
+}
+
+std::vector<std::optional<PyLayout>> PyGetOutputLayoutsFromMetadata(
+    const LoadedExecutableWithMetadata& executable_metadata) {
+  const xla::PjRtLoadedExecutable* executable =
+      executable_metadata.GetLoadedExecutable();
+  return PyGetOutputLayouts(*executable);
 }
 
 // Returns a ContextedModule corresponding to the graph terminating at
@@ -715,6 +798,67 @@ CompileResult PyGetOrCompilePadModule(
   return result;
 }
 
+// Returns a CompileResult containing the executable and the MLIR
+// module for a pad subgraph.
+// Args:
+//   tensor_info: A list of pairs, where each pair contains the shape of a
+//     tensor and its scalar type.
+//   bounds_list: A list of pairs, where each pair contains the dynamic
+//     dimensions of a tensor and their upper bounds.
+//   fast_compile: If true, use the compiler profile optimized for eager
+//         execution; otherwise, use the profile optimized for
+//         torch.compile.
+// Returns:
+//   A CompileResult containing the executable and optionally the MLIR module
+//   for the pad subgraph.
+// Example:
+//   tensor_info = [([1, 4], torch.int64)]
+//   bounds_list = [([1], [8])]. // Dynamic dimension is 1, upper bound is 8.
+//  MLIR module:
+// module @pad_module {
+//   func.func @main(%arg0: tensor<1x4xi64>) -> tensor<1x?xi64,
+//   #stablehlo.bounds<?, 8>> {
+//     %c = stablehlo.constant dense<0> : tensor<i64>
+//     %c1 = stablehlo.constant dense<1> : tensor<i64>
+//     %0 = stablehlo.pad %arg0, %c, low = [0, 0], high = [0, 4],
+//       interior = [0, 0] : (tensor<1x4xi64>, tensor<i64>) -> tensor<1x8xi64>
+//     %1 = stablehlo.get_dimension_size %0, %c1 : (tensor<1x8xi64>) -> i64
+//     %2 = stablehlo.set_dimension_size %0, %1, dim = 1 :
+//       (tensor<1x8xi64>, tensor<i64>) ->
+//        tensor<1x?xi64, #stablehlo.bounds<?,8>>
+//     return %2
+//   }
+// }
+CompileResult PyGetDynamicPadModule(
+    const std::vector<TensorInfo>& tensor_info,
+    const std::vector<TensorBounds>& bounds_list, const bool fast_compile) {
+  std::vector<Shape> dynamic_shapes =
+      MakePadDynamicShapes(tensor_info, bounds_list);
+
+  MlirComputationBuilder pad_builder = [&](mlir::MLIRContext& mlir_context) {
+    return GetDynamicPadModule(mlir_context, dynamic_shapes);
+  };
+
+  const auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
+                                             : CompilationMode::kFastRuntime;
+  CompilationSpec compilation_spec = GetCompilationSpec(compilation_mode);
+
+  CompileResult result;
+  std::optional<ContextedModule> contexted_module;
+
+  TT_ASSIGN_OR_THROW(contexted_module, ContextedModule::Make(pad_builder),
+                     _ << "failed to build MLIR module");
+
+  TT_ASSIGN_OR_THROW(
+      result.executable,
+      CompileMlirExecutable(xla::MaybeOwningMlirModule(contexted_module->get()),
+                            std::move(compilation_spec.xla_compile_options)));
+
+  result.module =
+      std::make_shared<ContextedModule>(std::move(*contexted_module));
+  return result;
+}
+
 // Precompiles the slice subgraph for the given shapes. Doesn't wait for the
 // compilation to complete.
 //
@@ -989,11 +1133,15 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   py::class_<  // NOLINT(bugprone-unused-raii)
       torch_tpu::LoadedExecutableWithMetadata,
       std::shared_ptr<torch_tpu::LoadedExecutableWithMetadata>>(
-      m, "LoadedExecutableWithMetadata");
+      m, "LoadedExecutableWithMetadata")
+      .def("get_parameter_layouts", &PyGetParameterLayoutsFromMetadata)
+      .def("get_output_layouts", &PyGetOutputLayoutsFromMetadata);
 
   py::class_<xla::PjRtLoadedExecutable,  // NOLINT(bugprone-unused-raii)
-             std::shared_ptr<xla::PjRtLoadedExecutable>>(
-      m, "PjRtLoadedExecutable");
+             std::shared_ptr<xla::PjRtLoadedExecutable>>(m,
+                                                         "PjRtLoadedExecutable")
+      .def("get_parameter_layouts", &PyGetParameterLayouts)
+      .def("get_output_layouts", &PyGetOutputLayouts);
 
   pybind11::class_<MultiGeneratorLocker>(
       m, "MultiGeneratorLocker",
@@ -1028,6 +1176,9 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         py::arg("requires_grad") = false);
   m.def("get_device_layout_if_materialized", &PyGetDeviceLayoutIfMaterialized,
         py::arg("tensor"));
+  m.def("get_default_layout", &PyGetDefaultLayout, py::arg("dtype"),
+        py::arg("shape"));
+  m.def("is_device_shape_dynamic", &PyIsDeviceShapeDynamic, py::arg("tensor"));
   m.def("traverse_and_compile", PyTraverseAndCompile, py::arg("result_tensors"),
         py::arg("argument_tensors"), py::arg("fast_compile") = false,
         py::arg("build_mlir_module") = false,
@@ -1077,6 +1228,15 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         "  fast_compile: Whether to use the fast compile mode.\n"
         "  build_mlir_module: Whether to build the MLIR module.\n"
         "  is_caching_disabled: Whether to use the cache.");
+
+  m.def("get_dynamic_pad_module", PyGetDynamicPadModule, py::arg("tensor_info"),
+        py::arg("bounds_list"), py::arg("fast_compile") = false,
+        "Returns the compiled PJRT executable for a dynamic pad subgraph.\n\n"
+        "Args:\n"
+        "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
+        "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.\n"
+        "  fast_compile: Whether to use the fast compile mode.");
+
   m.def("precompile_pad_module", PyPrecompilePadModule, py::arg("tensor_info"),
         py::arg("bounds_list"), py::arg("fast_compile") = false,
         "Returns immediately after enqueuing compilation of a pad module.\n\n"

@@ -1567,6 +1567,15 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           bounds_list,
       )
 
+  @et.why_tpu_only("Dynamic compilation is TPU-only.")
+  def test_get_dynamic_pad_module_empty_shapes(self):
+    expected = re.compile(r".*DynamicPadModule requires at least one shape\..*")
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=expected,
+    ):
+      tpu_torch_compile.get_dynamic_pad_module([], [])
+
   @parameterized.named_parameters(
       dict(
           testcase_name="mismatched_padded_shapes_size",
