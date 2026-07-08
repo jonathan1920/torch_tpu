@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
@@ -162,6 +163,7 @@
 #include "torch_tpu/ops/scatter/scatter_aten_kernels.h"
 #include "torch_tpu/ops/set/set_aten_kernels.h"
 #include "torch_tpu/ops/sigmoid/sigmoid_aten_kernels.h"
+#include "torch_tpu/ops/slice_scatter/slice_scatter_aten_kernels.h"
 #include "torch_tpu/ops/softmax/softmax_aten_kernels.h"
 #include "torch_tpu/ops/softplus/softplus_aten_kernels.h"
 #include "torch_tpu/ops/sort/sort_aten_kernels.h"
@@ -866,6 +868,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kSiluOut>(m, AtenSiluOut);
   ImplStable<OpName::kSinOut>(m, AtenSinOut);
   ImplStable<OpName::kSinhOut>(m, AtenSinhOut);
+  ImplStable<OpName::kSliceScatter>(m, AtenSliceScatter);
   ImplStable<OpName::kSoftmaxBackwardDataOut>(m, AtenSoftmaxBackwardDataOut);
   ImplStable<OpName::kSoftmaxOut>(m, AtenSoftmaxOut);
   ImplStable<OpName::kSoftplusBackwardGradInput>(m,

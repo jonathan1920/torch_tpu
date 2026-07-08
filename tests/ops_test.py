@@ -3359,6 +3359,9 @@ class TestOps(TorchTpuTestBase):
   def test_select_scatter(self):
     self.do_test_op("select_scatter")
 
+  def test_slice_scatter(self):
+    self.do_test_op("slice_scatter")
+
   def test_safe_softmax(self):
     self.do_test_op("torch.ops.aten._safe_softmax.default")
 

@@ -632,6 +632,7 @@ enum class OpName {
   kSinOut,
   kSinhOut,
   kSlice,
+  kSliceScatter,
   kSoftmaxBackwardDataOut,
   kSoftmaxOut,
   kSoftplusBackwardGradInput,

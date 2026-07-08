@@ -1241,6 +1241,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "sinh.out";
     case OpName::kSlice:
       return "slice";
+    case OpName::kSliceScatter:
+      return "slice_scatter";
     case OpName::kSoftmaxBackwardDataOut:
       return "_softmax_backward_data.out";
     case OpName::kSoftmaxOut:
