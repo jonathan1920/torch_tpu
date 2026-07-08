@@ -16,7 +16,8 @@
 # This script is used to lock the environments in the torch_tpu repository.
 #
 # Dependencies are defined in the standard pyproject.toml file. uv allows
-# dependencies to be locked in the requirements.txt format.
+# dependencies to be locked in version-specific requirements_3_x.txt formats
+# (e.g., requirements_3_12.txt).
 #
 # Usage:
 #   Install uv following the instructions if you haven't already:

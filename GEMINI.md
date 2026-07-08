@@ -7,11 +7,13 @@ For BUILD or bzl files:
 
 When updating Python requirements:
 
-*   Do not modify the locked, resolved requirements.txt directly.
-*   Instead, add the dependency to `pyproject.toml` in the `dependencies` list.
-*   If it is a dev-only dependencies, comment that it is a dev-only dependency.
-*   Run `./requirements/lock_environments.sh` to update the locked
-*   requirements file.
+*   Do not modify the locked, resolved `requirements_3_*.txt` files directly.
+*   Instead, add the dependency to the appropriate list in `pyproject.toml`.
+*   Place core requirements in the main `dependencies` block, and use-case
+    specific requirements in the correct `[project.optional-dependencies]` group
+    (e.g., `dev`, `test`, etc).
+*   Run `./requirements/lock_environments.sh` to update all of the locked
+    requirements files automatically.
 
 Instructions related to Bazel repositories:
 
