@@ -6,6 +6,8 @@ user.bazelrc
 # Generated Python artifacts.
 *.pyc
 */**/__pycache__
+# Virtual environments
+.venv/
 # Vim swap files (used for recovery).
 .*.swp
 .*.swo
@@ -16,5 +18,3 @@ user.bazelrc
 # Vim undo files.
 *.un~
 .*.un~
-# Wheel files.
-wheel
