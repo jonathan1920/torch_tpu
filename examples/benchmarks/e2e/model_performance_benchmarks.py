@@ -573,7 +573,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             sequence_length=2048,
             batch_size=8,
             custom_kwargs={
-                "modify_config_hook": _modify_gemma4_config_to_small
+                "modify_config_hook": _modify_gemma4_config_to_small,
+                "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
             },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
@@ -662,6 +663,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="google/gemma-4-e2b",
             sequence_length=2048,
             batch_size=8,
+            custom_kwargs={
+                "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         eval_factory=benchmark_function_db.huggingface_eval_factory,
