@@ -424,7 +424,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "subgroup_collectives_test",
     srcs = ["subgroup_collectives_test.py"],
-    notest_oss = "fix hang in OSS",  # TODO
+    env = if_oss(
+        {"TORCH_TPU_TOPOLOGY": "2,4,1"},
+        {},
+    ),
     shard_count = 4,
     tags = if_oss(
         ["exclusive"],
