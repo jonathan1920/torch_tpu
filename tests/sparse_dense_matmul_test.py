@@ -300,6 +300,7 @@ class SparseDenseMatmulTest(
           device_batch_size=batch_size,
           max_ids_per_partition=16,
           max_unique_ids_per_partition=16,
+          computation_name="test_sgd_table",
       )
 
     if compile_op:
@@ -430,6 +431,7 @@ class SparseDenseMatmulTest(
           device_batch_size=batch_size,
           max_ids_per_partition=16,
           max_unique_ids_per_partition=64,
+          computation_name="test_adagrad_table",
       )
 
     if compile_op:
@@ -599,6 +601,7 @@ class SparseDenseMatmulTest(
           device_batch_size=batch_size,
           max_ids_per_partition=16,
           max_unique_ids_per_partition=64,
+          computation_name="test_adam_table",
       )
 
     if compile_op:

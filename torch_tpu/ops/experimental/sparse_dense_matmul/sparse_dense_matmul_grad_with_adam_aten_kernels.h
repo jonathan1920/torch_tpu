@@ -17,6 +17,7 @@
 #ifndef TORCH_TPU_OPS_EXPERIMENTAL_SPARSE_DENSE_MATMUL_SPARSE_DENSE_MATMUL_GRAD_WITH_ADAM_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_EXPERIMENTAL_SPARSE_DENSE_MATMUL_SPARSE_DENSE_MATMUL_GRAD_WITH_ADAM_ATEN_KERNELS_H_
 
+#include <string_view>
 #include <tuple>
 
 #include "ATen/core/ATen_fwd.h"
@@ -73,7 +74,7 @@ AtenSparseDenseMatmulGradWithAdam(
     const at::Tensor& velocity, const at::Tensor& activations_grad,
     const at::Tensor& alpha_t, double beta_1, double beta_2, double epsilon,
     int64_t device_batch_size, int64_t max_ids_per_partition,
-    int64_t max_unique_ids_per_partition);
+    int64_t max_unique_ids_per_partition, std::string_view computation_name);
 
 }  // namespace torch_tpu
 

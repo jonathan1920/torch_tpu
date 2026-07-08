@@ -17,6 +17,8 @@
 #ifndef TORCH_TPU_OPS_EXPERIMENTAL_SPARSE_DENSE_MATMUL_SPARSE_DENSE_MATMUL_GRAD_WITH_SGD_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_EXPERIMENTAL_SPARSE_DENSE_MATMUL_SPARSE_DENSE_MATMUL_GRAD_WITH_SGD_ATEN_KERNELS_H_
 
+#include <string_view>
+
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 
@@ -59,7 +61,8 @@ at::Tensor AtenSparseDenseMatmulGradWithSgd(
     const at::Tensor& sample_ids, const at::Tensor& gains,
     const at::Tensor& embedding_table, const at::Tensor& activations_grad,
     const at::Tensor& learning_rate, int64_t device_batch_size,
-    int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition);
+    int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+    std::string_view computation_name);
 
 }  // namespace torch_tpu
 

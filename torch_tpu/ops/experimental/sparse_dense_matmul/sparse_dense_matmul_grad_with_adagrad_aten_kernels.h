@@ -17,6 +17,7 @@
 #ifndef TORCH_TPU_OPS_EXPERIMENTAL_SPARSE_DENSE_MATMUL_SPARSE_DENSE_MATMUL_GRAD_WITH_ADAGRAD_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_EXPERIMENTAL_SPARSE_DENSE_MATMUL_SPARSE_DENSE_MATMUL_GRAD_WITH_ADAGRAD_ATEN_KERNELS_H_
 
+#include <string_view>
 #include <tuple>
 
 #include "ATen/core/ATen_fwd.h"
@@ -75,7 +76,8 @@ std::tuple<at::Tensor, at::Tensor> AtenSparseDenseMatmulGradWithAdagrad(
     const at::Tensor& embedding_table, const at::Tensor& accumulator,
     const at::Tensor& activations_grad, const at::Tensor& learning_rate,
     const at::Tensor& epsilon, int64_t device_batch_size,
-    int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition);
+    int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+    std::string_view computation_name);
 
 }  // namespace torch_tpu
 

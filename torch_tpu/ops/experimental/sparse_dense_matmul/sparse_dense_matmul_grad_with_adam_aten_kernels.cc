@@ -18,6 +18,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -57,9 +58,11 @@ auto SparseDenseMatmulGradWithAdamBuilder(int64_t device_batch_size,
                                           int64_t max_ids_per_partition,
                                           int64_t max_unique_ids_per_partition,
                                           double beta_1, double beta_2,
-                                          double epsilon) {
+                                          double epsilon,
+                                          std::string_view computation_name) {
   return [max_ids_per_partition, max_unique_ids_per_partition, beta_1, beta_2,
-          epsilon](FixedSizeSpan<mlir::MlirOp, 9> inputs)
+          epsilon, computation_name = std::string(computation_name)](
+             FixedSizeSpan<mlir::MlirOp, 9> inputs)
              -> absl::StatusOr<MlirOpResults<3>> {
     mlir::MlirOp row_pointers = inputs[0];
     mlir::MlirOp embedding_ids = inputs[1];
@@ -91,7 +94,6 @@ auto SparseDenseMatmulGradWithAdamBuilder(int64_t device_batch_size,
     int64_t embedding_dim = embedding_table_type.getShape()[1];
 
     // Define the optimizer update function.
-    std::string_view computation_name = "adam_optimizer_update";
 
     auto tensor_type = mlir::RankedTensorType::get({1, embedding_dim},
                                                    op_builder.getF32Type());
@@ -257,12 +259,13 @@ AtenSparseDenseMatmulGradWithAdam(
     const at::Tensor& velocity, const at::Tensor& activations_grad,
     const at::Tensor& alpha_t, double beta_1, double beta_2, double epsilon,
     int64_t device_batch_size, int64_t max_ids_per_partition,
-    int64_t max_unique_ids_per_partition) {
+    int64_t max_unique_ids_per_partition, std::string_view computation_name) {
   TT_KERNEL(
       OpName::kSparseDenseMatmulGradWithAdam, param_keys,
       (row_pointers, embedding_ids, sample_ids, gains, embedding_table,
        momentum, velocity, activations_grad, alpha_t, beta_1, beta_2, epsilon,
-       device_batch_size, max_ids_per_partition, max_unique_ids_per_partition),
+       device_batch_size, max_ids_per_partition, max_unique_ids_per_partition,
+       computation_name),
       {
         std::array<TensorHolder, 9> inputs = {
             row_pointers, embedding_ids,    sample_ids,
@@ -274,7 +277,8 @@ AtenSparseDenseMatmulGradWithAdam(
 
         auto builder_fn = SparseDenseMatmulGradWithAdamBuilder(
             device_batch_size, max_ids_per_partition,
-            max_unique_ids_per_partition, beta_1, beta_2, epsilon);
+            max_unique_ids_per_partition, beta_1, beta_2, epsilon,
+            computation_name);
 
         TT_ASSIGN_OR_THROW(
             mlir::ElementType out_dtype,

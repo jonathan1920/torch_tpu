@@ -1117,19 +1117,22 @@ TORCH_LIBRARY(tpu, m) {
       "Tensor accumulator, Tensor activations_grad, Tensor learning_rate, "
       "Tensor epsilon, int "
       "device_batch_size, int max_ids_per_partition, int "
-      "max_unique_ids_per_partition) -> (Tensor, Tensor)");
+      "max_unique_ids_per_partition, str computation_name) -> (Tensor, "
+      "Tensor)");
   m.def(
       "sparse_dense_matmul_grad_with_sgd(Tensor row_pointers, Tensor "
       "embedding_ids, Tensor sample_ids, Tensor gains, Tensor embedding_table, "
       "Tensor activations_grad, Tensor learning_rate, int device_batch_size, "
-      "int max_ids_per_partition, int max_unique_ids_per_partition) -> Tensor");
+      "int max_ids_per_partition, int max_unique_ids_per_partition, str "
+      "computation_name) -> Tensor");
   m.def(
       "sparse_dense_matmul_grad_with_adam(Tensor row_pointers, Tensor "
       "embedding_ids, Tensor sample_ids, Tensor gains, Tensor embedding_table, "
       "Tensor momentum, Tensor velocity, Tensor activations_grad, Tensor "
       "alpha_t, float beta_1, float beta_2, float epsilon, int "
       "device_batch_size, int max_ids_per_partition, int "
-      "max_unique_ids_per_partition) -> (Tensor, Tensor, Tensor)");
+      "max_unique_ids_per_partition, str computation_name) -> (Tensor, Tensor, "
+      "Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(tpu, Meta, m) {
@@ -1165,7 +1168,8 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
          const at::Tensor& sample_ids, const at::Tensor& gains,
          const at::Tensor& embedding_table, const at::Tensor& activations_grad,
          const at::Tensor& learning_rate, int64_t device_batch_size,
-         int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition) {
+         int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+         std::string_view computation_name) {
         return at::empty_like(embedding_table);
       });
   ImplExperimental<OpName::kSparseDenseMatmulGradWithAdagrad>(
@@ -1175,7 +1179,8 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
           const at::Tensor& embedding_table, const at::Tensor& accumulator,
           const at::Tensor& activations_grad, const at::Tensor& learning_rate,
           const at::Tensor& epsilon, int64_t device_batch_size,
-          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition) {
+          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+          std::string_view computation_name) {
         return std::make_tuple(at::empty_like(embedding_table),
                                at::empty_like(accumulator));
       });
@@ -1187,7 +1192,8 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
           const at::Tensor& velocity, const at::Tensor& activations_grad,
           const at::Tensor& alpha_t, double beta_1, double beta_2,
           double epsilon, int64_t device_batch_size,
-          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition) {
+          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+          std::string_view computation_name) {
         return std::make_tuple(at::empty_like(embedding_table),
                                at::empty_like(momentum),
                                at::empty_like(velocity));
