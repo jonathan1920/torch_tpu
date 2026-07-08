@@ -1040,27 +1040,6 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.ops.aten.index(inp, indices)
 
-  # TorchTPU behaves differently from CPU/GPU kernels. Instead of resizing the
-  # given output, TorchTPU raises an error.
-  @et.why_tpu_only(
-      "TODO: b/487653209 - make the behavior consistent between TPU and CPU."
-  )
-  def test_linalg_inv_ex_output_rank_mismatch(self):
-    a = torch.ones(4, 4, device=et.device())
-
-    # Call the out overload of linalg.inv_ex() op.
-    out = (
-        torch.ones(4, 4, 4, device=et.device()),
-        torch.ones(4, 4, 4, device=et.device()),
-    )
-
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""linalg_inv_ex(): expected the inverse output shape to match the input tensor of shape [4, 4], got [4, 4, 4]""",
-        message_reviewed_by="wan",
-    ):
-      torch.linalg.inv_ex(a, out=out)
-
   @et.why_tpu_only("TODO: support sparse_grad in gather() on TPU.")
   def test_gather_with_sparse_grad(self):
     inp = torch.ones(2, 3, 4, device=et.device())

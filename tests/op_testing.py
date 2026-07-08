@@ -284,8 +284,6 @@ _OPS_WITHOUT_OUT_SHAPE_RESIZING: Final[set[str]] = {
     "clamp_min",
     "lerp",
     "lgamma",
-    "linalg.inv",
-    "linalg.solve_ex",
 }
 
 
