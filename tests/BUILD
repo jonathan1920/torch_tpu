@@ -969,9 +969,9 @@ torch_tpu_py_test(
     name = "sparse_dense_matmul_test",
     srcs = ["sparse_dense_matmul_test.py"],
     main = "sparse_dense_matmul_test.py",
+    notap = "Subslicing errors on tpu7x. See b/515767150",
     notest_oss = "Disabled because of no support for tpu v7 in presubmit",
     tags = [
-        "ok-to-wait-for-v7x-in-presubmit",
         "requires-tpu-v7x",
     ],
     deps = [

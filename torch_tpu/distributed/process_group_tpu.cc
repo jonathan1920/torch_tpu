@@ -470,21 +470,6 @@ ProcessGroupTpu::ProcessGroupTpu(c10::intrusive_ptr<c10d::Store> store,
   TT_CHECK_THROW(pjrt_client != nullptr, error::kInternal)
       << "PjRtClient is not initialized.";
 
-  // Single-rank (world_size==1): follow the CUDA convention and bind to the
-  // first addressable device (like cuda:0 when several are visible). This is
-  // the one device PJRT already restricts the process to (pjrt_state.cc:
-  // device_ = addressable_devices[0]); collectives become identity via a
-  // single-device replica group. The group_size>1 path below instead requires
-  // the process to see exactly one addressable device.
-  if (group_size == 1) {
-    addressable_device_id_ =
-        pjrt_client->addressable_devices()[0]->global_device_id().value();
-    device_ids_ = {addressable_device_id_};
-    rank_to_device_id_ = {addressable_device_id_};
-    subgroup_device_ids_ = {{addressable_device_id_}};
-    return;
-  }
-
   // All devices in the slice:
   for (const auto* dev : pjrt_client->devices()) {
     ABSL_CHECK(dev != nullptr) << "Got a nullptr PjRtDevice.";  // CRASH_OK

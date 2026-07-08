@@ -42,15 +42,12 @@ torch_tpu_py_library(
 torch_tpu_py_test(
     name = "single_tpu_pg_test",
     srcs = ["single_tpu_pg_test.py"],
-    # Must run where a single process sees more than one addressable device
-    # (v7 chips expose two TensorCores), so the world_size==1 path is actually
-    # exercised. On a single-device target it passes with or without the fix.
-    # Disabled in OSS presubmit (no v7 there); internal presubmit may wait for
-    # v7x via the tag below.
-    notest_oss = "Disabled because of no support for tpu v7 in presubmit",
     tags = [
-        "ok-to-wait-for-v7x-in-presubmit",
-        "requires-tpu-v7x",
+        # Skip this test on tpu v7 runners: 'RuntimeError: expected exactly one TPU device
+        # per PyTorch process.' occurs because each TPU7x chip contains two addressable TensorCores,
+        # but manual process group init expects exactly 1 TPU device per process.
+        "fails-on-tpu-v7",
+        "requires-tpu-v5lite",
     ],
     deps = [
         "//shims/absl_py/logging",
@@ -58,7 +55,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/distributed:tpu_distributed",
-        "//torch_tpu/_internal/utils",
         "@pypi//portpicker",
     ],
 )
