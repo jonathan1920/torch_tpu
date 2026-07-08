@@ -22,34 +22,52 @@ import portpicker
 import torch
 import torch.accelerator
 from torch_tpu._internal.distributed import tpu_distributed
+from torch_tpu._internal.utils import utils
 
 
 class SingleTpuPGTest(absltest.TestCase):
 
-  def test_init_pg(self):
-    """Test registration and initialization call from PyTorch."""
-
-    device = torch.device("tpu")
-    logging.info("TPU device: %s", device)
-    logging.info("global_device_id: %s", tpu_distributed.global_device_id())
-    logging.info(
-        "device_debug_string: %s", tpu_distributed.device_debug_string()
-    )
-
-    # Register a new ProcessGroup backend, for use by tensors on TPU device.
-    torch.distributed.Backend.register_backend(
-        "tpu_dist", tpu_distributed.create_process_group, devices="tpu"
-    )
-    self.assertTrue(torch.distributed.is_backend_available("tpu_dist"))
-
-    # Standard initialization of a PyTorch ProcessGroup.
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    # tpu_dist is auto-registered when torch_tpu loads. world_size is passed as
+    # an arg (the CUDA/NCCL way), not via env vars.
     torch.distributed.init_process_group(
         backend="tpu_dist",
         init_method=f"tcp://localhost:{portpicker.pick_unused_port()}",
         rank=0,
         world_size=1,
     )
+
+  def test_init_pg(self):
+    """A world_size=1 group initializes when a process sees >1 addressable device.
+
+    This is the path the fix exercises: when a single unpinned process sees more
+    than one addressable device (e.g. v7, where each chip exposes two
+    TensorCores), a single-rank group must bind to the first one (like cuda:0
+    with several GPUs visible) rather than rejecting init. On a single-device
+    target this test passes with or without the fix, so it must run somewhere
+    more than one core is visible.
+    """
+    logging.info("TPU device: %s", torch.device("tpu"))
+    logging.info("global_device_id: %s", tpu_distributed.global_device_id())
+    self.assertTrue(torch.distributed.is_backend_available("tpu_dist"))
     self.assertTrue(torch.distributed.is_initialized())
+    self.assertEqual(torch.distributed.get_world_size(), 1)
+    self.assertEqual(torch.distributed.get_rank(), 0)
+
+  def test_allreduce_is_identity(self):
+    """A collective over a single rank is the identity (NCCL semantics)."""
+    x = torch.arange(8, dtype=torch.float32, device="tpu")
+    expected = x.clone()
+    torch.distributed.all_reduce(x)  # SUM over one rank == identity
+    utils.assert_close(x, expected)
+
+  def test_allgather_into_tensor_is_identity(self):
+    x = torch.arange(4, dtype=torch.float32, device="tpu") + 1
+    out = torch.empty(4, dtype=torch.float32, device="tpu")
+    torch.distributed.all_gather_into_tensor(out, x)
+    utils.assert_close(out, x)
 
   def test_manual_pg(self):
     """Test manual/explicit ProcessGroup creation."""
