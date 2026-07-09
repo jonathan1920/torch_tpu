@@ -91,24 +91,6 @@ cc_library(name = "torch")
         rctx.execute(["mkdir", "-p", "site-packages"])
         rctx.extract("_torch_internal_archive.zip", output = "site-packages")
 
-        # Workaround for upstream PyTorch nightly wheels missing
-        # TypedMetadata.h. See:
-        # PyTorch PR: https://github.com/pytorch/pytorch/pull/187440
-        # Kineto PR: https://github.com/pytorch/kineto/pull/1439
-        kineto_inc = "site-packages/torch/include/kineto"
-        if rctx.path(kineto_inc).exists:
-            if not rctx.path(kineto_inc + "/TypedMetadata.h").exists:
-                rctx.download(
-                    "https://raw.githubusercontent.com/pytorch/kineto/" +
-                    "main/libkineto/include/TypedMetadata.h",
-                    output = kineto_inc + "/TypedMetadata.h",
-                )
-            else:
-                fail("\n" + "=" * 78 +
-                     "\nNOTICE: Upstream PyTorch wheel now includes " +
-                     "TypedMetadata.h!\n" +
-                     "Please remove this temporary download workaround from " +
-                     "torch_local_repo.bzl\n" + "=" * 78)
     else:
         _create_shadow_tree(rctx, torch_path)
 
