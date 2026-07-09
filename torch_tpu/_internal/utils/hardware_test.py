@@ -128,5 +128,22 @@ class NvidiaGpuMockTest(parameterized.TestCase):
     self.assertFalse(hardware.has_nvidia_gpu())
 
 
+class DeviceCapabilityTest(absltest.TestCase):
+
+  @mock.patch.object(hardware, "get_tpu_device_name", return_value="TPU v7")
+  def test_v7_name_flops_memory(self, _mock_name):
+    # name -> version mapping
+    self.assertEqual(hardware.get_tpu_device_name(), "TPU v7")
+    self.assertEqual(hardware.get_tpu_version(), hardware.TpuVersion.V7)
+    # v7 splits its two cores into two separately-addressable devices
+    self.assertEqual(hardware.get_devices_per_chip(), 2)
+    # flops: 2307 TFLOP/s per chip, half of that per device
+    self.assertEqual(hardware.get_bf16_flops_per_chip(), 2307 * 10**12)
+    self.assertEqual(hardware.get_bf16_flops_per_device(), 2307 * 10**12 // 2)
+    # memory: 192 GiB per chip, 96 GiB per device
+    self.assertEqual(hardware.get_hbm_bytes_per_chip(), 192 * 1024**3)
+    self.assertEqual(hardware.get_hbm_bytes_per_device(), 192 * 1024**3 // 2)
+
+
 if __name__ == "__main__":
   absltest.main()
