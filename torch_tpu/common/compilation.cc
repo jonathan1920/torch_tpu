@@ -44,6 +44,7 @@
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/excess_precision.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -80,30 +81,6 @@ namespace {
 constexpr std::string_view kOptimizationLevelOption = "xla_optimization_level";
 constexpr std::string_view kMemoryFittingLevelOption =
     "xla_memory_fitting_level";
-
-// Represents the state of the "allow excess precision" compiler option.
-enum class ExcessPrecisionState {
-  // Use XLA_FLAGS or fall back to the default.
-  kUnset,
-  // Explicitly allow excess precision.
-  kAllow,
-  // Explicitly disallow excess precision.
-  kDisallow,
-};
-
-// Returns the cached default `xla::ExecutableBuildOptions` instance. This
-// function is memoized, so the XLA_FLAGS environment variable is parsed exactly
-// once.
-const xla::ExecutableBuildOptions& GetDefaultExecutableBuildOptions() {
-  static const absl::NoDestructor<xla::ExecutableBuildOptions>
-      default_executable_build_options([] {
-        xla::ExecutableBuildOptions options;
-        // Calling mutable_debug_options() triggers parsing XLA_FLAGS.
-        options.mutable_debug_options();
-        return options;
-      }());
-  return *default_executable_build_options;
-}
 
 }  // namespace
 
@@ -184,37 +161,6 @@ template <typename Map>
 static void UpdateMap(Map& map, Map updates) {
   for (auto& [key, value] : updates) {
     map[std::move(key)] = std::move(value);
-  }
-}
-
-static std::atomic<ExcessPrecisionState> g_allow_excess_precision{
-    ExcessPrecisionState::kUnset};
-
-void SetAllowExcessPrecision(bool allow) {
-  g_allow_excess_precision.store(allow ? ExcessPrecisionState::kAllow
-                                       : ExcessPrecisionState::kDisallow);
-}
-
-bool GetAllowExcessPrecision() {
-  switch (g_allow_excess_precision.load()) {
-    case ExcessPrecisionState::kAllow:
-      return true;
-    case ExcessPrecisionState::kDisallow:
-      return false;
-    case ExcessPrecisionState::kUnset:
-      // Fall back to XLA_FLAGS or default to true.
-      // Use static to memoize the value to avoid reading the debug options
-      // multiple times.
-      static const bool allow_excess_precision = [] {
-        const xla::DebugOptions& debug_options =
-            GetDefaultExecutableBuildOptions().debug_options();
-        if (debug_options.has_xla_allow_excess_precision()) {
-          return debug_options.xla_allow_excess_precision();
-        }
-        // TODO: b/502610173 - Set to False when XLA_FLAGS is not set.
-        return true;
-      }();
-      return allow_excess_precision;
   }
 }
 

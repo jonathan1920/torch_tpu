@@ -177,12 +177,6 @@ absl::Status PushCompilerOptionOverrides(CompilerOptionOverrides overrides);
 // non-empty.
 void PopCompilerOptionOverrides();
 
-// Sets whether XLA is allowed to use excess precision for all compilations.
-void SetAllowExcessPrecision(bool allow);
-
-// Returns whether XLA is allowed to use excess precision for all compilations.
-[[nodiscard]] bool GetAllowExcessPrecision();
-
 // Returns the compile options key for the given compile options.
 [[nodiscard]] CompileOptionsKey MakeCompileOptionsKey(
     std::string_view xla_flags, const xla::CompileOptions& options);

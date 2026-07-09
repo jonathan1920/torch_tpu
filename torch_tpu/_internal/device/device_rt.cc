@@ -41,6 +41,7 @@
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/discovery.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/excess_precision.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"

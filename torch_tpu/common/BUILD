@@ -222,6 +222,7 @@ torch_tpu_cc_library(
         ":context_states",
         ":env_vars",
         ":error_utils",
+        ":excess_precision",
         ":fingerprint_utils",
         ":shape",
         "//torch_tpu/ops:op_builder_utils",
@@ -244,6 +245,16 @@ torch_tpu_cc_library(
         "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/service:computation_placer_hdr",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "excess_precision",
+    srcs = ["excess_precision.cc"],
+    hdrs = ["excess_precision.h"],
+    deps = [
+        "@com_google_absl//absl/base:no_destructor",
+        "@xla//xla/client:executable_build_options",
     ],
 )
 
