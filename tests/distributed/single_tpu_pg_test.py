@@ -36,10 +36,8 @@ class SingleTpuPGTest(absltest.TestCase):
         "device_debug_string: %s", tpu_distributed.device_debug_string()
     )
 
-    # Register a new ProcessGroup backend, for use by tensors on TPU device.
-    torch.distributed.Backend.register_backend(
-        "tpu_dist", tpu_distributed.create_process_group, devices="tpu"
-    )
+    # `tpu_dist` is auto-registered by torch_tpu's loader when the TPU device
+    # is initialized; no manual register_backend() call is needed here.
     self.assertTrue(torch.distributed.is_backend_available("tpu_dist"))
 
     # Standard initialization of a PyTorch ProcessGroup.
