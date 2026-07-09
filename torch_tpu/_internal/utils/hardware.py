@@ -144,6 +144,30 @@ def get_tpu_version() -> TpuVersion:
     return TpuVersion.UNKNOWN
 
 
+# Physical HBM capacity per chip, in bytes, keyed by TPU generation. On
+# multi-core chips (v7) this HBM is shared across the chip's TensorCores; it
+# is reported per chip (the published physical capacity), not divided per
+# exposed device.
+# Sources: https://cloud.google.com/tpu/docs/{v4,v5e,v5p,v6e,tpu7x}
+_HBM_BYTES_PER_CHIP: Final[Mapping[TpuVersion, int]] = (
+    immutabledict.immutabledict({
+        TpuVersion.V4: 32 * 1024**3,
+        TpuVersion.V5E: 16 * 1024**3,
+        TpuVersion.V5P: 95 * 1024**3,
+        TpuVersion.V6E: 32 * 1024**3,
+        TpuVersion.V7: 192 * 1024**3,
+    })
+)
+
+
+def get_hbm_bytes_per_chip() -> int | None:
+  """Physical HBM capacity per chip, in bytes, for the attached TPU.
+
+  Returns None if the generation is unknown / unrecognized.
+  """
+  return _HBM_BYTES_PER_CHIP.get(get_tpu_version())
+
+
 def _scan_pci_tpus() -> tuple[int, Mapping[int, str] | None]:
   """Scans PCI bus for TPU devices.
 

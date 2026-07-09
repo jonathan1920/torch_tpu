@@ -21,6 +21,7 @@ and runtime.
 import abc
 import atexit
 from collections.abc import Mapping
+from types import SimpleNamespace
 from typing import Any, Final, List
 import torch
 from torch_tpu._internal.device import _device_ops_backend
@@ -428,6 +429,29 @@ class _DeviceModule(abc.ABC):
 
 class TpuDeviceModule(_DeviceModule):
   _device_type: Final[str] = "tpu"
+
+  @classmethod
+  def get_device_name(
+      cls, device: int | str | torch.device | None = None
+  ) -> str:  # This is in torch/cuda/__init__.py.
+    """Human-readable name of the attached TPU, e.g. "TPU v7"."""
+    return hardware.get_tpu_device_name()
+
+  @classmethod
+  def get_device_properties(
+      cls, device: int | str | torch.device | None = None
+  ):  # This is in torch/cuda/__init__.py.
+    """Static device properties, mirroring torch.cuda.get_device_properties.
+
+    Exposes ``name`` and ``total_memory`` (physical HBM per chip, in bytes;
+    0 if the generation is unrecognized). Peak FLOP/s is intentionally not
+    exposed here: it is a dtype-dependent published constant, not a queryable
+    hardware property, and no torch device module reports it.
+    """
+    return SimpleNamespace(
+        name=cls.get_device_name(device),
+        total_memory=hardware.get_hbm_bytes_per_chip() or 0,
+    )
 
 
 class XlaCudaDeviceModule(_DeviceModule):
