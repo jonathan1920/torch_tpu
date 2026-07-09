@@ -5199,6 +5199,30 @@ Supported combinations for non-constant padding:
     ):
       torch.linalg.vector_norm(x, dtype=torch.float32, out=out)
 
+  def test_norm_dim_out_of_bounds(self):
+    t = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    for dim in [-3, 3]:
+      msg = (
+          "Dimension out of range (expected to be in range of [-2, 1], but got"
+          f" {dim})"
+      )
+      with et.assert_raises_message(
+          IndexError,
+          tpu=msg,
+          gpu=msg,
+      ):
+        torch.norm(t, p=2, dim=dim)
+
+  def test_norm_dim_repeated(self):
+    t = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    msg = "dim 0 appears multiple times in the list of dims"
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=msg,
+        gpu=msg,
+    ):
+      torch.norm(t, p=2, dim=[0, 0])
+
   def test_rms_norm_int(self):
     inp = torch.ones(5, 5, device=et.device(), dtype=torch.int32)
     normalized_shape = (5,)

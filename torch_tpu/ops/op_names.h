@@ -523,6 +523,8 @@ enum class OpName {
   kNativeGroupNormBackward,
   kNativeLayerNorm,
   kNativeLayerNormBackward,
+  kNativeNorm,
+  kNativeNormScalarOptDimDtype,
   kNe,
   kNeOut,
   kNeScalarOut,

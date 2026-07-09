@@ -135,6 +135,7 @@
 #include "torch_tpu/ops/multinomial/multinomial_aten_kernels.h"
 #include "torch_tpu/ops/nan_to_num/nan_to_num_aten_kernels.h"
 #include "torch_tpu/ops/native_batch_norm/native_batch_norm_aten_kernels.h"
+#include "torch_tpu/ops/native_norm/native_norm_aten_kernels.h"
 #include "torch_tpu/ops/nll_loss/nll_loss_aten_kernels.h"
 #include "torch_tpu/ops/nonzero/nonzero_aten_kernels.h"
 #include "torch_tpu/ops/normal/normal_aten_kernels.h"
@@ -769,6 +770,9 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kNativeGroupNormBackward>(m, AtenNativeGroupNormBackward);
   ImplStable<OpName::kNativeLayerNorm>(m, AtenNativeLayerNorm);
   ImplStable<OpName::kNativeLayerNormBackward>(m, AtenLayerNormBackward);
+  ImplStable<OpName::kNativeNorm>(m, AtenNativeNormScalar);
+  ImplStable<OpName::kNativeNormScalarOptDimDtype>(
+      m, AtenNativeNormScalarOptDimDtype);
   ImplStable<OpName::kNeScalarOut>(m, AtenNeScalarOut);
   ImplStable<OpName::kNeTensorOut>(m, AtenNeTensorOut);
   ImplStable<OpName::kNegOut>(m, AtenNegOut);

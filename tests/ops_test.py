@@ -427,6 +427,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float64: {"rtol": 3.5e-6, "atol": 1.2e-6},
     },
     "linalg.vector_norm": {
+        torch.bfloat16: {"rtol": 2e-2, "atol": 9.2e-5},
         torch.complex64: {"rtol": 2.5e-6, "atol": 3.5e-5},
         torch.float32: {"rtol": 4e-6, "atol": 3e-5},
     },
@@ -597,6 +598,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     },
     "nn.functional.softplus": {
         torch.bfloat16: {"rtol": 2e-2, "atol": 9.2e-5},
+    },
+    "norm": {
+        torch.bfloat16: {"rtol": 2e-2, "atol": 9.2e-5},
+        torch.complex64: {"rtol": 1e-5, "atol": 5e-5},
+        torch.float32: {"rtol": 1e-5, "atol": 5e-5},
     },
     "polygamma": {
         torch.float32: {"rtol": 2.7e-5, "atol": 1.7e-3},
@@ -981,6 +987,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float64: {"atol": 9.1e-7},
     },
     "linalg.vector_norm": {
+        torch.bfloat16: {"atol": 1e-2},
         torch.complex64: {"atol": 1.3e-4},
         torch.float32: {"atol": 2.9e-4},
     },
@@ -1110,6 +1117,10 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"atol": 5.4e-5},
         torch.float16: {"atol": 6.2e-5},
         torch.float32: {"atol": 6e-5},
+    },
+    "norm": {
+        torch.complex64: {"rtol": 1e-5, "atol": 5e-5},
+        torch.float32: {"rtol": 1e-5, "atol": 5e-5},
     },
     "polygamma": {
         torch.float32: {"rtol": 1.6e-4, "atol": 22},
@@ -2753,6 +2764,9 @@ class TestOps(TorchTpuTestBase):
             and op_input.input_value.dtype in COMPLEX_DTYPES
         ),
     )
+
+  def test_norm(self):
+    self.do_test_op("norm")
 
   def test_linalg_vector_norm_other_dtypes(self):
     self.do_test_op("linalg.vector_norm")

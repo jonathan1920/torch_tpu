@@ -30,7 +30,6 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
@@ -112,7 +111,8 @@ at::Tensor& AtenLinalgVectorNormOut(const at::Tensor& self,
 
               if (promoted_ord.IsZero()) {
                 // TODO: maybe convert to StableHLO, if more efficient.
-                auto temp = at::sum(self.ne(0), dim, keepdim, dtype);
+                auto temp = at::sum(self.ne(0), dim, keepdim,
+                                    dtype.value_or(out.scalar_type()));
                 out.copy_(temp);
               } else {
                 TT_THROW_IF_ERROR(op_cache_keys.SetParam("ord", ord));
