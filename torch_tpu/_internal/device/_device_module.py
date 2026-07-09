@@ -21,7 +21,7 @@ and runtime.
 import abc
 import atexit
 from collections.abc import Mapping
-from types import SimpleNamespace
+from dataclasses import dataclass
 from typing import Any, Final, List
 import torch
 from torch_tpu._internal.device import _device_ops_backend
@@ -427,6 +427,20 @@ class _DeviceModule(abc.ABC):
       _device_ops_backend._shutdown_runtime()  # pylint: disable=protected-access
 
 
+@dataclass(frozen=True)
+class _TpuDeviceProperties:
+  """Static TPU device properties, the analog of torch.cuda's
+  _CudaDeviceProperties.
+
+  ``total_memory`` is HBM visible to a single device, in bytes. Peak FLOP/s
+  is intentionally absent: it is a dtype-dependent published constant, not a
+  queryable hardware property, and no torch device module reports it.
+  """
+
+  name: str
+  total_memory: int
+
+
 class TpuDeviceModule(_DeviceModule):
   _device_type: Final[str] = "tpu"
 
@@ -440,14 +454,12 @@ class TpuDeviceModule(_DeviceModule):
   @classmethod
   def get_device_properties(
       cls, device: int | str | torch.device | None = None
-  ) -> SimpleNamespace:
+  ) -> _TpuDeviceProperties:
     """Static device properties, mirroring torch.cuda.get_device_properties.
 
-    Exposes ``name`` and ``total_memory`` (HBM visible to a single device,
-    in bytes — per-chip capacity divided by the chip's exposed device count).
-    Peak FLOP/s is intentionally not exposed here: it is a dtype-dependent
-    published constant, not a queryable hardware property, and no torch device
-    module reports it.
+    Raises RuntimeError on an unrecognized TPU generation rather than
+    reporting an unusable memory value, matching torch.cuda's behavior of
+    raising when properties cannot be produced.
     """
     total_memory = hardware.get_hbm_bytes_per_device()
     if total_memory is None:
@@ -455,7 +467,7 @@ class TpuDeviceModule(_DeviceModule):
           f"unrecognized TPU {cls.get_device_name(device)!r}; cannot "
           "determine device memory"
       )
-    return SimpleNamespace(
+    return _TpuDeviceProperties(
         name=cls.get_device_name(device),
         total_memory=total_memory,
     )
