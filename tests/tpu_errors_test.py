@@ -2382,6 +2382,159 @@ module {
           maximize=False,
       )
 
+  @et.why_tpu_only(
+      "Verifying TPU-specific error formatting and type validation for"
+      " fused_sgd"
+  )
+  def test_fused_sgd_default_int32_dtype(self):
+    device = "tpu"
+    p = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    mb = torch.tensor([1, 2], dtype=torch.int32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_sgd_(): expected the input dtype to be floating-point, got int32""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_sgd_.default(
+          [p],
+          [g],
+          [mb],
+          weight_decay=0.01,
+          momentum=0.9,
+          lr=0.1,
+          dampening=0.0,
+          nesterov=False,
+          maximize=False,
+          is_first_step=False,
+      )
+
+  @et.why_tpu_only(
+      "Verifying TPU-specific error formatting and type validation for"
+      " fused_sgd"
+  )
+  def test_fused_sgd_default_complex64_dtype(self):
+    device = "tpu"
+    p = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=device)
+    g = torch.tensor([0.1 + 0.1j], dtype=torch.complex64, device=device)
+    mb = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_sgd_(): expected the input dtype to be floating-point, got complex64""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_sgd_.default(
+          [p],
+          [g],
+          [mb],
+          weight_decay=0.01,
+          momentum=0.9,
+          lr=0.1,
+          dampening=0.0,
+          nesterov=False,
+          maximize=False,
+          is_first_step=False,
+      )
+
+  @et.why_tpu_only(
+      "Verifying TPU-specific error formatting and type validation for"
+      " fused_sgd"
+  )
+  def test_fused_sgd_tensor_lr_int32_dtype(self):
+    device = "tpu"
+    p = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    mb = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    lr = torch.tensor(0.1, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_sgd_(): expected the input dtype to be floating-point, got int32""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_sgd_.tensor_lr(
+          [p],
+          [g],
+          [mb],
+          weight_decay=0.01,
+          momentum=0.9,
+          lr=lr,
+          dampening=0.0,
+          nesterov=False,
+          maximize=False,
+          is_first_step=False,
+      )
+
+  @et.why_tpu_only(
+      "Verifying TPU-specific error formatting and list size validation for"
+      " fused_sgd"
+  )
+  def test_fused_sgd_mismatched_grads_size(self):
+    device = "tpu"
+    p = [
+        torch.tensor([1.0], dtype=torch.float32, device=device),
+        torch.tensor([2.0], dtype=torch.float32, device=device),
+    ]
+    g = [torch.tensor([0.1], dtype=torch.float32, device=device)]
+    mb = [
+        torch.tensor([0.0], dtype=torch.float32, device=device),
+        torch.tensor([0.0], dtype=torch.float32, device=device),
+    ]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_sgd_(): expected grads to have the same number of tensors as self, got 1""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_sgd_.default(
+          p,
+          g,
+          mb,
+          weight_decay=0.01,
+          momentum=0.9,
+          lr=0.1,
+          dampening=0.0,
+          nesterov=False,
+          maximize=False,
+          is_first_step=False,
+      )
+
+  @et.why_tpu_only(
+      "Verifying TPU-specific error formatting and list size validation for"
+      " fused_sgd"
+  )
+  def test_fused_sgd_mismatched_momentum_buffer_size(self):
+    device = "tpu"
+    p = [
+        torch.tensor([1.0], dtype=torch.float32, device=device),
+        torch.tensor([2.0], dtype=torch.float32, device=device),
+    ]
+    g = [
+        torch.tensor([0.1], dtype=torch.float32, device=device),
+        torch.tensor([0.2], dtype=torch.float32, device=device),
+    ]
+    mb = [torch.tensor([0.0], dtype=torch.float32, device=device)]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_sgd_(): expected momentum_buffer_list to have the same number of tensors as self, got 1""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_sgd_.default(
+          p,
+          g,
+          mb,
+          weight_decay=0.01,
+          momentum=0.9,
+          lr=0.1,
+          dampening=0.0,
+          nesterov=False,
+          maximize=False,
+          is_first_step=False,
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

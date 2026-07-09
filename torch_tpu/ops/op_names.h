@@ -366,6 +366,8 @@ enum class OpName {
   kFusedRmsNorm,
   kFusedRmsNormBackward,
   kFusedSdpChoice,
+  kFusedSgd,
+  kFusedSgdTensorLr,
   kGather,
   kGatherOut,
   kGe,

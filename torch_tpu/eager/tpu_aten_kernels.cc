@@ -94,6 +94,7 @@
 #include "torch_tpu/ops/fmin/fmin_aten_kernels.h"
 #include "torch_tpu/ops/foreach_aten_kernels.h"
 #include "torch_tpu/ops/fused_adamw/fused_adamw_aten_kernels.h"
+#include "torch_tpu/ops/fused_sgd/fused_sgd_aten_kernels.h"
 #include "torch_tpu/ops/gather/gather_aten_kernels.h"
 #include "torch_tpu/ops/gelu/gelu_aten_kernels.h"
 #include "torch_tpu/ops/glu/glu_aten_kernels.h"
@@ -618,6 +619,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kFusedDropout>(m, AtenFusedDropout);
   ImplStable<OpName::kFusedRmsNorm>(m, AtenFusedRmsNorm);
   ImplStable<OpName::kFusedRmsNormBackward>(m, AtenFusedRmsNormBackward);
+  ImplStable<OpName::kFusedSgd>(m, AtenFusedSgd);
+  ImplStable<OpName::kFusedSgdTensorLr>(m, AtenFusedSgdTensorLr);
   ImplStable<OpName::kGather>(m, AtenGather);
   ImplStable<OpName::kGatherOut>(m, AtenGatherOut);
   ImplStable<OpName::kGeScalarOut>(m, AtenGeScalarOut);

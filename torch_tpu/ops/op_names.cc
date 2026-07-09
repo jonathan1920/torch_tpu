@@ -705,6 +705,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_fused_rms_norm_backward";
     case OpName::kFusedSdpChoice:
       return "_fused_sdp_choice";
+    case OpName::kFusedSgd:
+      return "_fused_sgd_";
+    case OpName::kFusedSgdTensorLr:
+      return "_fused_sgd_.tensor_lr";
     case OpName::kGather:
       return "gather";
     case OpName::kGatherOut:
