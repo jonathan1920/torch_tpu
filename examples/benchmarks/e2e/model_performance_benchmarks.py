@@ -569,7 +569,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         run_mode=run_mode,
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-4-31B",
+            model_name="google/gemma-4-31b",
             sequence_length=2048,
             batch_size=8,
             custom_kwargs={
@@ -599,7 +599,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         run_mode=run_mode,
         is_training=True,
         model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-4-31B",
+            model_name="google/gemma-4-31b",
             sequence_length=1024,
             batch_size=4,
             custom_kwargs={
@@ -632,7 +632,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         run_mode=run_mode,
         is_training=True,
         model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-4-31B",
+            model_name="google/gemma-4-31b",
             sequence_length=512,
             batch_size=1,
             custom_kwargs={
