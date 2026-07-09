@@ -615,6 +615,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kForeachZero_>(m, AtenForeachZero_);
   ImplStable<OpName::kFusedAdamw>(m, AtenFusedAdamw);
   ImplStable<OpName::kFusedAdamwTensorLr>(m, AtenFusedAdamwTensorLr);
+  ImplStable<OpName::kFusedDropout>(m, AtenFusedDropout);
   ImplStable<OpName::kFusedRmsNorm>(m, AtenFusedRmsNorm);
   ImplStable<OpName::kFusedRmsNormBackward>(m, AtenFusedRmsNormBackward);
   ImplStable<OpName::kGather>(m, AtenGather);

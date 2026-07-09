@@ -71,7 +71,6 @@ UNREGISTERED_OPS = frozenset([
     '_fused_adagrad_.tensor_lr',
     '_fused_adam_',
     '_fused_adam_.tensor_lr',
-    '_fused_dropout',
     '_fused_moving_avg_obs_fq_helper',
     '_fused_sdp_choice',
     '_fused_sgd_',

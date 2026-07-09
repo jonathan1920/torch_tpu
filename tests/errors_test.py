@@ -5477,6 +5477,46 @@ Supported combinations for non-constant padding:
       with self.subTest(p=p):
         check(p)
 
+  def test_fused_dropout_invalid_p(self):
+    if et.is_on_gpu():
+      self.skipTest("GPU behavior difference")
+    x = torch.ones(5, 3, device=et.device())
+
+    def check(p: float) -> None:
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=f"fused_dropout(): expected p to be in the range [0, 1], got {p}",
+          message_reviewed_by="adivinpatel",
+      ):
+        torch.ops.aten._fused_dropout(x, p=p)
+
+    for p in (-1.5, -0.0001, 1.0001, 1.5):
+      with self.subTest(p=p):
+        check(p)
+
+  def test_fused_dropout_invalid_dtype(self):
+    if et.is_on_gpu():
+      self.skipTest("GPU behavior difference")
+    x = torch.ones((2, 3), device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_dropout(): expected input to be floating point or complex, got Int""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_dropout(x, 0.5)
+
+  def test_native_dropout_backward_invalid_mask_dtype(self):
+    if et.is_on_gpu():
+      self.skipTest("GPU behavior difference")
+    grad_output = torch.ones((2, 3), device=et.device(), dtype=torch.float32)
+    mask = torch.ones((2, 3), device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_dropout_backward(): expected mask to be Bool scalar type, got Int""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)
+
   def test_weight_norm_interface_dim(self):
     if et.is_on_gpu():
       self.skipTest("GPU behavior difference")

@@ -697,6 +697,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_fused_adamw_";
     case OpName::kFusedAdamwTensorLr:
       return "_fused_adamw_.tensor_lr";
+    case OpName::kFusedDropout:
+      return "_fused_dropout";
     case OpName::kFusedRmsNorm:
       return "_fused_rms_norm";
     case OpName::kFusedRmsNormBackward:
