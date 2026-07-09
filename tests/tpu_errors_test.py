@@ -610,7 +610,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     out = torch.ones(5, device="cpu", dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""masked_select(): the out tensor is expected to be on tpu, got cpu""",
+        tpu="""masked_select(): expected out tensor to be on tpu, got cpu""",
     ):
       torch.masked_select(t, mask, out=out)
 

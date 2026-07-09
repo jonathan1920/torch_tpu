@@ -583,7 +583,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         gpu="""masked_select: expected BoolTensor for mask""",
-        tpu="""masked_select(): expected the mask to be bool, got float32""",
+        tpu="""masked_select(): expected mask to be a BoolTensor, got float32""",
     ):
       t.masked_select(mask)
 
@@ -813,7 +813,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         gpu="""masked_select(): self and result must have the same scalar type""",
-        tpu="""masked_select(): the out tensor dtype is expected to be float32, got int32""",
+        tpu="""masked_select(): expected out tensor to have dtype float32, got int32""",
     ):
       torch.masked_select(t, mask, out=out)
 
@@ -5969,7 +5969,7 @@ Device-side assertion tracking was not enabled by user.""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""masked_select(): expected the mask to be bool, got int32""",
+        tpu="""masked_select(): expected mask to be a BoolTensor, got int32""",
         gpu="""masked_select: expected BoolTensor for mask""",
         message_reviewed_by="wan",
     ):
