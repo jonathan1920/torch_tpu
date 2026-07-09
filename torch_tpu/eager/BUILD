@@ -551,6 +551,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/fmin:fmin_aten_kernels",
         "//torch_tpu/ops/fused_adamw:fused_adamw_aten_kernels",
         "//torch_tpu/ops/fused_sgd:fused_sgd_aten_kernels",
+        "//torch_tpu/ops/optimizer:fused_adam_aten_kernels",
         "//torch_tpu/ops/gather:gather_aten_kernels",
         "//torch_tpu/ops/gelu:gelu_aten_kernels",
         "//torch_tpu/ops/glu:glu_aten_kernels",

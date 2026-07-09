@@ -2383,6 +2383,301 @@ module {
       )
 
   @et.why_tpu_only(
+      "GPU Adam error handling differences for unsupported dtypes."
+  )
+  def test_fused_adam_default_int32_dtype(self):
+    device = et.device()
+    p_int = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g_int = torch.tensor([1, 1], dtype=torch.int32, device=device)
+    ea_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    eas_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adam_(): expected the input dtype to be floating-point, got int32""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p_int],
+          [g_int],
+          [ea_int],
+          [eas_int],
+          [],
+          [step],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for unsupported dtypes."
+  )
+  def test_fused_adam_default_complex64_dtype(self):
+    device = et.device()
+    p_cplx = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=device)
+    g_cplx = torch.tensor([0.1 + 0.1j], dtype=torch.complex64, device=device)
+    ea_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    eas_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adam_(): expected the input dtype to be floating-point, got complex64""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p_cplx],
+          [g_cplx],
+          [ea_cplx],
+          [eas_cplx],
+          [],
+          [step],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for unsupported dtypes."
+  )
+  def test_fused_adam_tensor_lr_int32_dtype(self):
+    device = et.device()
+    p_int = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g_int = torch.tensor([1, 1], dtype=torch.int32, device=device)
+    ea_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    eas_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+    lr_tensor = torch.tensor(0.001, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adam_(): expected the input dtype to be floating-point, got int32""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.tensor_lr(
+          [p_int],
+          [g_int],
+          [ea_int],
+          [eas_int],
+          [],
+          [step],
+          lr=lr_tensor,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for unsupported dtypes."
+  )
+  def test_fused_adam_tensor_lr_complex64_dtype(self):
+    device = et.device()
+    p_cplx = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=device)
+    g_cplx = torch.tensor([0.1 + 0.1j], dtype=torch.complex64, device=device)
+    ea_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    eas_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+    lr_tensor = torch.tensor(0.001, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adam_(): expected the input dtype to be floating-point, got complex64""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.tensor_lr(
+          [p_cplx],
+          [g_cplx],
+          [ea_cplx],
+          [eas_cplx],
+          [],
+          [step],
+          lr=lr_tensor,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for mismatched list sizes."
+  )
+  def test_fused_adam_mismatched_grads_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adam_(): expected grads to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p1, p2],
+          [g1],
+          [ea1, ea1],
+          [eas1, eas1],
+          [],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for mismatched list sizes."
+  )
+  def test_fused_adam_mismatched_exp_avgs_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adam_(): expected exp_avgs to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1],
+          [eas1, eas1],
+          [],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for mismatched list sizes."
+  )
+  def test_fused_adam_mismatched_exp_avg_sqs_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adam_(): expected exp_avg_sqs to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1, ea1],
+          [eas1],
+          [],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for mismatched list sizes."
+  )
+  def test_fused_adam_mismatched_state_steps_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adam_(): expected state_steps to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1, ea1],
+          [eas1, eas1],
+          [],
+          [step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for mismatched list sizes."
+  )
+  def test_fused_adam_mismatched_max_exp_avg_sqs_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adam_(): expected max_exp_avg_sqs to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1, ea1],
+          [eas1, eas1],
+          [eas1],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=True,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
       "Verifying TPU-specific error formatting and type validation for"
       " fused_sgd"
   )

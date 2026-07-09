@@ -69,8 +69,6 @@ UNREGISTERED_OPS = frozenset([
     '_functional_assert_async.msg',
     '_fused_adagrad_',
     '_fused_adagrad_.tensor_lr',
-    '_fused_adam_',
-    '_fused_adam_.tensor_lr',
     '_fused_moving_avg_obs_fq_helper',
     '_fused_sdp_choice',
     '_histogramdd_bin_edges',
