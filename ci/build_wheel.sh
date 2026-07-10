@@ -43,7 +43,16 @@ docker run --rm \
   -w "/workspace" \
   -e WHEEL_VERSION_EXTRAS="${WHEEL_VERSION_EXTRAS}" \
   "${CONTAINER_IMAGE}" \
-  bash -c "bazel build -c opt --config=no_rbe //ci/wheel:torch_tpu_wheel --repo_env=WHEEL_VERSION_EXTRAS=\$WHEEL_VERSION_EXTRAS && cp bazel-bin/ci/wheel/*.whl /workspace/dist/"
+  bash -c "set -ex
+    for py_ver in 3.11 3.12 3.13 3.14; do
+      echo '===> Building wheel for Python' \$py_ver
+      bazel build -c opt --config=no_rbe //ci/wheel:torch_tpu_wheel \
+        --repo_env=WHEEL_VERSION_EXTRAS=\$WHEEL_VERSION_EXTRAS \
+        --repo_env=HERMETIC_PYTHON_VERSION=\$py_ver \
+        --define PYTHON_VERSION=\$py_ver && \
+      cp bazel-bin/ci/wheel/*.whl /workspace/dist/
+    done
+  "
 
 # Move the built wheels from local dist back to Kokoro artifacts directory
 if [[ -d dist && -n "$(ls -A dist/*.whl 2>/dev/null)" ]]; then

@@ -27,8 +27,10 @@ from absl import logging
 from tensorboardX import writer
 import torch
 from torch_tpu._internal import execution_mode
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
@@ -58,11 +60,11 @@ BOUNDED_DYNAMIC = flags.DEFINE_bool(
 )
 
 DISTRIBUTED_PLATFORMS = (
-    benchmark_utils.Platform.GFC_2X2X1,
-    benchmark_utils.Platform.GFC_2X2X2,
-    benchmark_utils.Platform.GFC_2X2X4,
-    benchmark_utils.Platform.GFC_2X4X4,
-    benchmark_utils.Platform.B200_4,
+    common.Platform.GFC_2X2X1,
+    common.Platform.GFC_2X2X2,
+    common.Platform.GFC_2X2X4,
+    common.Platform.GFC_2X4X4,
+    common.Platform.B200_4,
 )
 
 
@@ -118,15 +120,16 @@ class PerformanceBenchmarkConfig:
     eval_factory: Optional factory to create the inference benchmark function.
   """
 
-  supported_platforms: Sequence[benchmark_utils.Platform]
+  supported_platforms: Sequence[common.Platform]
   benchmark_category: benchmark_utils.BenchmarkCategory
-  run_mode: benchmark_utils.RunMode
+  run_mode: common.RunMode
   is_training: bool
   model_and_input_args: ModelAndInputArgs
   model_and_input_factory: Callable[..., Any]
   sync_params: bool = False
   train_factory: Optional[Callable[[], Callable[..., Any]]] = None
   eval_factory: Optional[Callable[[], Callable[..., Any]]] = None
+  use_fused_optim: bool = True
 
 
 # LINT.ThenChange(../../../g3doc/benchmarking.md)
@@ -134,7 +137,7 @@ class PerformanceBenchmarkConfig:
 
 @contextlib.contextmanager
 def _run_mode_context(
-    run_mode: benchmark_utils.RunMode,
+    run_mode: common.RunMode,
     device: torch.device,
     clear_device_cache: bool = True,
 ):
@@ -145,8 +148,9 @@ def _run_mode_context(
   like clearing caches and resetting torch.dynamo.
 
   Args:
-    run_mode: The benchmark_utils.RunMode to configure the context for.
+    run_mode: The common.RunMode to configure the context for.
     device: The torch device being used.
+    clear_device_cache: Whether to clear the device cache.
 
   Yields:
     None
@@ -155,16 +159,16 @@ def _run_mode_context(
   new_eager_mode = None
 
   match run_mode:
-    case benchmark_utils.RunMode.EAGER_DEFAULT:
+    case common.RunMode.EAGER_DEFAULT:
       new_eager_mode = EagerMode.DEFER_NEVER
 
-    case benchmark_utils.RunMode.EAGER_OPTIMIZED:
+    case common.RunMode.EAGER_OPTIMIZED:
       new_eager_mode = EagerMode.DEFER_AND_FUSE
 
-    case benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING:
+    case common.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING:
       new_eager_mode = EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
 
-    case benchmark_utils.RunMode.COMPILED:
+    case common.RunMode.COMPILED:
       pass  # Explicitly do nothing
 
     case _:
@@ -181,7 +185,8 @@ def _run_mode_context(
     # pylint: disable=protected-access
     if clear_device_cache and device.type != "cpu":
       device_utils.clear_cache(device.type)
-    if benchmark_utils.is_torch_compile(run_mode):
+      tt_testing.reset_eager_state()
+    if common.is_torch_compile(run_mode):
       torch._dynamo.reset()
 
 
@@ -260,8 +265,8 @@ def run_single_process_benchmark(
   rank = int(os.environ.get("RANK", "0"))
   logging.info("Process %s starting run_single_process_benchmark", rank)
   world_size = int(os.environ.get("WORLD_SIZE", "1"))
-  platform = benchmark_utils.PLATFORM.value
-  device = benchmark_utils.get_torch_device(platform)
+  platform = common.PLATFORM.value
+  device = common.get_torch_device(platform)
   # Seed random number generators for reproducibility. This should be done after
   # initializing the device.
   if config.is_training:
@@ -275,14 +280,14 @@ def run_single_process_benchmark(
 
   # Seed random number generators for reproducibility. This should be done after
   # initializing the device.
-  benchmark_utils.seed_rngs()
+  common.seed_rngs()
   weights_dtype = get_torch_dtype(WEIGHTS_DTYPE.value)
 
-  use_torch_compile = benchmark_utils.is_torch_compile(config.run_mode)
+  use_torch_compile = common.is_torch_compile(config.run_mode)
   if config.is_training:
-    func = config.train_factory()
+    func = config.train_factory()  # pyrefly: ignore[not-callable]
   else:
-    func = config.eval_factory()
+    func = config.eval_factory()  # pyrefly: ignore[not-callable]
   model_and_input = config.model_and_input_factory(
       model_and_input_args=config.model_and_input_args,
       device=device,
@@ -302,7 +307,8 @@ def run_single_process_benchmark(
   optimizer = _get_optimizer(
       model_and_input.model,
       is_training=config.is_training,
-      use_torch_compile=benchmark_utils.is_torch_compile(config.run_mode),
+      use_torch_compile=common.is_torch_compile(config.run_mode),
+      use_fused_optim=config.use_fused_optim,
   )
   # Only enable xprof for rank 0 process.
   enable_xprof = ENABLE_XPROF.value and rank == 0
@@ -357,7 +363,7 @@ def run_single_process_benchmark(
           benchmark_name,
           microbenchmark_name,
           config.is_training,
-          benchmark_utils.PLATFORM.value,
+          common.PLATFORM.value,
           WEIGHTS_DTYPE.value,
           rank,
           world_size,
@@ -454,12 +460,12 @@ def _run_distributed_benchmark(
     microbenchmark_name: str | None = None,
 ) -> None:
   """Runs the benchmark for the given config."""
-  platform = benchmark_utils.PLATFORM.value
-  if platform == benchmark_utils.Platform.B200_4:
+  platform = common.PLATFORM.value
+  if platform == common.Platform.B200_4:
     # A single B200 device is roughly equivalent to two GFC devices,
     # so double the batch size on B200 to make a fairer comparison.
     config.model_and_input_args.batch_size = (
-        config.model_and_input_args.batch_size * 2
+        config.model_and_input_args.batch_size * 2  # pyrefly: ignore[unsupported-operation]
     )
     distributed_utils.dist_run(
         4,
@@ -472,7 +478,7 @@ def _run_distributed_benchmark(
             microbenchmark_name,
         ),
     )
-  elif platform == benchmark_utils.Platform.GFC_2X2X1:
+  elif platform == common.Platform.GFC_2X2X1:
     singlehost_wrapper.prepare_tpu_environment(world_size=8)
     distributed_utils.dist_run(
         8,
@@ -509,7 +515,7 @@ def run_benchmark(
       microbenchmarks. See go/mlcompass-microbenchmark-guide for more details.
   """
 
-  platform = benchmark_utils.PLATFORM.value
+  platform = common.PLATFORM.value
   if platform in DISTRIBUTED_PLATFORMS:
     logging.info("Running distributed benchmark on platform %s", platform)
     _run_distributed_benchmark(
@@ -529,7 +535,11 @@ def run_benchmark(
 
 
 def _get_optimizer(
-    model: torch.nn.Module, *, is_training: bool, use_torch_compile: bool
+    model: torch.nn.Module,
+    *,
+    is_training: bool,
+    use_torch_compile: bool,
+    use_fused_optim: bool = True,
 ) -> torch.optim.Optimizer | None:
   """Returns optimizer for training, or None for inference."""
   if not is_training:
@@ -538,12 +548,9 @@ def _get_optimizer(
       model.parameters(),
       lr=0.1,  # Gigantic LR for testing.
       capturable=use_torch_compile,
-      # The non-fused version of adam will expand foreach into loops and
-      # increase the graph size. The compile time increase is especially
-      # obvious when compiling AdamW with torch.compile.
-      # We should consider implementing 'aten::_fused_adamw_' to both
-      # improve compile time and increase performance.
-      fused=False,
+      # Using native 'aten::_fused_adamw_' kernel improves both compilation
+      # time and runtime throughput over non-fused foreach loop expansion.
+      fused=use_fused_optim,
   )
 
 

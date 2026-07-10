@@ -66,7 +66,7 @@ def main(_) -> None:
 
   # Create a dummy input. A real run should add the chat template.
   prompt = "To be or not..."
-  inputs = tokenizer(prompt, return_tensors="pt").to(device)
+  inputs = tokenizer(prompt, return_tensors="pt").to(device)  # pyrefly: ignore[not-callable]
 
   with utils.ActivationTracer(model) as tracer:
     _ = model(**inputs)

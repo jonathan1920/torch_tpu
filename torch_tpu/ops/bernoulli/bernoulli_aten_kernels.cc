@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Generator.h"
@@ -34,6 +35,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/utils.h"
+#include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -47,7 +49,7 @@ namespace {
 // Draws samples from a Bernoulli distribution with parameter `p`.
 // This is done by drawing samples `u` from a uniform distribution in [0, 1)
 // and setting the result to 1 if `u < p` and 0 otherwise.
-absl::StatusOr<MlirOpResults<2>> BuildBernoulliShlo(
+absl::StatusOr<MlirOpResults<1>> BuildBernoulliShlo(
     mlir::MlirOp rng_input_state, mlir::MlirOp p_op,
     const llvm::ArrayRef<int64_t> sizes, const mlir::ElementType mlir_type) {
   // Generate uniform distribution in [0, 1).
@@ -55,8 +57,7 @@ absl::StatusOr<MlirOpResults<2>> BuildBernoulliShlo(
       auto uniform_results,
       BuildUniformShlo(rng_input_state, 0.0, 1.0, sizes, mlir_type));
 
-  mlir::MlirOp rng_output_state = uniform_results[0];
-  mlir::MlirOp u = uniform_results[1];
+  mlir::MlirOp u = uniform_results;
 
   // bernoulli = u < p
   const mlir::RankedTensorType u_type = GetTensorTypeOrDie(u);
@@ -71,23 +72,23 @@ absl::StatusOr<MlirOpResults<2>> BuildBernoulliShlo(
       u, p_op, mlir::stablehlo::ComparisonDirection::LT);
   auto result = mlir::stablehlo::ConvertElementType(comp, mlir_type);
 
-  return {{rng_output_state, result}};
+  return result;
 }
 
-NAryMlirOpBuilder<1, 2> GetBernoulliFloatFunctional(
+NAryMlirOpBuilder<1, 1> GetBernoulliFloatFunctional(
     Dimensions dims, mlir::ElementType output_dtype, double p) {
   return [dims, output_dtype,
-          p](mlir::MlirOp rng_input_state) -> absl::StatusOr<MlirOpResults<2>> {
+          p](mlir::MlirOp rng_input_state) -> absl::StatusOr<MlirOpResults<1>> {
     auto& builder = rng_input_state.getBuilder();
     mlir::MlirOp p_op = MakeScalarConstant(builder, p, output_dtype);
     return BuildBernoulliShlo(rng_input_state, p_op, dims, output_dtype);
   };
 }
 
-NAryMlirOpBuilder<2, 2> GetBernoulliTensorFunctional(
+NAryMlirOpBuilder<2, 1> GetBernoulliTensorFunctional(
     Dimensions dims, mlir::ElementType output_dtype) {
   return [dims, output_dtype](FixedSizeSpan<mlir::MlirOp, 2> inputs)
-             -> absl::StatusOr<MlirOpResults<2>> {
+             -> absl::StatusOr<MlirOpResults<1>> {
     return BuildBernoulliShlo(inputs[0], inputs[1], dims, output_dtype);
   };
 }
@@ -105,14 +106,19 @@ at::Tensor& AtenBernoulliOut(const at::Tensor& self,
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
     const auto dims = CopyIntVector(self.sizes());
-    TT_THROW_IF_ERROR(
-        DispatchRngOp(out, generator, [&](at::Tensor rng_input_state) {
-          return DispatchOp<2, 2>(
-              GetBernoulliTensorFunctional(dims, output_dtype),
-              {rng_input_state, self},
-              {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
-               .out_dims_list = {{2}, dims},
-               .op_param_cache_keys = std::move(param_keys)});
+
+    TT_THROW_IF_ERROR(DispatchRngOp(
+        out, generator,
+        [&](at::Tensor rng_input_state)
+            -> absl::StatusOr<std::vector<DeviceBufferRef>> {
+          TT_ASSIGN_OR_RETURN(
+              auto buf, (DispatchOp<2, 1>(
+                            GetBernoulliTensorFunctional(dims, output_dtype),
+                            {rng_input_state, self},
+                            {.out_dtype = output_dtype,
+                             .out_dims = dims,
+                             .op_param_cache_keys = std::move(param_keys)})));
+          return std::vector<DeviceBufferRef>{std::move(buf)};
         }));
     return out;
   });
@@ -132,14 +138,19 @@ at::Tensor& AtenBernoulli_Float(at::Tensor& self, double p,
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
     const auto dims = CopyIntVector(self.sizes());
-    TT_THROW_IF_ERROR(
-        DispatchRngOp(self, generator, [&](at::Tensor rng_input_state) {
-          return DispatchOp<1, 2>(
-              GetBernoulliFloatFunctional(dims, output_dtype, p),
-              {rng_input_state},
-              {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
-               .out_dims_list = {{2}, dims},
-               .op_param_cache_keys = std::move(param_keys)});
+
+    TT_THROW_IF_ERROR(DispatchRngOp(
+        self, generator,
+        [&](at::Tensor rng_input_state)
+            -> absl::StatusOr<std::vector<DeviceBufferRef>> {
+          TT_ASSIGN_OR_RETURN(
+              auto buf, (DispatchOp<1, 1>(
+                            GetBernoulliFloatFunctional(dims, output_dtype, p),
+                            {rng_input_state},
+                            {.out_dtype = output_dtype,
+                             .out_dims = dims,
+                             .op_param_cache_keys = std::move(param_keys)})));
+          return std::vector<DeviceBufferRef>{std::move(buf)};
         }));
     return self;
   });
@@ -155,14 +166,19 @@ at::Tensor& AtenBernoulli_Tensor(at::Tensor& self, const at::Tensor& p,
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
     const auto dims = CopyIntVector(self.sizes());
-    TT_THROW_IF_ERROR(
-        DispatchRngOp(self, generator, [&](at::Tensor rng_input_state) {
-          return DispatchOp<2, 2>(
-              GetBernoulliTensorFunctional(dims, output_dtype),
-              {rng_input_state, p},
-              {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
-               .out_dims_list = {{2}, dims},
-               .op_param_cache_keys = std::move(param_keys)});
+
+    TT_THROW_IF_ERROR(DispatchRngOp(
+        self, generator,
+        [&](at::Tensor rng_input_state)
+            -> absl::StatusOr<std::vector<DeviceBufferRef>> {
+          TT_ASSIGN_OR_RETURN(
+              auto buf, (DispatchOp<2, 1>(
+                            GetBernoulliTensorFunctional(dims, output_dtype),
+                            {rng_input_state, p},
+                            {.out_dtype = output_dtype,
+                             .out_dims = dims,
+                             .op_param_cache_keys = std::move(param_keys)})));
+          return std::vector<DeviceBufferRef>{std::move(buf)};
         }));
     return self;
   });

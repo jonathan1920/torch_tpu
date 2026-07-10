@@ -22,7 +22,7 @@ from torch.utils._sympy.numbers import int_oo
 
 
 def _is_valid_bound(s: sympy.Expr) -> bool:
-  return s.is_integer and s.is_constant() and (s not in (int_oo, -int_oo))
+  return s.is_integer and s.is_constant() and (s not in (int_oo, -int_oo))  # pyrefly: ignore[missing-attribute]
 
 
 def _lookup_bounds_in_shape_env(
@@ -78,7 +78,7 @@ def get_symint_bounds(sym_int: torch.SymInt) -> tuple[int, int]:
       for the symbol.
   """
   if vr := _lookup_bounds_in_shape_env(
-      sym_int.node.expr, sym_int.node.shape_env
+      sym_int.node.expr, sym_int.node.shape_env  # pyrefly: ignore[bad-argument-type]
   ):
     return vr
 
@@ -98,4 +98,4 @@ def get_symint_bounds(sym_int: torch.SymInt) -> tuple[int, int]:
       lower_bound,
       upper_bound,
   )
-  return lower_bound, upper_bound
+  return lower_bound, upper_bound  # pyrefly: ignore[bad-return]

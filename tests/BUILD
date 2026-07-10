@@ -15,13 +15,36 @@
 load(
     "//build_files:build_defs.bzl",
     "if_oss",
+    "oss_target",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
     "torch_tpu_py_test",
+    "tpu_gen",
 )
 
 package(
     default_applicable_licenses = ["//:license"],
+)
+
+torch_tpu_py_library(
+    name = "oss_utils",
+    testonly = True,
+    srcs = ["oss_utils.py"],
+    visibility = ["//:__subpackages__"],
+    deps = if_oss(
+        ["//shims/libtpu"],
+        [],
+    ),
+)
+
+torch_tpu_py_test(
+    name = "oss_utils_test",
+    srcs = ["oss_utils_test.py"],
+    deps = [
+        ":oss_utils",
+        "//shims/absl_py/testing:absltest",
+        "//torch_tpu",
+    ],
 )
 
 torch_tpu_py_library(
@@ -133,6 +156,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--print_op_inputs=1",
+        "--test_categories=-foreach,-nonzero",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
         ["--max_samples_per_op_dtype=16"],
@@ -152,6 +176,75 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "foreach_ops_test_tpu",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--print_op_inputs=1",
+        "--test_categories=foreach",
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=16"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
+    main = "ops_test.py",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
+    shard_count = 35,
+    tags = [
+        "noasan",  # TODO: fix the test timing out in asan mode.
+        "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "nonzero_ops_test_tpu",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--print_op_inputs=1",
+        "--test_categories=nonzero",
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=16"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
+    main = "ops_test.py",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
+    shard_count = 1,
+    tags = [
+        "noasan",  # TODO: fix the test timing out in asan mode.
+        "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -166,12 +259,13 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--print_op_inputs=1",
+        "--test_categories=-foreach,-nonzero",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
     notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
-    shard_count = 50,
+    shard_count = 15,
     tags = [
         "nosan",  # Rely on ops_test_tpu for *san coverage.
         # Specifically tests TPU v6e behaviors in postsubmit. Do not change to
@@ -181,6 +275,65 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "foreach_ops_test_tpu_v6e",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--print_op_inputs=1",
+        "--test_categories=foreach",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
+    ],
+    main = "ops_test.py",
+    nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
+    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
+    shard_count = 10,
+    tags = [
+        "nosan",  # Rely on ops_test_tpu for *san coverage.
+        "requires-tpu-v6e",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "nonzero_ops_test_tpu_v6e",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--print_op_inputs=1",
+        "--test_categories=nonzero",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
+    ],
+    main = "ops_test.py",
+    nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
+    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
+    shard_count = 1,
+    tags = [
+        "nosan",  # Rely on ops_test_tpu for *san coverage.
+        "requires-tpu-v6e",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -195,6 +348,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
+        "--test_categories=-foreach,-nonzero",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
         ["--max_samples_per_op_dtype=16"],
@@ -203,7 +357,7 @@ torch_tpu_py_test(
     ),
     main = "ops_test.py",
     nopresubmit_oss = "This slow test is enabled in nightly.",
-    shard_count = 50,
+    shard_count = 35,
     tags = [
         "noasan",  # TODO: fix the test timing out in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
@@ -213,6 +367,75 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "foreach_ops_test_grad",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--compute_grad=True",
+        "--test_categories=foreach",
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=16"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
+    main = "ops_test.py",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
+    shard_count = 15,
+    tags = [
+        "noasan",  # TODO: fix the test timing out in asan mode.
+        "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "nonzero_ops_test_grad",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--compute_grad=True",
+        "--test_categories=nonzero",
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=16"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
+    main = "ops_test.py",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
+    shard_count = 1,
+    tags = [
+        "noasan",  # TODO: fix the test timing out in asan mode.
+        "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -227,12 +450,13 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
+        "--test_categories=-foreach,-nonzero",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
     notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
-    shard_count = 50,
+    shard_count = 12,
     tags = [
         "nosan",  # Rely on ops_test_grad for *san coverage.
         # Specifically tests TPU v6e behaviors in postsubmit. Do not change to
@@ -242,6 +466,65 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "foreach_ops_test_grad_v6e",
+    timeout = "long",  # Needed for asan.
+    srcs = ["ops_test.py"],
+    args = [
+        "--compute_grad=True",
+        "--test_categories=foreach",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
+    ],
+    main = "ops_test.py",
+    nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
+    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
+    shard_count = 10,
+    tags = [
+        "nosan",  # Rely on ops_test_grad for *san coverage.
+        "requires-tpu-v6e",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "nonzero_ops_test_grad_v6e",
+    timeout = "long",  # Needed for asan.
+    srcs = ["ops_test.py"],
+    args = [
+        "--compute_grad=True",
+        "--test_categories=nonzero",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
+    ],
+    main = "ops_test.py",
+    nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
+    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
+    shard_count = 1,
+    tags = [
+        "nosan",  # Rely on ops_test_grad for *san coverage.
+        "requires-tpu-v6e",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -276,6 +559,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -290,6 +574,47 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--test_mode=torch_tpu_vs_gpu",
+        "--test_categories=-foreach,-nonzero",
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=16"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
+    data = [
+        "ops_test_gpu_golden0.gz",
+        "ops_test_gpu_golden1.gz",
+        "ops_test_gpu_golden2.gz",
+    ],
+    main = "ops_test.py",
+    nopresubmit = "Long run time. Run in postsubmit only.",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
+    shard_count = 50,
+    tags = [
+        "noasan",  # This test times out in asan mode.
+        "nomsan",  # This test times out in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "foreach_ops_test_tpu_vs_gpu",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--test_mode=torch_tpu_vs_gpu",
+        "--test_categories=foreach",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
         ["--max_samples_per_op_dtype=16"],
@@ -303,7 +628,7 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nopresubmit_oss = "This slow test is enabled in nightly.",
-    shard_count = 50,
+    shard_count = 10,
     tags = [
         "noasan",  # This test times out in asan mode.
         "nomsan",  # This test times out in msan mode.
@@ -313,6 +638,46 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "nonzero_ops_test_tpu_vs_gpu",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--test_mode=torch_tpu_vs_gpu",
+        "--test_categories=nonzero",
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=16"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
+    data = [
+        "ops_test_gpu_golden0.gz",
+        "ops_test_gpu_golden1.gz",
+        "ops_test_gpu_golden2.gz",
+    ],
+    main = "ops_test.py",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
+    shard_count = 1,
+    tags = [
+        "noasan",  # This test times out in asan mode.
+        "nomsan",  # This test times out in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -327,6 +692,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--test_mode=torch_tpu_vs_gpu",
+        "--test_categories=-foreach,-nonzero",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
     data = [
@@ -337,7 +703,7 @@ torch_tpu_py_test(
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
     notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
-    shard_count = 50,
+    shard_count = 25,
     tags = [
         "nosan",  # Rely on ops_test_tpu_vs_gpu for *san coverage.
         # Specifically tests TPU v6e behaviors in postsubmit. Do not change to
@@ -347,6 +713,75 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "foreach_ops_test_tpu_vs_gpu_v6e",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--test_mode=torch_tpu_vs_gpu",
+        "--test_categories=foreach",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
+    ],
+    data = [
+        "ops_test_gpu_golden0.gz",
+        "ops_test_gpu_golden1.gz",
+        "ops_test_gpu_golden2.gz",
+    ],
+    main = "ops_test.py",
+    nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
+    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
+    shard_count = 10,
+    tags = [
+        "nosan",  # Rely on ops_test_tpu_vs_gpu for *san coverage.
+        "requires-tpu-v6e",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "nonzero_ops_test_tpu_vs_gpu_v6e",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--test_mode=torch_tpu_vs_gpu",
+        "--test_categories=nonzero",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
+    ],
+    data = [
+        "ops_test_gpu_golden0.gz",
+        "ops_test_gpu_golden1.gz",
+        "ops_test_gpu_golden2.gz",
+    ],
+    main = "ops_test.py",
+    nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
+    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
+    shard_count = 1,
+    tags = [
+        "nosan",  # Rely on ops_test_tpu_vs_gpu for *san coverage.
+        "requires-tpu-v6e",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -393,6 +828,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -421,6 +857,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -457,6 +894,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -483,8 +921,10 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
+        "//shims/torch:testing_internal",
         "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_torch_compile",
+        "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/eager:tpu_aten_kernels",
@@ -514,12 +954,35 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
+        "//shims/torch:testing_internal",
         "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_torch_compile",
+        "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/eager:tpu_aten_kernels",
         "@pypi//scipy",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "sparse_dense_matmul_test",
+    srcs = ["sparse_dense_matmul_test.py"],
+    main = "sparse_dense_matmul_test.py",
+    notap = "Subslicing errors on tpu7x. See b/515767150",
+    notest_oss = "Disabled because of no support for tpu v7 in presubmit",
+    tags = [
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils:hardware",
+        "//torch_tpu/ops/experimental/sparse_dense_matmul:input_preprocessing_kernels",
+        "@pypi//numpy",
     ],
 )
 
@@ -545,8 +1008,10 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
+        "//shims/torch:testing_internal",
         "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_torch_compile",
+        "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/eager:tpu_aten_kernels",
@@ -577,8 +1042,10 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
+        "//shims/torch:testing_internal",
         "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_torch_compile",
+        "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/eager:tpu_aten_kernels",
@@ -590,7 +1057,13 @@ torch_tpu_py_test(
     name = "compiler_option_test",
     srcs = ["compiler_option_test.py"],
     main = "compiler_option_test.py",
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         ":op_testing",
         "//shims/absl_py/testing:absltest",
@@ -605,8 +1078,14 @@ torch_tpu_py_test(
     name = "index_put_op_test",
     srcs = ["index_put_op_unit_test.py"],
     main = "index_put_op_unit_test.py",
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
     shard_count = 20,
-    tags = ["requires-tpu-v5lite"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         ":op_testing",
         "//shims/absl_py/testing:absltest",
@@ -614,6 +1093,34 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "fused_adam_test",
+    srcs = ["fused_adam_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu:_loader",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "fused_adamw_test",
+    srcs = ["fused_adamw_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu:_loader",
     ],
 )
 
@@ -638,6 +1145,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "tensor_test",
     srcs = ["tensor_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
         "requires-tpu-v5lite",
@@ -664,6 +1175,7 @@ torch_tpu_py_library(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:testing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",  # build_cleaner: keep
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -674,9 +1186,17 @@ torch_tpu_py_test(
     args = [
         "--test_mode=cpu",
     ],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+    ],
     deps = [
         ":error_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
         "//torch_tpu",
     ],
 )
@@ -696,7 +1216,6 @@ torch_tpu_py_test(
     tags = [
         "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite",
-        "wheel_test_excluded",
     ],
     deps = [
         ":error_testing",
@@ -707,6 +1226,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -725,7 +1245,6 @@ torch_tpu_py_test(
     tags = [
         "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite",
-        "wheel_test_excluded",
     ],
     deps = [
         ":error_testing",
@@ -772,6 +1291,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -813,15 +1333,22 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "errors_test_cpu",
+    name = "errors_test_gpu",
     srcs = ["errors_test.py"],
-    args = ["--test_mode=cpu"],
-    env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
+    args = ["--test_mode=gpu"],
+    env = {
+        "TORCH_SHOW_CPP_STACKTRACES": "0",
+        # Force synchronous CUDA kernel launches so device-side errors trigger
+        # immediately at the exact Python op call instead of asynchronously.
+        "CUDA_LAUNCH_BLOCKING": "1",
+    },
     main = "errors_test.py",
+    nolocal = "Skipping in local runs by default as it requires --config=cuda.",
     notest_oss = "Low value in maintaining for both internal and OSS and they run different versions of PyTorch.",
     shard_count = 4,
     tags = [
         "nosan",  # *san builds are low-value for error tests.
+        "requires-gpu-nvidia",
         "wheel_test_excluded",
     ],
     deps = [
@@ -833,6 +1360,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -852,8 +1380,14 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "booleans_test",
     srcs = ["booleans_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
     # args = [],
-    tags = ["requires-tpu-v5lite"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -884,7 +1418,13 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "untyped_storage_test",
     srcs = ["untyped_storage_test.py"],
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
@@ -912,7 +1452,13 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "zero_size_test",
     srcs = ["zero_size_test.py"],
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -967,7 +1513,13 @@ torch_tpu_py_test(
     name = "set_test",
     srcs = ["set_test.py"],
     main = "set_test.py",
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -1061,7 +1613,13 @@ torch_tpu_py_test(
     name = "precision_test",
     srcs = ["precision_test.py"],
     main = "precision_test.py",
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -1292,6 +1850,84 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/eager:tpu_aten_kernels",
         "@rules_python//python/runfiles",  # build_cleaner: keep
+    ],
+)
+
+# TODO: b/523312531 - Evaluate enabling these upstream tests in Google3 for internal developer
+# parity. Currently, this is restricted to OSS CI via `oss_target` because the test runner relies on
+# the raw PyTorch source tree checked out manually by the GitHub Actions workflow.
+oss_target(
+    torch_tpu_py_test,
+    name = "run_upstream_test_tpu",
+    srcs = ["run_upstream_test.py"],
+    env = {"TORCH_TPU_INTERNAL_TEST_DEVICE": "tpu"},
+    main = "run_upstream_test.py",
+    nolocal = "This test requires downloading the raw PyTorch source tree. Exclude from wildcard runs.",
+    nopresubmit_oss = "This test requires downloading the raw PyTorch source tree. Relegate to nightly to avoid adding flakiness/latency to every PR.",
+    tags = [
+        "requires-tpu-v5lite",
+        # This test requires downloading the raw PyTorch source tree. Relegate to nightly to avoid
+        # adding flakiness/latency to wheel tests.
+        "wheel_test_excluded",
+    ],
+    deps = [
+        "//shims/torch:testing_internal",  # build_cleaner: keep
+        "//torch_tpu",
+        "@pypi//pytest",
+    ],
+)
+
+# See TODO above regarding Google3 parity and out-of-band PyTorch source tree dependencies.
+oss_target(
+    torch_tpu_py_test,
+    name = "run_upstream_test_cpu",
+    srcs = ["run_upstream_test.py"],
+    env = {"TORCH_TPU_INTERNAL_TEST_DEVICE": "cpu"},
+    main = "run_upstream_test.py",
+    nolocal = "This test requires downloading the raw PyTorch source tree. Exclude from wildcard runs.",
+    nopresubmit_oss = "This test requires downloading the raw PyTorch source tree. Relegate to nightly to avoid adding flakiness/latency to every PR.",
+    tags = [
+        # TODO: b/523384731 - Remove the "local" tag once upstream PyTorch is migrated natively into
+        # Bazel's dependency graph via Bzlmod.
+        # Ignores remote executors and forces local execution to avoid FileNotFound error as Bazel
+        # refuses to upload the downloaded PyTorch source code to the RBE Cloud workers.
+        "local",
+        # This test requires downloading the raw PyTorch source tree. Relegate to nightly to avoid
+        # adding flakiness/latency to wheel tests.
+        "wheel_test_excluded",
+    ],
+    deps = [
+        "//shims/torch:testing_internal",  # build_cleaner: keep
+        "//torch_tpu",
+        "@pypi//pytest",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "scan_test",
+    srcs = ["scan_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/utils",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "fused_sgd_test",
+    srcs = ["fused_sgd_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu:_loader",
     ],
 )
 

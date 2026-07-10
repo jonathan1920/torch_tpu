@@ -18,6 +18,8 @@
 #define TORCH_TPU_EAGER_DEVICE_GEN_IMPL_H_
 
 #include <cstdint>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "ATen/core/Generator.h"
@@ -34,22 +36,58 @@
 namespace torch_tpu {
 
 class DeviceBufferRef;
+class DeviceGeneratorImpl;
+
+// Initializes the default generator with the given seed.
+absl::Status InitDefaultGenerator(DeviceGeneratorImpl* gen_impl, uint64_t seed);
+
+// Resets all default device generators for testing.
+void PyResetDefaultDeviceGeneratorsForTesting();
+
+// Injects a failure message to be returned by the next InitDefaultGenerator().
+// For testing only.
+void PySetInitDefaultGeneratorFailureForTesting(std::string failure_message);
 
 // Holds the device-resident state of the generator (seed and offset) as a
 // tensor. This is the TPU equivalent of PyTorch's CUDAGeneratorState,
 // encapsulating the current generation state of the device.
-struct DeviceGeneratorState : public c10::intrusive_ptr_target {
+class DeviceGeneratorState : public c10::intrusive_ptr_target {
+ public:
+  static constexpr int kMaterializationThreshold = 4;
+
   DeviceGeneratorState() = default;
   explicit DeviceGeneratorState(at::Tensor device_state_tensor)
-      : device_state_tensor(std::move(device_state_tensor)) {}
+      : device_state_tensor_(std::move(device_state_tensor)) {}
 
-  c10::intrusive_ptr<DeviceGeneratorState> clone() const {
-    return c10::make_intrusive<DeviceGeneratorState>(
-        device_state_tensor.clone());
-  }
+  c10::intrusive_ptr<DeviceGeneratorState> clone() const;
+
+  at::Tensor DeviceStateTensor() const { return device_state_tensor_; }
+
+  // Sets the device-resident RNG state tensor.
+  absl::Status SetDeviceStateTensor(at::Tensor device_state_tensor);
+
+  // Writes seed and offset to device state tensor.
+  absl::Status WriteStateToDevice(uint64_t seed, uint64_t offset);
+
+ private:
+  // Materializes the RNG state tensor if the materialization counter reaches
+  // the kMaterializationThreshold. If the tensor is a placeholder or depends on
+  // a placeholder, it does not materialize.
+  //
+  // To prevent the deferred execution graph from growing indefinitely (which
+  // causes host-side memory leaks and OOM during compilation), this method
+  // throttles the materialization of the state tensor.
+  //
+  // Every `kMaterializationThreshold` updates, it materializes the state
+  // tensor, compiling and executing the deferred updates up to this point.
+  absl::Status MaybeMaterializeDeviceStateTensor(
+      bool force_materialization = false);
 
   // 1D uint64 tensor of 2 elements: {seed, offset}
-  at::Tensor device_state_tensor;  // UNINITIALIZED_TENSOR_OK
+  at::Tensor device_state_tensor_;  // UNINITIALIZED_TENSOR_OK
+
+  // Counter to throttle materialization of RNG state updates.
+  int materialize_state_counter_ = 0;
 };
 
 // Forward declarations for friends.
@@ -62,7 +100,7 @@ void PySetDeviceStateTensor(at::Generator gen, at::Tensor rng_state);
 // extra argument, and will output the new state of the generator.
 class DeviceGeneratorImpl : public c10::GeneratorImpl {
  public:
-  DeviceGeneratorImpl(c10::DeviceIndex device_index = -1);
+  explicit DeviceGeneratorImpl(c10::DeviceIndex device_index = -1);
   DeviceGeneratorImpl(c10::DeviceIndex device_index, at::Tensor rng_state);
   DeviceGeneratorImpl(c10::DeviceIndex device_index,
                       c10::intrusive_ptr<DeviceGeneratorState> state);
@@ -86,13 +124,19 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
   // Validates the shape, dtype, and device of the RNG state tensor.
   absl::Status CheckDeviceStateTensor(const at::Tensor& rng_state) const;
 
-  // Returns the current device-resident rng_state tensor. This also
-  // advances the generator's state by the amount specified
+  // Advances the generator's state by the amount specified
   // (num_elements * bit_width).
-  absl::StatusOr<at::Tensor> GetAndAdvanceDeviceStateTensor(
-      int64_t num_elements, int64_t bit_width);
+  absl::Status AdvanceDeviceStateTensor(int64_t num_elements,
+                                        int64_t bit_width);
+
+  // Returns the internal TPU RNG state tensor.
+  // This is a 1D uint64 tensor of 2 elements: {seed, offset}.
+  at::Tensor DeviceStateTensor() const;
 
  private:
+  friend absl::Status InitDefaultGenerator(DeviceGeneratorImpl* gen_impl,
+                                           uint64_t seed);
+
   template <typename DispatchFunc>
   friend absl::StatusOr<std::vector<DeviceBufferRef>> DispatchRngOpGeneral(
       c10::optional<at::Generator> generator, DispatchFunc dispatch_func);
@@ -110,10 +154,6 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
   void set_state(const c10::TensorImpl& new_state) override;
   void graphsafe_set_state(
       const c10::intrusive_ptr<c10::GeneratorImpl>& new_state) override;
-
-  // Returns the internal TPU RNG state tensor.
-  // This is a 1D uint64 tensor of 2 elements: {seed, offset}.
-  at::Tensor DeviceStateTensor() const;
 
   // Sets the internal TPU RNG state tensor.
   // Validates the shape, dtype, and device of the provided tensor.

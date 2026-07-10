@@ -29,6 +29,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
@@ -44,14 +45,6 @@ absl::Status ApplyNullaryOpOut(at::Tensor& out, MlirNullaryOpBuilder op_builder,
                                OpParamCacheKeys op_param_cache_keys,
                                OpSplitMode split_mode = OpSplitMode::kNone);
 
-// Implements AtenEmptyMemoryFormat() without going through TT_KERNEL
-// dispatching.
-absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
-    at::IntArrayRef size, c10::optional<at::ScalarType> dtype_opt,
-    c10::optional<at::Layout> layout_opt, c10::optional<at::Device> device_opt,
-    c10::optional<bool> pin_memory_opt,
-    c10::optional<at::MemoryFormat> memory_format_opt);
-
 at::Tensor AtenEmptyMemoryFormat(
     at::IntArrayRef size,                     //
     c10::optional<at::ScalarType> dtype_opt,  // Defaults to the global default.
@@ -60,12 +53,6 @@ at::Tensor AtenEmptyMemoryFormat(
     c10::optional<bool> pin_memory_opt,       // Defaults to false.
     c10::optional<at::MemoryFormat>
         memory_format_opt);  // Defaults to Contiguous.
-
-// Creates an empty tensor with the given size, dtype, and device. This tensor
-// is strided and contiguous.
-absl::StatusOr<at::Tensor> MakeEmptyTensor(
-    at::IntArrayRef size, c10::ScalarType dtype,
-    c10::optional<at::Device> device_opt);
 
 at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,
                             c10::SymIntArrayRef stride_sym,

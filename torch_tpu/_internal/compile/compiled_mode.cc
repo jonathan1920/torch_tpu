@@ -56,7 +56,6 @@
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/traversal.h"
-#include "torch_tpu/experimental/eager/materialize_new.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -67,8 +66,6 @@
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla_data.pb.h"
-
-ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
 
@@ -115,20 +112,6 @@ absl::StatusOr<std::vector<DeviceBufferRef>> PrepareCompiledModeArguments(
   // Materialize the argument buffers.
   TT_RETURN_IF_ERROR(Materialize(argument_buffer_refs,
                                  MaterializationReason::kCompileModeExecution));
-  if (GetFlagOnce<bool,
-                  &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
-    // Under experimental asynchronous eager materialization, eager operations
-    // (such as those preparing argument views) compile and execute in the
-    // background on a dedicated worker.
-    //
-    // Since compiled model execution is enqueued to a separate, independent
-    // background execution queue (the old execution worker), we must block the
-    // main thread here and wait for the new materialization thread to catch up.
-    // This ensures all arguments are fully compiled and materialized on the
-    // device before the old execution worker attempts to retrieve their
-    // buffers, preventing deterministic "unexpectedly deferred" crashes.
-    TT_RETURN_IF_ERROR(BlockOnPendingMaterializations());
-  }
 
   // After materialization, each argument buffer will be a materialized,
   // contiguous tensor which the compiled executable can safely apply view
@@ -151,9 +134,23 @@ absl::StatusOr<at::Tensor> MakePlaceholder(absl::Span<const int64_t> sizes,
   return new_tensor;
 }
 
+absl::StatusOr<at::Tensor> MakePlaceholder(Shape shape, bool requires_grad) {
+  TT_ASSIGN_OR_RETURN(
+      DeviceBufferRef placeholder,
+      DeviceBufferList::CreatePlaceholder(shape.dimensions(), shape.dtype()));
+  for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
+    TT_RETURN_IF_ERROR(placeholder.MarkDynamic(dynamic_dim.dimension,
+                                               dynamic_dim.lower_bound,
+                                               dynamic_dim.upper_bound));
+  }
+  auto new_tensor = MakeTensor(std::move(placeholder));
+  new_tensor.set_requires_grad(requires_grad);
+  return new_tensor;
+}
+
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
     mlir::MLIRContext& mlir_context, const std::vector<at::Tensor>& arg_tensors,
-    const std::vector<at::Tensor>& result_tensors) {
+    const std::vector<at::Tensor>& result_tensors, bool use_stablehlo_bounds) {
   // Use artificial python context for compiled mode to that modules have better
   // names when dumped. Currently this will always point to `_export_to_fx`, and
   // can be improved in the future, but it is useful for distinguishing torch
@@ -201,8 +198,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
       traversal->ValidateAndReorderArguments(std::move(argument_refs)))
           .SetPrepend()
       << "failed to validate and reorder inputs: ";
-  TT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                      traversal->BuildMlirModule(mlir_context));
+  TT_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+      traversal->BuildMlirModule(mlir_context, use_stablehlo_bounds));
 
   return mlir_module;
 }
@@ -257,14 +255,14 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
       traversal->ValidateAndReorderArguments(std::move(argument_refs)))
       << "failed to validate and reorder traversal inputs";
 
-  ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
-      !traversal->IsBoundedDynamic())
-      << "bounded dynamic shapes are not supported in TraverseAndCompile yet";
-
   // 2. Compile Traversal and get exec
+  auto compilation_spec = GetCompilationSpec(options.compilation_mode);
   TT_ASSIGN_OR_CRASH(  // CRASH_OK=implies a bug in compile backend if this
                        // happens
-      auto compiled_kernel, traversal->Compile(options.compilation_mode),
+      auto compiled_kernel,
+      traversal->Compile(std::move(compilation_spec), nullptr,
+                         options.use_stablehlo_bounds,
+                         options.argument_layouts),
       _ << "failed to compile traversal");
 
   TT_ASSIGN_OR_RETURN(auto executable, compiled_kernel.fixed_shape_kernel.get(),
@@ -280,7 +278,8 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
         ContextedModule::Make(
             [&](mlir::MLIRContext& mlir_context)
                 -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
-              return traversal->BuildMlirModule(mlir_context);
+              return traversal->BuildMlirModule(mlir_context,
+                                                options.use_stablehlo_bounds);
             }),
         _ << "failed to build MLIR module");
     module = std::make_shared<ContextedModule>(std::move(contexted_module));
@@ -294,7 +293,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
 
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
     const std::string_view mlir_module_bytecode,
-    const CompilationMode compilation_mode) {
+    UniqueCompileOptions compile_options) {
   TT_ASSIGN_OR_RETURN(
       ContextedModule module,
       ContextedModule::Make(
@@ -305,11 +304,11 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
                 &mlir_context);
           }));
   return CompileMlirExecutable(std::move(module).ToMaybeOwningMlirModule(),
-                               compilation_mode);
+                               std::move(compile_options));
 }
 
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
-    xla::MaybeOwningMlirModule module, const CompilationMode compilation_mode) {
+    xla::MaybeOwningMlirModule module, UniqueCompileOptions compile_options) {
   xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
       << "PjRtClient must be initialized";
@@ -322,7 +321,7 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
                                      std::move(*compile_options));
       };
   return Compile(*client, std::move(executable_builder),
-                 GetCompileOptions(compilation_mode));
+                 std::move(compile_options));
 }
 
 namespace {

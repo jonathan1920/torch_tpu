@@ -1,15 +1,20 @@
+# Bzlmod lockfile.
+MODULE.bazel.lock
+# Bazel symlinks, e.g. bazel-out.
 bazel-*
 user.bazelrc
+# Generated Python artifacts.
+*.pyc
 */**/__pycache__
-# Vim swap files (used for recovery)
+# Vim swap files (used for recovery).
 .*.swp
 .*.swo
 .*.swn
-# Vim backup files
+# Vim backups.
 *~
 .*~
-# Vim undo files
+# Vim undo files.
 *.un~
 .*.un~
-# Wheel files
+# Wheel files.
 wheel

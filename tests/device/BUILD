@@ -26,6 +26,7 @@ torch_tpu_py_library(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:oss_utils",
         "//torch_tpu/_internal/device:_device_module",
     ],
 )

@@ -67,7 +67,8 @@ def _format_experimental_value(value: _ExperimentalValue) -> str:
     The formatted string representation.
   """
   if isinstance(value, str):
-    return f'"{value.replace("\\", r"\\").replace("\"", r"\"")}"'
+    escaped_value = value.replace("\\", r"\\").replace('"', r"\"")
+    return f'"{escaped_value}"'
   elif isinstance(value, bool):
     return "true" if value else "false"
   else:

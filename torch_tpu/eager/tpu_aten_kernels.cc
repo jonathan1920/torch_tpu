@@ -17,7 +17,11 @@
 #include "torch_tpu/eager/tpu_aten_kernels.h"
 
 #include <atomic>
+#include <cstdint>
 #include <string>
+#include <string_view>
+#include <tuple>
+#include <utility>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
@@ -25,10 +29,14 @@
 #include "ATen/core/stack.h"
 #include "ATen/native/CPUFallback.h"
 #include "ATen/native/DispatchStub.h"
+#include "ATen/native/Resize.h"
 #include "ATen/native/transformers/attention.h"
 #include "ATen/ops/empty.h"
+#include "ATen/ops/empty_like.h"
+#include "ATen/ops/result_type.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
+#include "c10/util/Exception.h"
 #include "torch/library.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/a_min_max/a_min_max_aten_kernels.h"
@@ -51,6 +59,7 @@
 #include "torch_tpu/ops/col2im/col2im_aten_kernels.h"
 #include "torch_tpu/ops/convolution/convolution_aten_kernels.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
+#include "torch_tpu/ops/count_nonzero/count_nonzero_aten_kernels.h"
 #include "torch_tpu/ops/ctc_loss/ctc_loss_aten_kernels.h"
 #include "torch_tpu/ops/cummax/cummax_aten_kernels.h"
 #include "torch_tpu/ops/cummin/cummin_aten_kernels.h"
@@ -62,6 +71,8 @@
 #include "torch_tpu/ops/dot/vdot_aten_kernels.h"
 #include "torch_tpu/ops/dropout/dropout_aten_kernels.h"
 #include "torch_tpu/ops/dynamic/dynamic_arange/dynamic_arange.h"
+#include "torch_tpu/ops/dynamic/dynamic_broadcast/dynamic_broadcast.h"
+#include "torch_tpu/ops/dynamic/dynamic_reshape/dynamic_reshape.h"
 #include "torch_tpu/ops/dynamic/set_dimension_logical_size/set_dimension_logical_size.h"
 #include "torch_tpu/ops/elu/elu_aten_kernels.h"
 #include "torch_tpu/ops/embedding/embedding_aten_kernels.h"
@@ -69,6 +80,10 @@
 #include "torch_tpu/ops/experimental/ragged_all_to_all/ragged_all_to_all_aten_kernels.h"
 #include "torch_tpu/ops/experimental/ragged_dot/ragged_dot_aten_kernels.h"
 #include "torch_tpu/ops/experimental/send_recv/send_recv_kernels.h"
+#include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_aten_kernels.h"
+#include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_adagrad_aten_kernels.h"
+#include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_adam_aten_kernels.h"
+#include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_sgd_aten_kernels.h"
 #include "torch_tpu/ops/exponential/exponential_aten_kernels.h"
 #include "torch_tpu/ops/eye/eye_aten_kernels.h"
 #include "torch_tpu/ops/fake_quantize/fake_quantize_aten_kernels.h"
@@ -78,6 +93,8 @@
 #include "torch_tpu/ops/fmax/fmax_aten_kernels.h"
 #include "torch_tpu/ops/fmin/fmin_aten_kernels.h"
 #include "torch_tpu/ops/foreach_aten_kernels.h"
+#include "torch_tpu/ops/fused_adamw/fused_adamw_aten_kernels.h"
+#include "torch_tpu/ops/fused_sgd/fused_sgd_aten_kernels.h"
 #include "torch_tpu/ops/gather/gather_aten_kernels.h"
 #include "torch_tpu/ops/gelu/gelu_aten_kernels.h"
 #include "torch_tpu/ops/glu/glu_aten_kernels.h"
@@ -107,6 +124,7 @@
 #include "torch_tpu/ops/linalg/solve_triangular/linalg_solve_triangular_kernels.h"
 #include "torch_tpu/ops/linalg/vector_norm/aten_vector_norm_kernels.h"
 #include "torch_tpu/ops/linspace/linspace_aten_kernels.h"
+#include "torch_tpu/ops/logcumsumexp/logcumsumexp_aten_kernels.h"
 #include "torch_tpu/ops/logical/logical_aten_kernels.h"
 #include "torch_tpu/ops/masked_fill/masked_fill_aten_kernels.h"  // IWYU pragma: keep for AtenMaskedFill
 #include "torch_tpu/ops/masked_scatter/masked_scatter_aten_kernels.h"
@@ -117,16 +135,20 @@
 #include "torch_tpu/ops/multinomial/multinomial_aten_kernels.h"
 #include "torch_tpu/ops/nan_to_num/nan_to_num_aten_kernels.h"
 #include "torch_tpu/ops/native_batch_norm/native_batch_norm_aten_kernels.h"
+#include "torch_tpu/ops/native_norm/native_norm_aten_kernels.h"
 #include "torch_tpu/ops/nll_loss/nll_loss_aten_kernels.h"
 #include "torch_tpu/ops/nonzero/nonzero_aten_kernels.h"
 #include "torch_tpu/ops/normal/normal_aten_kernels.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/optimization_barrier/optimization_barrier_kernels.h"
+#include "torch_tpu/ops/optimizer/fused_adam_aten_kernels.h"
+#include "torch_tpu/ops/polygamma/polygamma_aten_kernels.h"
 #include "torch_tpu/ops/pooling/adaptive_avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/max_pool_aten_kernels.h"
 #include "torch_tpu/ops/prod/prod_aten_kernels.h"
+#include "torch_tpu/ops/put/put_aten_kernels.h"
 #include "torch_tpu/ops/random/random_aten_kernels.h"
 #include "torch_tpu/ops/randperm/randperm_aten_kernels.h"
 #include "torch_tpu/ops/reductions/mean_aten_kernels.h"
@@ -144,6 +166,7 @@
 #include "torch_tpu/ops/scatter/scatter_aten_kernels.h"
 #include "torch_tpu/ops/set/set_aten_kernels.h"
 #include "torch_tpu/ops/sigmoid/sigmoid_aten_kernels.h"
+#include "torch_tpu/ops/slice_scatter/slice_scatter_aten_kernels.h"
 #include "torch_tpu/ops/softmax/softmax_aten_kernels.h"
 #include "torch_tpu/ops/softplus/softplus_aten_kernels.h"
 #include "torch_tpu/ops/sort/sort_aten_kernels.h"
@@ -160,6 +183,7 @@
 #include "torch_tpu/ops/uniform/uniform_aten_kernels.h"
 #include "torch_tpu/ops/unique/unique_aten_kernels.h"
 #include "torch_tpu/ops/upsample/upsample_aten_kernels.h"
+#include "torch_tpu/ops/upsample/upsample_bicubic2d_aten_kernels.h"
 #include "torch_tpu/ops/view/view_aten_kernels.h"
 #include "torch_tpu/ops/weight_norm/weight_norm_aten_kernels.h"
 #include "torch_tpu/ops/where/where_aten_kernels.h"
@@ -170,14 +194,103 @@ namespace torch_tpu {
 namespace {
 
 // Registers the kernel function for the given op name in the given library.
-template <typename KernelFn>
-void Impl(torch::Library& m, const OpName op_name, KernelFn kernel_fn) {
-  // ToString() returns a string_view, but impl() requires a const char*.
-  // We need to convert the string_view to a std::string so that we can
-  // get a NUL-terminated const char* from it. Note that string_view::data()
-  // is not guaranteed to be NUL-terminated.
-  m.impl(  // M_IMPL_OK=implementing Impl().
-      std::string(ToString(op_name)).c_str(), kernel_fn);
+// Use this on the following cases:
+// 1. an aten op,
+// 2. an op for the Meta backend, and
+// 3. a TPU-specific op that has graduated from "experimental" to "stable".
+template <OpName op_name, typename KernelFn>
+void ImplStable(torch::Library& m, KernelFn kernel_fn) {
+  m.impl(  // M_IMPL_OK=implementing ImplStable().
+      std::string(ToString(op_name)).c_str(), std::move(kernel_fn));
+}
+
+// Helper to extract the concrete signature of the kernel function.
+// This is necessary because torch::Library::impl() needs to inspect the
+// signature of the registered callable at compile-time to verify it against
+// the operator schema.
+//
+// If we were to use a generic lambda (e.g., `[](auto&&... args)`), its
+// `operator()` would be a template, making the signature uninspectable
+// and causing compilation errors in CppFunction template deduction.
+//
+// ImplWrapperHelper uses template specialization to unpack the
+// return type (Ret) and argument types (Args...) of the function pointer,
+// allowing us to construct a monomorphic lambda with an explicit signature.
+template <typename Func>
+struct ImplWrapperHelper;
+
+template <typename Ret, typename... Args>
+struct ImplWrapperHelper<Ret (*)(Args...)> {
+  // Registers a kernel function with the PyTorch library, injecting a callback
+  // to be executed on entry.
+  //
+  // This helper uses template specialization to unpack the concrete signature
+  // of the kernel function pointer, allowing us to construct a monomorphic
+  // lambda that PyTorch's m.impl() can inspect at compile-time.
+  //
+  // @param op_name The OpName of the operator (compile-time template
+  // parameter).
+  // @param func The concrete kernel function pointer.
+  // @param on_entry_fn A callback executed when the operator is invoked.
+  template <OpName op_name, typename OnEntryFn>
+  static void RegisterOp(torch::Library& m, Ret (*func)(Args...),
+                         OnEntryFn on_entry_fn) {
+    const std::string_view name = ToString(op_name);
+    m.impl(  // M_IMPL_OK=implementing Impl*().
+        std::string(name).c_str(),
+        [func = std::move(func),
+         on_entry_fn = std::move(on_entry_fn)](Args... args) -> Ret {
+          on_entry_fn();
+          return func(std::forward<Args>(args)...);
+        });
+  }
+};
+
+// Registers the kernel function for the given op name in the given library,
+// and injects a user-visible warning that the operator is experimental.
+//
+// NOTE: It is critical that `op_name` is a compile-time template parameter
+// rather than a runtime parameter. `TORCH_WARN_ONCE` dedupes warnings by its
+// macro expansion site using a local `static` flag.
+//
+// If `op_name` were a runtime parameter, the macro would be expanded in a
+// single shared helper function. This would result in "once-per-program"
+// behavior, meaning only the very first experimental operator called in the
+// program would trigger a warning, and all others would remain silent.
+//
+// By making `op_name` a template parameter, `ImplExperimental<OpName::kFoo>`
+// and `ImplExperimental<OpName::kBar>` become distinct function template
+// instantiations. This forces the compiler to instantiate a unique lambda and
+// a unique `TORCH_WARN_ONCE` static flag for each operator, achieving the
+// desired "once-per-operator" warning semantics with zero runtime overhead
+// (no mutexes or registries required).
+template <OpName op_name, typename KernelFn>
+void ImplExperimental(torch::Library& m, KernelFn kernel_fn) {
+  ImplWrapperHelper<KernelFn>::template RegisterOp<op_name>(
+      m, std::move(kernel_fn), []() {
+        TORCH_WARN_ONCE("operator ", ToString(op_name),
+                        " is experimental; its name, signature, and behavior "
+                        "may change without notice; use at your own risk");
+      });
+}
+
+// Registers the kernel function for the given op name in the given library,
+// and injects a user-visible warning that the operator is deprecated and will
+// be removed in the given TorchTPU version.
+//
+// NOTE: Like `ImplExperimental`, `op_name` must be a compile-time template
+// parameter to ensure `TORCH_WARN_ONCE` generates a unique static flag per
+// operator, guaranteeing correct "once-per-operator" warning semantics.
+template <OpName op_name, typename KernelFn>
+void ImplDeprecated(torch::Library& m, KernelFn kernel_fn, int major_version,
+                    int minor_version) {
+  ImplWrapperHelper<KernelFn>::template RegisterOp<op_name>(
+      m, std::move(kernel_fn), [major_version, minor_version]() {
+        TORCH_WARN_ONCE(
+            "operator ", ToString(op_name),
+            " is deprecated and will be removed in TorchTPU version ",
+            major_version, ".", minor_version);
+      });
 }
 
 }  // namespace
@@ -188,99 +301,107 @@ void Impl(torch::Library& m, const OpName op_name, KernelFn kernel_fn) {
 // defined later in this file.
 TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   // go/keep-sorted start
-  Impl(m, OpName::kAbsOut, AtenAbsOut);
-  Impl(m, OpName::kAcosOut, AtenAcosOut);
-  Impl(m, OpName::kAcoshOut, AtenAcoshOut);
-  Impl(m, OpName::kAdaptiveAvgPool2d, AtenAdaptiveAvgPool2d);
-  Impl(m, OpName::kAdaptiveAvgPool2dBackward, AtenAdaptiveAvgPool2dBackward);
-  Impl(m, OpName::kAdaptiveAvgPool2dOut, AtenAdaptiveAvgPool2dOut);
-  Impl(m, OpName::kAdaptiveAvgPool3d, AtenAdaptiveAvgPool3d);
-  Impl(m, OpName::kAdaptiveAvgPool3dBackward, AtenAdaptiveAvgPool3dBackward);
-  Impl(m, OpName::kAdaptiveAvgPool3dBackwardGradInput,
-       AtenAdaptiveAvgPool3dBackwardGradInput);
-  Impl(m, OpName::kAdaptiveAvgPool3dOut, AtenAdaptiveAvgPool3dOut);
-  Impl(m, OpName::kAddOut, AtenAddOut);
-  Impl(m, OpName::kAddReluOut, AtenAddReluOut);
-  Impl(m, OpName::kAddReluScalar, AtenAddReluScalar);
-  Impl(m, OpName::kAddReluTensor, AtenAddReluTensor);
-  Impl(m, OpName::kAddRelu_Scalar, AtenAddRelu_Scalar);
-  Impl(m, OpName::kAddRelu_Tensor, AtenAddRelu_Tensor);
-  Impl(m, OpName::kAddcdivOut, AtenAddcdivOut);
-  Impl(m, OpName::kAddcmulOut, AtenAddcmulOut);
-  Impl(m, OpName::kAddmmDtype, AtenAddmmDtype);
-  Impl(m, OpName::kAddmmDtypeOut, AtenAddmmDtypeOut);
-  Impl(m, OpName::kAddmmOut, AtenAddmmOut);
-  Impl(m, OpName::kAddmvOut, AtenAddmvOut);
-  Impl(m, OpName::kAllAllOut, AtenAllAllOut);
-  Impl(m, OpName::kAllOut, AtenAllOut);
-  Impl(m, OpName::kAmaxOut, AtenAmaxOut);
-  Impl(m, OpName::kAminOut, AtenAminOut);
-  Impl(m, OpName::kAminmaxOut, AtenAminmaxOut);
-  Impl(m, OpName::kAnyAllOut, AtenAnyAllOut);
-  Impl(m, OpName::kAnyOut, AtenAnyOut);
-  Impl(m, OpName::kArangeStartOut, AtenArangeStartOut);
-  Impl(m, OpName::kArgMaxOut, AtenArgmaxOut);
-  Impl(m, OpName::kArgMinOut, AtenArgminOut);
-  Impl(m, OpName::kAsStrided, AtenAsStrided);
-  Impl(m, OpName::kAsinOut, AtenAsinOut);
-  Impl(m, OpName::kAsinhOut, AtenAsinhOut);
-  Impl(m, OpName::kAssertAsync, AtenAssertAsync);
-  Impl(m, OpName::kAssertAsyncMsg, AtenAssertAsyncMsg);
-  Impl(m, OpName::kAtan2Out, AtenAtan2Out);
-  Impl(m, OpName::kAtanOut, AtenAtanOut);
-  Impl(m, OpName::kAtanhOut, AtenAtanhOut);
-  Impl(m, OpName::kAvgPool2dBackwardGradInput, AtenAvgPool2dBackwardGradInput);
-  Impl(m, OpName::kAvgPool2dOut, AtenAvgPool2dOut);
-  Impl(m, OpName::kAvgPool3dBackwardGradInput, AtenAvgPool3dBackwardGradInput);
-  Impl(m, OpName::kAvgPool3dOut, AtenAvgPool3dOut);
-  Impl(m, OpName::kBaddbmmDtype, AtenBaddbmmDtype);
-  Impl(m, OpName::kBaddbmmDtypeOut, AtenBaddbmmDtypeOut);
-  Impl(m, OpName::kBaddbmmOut, AtenBaddbmmOut);
-  Impl(m, OpName::kBernoulliOut, AtenBernoulliOut);
-  Impl(m, OpName::kBernoulli_Float, AtenBernoulli_Float);
-  Impl(m, OpName::kBernoulli_Tensor, AtenBernoulli_Tensor);
-  Impl(m, OpName::kBinCount, AtenBinCount);
-  Impl(m, OpName::kBitwiseAndTensorOut, AtenBitwiseAndTensorOut);
-  Impl(m, OpName::kBitwiseLeftShiftTensorOut, AtenBitwiseLeftShiftTensorOut);
-  Impl(m, OpName::kBitwiseNotOut, AtenBitwiseNotOut);
-  Impl(m, OpName::kBitwiseOrTensorOut, AtenBitwiseOrTensorOut);
-  Impl(m, OpName::kBitwiseRightShiftTensorOut, AtenBitwiseRightShiftTensorOut);
-  Impl(m, OpName::kBitwiseXorTensorOut, AtenBitwiseXorTensorOut);
-  Impl(m, OpName::kBmmDtype, AtenBmmDtype);
-  Impl(m, OpName::kBmmDtypeOut, AtenBmmDtypeOut);
-  Impl(m, OpName::kBmmOut, AtenBmmOut);
-  Impl(m, OpName::kBucketizeScalar, AtenBucketizeScalar);
-  Impl(m, OpName::kBucketizeTensor, AtenBucketizeTensor);
-  Impl(m, OpName::kBucketizeTensorOut, AtenBucketizeTensorOut);
-  Impl(m, OpName::kCatOut, AtenCatOut);
-  Impl(m, OpName::kCdistBackward, AtenCdistBackward);
-  Impl(m, OpName::kCdistForward, AtenCdistForward);
-  Impl(m, OpName::kCeilOut, AtenCeilOut);
-  Impl(m, OpName::kClampMaxOut, AtenClampMaxOut);
-  Impl(m, OpName::kClampMaxTensorOut, AtenClampMaxTensorOut);
-  Impl(m, OpName::kClampMinOut, AtenClampMinOut);
-  Impl(m, OpName::kClampMinTensorOut, AtenClampMinTensorOut);
-  Impl(m, OpName::kClampOut, AtenClampOut);
-  Impl(m, OpName::kClampTensorOut, AtenClampTensorOut);
-  Impl(m, OpName::kCol2Im, AtenCol2Im);
-  Impl(m, OpName::kCol2ImOut, AtenCol2ImOut);
-  Impl(m, OpName::kComplexOut, AtenComplexOut);
-  Impl(m, OpName::kConjPhysicalOut, AtenConjPhysicalOut);
-  Impl(m, OpName::kConvolution, AtenConvolution);
-  Impl(m, OpName::kConvolutionBackward, AtenConvolutionBackward);
-  Impl(m, OpName::kConvolutionOut, AtenConvolutionOut);
-  Impl(m, OpName::kCopyFrom, AtenCopyFrom);
+  ImplStable<OpName::kAbsOut>(m, AtenAbsOut);
+  ImplStable<OpName::kAcosOut>(m, AtenAcosOut);
+  ImplStable<OpName::kAcoshOut>(m, AtenAcoshOut);
+  ImplStable<OpName::kAdaptiveAvgPool2d>(m, AtenAdaptiveAvgPool2d);
+  ImplStable<OpName::kAdaptiveAvgPool2dBackward>(m,
+                                                 AtenAdaptiveAvgPool2dBackward);
+  ImplStable<OpName::kAdaptiveAvgPool2dOut>(m, AtenAdaptiveAvgPool2dOut);
+  ImplStable<OpName::kAdaptiveAvgPool3d>(m, AtenAdaptiveAvgPool3d);
+  ImplStable<OpName::kAdaptiveAvgPool3dBackward>(m,
+                                                 AtenAdaptiveAvgPool3dBackward);
+  ImplStable<OpName::kAdaptiveAvgPool3dBackwardGradInput>(
+      m, AtenAdaptiveAvgPool3dBackwardGradInput);
+  ImplStable<OpName::kAdaptiveAvgPool3dOut>(m, AtenAdaptiveAvgPool3dOut);
+  ImplStable<OpName::kAddOut>(m, AtenAddOut);
+  ImplStable<OpName::kAddReluOut>(m, AtenAddReluOut);
+  ImplStable<OpName::kAddReluScalar>(m, AtenAddReluScalar);
+  ImplStable<OpName::kAddReluTensor>(m, AtenAddReluTensor);
+  ImplStable<OpName::kAddRelu_Scalar>(m, AtenAddRelu_Scalar);
+  ImplStable<OpName::kAddRelu_Tensor>(m, AtenAddRelu_Tensor);
+  ImplStable<OpName::kAddcdivOut>(m, AtenAddcdivOut);
+  ImplStable<OpName::kAddcmulOut>(m, AtenAddcmulOut);
+  ImplStable<OpName::kAddmmActivationOut>(m, AtenAddmmActivationOut);
+  ImplStable<OpName::kAddmmDtype>(m, AtenAddmmDtype);
+  ImplStable<OpName::kAddmmDtypeOut>(m, AtenAddmmDtypeOut);
+  ImplStable<OpName::kAddmmOut>(m, AtenAddmmOut);
+  ImplStable<OpName::kAddmvOut>(m, AtenAddmvOut);
+  ImplStable<OpName::kAllAllOut>(m, AtenAllAllOut);
+  ImplStable<OpName::kAllOut>(m, AtenAllOut);
+  ImplStable<OpName::kAmaxOut>(m, AtenAmaxOut);
+  ImplStable<OpName::kAminOut>(m, AtenAminOut);
+  ImplStable<OpName::kAminmaxOut>(m, AtenAminmaxOut);
+  ImplStable<OpName::kAnyAllOut>(m, AtenAnyAllOut);
+  ImplStable<OpName::kAnyOut>(m, AtenAnyOut);
+  ImplStable<OpName::kArangeStartOut>(m, AtenArangeStartOut);
+  ImplStable<OpName::kArgMaxOut>(m, AtenArgmaxOut);
+  ImplStable<OpName::kArgMinOut>(m, AtenArgminOut);
+  ImplStable<OpName::kAsStrided>(m, AtenAsStrided);
+  ImplStable<OpName::kAsinOut>(m, AtenAsinOut);
+  ImplStable<OpName::kAsinhOut>(m, AtenAsinhOut);
+  ImplStable<OpName::kAssertAsync>(m, AtenAssertAsync);
+  ImplStable<OpName::kAssertAsyncMsg>(m, AtenAssertAsyncMsg);
+  ImplStable<OpName::kAtan2Out>(m, AtenAtan2Out);
+  ImplStable<OpName::kAtanOut>(m, AtenAtanOut);
+  ImplStable<OpName::kAtanhOut>(m, AtenAtanhOut);
+  ImplStable<OpName::kAvgPool2dBackwardGradInput>(
+      m, AtenAvgPool2dBackwardGradInput);
+  ImplStable<OpName::kAvgPool2dOut>(m, AtenAvgPool2dOut);
+  ImplStable<OpName::kAvgPool3dBackwardGradInput>(
+      m, AtenAvgPool3dBackwardGradInput);
+  ImplStable<OpName::kAvgPool3dOut>(m, AtenAvgPool3dOut);
+  ImplStable<OpName::kBaddbmmDtype>(m, AtenBaddbmmDtype);
+  ImplStable<OpName::kBaddbmmDtypeOut>(m, AtenBaddbmmDtypeOut);
+  ImplStable<OpName::kBaddbmmOut>(m, AtenBaddbmmOut);
+  ImplStable<OpName::kBernoulliOut>(m, AtenBernoulliOut);
+  ImplStable<OpName::kBernoulli_Float>(m, AtenBernoulli_Float);
+  ImplStable<OpName::kBernoulli_Tensor>(m, AtenBernoulli_Tensor);
+  ImplStable<OpName::kBinCount>(m, AtenBinCount);
+  ImplStable<OpName::kBitwiseAndTensorOut>(m, AtenBitwiseAndTensorOut);
+  ImplStable<OpName::kBitwiseLeftShiftTensorOut>(m,
+                                                 AtenBitwiseLeftShiftTensorOut);
+  ImplStable<OpName::kBitwiseNotOut>(m, AtenBitwiseNotOut);
+  ImplStable<OpName::kBitwiseOrTensorOut>(m, AtenBitwiseOrTensorOut);
+  ImplStable<OpName::kBitwiseRightShiftTensorOut>(
+      m, AtenBitwiseRightShiftTensorOut);
+  ImplStable<OpName::kBitwiseXorTensorOut>(m, AtenBitwiseXorTensorOut);
+  ImplStable<OpName::kBmmDtype>(m, AtenBmmDtype);
+  ImplStable<OpName::kBmmDtypeOut>(m, AtenBmmDtypeOut);
+  ImplStable<OpName::kBmmOut>(m, AtenBmmOut);
+  ImplStable<OpName::kBucketizeScalar>(m, AtenBucketizeScalar);
+  ImplStable<OpName::kBucketizeTensor>(m, AtenBucketizeTensor);
+  ImplStable<OpName::kBucketizeTensorOut>(m, AtenBucketizeTensorOut);
+  ImplStable<OpName::kCatOut>(m, AtenCatOut);
+  ImplStable<OpName::kCdistBackward>(m, AtenCdistBackward);
+  ImplStable<OpName::kCdistForward>(m, AtenCdistForward);
+  ImplStable<OpName::kCeilOut>(m, AtenCeilOut);
+  ImplStable<OpName::kClampMaxOut>(m, AtenClampMaxOut);
+  ImplStable<OpName::kClampMaxTensorOut>(m, AtenClampMaxTensorOut);
+  ImplStable<OpName::kClampMinOut>(m, AtenClampMinOut);
+  ImplStable<OpName::kClampMinTensorOut>(m, AtenClampMinTensorOut);
+  ImplStable<OpName::kClampOut>(m, AtenClampOut);
+  ImplStable<OpName::kClampTensorOut>(m, AtenClampTensorOut);
+  ImplStable<OpName::kCol2Im>(m, AtenCol2Im);
+  ImplStable<OpName::kCol2ImOut>(m, AtenCol2ImOut);
+  ImplStable<OpName::kComplexOut>(m, AtenComplexOut);
+  ImplStable<OpName::kConjPhysicalOut>(m, AtenConjPhysicalOut);
+  ImplStable<OpName::kConvolution>(m, AtenConvolution);
+  ImplStable<OpName::kConvolutionBackward>(m, AtenConvolutionBackward);
+  ImplStable<OpName::kConvolutionOut>(m, AtenConvolutionOut);
+  ImplStable<OpName::kCopyFrom>(m, AtenCopyFrom);
   // per https://github.com/pytorch/xla/issues/2881, this function was added
   // to fix aten:cpufallback for pytorch_xla in 2021.
   // But it isn't registered for CPU and is not called from copy_ in Python.
   // TODO: Revisit if we can replace it with _copy_from. // NOLINT
-  Impl(m, OpName::kCopyFromAndResize, AtenCopyFromAndResize);
-  Impl(m, OpName::kCopy_, AtenCopy_);
-  Impl(m, OpName::kCosOut, AtenCosOut);
-  Impl(m, OpName::kCoshOut, AtenCoshOut);
-  Impl(m, OpName::kCtcLoss, AtenCtcLoss);
-  Impl(m, OpName::kCtcLossBackward, AtenCtcLossBackward);
-  Impl(m, OpName::kCtcLossBackwardTensor, AtenCtcLossBackwardTensor);
+  ImplStable<OpName::kCopyFromAndResize>(m, AtenCopyFromAndResize);
+  ImplStable<OpName::kCopy_>(m, AtenCopy_);
+  ImplStable<OpName::kCosOut>(m, AtenCosOut);
+  ImplStable<OpName::kCoshOut>(m, AtenCoshOut);
+  ImplStable<OpName::kCountNonzeroDimIntList>(m, AtenCountNonzeroDimIntList);
+  ImplStable<OpName::kCtcLoss>(m, AtenCtcLoss);
+  ImplStable<OpName::kCtcLossBackward>(m, AtenCtcLossBackward);
+  ImplStable<OpName::kCtcLossBackwardTensor>(m, AtenCtcLossBackwardTensor);
   // TODO(b/513607161): remove CtcLossPublic overrides once upstream PyTorch bug
   // is fixed.
   // This is a workaround for a bug in PyTorch core's ctc_loss implementation
@@ -289,493 +410,543 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   // a buggy codepath for non cpu/gpu backends. Overriding the "public" variant
   // of ctc_loss (rather than strictly the internal _ctc_loss variant that we
   // already override) is necessary to work around the bug.
-  Impl(m, OpName::kCtcLossPublic, AtenCtcLossPublic);
-  Impl(m, OpName::kCtcLossPublicTensor, AtenCtcLossPublicTensor);
-  Impl(m, OpName::kCtcLossTensor, AtenCtcLossTensor);
-  Impl(m, OpName::kCummaxHelper, AtenCummaxHelper);
-  Impl(m, OpName::kCumminHelper, AtenCumminHelper);
-  Impl(m, OpName::kCumprodOut, AtenCumprodOut);
-  Impl(m, OpName::kCumsumOut, AtenCumsumOut);
-  Impl(m, OpName::kDigammaOut, AtenDigammaOut);
-  Impl(m, OpName::kDivOut, AtenDivOut);
-  Impl(m, OpName::kDivOutMode, AtenDivOutMode);
-  Impl(m, OpName::kDot, AtenDot);
-  Impl(m, OpName::kEfficientZeroTensor, AtenEfficientZeroTensor);
-  Impl(m, OpName::kEluBackwardGradInput, AtenEluBackwardGradInput);
-  Impl(m, OpName::kEluOut, AtenEluOut);
-  Impl(m, OpName::kEmbeddingBag, AtenEmbeddingBag);
-  Impl(m, OpName::kEmbeddingBagBackward, AtenEmbeddingBagBackward);
-  Impl(m, OpName::kEmbeddingBagForwardOnly, AtenEmbeddingBagForwardOnly);
-  Impl(m, OpName::kEmbeddingDenseBackward, AtenEmbeddingDenseBackward);
-  Impl(m, OpName::kEmbeddingRenorm_, AtenEmbeddingRenorm_);
-  Impl(m, OpName::kEmptyMemoryFormat, AtenEmptyMemoryFormat);
-  Impl(m, OpName::kEmptyStrided, AtenEmptyStrided);
-  Impl(m, OpName::kEqScalarOut, AtenEqScalarOut);
-  Impl(m, OpName::kEqTensorOut, AtenEqTensorOut);
-  Impl(m, OpName::kEqual, AtenEqual);
-  Impl(m, OpName::kErfInvOut, AtenErfInvOut);
-  Impl(m, OpName::kErfOut, AtenErfOut);
-  Impl(m, OpName::kExp2Out, AtenExp2Out);
-  Impl(m, OpName::kExpM1Out, AtenExpm1Out);
-  Impl(m, OpName::kExpOut, AtenExpOut);
-  Impl(m, OpName::kExponential_, AtenExponential_);
-  Impl(m, OpName::kEyeMOut, AtenEyeMOut);
-  Impl(m, OpName::kEyeOut, AtenEyeOut);
-  Impl(m, OpName::kFakeQuantizePerTensorAffineCachemask,
-       FakeQuantizePerTensorAffineCachemask);
-  Impl(m, OpName::kFftC2c, AtenFftC2c);
-  Impl(m, OpName::kFftC2cOut, AtenFftC2cOut);
-  Impl(m, OpName::kFftC2r, AtenFftC2r);
-  Impl(m, OpName::kFftC2rOut, AtenFftC2rOut);
-  Impl(m, OpName::kFftR2c, AtenFftR2c);
-  Impl(m, OpName::kFftR2cOut, AtenFftR2cOut);
-  Impl(m, OpName::kFill_Scalar, AtenFillScalar_);
-  Impl(m, OpName::kFill_Tensor, AtenFillTensor_);
-  Impl(m, OpName::kFlip, AtenFlip);
-  Impl(m, OpName::kFloorDivide, AtenFloorDivide);
-  Impl(m, OpName::kFloorDivideOut, AtenFloorDivideOut);
-  Impl(m, OpName::kFloorDivide_Tensor, AtenFloorDivide_Tensor);
-  Impl(m, OpName::kFloorOut, AtenFloorOut);
-  Impl(m, OpName::kFmaxOut, AtenFmaxOut);
-  Impl(m, OpName::kFminOut, AtenFminOut);
-  Impl(m, OpName::kFmodTensorOut, AtenFmodTensorOut);
-  Impl(m, OpName::kForeachAbs, AtenForeachAbs);
-  Impl(m, OpName::kForeachAbs_, AtenForeachAbs_);
-  Impl(m, OpName::kForeachAcos, AtenForeachAcos);
-  Impl(m, OpName::kForeachAcos_, AtenForeachAcos_);
-  Impl(m, OpName::kForeachAddList, AtenForeachAddList);
-  Impl(m, OpName::kForeachAddScalar, AtenForeachAddScalar);
-  Impl(m, OpName::kForeachAddScalarList, AtenForeachAddScalarList);
-  Impl(m, OpName::kForeachAddTensor, AtenForeachAddTensor);
-  Impl(m, OpName::kForeachAdd_List, AtenForeachAdd_List);
-  Impl(m, OpName::kForeachAdd_Scalar, AtenForeachAdd_Scalar);
-  Impl(m, OpName::kForeachAdd_ScalarList, AtenForeachAdd_ScalarList);
-  Impl(m, OpName::kForeachAdd_Tensor, AtenForeachAdd_Tensor);
-  Impl(m, OpName::kForeachAddcdivScalar, AtenForeachAddcdivScalar);
-  Impl(m, OpName::kForeachAddcdivScalarList, AtenForeachAddcdivScalarList);
-  Impl(m, OpName::kForeachAddcdivTensor, AtenForeachAddcdivTensor);
-  Impl(m, OpName::kForeachAddcdiv_Scalar, AtenForeachAddcdiv_Scalar);
-  Impl(m, OpName::kForeachAddcdiv_ScalarList, AtenForeachAddcdiv_ScalarList);
-  Impl(m, OpName::kForeachAddcdiv_Tensor, AtenForeachAddcdiv_Tensor);
-  Impl(m, OpName::kForeachAddcmulScalar, AtenForeachAddcmulScalar);
-  Impl(m, OpName::kForeachAddcmulScalarList, AtenForeachAddcmulScalarList);
-  Impl(m, OpName::kForeachAddcmulTensor, AtenForeachAddcmulTensor);
-  Impl(m, OpName::kForeachAddcmul_Scalar, AtenForeachAddcmul_Scalar);
-  Impl(m, OpName::kForeachAddcmul_ScalarList, AtenForeachAddcmul_ScalarList);
-  Impl(m, OpName::kForeachAddcmul_Tensor, AtenForeachAddcmul_Tensor);
-  Impl(m, OpName::kForeachAsin, AtenForeachAsin);
-  Impl(m, OpName::kForeachAsin_, AtenForeachAsin_);
-  Impl(m, OpName::kForeachAtan, AtenForeachAtan);
-  Impl(m, OpName::kForeachAtan_, AtenForeachAtan_);
-  Impl(m, OpName::kForeachCeil, AtenForeachCeil);
-  Impl(m, OpName::kForeachCeil_, AtenForeachCeil_);
-  Impl(m, OpName::kForeachClampMaxList, AtenForeachClampMaxList);
-  Impl(m, OpName::kForeachClampMaxScalar, AtenForeachClampMaxScalar);
-  Impl(m, OpName::kForeachClampMaxScalarList, AtenForeachClampMaxScalarList);
-  Impl(m, OpName::kForeachClampMax_List, AtenForeachClampMax_List);
-  Impl(m, OpName::kForeachClampMax_Scalar, AtenForeachClampMax_Scalar);
-  Impl(m, OpName::kForeachClampMax_ScalarList, AtenForeachClampMax_ScalarList);
-  Impl(m, OpName::kForeachClampMinList, AtenForeachClampMinList);
-  Impl(m, OpName::kForeachClampMinScalar, AtenForeachClampMinScalar);
-  Impl(m, OpName::kForeachClampMinScalarList, AtenForeachClampMinScalarList);
-  Impl(m, OpName::kForeachClampMin_List, AtenForeachClampMin_List);
-  Impl(m, OpName::kForeachClampMin_Scalar, AtenForeachClampMin_Scalar);
-  Impl(m, OpName::kForeachClampMin_ScalarList, AtenForeachClampMin_ScalarList);
-  Impl(m, OpName::kForeachCopy_, AtenForeachCopy_);
-  Impl(m, OpName::kForeachCos, AtenForeachCos);
-  Impl(m, OpName::kForeachCos_, AtenForeachCos_);
-  Impl(m, OpName::kForeachCosh, AtenForeachCosh);
-  Impl(m, OpName::kForeachCosh_, AtenForeachCosh_);
-  Impl(m, OpName::kForeachDivList, AtenForeachDivList);
-  Impl(m, OpName::kForeachDivScalar, AtenForeachDivScalar);
-  Impl(m, OpName::kForeachDivScalarList, AtenForeachDivScalarList);
-  Impl(m, OpName::kForeachDivTensor, AtenForeachDivTensor);
-  Impl(m, OpName::kForeachDiv_List, AtenForeachDiv_List);
-  Impl(m, OpName::kForeachDiv_Scalar, AtenForeachDiv_Scalar);
-  Impl(m, OpName::kForeachDiv_ScalarList, AtenForeachDiv_ScalarList);
-  Impl(m, OpName::kForeachDiv_Tensor, AtenForeachDiv_Tensor);
-  Impl(m, OpName::kForeachErf, AtenForeachErf);
-  Impl(m, OpName::kForeachErf_, AtenForeachErf_);
-  Impl(m, OpName::kForeachErfc, AtenForeachErfc);
-  Impl(m, OpName::kForeachErfc_, AtenForeachErfc_);
-  Impl(m, OpName::kForeachExp, AtenForeachExp);
-  Impl(m, OpName::kForeachExp_, AtenForeachExp_);
-  Impl(m, OpName::kForeachExpm1, AtenForeachExpm1);
-  Impl(m, OpName::kForeachExpm1_, AtenForeachExpm1_);
-  Impl(m, OpName::kForeachFloor, AtenForeachFloor);
-  Impl(m, OpName::kForeachFloor_, AtenForeachFloor_);
-  Impl(m, OpName::kForeachFrac, AtenForeachFrac);
-  Impl(m, OpName::kForeachFrac_, AtenForeachFrac_);
-  Impl(m, OpName::kForeachLerpList, AtenForeachLerpList);
-  Impl(m, OpName::kForeachLerpScalar, AtenForeachLerpScalar);
-  Impl(m, OpName::kForeachLerpScalarList, AtenForeachLerpScalarList);
-  Impl(m, OpName::kForeachLerp_List, AtenForeachLerp_List);
-  Impl(m, OpName::kForeachLerp_Scalar, AtenForeachLerp_Scalar);
-  Impl(m, OpName::kForeachLerp_ScalarList, AtenForeachLerp_ScalarList);
-  Impl(m, OpName::kForeachLgamma, AtenForeachLgamma);
-  Impl(m, OpName::kForeachLgamma_, AtenForeachLgamma_);
-  Impl(m, OpName::kForeachLog, AtenForeachLog);
-  Impl(m, OpName::kForeachLog10, AtenForeachLog10);
-  Impl(m, OpName::kForeachLog10_, AtenForeachLog10_);
-  Impl(m, OpName::kForeachLog1p, AtenForeachLog1p);
-  Impl(m, OpName::kForeachLog1p_, AtenForeachLog1p_);
-  Impl(m, OpName::kForeachLog2, AtenForeachLog2);
-  Impl(m, OpName::kForeachLog2_, AtenForeachLog2_);
-  Impl(m, OpName::kForeachLog_, AtenForeachLog_);
-  Impl(m, OpName::kForeachMax, AtenForeachMax);
-  Impl(m, OpName::kForeachMaximumList, AtenForeachMaximumList);
-  Impl(m, OpName::kForeachMaximumScalar, AtenForeachMaximumScalar);
-  Impl(m, OpName::kForeachMaximumScalarList, AtenForeachMaximumScalarList);
-  Impl(m, OpName::kForeachMaximum_List, AtenForeachMaximum_List);
-  Impl(m, OpName::kForeachMaximum_Scalar, AtenForeachMaximum_Scalar);
-  Impl(m, OpName::kForeachMaximum_ScalarList, AtenForeachMaximum_ScalarList);
-  Impl(m, OpName::kForeachMinimumList, AtenForeachMinimumList);
-  Impl(m, OpName::kForeachMinimumScalar, AtenForeachMinimumScalar);
-  Impl(m, OpName::kForeachMinimumScalarList, AtenForeachMinimumScalarList);
-  Impl(m, OpName::kForeachMinimum_List, AtenForeachMinimum_List);
-  Impl(m, OpName::kForeachMinimum_Scalar, AtenForeachMinimum_Scalar);
-  Impl(m, OpName::kForeachMinimum_ScalarList, AtenForeachMinimum_ScalarList);
-  Impl(m, OpName::kForeachMulList, AtenForeachMulList);
-  Impl(m, OpName::kForeachMulScalar, AtenForeachMulScalar);
-  Impl(m, OpName::kForeachMulScalarList, AtenForeachMulScalarList);
-  Impl(m, OpName::kForeachMulTensor, AtenForeachMulTensor);
-  Impl(m, OpName::kForeachMul_List, AtenForeachMul_List);
-  Impl(m, OpName::kForeachMul_Scalar, AtenForeachMul_Scalar);
-  Impl(m, OpName::kForeachMul_ScalarList, AtenForeachMul_ScalarList);
-  Impl(m, OpName::kForeachMul_Tensor, AtenForeachMul_Tensor);
-  Impl(m, OpName::kForeachNeg, AtenForeachNeg);
-  Impl(m, OpName::kForeachNeg_, AtenForeachNeg_);
-  Impl(m, OpName::kForeachNormScalar, AtenForeachNormScalar);
-  Impl(m, OpName::kForeachPowList, AtenForeachPowList);
-  Impl(m, OpName::kForeachPowScalar, AtenForeachPowScalar);
-  Impl(m, OpName::kForeachPowScalarAndTensor, AtenForeachPowScalarAndTensor);
-  Impl(m, OpName::kForeachPowScalarList, AtenForeachPowScalarList);
-  Impl(m, OpName::kForeachPow_List, AtenForeachPow_List);
-  Impl(m, OpName::kForeachPow_Scalar, AtenForeachPow_Scalar);
-  Impl(m, OpName::kForeachPow_ScalarList, AtenForeachPow_ScalarList);
-  Impl(m, OpName::kForeachReciprocal, AtenForeachReciprocal);
-  Impl(m, OpName::kForeachReciprocal_, AtenForeachReciprocal_);
-  Impl(m, OpName::kForeachRound, AtenForeachRound);
-  Impl(m, OpName::kForeachRound_, AtenForeachRound_);
-  Impl(m, OpName::kForeachRsqrt, AtenForeachRsqrt);
-  Impl(m, OpName::kForeachRsqrt_, AtenForeachRsqrt_);
-  Impl(m, OpName::kForeachSigmoid, AtenForeachSigmoid);
-  Impl(m, OpName::kForeachSigmoid_, AtenForeachSigmoid_);
-  Impl(m, OpName::kForeachSign, AtenForeachSign);
-  Impl(m, OpName::kForeachSign_, AtenForeachSign_);
-  Impl(m, OpName::kForeachSin, AtenForeachSin);
-  Impl(m, OpName::kForeachSin_, AtenForeachSin_);
-  Impl(m, OpName::kForeachSinh, AtenForeachSinh);
-  Impl(m, OpName::kForeachSinh_, AtenForeachSinh_);
-  Impl(m, OpName::kForeachSqrt, AtenForeachSqrt);
-  Impl(m, OpName::kForeachSqrt_, AtenForeachSqrt_);
-  Impl(m, OpName::kForeachSubList, AtenForeachSubList);
-  Impl(m, OpName::kForeachSubScalar, AtenForeachSubScalar);
-  Impl(m, OpName::kForeachSubScalarList, AtenForeachSubScalarList);
-  Impl(m, OpName::kForeachSub_List, AtenForeachSub_List);
-  Impl(m, OpName::kForeachSub_Scalar, AtenForeachSub_Scalar);
-  Impl(m, OpName::kForeachSub_ScalarList, AtenForeachSub_ScalarList);
-  Impl(m, OpName::kForeachTan, AtenForeachTan);
-  Impl(m, OpName::kForeachTan_, AtenForeachTan_);
-  Impl(m, OpName::kForeachTanh, AtenForeachTanh);
-  Impl(m, OpName::kForeachTanh_, AtenForeachTanh_);
-  Impl(m, OpName::kForeachTrunc, AtenForeachTrunc);
-  Impl(m, OpName::kForeachTrunc_, AtenForeachTrunc_);
-  Impl(m, OpName::kForeachZero_, AtenForeachZero_);
-  Impl(m, OpName::kFusedRmsNorm, AtenFusedRmsNorm);
-  Impl(m, OpName::kFusedRmsNormBackward, AtenFusedRmsNormBackward);
-  Impl(m, OpName::kGather, AtenGather);
-  Impl(m, OpName::kGatherOut, AtenGatherOut);
-  Impl(m, OpName::kGeScalarOut, AtenGeScalarOut);
-  Impl(m, OpName::kGeTensorOut, AtenGeTensorOut);
-  Impl(m, OpName::kGelu, AtenGelu);
-  Impl(m, OpName::kGeluBackwardGradInput, AtenGeluBackwardGradInput);
-  Impl(m, OpName::kGeluOut, AtenGeluOut);
-  Impl(m, OpName::kGeqrf, AtenGeqrf);
-  Impl(m, OpName::kGeqrfA, AtenGeqrfA);
-  Impl(m, OpName::kGluBackward, AtenGluBackward);
-  Impl(m, OpName::kGluBackwardGradInput, AtenGluBackwardGradInput);
-  Impl(m, OpName::kGluOut, AtenGluOut);
-  Impl(m, OpName::kGridSampler2d, AtenGridSampler2d);
-  Impl(m, OpName::kGridSampler2dBackward, AtenGridSampler2dBackward);
-  Impl(m, OpName::kGridSampler3d, AtenGridSampler3d);
-  Impl(m, OpName::kGridSampler3dBackward, AtenGridSampler3dBackward);
-  Impl(m, OpName::kGroupedMm, AtenGroupedMm);
-  Impl(m, OpName::kGtScalarOut, AtenGtScalarOut);
-  Impl(m, OpName::kGtTensorOut, AtenGtTensorOut);
-  Impl(m, OpName::kHardsigmoidBackwardGradInput,
-       AtenHardsigmoidBackwardGradInput);
-  Impl(m, OpName::kHardsigmoidOut, AtenHardsigmoidOut);
-  Impl(m, OpName::kHardswish, AtenHardswish);
-  Impl(m, OpName::kHardswishBackward, AtenHardswishBackward);
-  Impl(m, OpName::kHardswishOut, AtenHardswishOut);
-  Impl(m, OpName::kHardswish_, AtenHardswish_);
-  Impl(m, OpName::kHardtanh, AtenHardtanh);
-  Impl(m, OpName::kHardtanhBackward, AtenHardtanhBackward);
-  Impl(m, OpName::kHardtanhBackwardGradInput, AtenHardtanhBackwardGradInput);
-  Impl(m, OpName::kHardtanhOut, AtenHardtanhOut);
-  Impl(m, OpName::kHardtanh_, AtenHardtanh_);
-  Impl(m, OpName::kHistc, AtenHistc);
-  Impl(m, OpName::kHistcOut, AtenHistcOut);
-  Impl(m, OpName::kIlshiftScalar, AtenIlshiftScalar);
-  Impl(m, OpName::kIlshiftTensor, AtenIlshiftTensor);
-  Impl(m, OpName::kIm2Col, AtenIm2Col);
-  Impl(m, OpName::kIm2ColOut, AtenIm2ColOut);
-  Impl(m, OpName::kIndexAddOut, TpuAtenIndexAddOut);
-  Impl(m, OpName::kIndexCopyOut, AtenIndexCopyOut);
-  Impl(m, OpName::kIndexFillIntScalar, AtenIndexFillIntScalar_);
-  Impl(m, OpName::kIndexFillIntTensor, AtenIndexFillIntTensor_);
-  Impl(m, OpName::kIndexPutImpl_, TpuAtenIndexPutImpl_);
-  Impl(m, OpName::kIndexReduceOut, TpuAtenIndexReduceOut);
-  Impl(m, OpName::kIndexSelect, TpuAtenIndexSelect);
-  Impl(m, OpName::kIndexTensorOut, AtenIndexTensorOut);
-  Impl(m, OpName::kIrshiftScalar, AtenIrshiftScalar);
-  Impl(m, OpName::kIrshiftTensor, AtenIrshiftTensor);
-  Impl(m, OpName::kIsInScalarTensorOut, AtenIsInScalarTensorOut);
-  Impl(m, OpName::kIsInTensorScalarOut, AtenIsInTensorScalarOut);
-  Impl(m, OpName::kIsInTensorTensorOut, AtenIsInTensorTensorOut);
-  Impl(m, OpName::kIsNan, AtenIsNan);
-  Impl(m, OpName::kIsNegInfOut, AtenIsNegInfOut);
-  Impl(m, OpName::kIsPosInfOut, AtenIsPosInfOut);
-  Impl(m, OpName::kLeScalarOut, AtenLeScalarOut);
-  Impl(m, OpName::kLeTensorOut, AtenLeTensorOut);
-  Impl(m, OpName::kLeakyReluBackward, AtenLeakyReluBackwardGradInput);
-  Impl(m, OpName::kLeakyReluOut, AtenLeakyReluOut);
-  Impl(m, OpName::kLerpScalarOut, AtenLerpScalarOut);
-  Impl(m, OpName::kLerpTensorOut, AtenLerpTensorOut);
-  Impl(m, OpName::kLgammaOut, AtenLgammaOut);
-  Impl(m, OpName::kLinalgInvExInverse, AtenLinalgInvExInverse);
-  Impl(m, OpName::kLinalgLuFactorExOut, AtenLinalgLuFactorExOut);
-  Impl(m, OpName::kLinalgLuOut, AtenLinalgLuOut);
-  Impl(m, OpName::kLinalgLuSolveOut, AtenLinalgLuSolveOut);
-  Impl(m, OpName::kLinalgQrOut, AtenLinalgQrOut);
-  Impl(m, OpName::kLinalgSolveExOut, AtenLinalgSolveExOut);
-  Impl(m, OpName::kLinalgSolveTriangular, AtenLinalgSolveTriangular);
-  Impl(m, OpName::kLinalgSolveTriangularOut, AtenLinalgSolveTriangularOut);
-  Impl(m, OpName::kLinalgVectorNormOut, AtenLinalgVectorNormOut);
-  Impl(m, OpName::kLinspaceOut, AtenLinspaceOut);
-  Impl(m, OpName::kLocalScalarDense, AtenLocalScalarDense);
-  Impl(m, OpName::kLog10Out, AtenLog10Out);
-  Impl(m, OpName::kLog1pOut, AtenLog1pOut);
-  Impl(m, OpName::kLog2Out, AtenLog2Out);
-  Impl(m, OpName::kLogOut, AtenLogOut);
-  Impl(m, OpName::kLogSigmoidBackward, torch_tpu::AtenLogSigmoidBackward);
-  Impl(m, OpName::kLogSigmoidBackwardGradInput,
-       torch_tpu::AtenLogSigmoidBackwardGradInput);
-  Impl(m, OpName::kLogSigmoidForward, torch_tpu::AtenLogSigmoidForward);
-  Impl(m, OpName::kLogSigmoidForwardOut, torch_tpu::AtenLogSigmoidForwardOut);
-  Impl(m, OpName::kLogSoftmaxBackwardDataOut, AtenLogSoftmaxBackwardDataOut);
-  Impl(m, OpName::kLogSoftmaxOut, AtenLogSoftmaxOut);
-  Impl(m, OpName::kLogicalAndOut, AtenLogicalAndOut);
-  Impl(m, OpName::kLogicalNotOut, AtenLogicalNotOut);
-  Impl(m, OpName::kLogicalOrOut, AtenLogicalOrOut);
-  Impl(m, OpName::kLogicalXorOut, AtenLogicalXorOut);
-  Impl(m, OpName::kLshiftScalar, AtenLshiftScalar);
-  Impl(m, OpName::kLshiftTensor, AtenLshiftTensor);
-  Impl(m, OpName::kLtScalarOut, AtenLtScalarOut);
-  Impl(m, OpName::kLtTensorOut, AtenLtTensorOut);
-  Impl(m, OpName::kLuUnpackOut, AtenLuUnpackOut);
-  Impl(m, OpName::kMaskedFill_Scalar, AtenMaskedFill_Scalar);
-  Impl(m, OpName::kMaskedFill_Tensor, AtenMaskedFill_Tensor);
-  Impl(m, OpName::kMaskedScatter_, AtenMaskedScatter_);
-  Impl(m, OpName::kMaskedSelect, AtenMaskedSelect);
-  Impl(m, OpName::kMaskedSelectOut, AtenMaskedSelectOut);
-  Impl(m, OpName::kMax, AtenMax);
-  Impl(m, OpName::kMaxDimMax, AtenMaxDimMax);
-  Impl(m, OpName::kMaxPool2dWithIndicesBackwardGradInput,
-       AtenMaxPool2dWithIndicesBackwardGradInput);
-  Impl(m, OpName::kMaxPool2dWithIndicesOut, AtenMaxPool2dWithIndicesOut);
-  Impl(m, OpName::kMaxPool3dWithIndices, AtenMaxPool3dWithIndices);
-  Impl(m, OpName::kMaxPool3dWithIndicesBackward,
-       AtenMaxPool3dWithIndicesBackward);
-  Impl(m, OpName::kMaxPool3dWithIndicesBackwardGradInput,
-       AtenMaxPool3dWithIndicesBackwardGradInput);
-  Impl(m, OpName::kMaxPool3dWithIndicesOut, AtenMaxPool3dWithIndicesOut);
-  Impl(m, OpName::kMaxUnaryOut, AtenMaxUnaryOut);
-  Impl(m, OpName::kMaximumOut, AtenMaximumOut);
-  Impl(m, OpName::kMeanOut, AtenMeanOut);
-  Impl(m, OpName::kMin, AtenMin);
-  Impl(m, OpName::kMinDimMin, AtenMinDimMin);
-  Impl(m, OpName::kMinUnaryOut, AtenMinUnaryOut);
-  Impl(m, OpName::kMinimumOut, AtenMinimumOut);
-  Impl(m, OpName::kMmDtype, AtenMmDtype);
-  Impl(m, OpName::kMmDtypeOut, AtenMmDtypeOut);
-  Impl(m, OpName::kMmOut, AtenMmOut);
-  Impl(m, OpName::kMseLossBackward, AtenMseLossBackward);
-  Impl(m, OpName::kMseLossOut, AtenMseLossOut);
-  Impl(m, OpName::kMulOut, AtenMulOut);
-  Impl(m, OpName::kMultinomial, AtenMultinomial);
-  Impl(m, OpName::kMultinomialOut, AtenMultinomialOut);
-  Impl(m, OpName::kNanToNumOut, AtenNanToNumOut);
-  Impl(m, OpName::kNativeBatchNorm, AtenNativeBatchNorm);
-  Impl(m, OpName::kNativeBatchNormBackward, AtenNativeBatchNormBackward);
-  Impl(m, OpName::kNativeBatchNormLegit, AtenNativeBatchNormLegit);
-  Impl(m, OpName::kNativeBatchNormLegitNoStats,
-       AtenNativeBatchNormLegitNoStats);
-  Impl(m, OpName::kNativeBatchNormLegitNoStatsOut,
-       AtenNativeBatchNormLegitNoStatsOut);
-  Impl(m, OpName::kNativeBatchNormLegitOut, AtenNativeBatchNormLegitOut);
-  Impl(m, OpName::kNativeBatchNormOut, AtenNativeBatchNormOut);
-  Impl(m, OpName::kNativeDropout, AtenDropout);
-  Impl(m, OpName::kNativeDropoutBackward, AtenNativeDropoutBackward);
-  Impl(m, OpName::kNativeGroupNormBackward, AtenNativeGroupNormBackward);
-  Impl(m, OpName::kNativeLayerNorm, AtenNativeLayerNorm);
-  Impl(m, OpName::kNativeLayerNormBackward, AtenLayerNormBackward);
-  Impl(m, OpName::kNeScalarOut, AtenNeScalarOut);
-  Impl(m, OpName::kNeTensorOut, AtenNeTensorOut);
-  Impl(m, OpName::kNegOut, AtenNegOut);
-  Impl(m, OpName::kNllLoss2dBackward, AtenNllLoss2dBackward);
-  Impl(m, OpName::kNllLoss2dBackwardGradInput, AtenNllLoss2dBackwardGradInput);
-  Impl(m, OpName::kNllLoss2dForward, AtenNllLoss2dForward);
-  Impl(m, OpName::kNllLoss2dForwardOut, AtenNllLoss2dForwardOut);
-  Impl(m, OpName::kNllLossBackwardGradInput, AtenNllLossBackwardGradInput);
-  Impl(m, OpName::kNllLossForwardOut, AtenNllLossForwardOut);
-  Impl(m, OpName::kNonzero, AtenNonzero);
-  Impl(m, OpName::kNonzeroOut, AtenNonzeroOut);
-  Impl(m, OpName::kNormalFloatTensor, AtenNormalFloatTensor);
-  Impl(m, OpName::kNormalFloatTensorOut, AtenNormalFloatTensorOut);
-  Impl(m, OpName::kNormalTensorFloat, AtenNormalTensorFloat);
-  Impl(m, OpName::kNormalTensorFloatOut, AtenNormalTensorFloatOut);
-  Impl(m, OpName::kNormalTensorTensor, AtenNormalTensorTensor);
-  Impl(m, OpName::kNormalTensorTensorOut, AtenNormalTensorTensorOut);
-  Impl(m, OpName::kNormal_, AtenNormal_);
-  Impl(m, OpName::kPdistBackward, AtenPdistBackward);
-  Impl(m, OpName::kPdistForward, AtenPdistForward);
-  Impl(m, OpName::kPolarOut, AtenPolarOut);
-  Impl(m, OpName::kPowScalarOut, AtenPowScalarOut);
-  Impl(m, OpName::kPowTensorScalarOut, AtenPowTensorScalarOut);
-  Impl(m, OpName::kPowTensorTensorOut, AtenPowTensorTensorOut);
-  Impl(m, OpName::kProd, AtenProd);
-  Impl(m, OpName::kProdDimOut, AtenProdDimOut);
-  Impl(m, OpName::kRandom_, AtenRandom_);
-  Impl(m, OpName::kRandom_From, AtenRandom_From);
-  Impl(m, OpName::kRandom_To, AtenRandom_To);
-  Impl(m, OpName::kRandpermGeneratorOut, AtenRandpermGeneratorOut);
-  Impl(m, OpName::kReciprocalOut, AtenReciprocalOut);
-  Impl(m, OpName::kReflectionPad1dBackwardGradInput,
-       AtenReflectionPad1dBackwardGradInput);
-  Impl(m, OpName::kReflectionPad1dOut, AtenReflectionPad1dOut);
-  Impl(m, OpName::kReflectionPad2d, AtenReflectionPad2d);
-  Impl(m, OpName::kReflectionPad2dBackward, AtenReflectionPad2dBackward);
-  Impl(m, OpName::kReflectionPad2dBackwardGradInput,
-       AtenReflectionPad2dBackwardGradInput);
-  Impl(m, OpName::kReflectionPad2dOut, AtenReflectionPad2dOut);
-  Impl(m, OpName::kReflectionPad3dBackwardGradInput,
-       AtenReflectionPad3dBackwardGradInput);
-  Impl(m, OpName::kReflectionPad3dOut, AtenReflectionPad3dOut);
-  Impl(m, OpName::kRelu, AtenRelu);
-  Impl(m, OpName::kRelu_, AtenRelu_);
-  Impl(m, OpName::kRemainderScalarTensor, AtenRemainderScalarTensor);
-  Impl(m, OpName::kRemainderTensorOut, AtenRemainderTensorOut);
-  Impl(m, OpName::kRepeatInterleaveSelfTensor, AtenRepeatInterleave);
-  Impl(m, OpName::kReplicationPad1dBackwardGradInput,
-       AtenReplicationPad1dBackwardGradInput);
-  Impl(m, OpName::kReplicationPad1dOut, AtenReplicationPad1dOut);
-  Impl(m, OpName::kReplicationPad2dBackward, AtenReplicationPad2dBackward);
-  Impl(m, OpName::kReplicationPad2dBackwardGradInput,
-       AtenReplicationPad2dBackwardGradInput);
-  Impl(m, OpName::kReplicationPad2dOut, AtenReplicationPad2dOut);
-  Impl(m, OpName::kReplicationPad3dBackward, AtenReplicationPad3dBackward);
-  Impl(m, OpName::kReplicationPad3dBackwardGradInput,
-       AtenReplicationPad3dBackwardGradInput);
-  Impl(m, OpName::kReplicationPad3dOut, AtenReplicationPad3dOut);
-  Impl(m, OpName::kReshapeAlias, AtenReshapeAlias);
-  Impl(m, OpName::kResize_, AtenResize_);
-  Impl(m, OpName::kRoll, AtenRoll);
-  Impl(m, OpName::kRoundDecimalsOut, AtenRoundDecimalsOut);
-  Impl(m, OpName::kRoundOut, AtenRoundOut);
-  Impl(m, OpName::kRshiftScalar, AtenRshiftScalar);
-  Impl(m, OpName::kRshiftTensor, AtenRshiftTensor);
-  Impl(m, OpName::kRsqrtOut, AtenRsqrtOut);
-  Impl(m, OpName::kRsubTensor, AtenRsubTensor);
-  Impl(m, OpName::kScaledDotProductEfficientAttention,
-       AtenScaledDotProductEfficientAttention);
-  Impl(m, OpName::kScaledDotProductFlashAttention,
-       AtenScaledDotProductFlashAttention);
-  Impl(m, OpName::kScaledDotProductFlashAttentionBackward,
-       AtenScaledDotProductFlashAttentionBackward);
-  Impl(m, OpName::kScaledDotProductFusedAttentionOverrideable,
-       AtenScaledDotProductFusedAttentionOverrideable);
-  Impl(m, OpName::kScaledDotProductFusedAttentionOverrideableBackward,
-       AtenScaledDotProductFusedAttentionOverrideableBackward);
-  Impl(m, OpName::kScaledMm, AtenScaledMm);
-  Impl(m, OpName::kScaledMmOut, AtenScaledMmOut);
-  Impl(m, OpName::kScatterAddOut, AtenScatterAddOut);
-  Impl(m, OpName::kScatterReduceOut, AtenScatterReduceOut);
-  Impl(m, OpName::kScatterReduceTwoOut, AtenScatterReduceTwoOut);
-  Impl(m, OpName::kScatterSrcOut, AtenScatterSrcOut);
-  Impl(m, OpName::kScatterValueOut, AtenScatterValueOut);
-  Impl(m, OpName::kScatterValueReduceOut, AtenScatterValueReduceOut);
-  Impl(m, OpName::kSet_, AtenSet_);
-  Impl(m, OpName::kSet_SourceStorage, AtenSet_SourceStorage);
-  Impl(m, OpName::kSet_SourceStorageOffset, AtenSet_SourceStorageOffset);
-  Impl(m, OpName::kSet_SourceTensor, AtenSet_SourceTensor);
-  Impl(m, OpName::kSgnOut, AtenSgnOut);
-  Impl(m, OpName::kSigmoidBackwardGradInput, AtenSigmoidBackwardGradInput);
-  Impl(m, OpName::kSigmoidOut, AtenSigmoidOut);
-  Impl(m, OpName::kSignOut, AtenSignOut);
-  Impl(m, OpName::kSignbitOut, AtenSignbitOut);
-  Impl(m, OpName::kSiluOut, AtenSiluOut);
-  Impl(m, OpName::kSinOut, AtenSinOut);
-  Impl(m, OpName::kSinhOut, AtenSinhOut);
-  Impl(m, OpName::kSoftmaxBackwardDataOut, AtenSoftmaxBackwardDataOut);
-  Impl(m, OpName::kSoftmaxOut, AtenSoftmaxOut);
-  Impl(m, OpName::kSoftplusBackwardGradInput, AtenSoftplusBackwardGradInput);
-  Impl(m, OpName::kSoftplusOut, AtenSoftplusOut);
-  Impl(m, OpName::kSortValuesStable, AtenSortValuesStable);
-  Impl(m, OpName::kSplitWithSizesCopyOut, AtenSplitWithSizesCopyOut);
-  Impl(m, OpName::kSqrtOut, AtenSqrtOut);
-  Impl(m, OpName::kSubOut, AtenSubOut);
-  Impl(m, OpName::kSumIntListOut, AtenSumIntListOut);
-  Impl(m, OpName::kTake, AtenTake);
-  Impl(m, OpName::kTakeOut, AtenTakeOut);
-  Impl(m, OpName::kTanOut, AtenTanOut);
-  Impl(m, OpName::kTanhBackwardGradInput, AtenTanhBackwardGradInput);
-  Impl(m, OpName::kTanhOut, AtenTanhOut);
-  Impl(m, OpName::kThresholdBackwardGradInput, AtenThresholdBackwardGradInput);
-  Impl(m, OpName::kThresholdOut, AtenThresholdOut);
-  Impl(m, OpName::kToCopy, AtenToCopy);
-  Impl(m, OpName::kTopkValues, AtenTopKValues);
-  Impl(m, OpName::kTrilIndices, AtenTrilIndices);
-  Impl(m, OpName::kTrilOut, AtenTrilOut);
-  Impl(m, OpName::kTriuOut, AtenTriuOut);
-  Impl(m, OpName::kTruncOut, AtenTruncOut);
-  Impl(m, OpName::kUnfold, AtenUnfold);
-  Impl(m, OpName::kUnfoldBackward, AtenUnfoldBackward);
-  Impl(m, OpName::kUniform_, AtenUniform_);
-  Impl(m, OpName::kUnique2, AtenUnique2);
-  Impl(m, OpName::kUpsampleBilinear2dBackwardGradInput,
-       AtenUpsampleBilinear2dBackwardGradInput);
-  Impl(m, OpName::kUpsampleBilinear2dOut, AtenUpsampleBilinear2dOut);
-  Impl(m, OpName::kUpsampleNearest1dBackwardGradInput,
-       AtenUpsampleNearest1dBackwardGradInput);
-  Impl(m, OpName::kUpsampleNearest1dOut, AtenUpsampleNearest1dOut);
-  Impl(m, OpName::kUpsampleNearest2dBackwardGradInput,
-       AtenUpsampleNearest2dBackwardGradInput);
-  Impl(m, OpName::kUpsampleNearest2dOut, AtenUpsampleNearest2dOut);
-  Impl(m, OpName::kUpsampleNearest3dBackwardGradInput,
-       AtenUpsampleNearest3dBackwardGradInput);
-  Impl(m, OpName::kUpsampleNearest3dOut, AtenUpsampleNearest3dOut);
-  Impl(m, OpName::kUpsampleNearestExact1dBackwardGradInput,
-       AtenUpsampleNearestExact1dBackwardGradInput);
-  Impl(m, OpName::kUpsampleNearestExact1dOut, AtenUpsampleNearestExact1dOut);
-  Impl(m, OpName::kUpsampleNearestExact2dBackwardGradInput,
-       AtenUpsampleNearestExact2dBackwardGradInput);
-  Impl(m, OpName::kUpsampleNearestExact2dOut, AtenUpsampleNearestExact2dOut);
-  Impl(m, OpName::kUpsampleNearestExact3dBackwardGradInput,
-       AtenUpsampleNearestExact3dBackwardGradInput);
-  Impl(m, OpName::kUpsampleNearestExact3dOut, AtenUpsampleNearestExact3dOut);
-  Impl(m, OpName::kVarCorrection, AtenVar);
-  Impl(m, OpName::kVarCorrectionOut, AtenVarOut);
-  Impl(m, OpName::kVdot, AtenVdot);
-  Impl(m, OpName::kView, AtenView);
-  Impl(m, OpName::kViewAsComplex, AtenViewAsComplex);
-  Impl(m, OpName::kViewAsReal, AtenViewAsReal);
-  Impl(m, OpName::kWeightNormInterface, AtenWeightNormInterface);
-  Impl(m, OpName::kWhereSelf, AtenWhereSelf);
-  Impl(m, OpName::kWhereSelfOut, AtenWhereSelfOut);
-  Impl(m, OpName::kXlogyOutTensor, AtenXlogyOutTensor);
-  Impl(m, OpName::kZero_, AtenZero_);
+  ImplStable<OpName::kCtcLossPublic>(m, AtenCtcLossPublic);
+  ImplStable<OpName::kCtcLossPublicTensor>(m, AtenCtcLossPublicTensor);
+  ImplStable<OpName::kCtcLossTensor>(m, AtenCtcLossTensor);
+  ImplStable<OpName::kCummaxHelper>(m, AtenCummaxHelper);
+  ImplStable<OpName::kCumminHelper>(m, AtenCumminHelper);
+  ImplStable<OpName::kCumprodOut>(m, AtenCumprodOut);
+  ImplStable<OpName::kCumsumOut>(m, AtenCumsumOut);
+  ImplStable<OpName::kDigammaOut>(m, AtenDigammaOut);
+  ImplStable<OpName::kDivOut>(m, AtenDivOut);
+  ImplStable<OpName::kDivOutMode>(m, AtenDivOutMode);
+  ImplStable<OpName::kDot>(m, AtenDot);
+  ImplStable<OpName::kEfficientZeroTensor>(m, AtenEfficientZeroTensor);
+  ImplStable<OpName::kEluBackwardGradInput>(m, AtenEluBackwardGradInput);
+  ImplStable<OpName::kEluOut>(m, AtenEluOut);
+  ImplStable<OpName::kEmbeddingBag>(m, AtenEmbeddingBag);
+  ImplStable<OpName::kEmbeddingBagBackward>(m, AtenEmbeddingBagBackward);
+  ImplStable<OpName::kEmbeddingBagForwardOnly>(m, AtenEmbeddingBagForwardOnly);
+  ImplStable<OpName::kEmbeddingDenseBackward>(m, AtenEmbeddingDenseBackward);
+  ImplStable<OpName::kEmbeddingRenorm_>(m, AtenEmbeddingRenorm_);
+  ImplStable<OpName::kEmptyMemoryFormat>(m, AtenEmptyMemoryFormat);
+  ImplStable<OpName::kEmptyStrided>(m, AtenEmptyStrided);
+  ImplStable<OpName::kEqScalarOut>(m, AtenEqScalarOut);
+  ImplStable<OpName::kEqTensorOut>(m, AtenEqTensorOut);
+  ImplStable<OpName::kEqual>(m, AtenEqual);
+  ImplStable<OpName::kErfInvOut>(m, AtenErfInvOut);
+  ImplStable<OpName::kErfOut>(m, AtenErfOut);
+  ImplStable<OpName::kExp2Out>(m, AtenExp2Out);
+  ImplStable<OpName::kExpM1Out>(m, AtenExpm1Out);
+  ImplStable<OpName::kExpOut>(m, AtenExpOut);
+  ImplStable<OpName::kExponential_>(m, AtenExponential_);
+  ImplStable<OpName::kEyeMOut>(m, AtenEyeMOut);
+  ImplStable<OpName::kEyeOut>(m, AtenEyeOut);
+  ImplStable<OpName::kFakeQuantizePerTensorAffineCachemask>(
+      m, FakeQuantizePerTensorAffineCachemask);
+  ImplStable<OpName::kFftC2c>(m, AtenFftC2c);
+  ImplStable<OpName::kFftC2cOut>(m, AtenFftC2cOut);
+  ImplStable<OpName::kFftC2r>(m, AtenFftC2r);
+  ImplStable<OpName::kFftC2rOut>(m, AtenFftC2rOut);
+  ImplStable<OpName::kFftR2c>(m, AtenFftR2c);
+  ImplStable<OpName::kFftR2cOut>(m, AtenFftR2cOut);
+  ImplStable<OpName::kFill_Scalar>(m, AtenFillScalar_);
+  ImplStable<OpName::kFill_Tensor>(m, AtenFillTensor_);
+  ImplStable<OpName::kFlip>(m, AtenFlip);
+  ImplStable<OpName::kFloorDivide>(m, AtenFloorDivide);
+  ImplStable<OpName::kFloorDivideOut>(m, AtenFloorDivideOut);
+  ImplStable<OpName::kFloorDivide_Tensor>(m, AtenFloorDivide_Tensor);
+  ImplStable<OpName::kFloorOut>(m, AtenFloorOut);
+  ImplStable<OpName::kFmaxOut>(m, AtenFmaxOut);
+  ImplStable<OpName::kFminOut>(m, AtenFminOut);
+  ImplStable<OpName::kFmodTensorOut>(m, AtenFmodTensorOut);
+  ImplStable<OpName::kForeachAbs>(m, AtenForeachAbs);
+  ImplStable<OpName::kForeachAbs_>(m, AtenForeachAbs_);
+  ImplStable<OpName::kForeachAcos>(m, AtenForeachAcos);
+  ImplStable<OpName::kForeachAcos_>(m, AtenForeachAcos_);
+  ImplStable<OpName::kForeachAddList>(m, AtenForeachAddList);
+  ImplStable<OpName::kForeachAddScalar>(m, AtenForeachAddScalar);
+  ImplStable<OpName::kForeachAddScalarList>(m, AtenForeachAddScalarList);
+  ImplStable<OpName::kForeachAddTensor>(m, AtenForeachAddTensor);
+  ImplStable<OpName::kForeachAdd_List>(m, AtenForeachAdd_List);
+  ImplStable<OpName::kForeachAdd_Scalar>(m, AtenForeachAdd_Scalar);
+  ImplStable<OpName::kForeachAdd_ScalarList>(m, AtenForeachAdd_ScalarList);
+  ImplStable<OpName::kForeachAdd_Tensor>(m, AtenForeachAdd_Tensor);
+  ImplStable<OpName::kForeachAddcdivScalar>(m, AtenForeachAddcdivScalar);
+  ImplStable<OpName::kForeachAddcdivScalarList>(m,
+                                                AtenForeachAddcdivScalarList);
+  ImplStable<OpName::kForeachAddcdivTensor>(m, AtenForeachAddcdivTensor);
+  ImplStable<OpName::kForeachAddcdiv_Scalar>(m, AtenForeachAddcdiv_Scalar);
+  ImplStable<OpName::kForeachAddcdiv_ScalarList>(m,
+                                                 AtenForeachAddcdiv_ScalarList);
+  ImplStable<OpName::kForeachAddcdiv_Tensor>(m, AtenForeachAddcdiv_Tensor);
+  ImplStable<OpName::kForeachAddcmulScalar>(m, AtenForeachAddcmulScalar);
+  ImplStable<OpName::kForeachAddcmulScalarList>(m,
+                                                AtenForeachAddcmulScalarList);
+  ImplStable<OpName::kForeachAddcmulTensor>(m, AtenForeachAddcmulTensor);
+  ImplStable<OpName::kForeachAddcmul_Scalar>(m, AtenForeachAddcmul_Scalar);
+  ImplStable<OpName::kForeachAddcmul_ScalarList>(m,
+                                                 AtenForeachAddcmul_ScalarList);
+  ImplStable<OpName::kForeachAddcmul_Tensor>(m, AtenForeachAddcmul_Tensor);
+  ImplStable<OpName::kForeachAsin>(m, AtenForeachAsin);
+  ImplStable<OpName::kForeachAsin_>(m, AtenForeachAsin_);
+  ImplStable<OpName::kForeachAtan>(m, AtenForeachAtan);
+  ImplStable<OpName::kForeachAtan_>(m, AtenForeachAtan_);
+  ImplStable<OpName::kForeachCeil>(m, AtenForeachCeil);
+  ImplStable<OpName::kForeachCeil_>(m, AtenForeachCeil_);
+  ImplStable<OpName::kForeachClampMaxList>(m, AtenForeachClampMaxList);
+  ImplStable<OpName::kForeachClampMaxScalar>(m, AtenForeachClampMaxScalar);
+  ImplStable<OpName::kForeachClampMaxScalarList>(m,
+                                                 AtenForeachClampMaxScalarList);
+  ImplStable<OpName::kForeachClampMax_List>(m, AtenForeachClampMax_List);
+  ImplStable<OpName::kForeachClampMax_Scalar>(m, AtenForeachClampMax_Scalar);
+  ImplStable<OpName::kForeachClampMax_ScalarList>(
+      m, AtenForeachClampMax_ScalarList);
+  ImplStable<OpName::kForeachClampMinList>(m, AtenForeachClampMinList);
+  ImplStable<OpName::kForeachClampMinScalar>(m, AtenForeachClampMinScalar);
+  ImplStable<OpName::kForeachClampMinScalarList>(m,
+                                                 AtenForeachClampMinScalarList);
+  ImplStable<OpName::kForeachClampMin_List>(m, AtenForeachClampMin_List);
+  ImplStable<OpName::kForeachClampMin_Scalar>(m, AtenForeachClampMin_Scalar);
+  ImplStable<OpName::kForeachClampMin_ScalarList>(
+      m, AtenForeachClampMin_ScalarList);
+  ImplStable<OpName::kForeachCopy_>(m, AtenForeachCopy_);
+  ImplStable<OpName::kForeachCos>(m, AtenForeachCos);
+  ImplStable<OpName::kForeachCos_>(m, AtenForeachCos_);
+  ImplStable<OpName::kForeachCosh>(m, AtenForeachCosh);
+  ImplStable<OpName::kForeachCosh_>(m, AtenForeachCosh_);
+  ImplStable<OpName::kForeachDivList>(m, AtenForeachDivList);
+  ImplStable<OpName::kForeachDivScalar>(m, AtenForeachDivScalar);
+  ImplStable<OpName::kForeachDivScalarList>(m, AtenForeachDivScalarList);
+  ImplStable<OpName::kForeachDivTensor>(m, AtenForeachDivTensor);
+  ImplStable<OpName::kForeachDiv_List>(m, AtenForeachDiv_List);
+  ImplStable<OpName::kForeachDiv_Scalar>(m, AtenForeachDiv_Scalar);
+  ImplStable<OpName::kForeachDiv_ScalarList>(m, AtenForeachDiv_ScalarList);
+  ImplStable<OpName::kForeachDiv_Tensor>(m, AtenForeachDiv_Tensor);
+  ImplStable<OpName::kForeachErf>(m, AtenForeachErf);
+  ImplStable<OpName::kForeachErf_>(m, AtenForeachErf_);
+  ImplStable<OpName::kForeachErfc>(m, AtenForeachErfc);
+  ImplStable<OpName::kForeachErfc_>(m, AtenForeachErfc_);
+  ImplStable<OpName::kForeachExp>(m, AtenForeachExp);
+  ImplStable<OpName::kForeachExp_>(m, AtenForeachExp_);
+  ImplStable<OpName::kForeachExpm1>(m, AtenForeachExpm1);
+  ImplStable<OpName::kForeachExpm1_>(m, AtenForeachExpm1_);
+  ImplStable<OpName::kForeachFloor>(m, AtenForeachFloor);
+  ImplStable<OpName::kForeachFloor_>(m, AtenForeachFloor_);
+  ImplStable<OpName::kForeachFrac>(m, AtenForeachFrac);
+  ImplStable<OpName::kForeachFrac_>(m, AtenForeachFrac_);
+  ImplStable<OpName::kForeachLerpList>(m, AtenForeachLerpList);
+  ImplStable<OpName::kForeachLerpScalar>(m, AtenForeachLerpScalar);
+  ImplStable<OpName::kForeachLerpScalarList>(m, AtenForeachLerpScalarList);
+  ImplStable<OpName::kForeachLerp_List>(m, AtenForeachLerp_List);
+  ImplStable<OpName::kForeachLerp_Scalar>(m, AtenForeachLerp_Scalar);
+  ImplStable<OpName::kForeachLerp_ScalarList>(m, AtenForeachLerp_ScalarList);
+  ImplStable<OpName::kForeachLgamma>(m, AtenForeachLgamma);
+  ImplStable<OpName::kForeachLgamma_>(m, AtenForeachLgamma_);
+  ImplStable<OpName::kForeachLog10>(m, AtenForeachLog10);
+  ImplStable<OpName::kForeachLog10_>(m, AtenForeachLog10_);
+  ImplStable<OpName::kForeachLog1p>(m, AtenForeachLog1p);
+  ImplStable<OpName::kForeachLog1p_>(m, AtenForeachLog1p_);
+  ImplStable<OpName::kForeachLog2>(m, AtenForeachLog2);
+  ImplStable<OpName::kForeachLog2_>(m, AtenForeachLog2_);
+  ImplStable<OpName::kForeachLog>(m, AtenForeachLog);
+  ImplStable<OpName::kForeachLog_>(m, AtenForeachLog_);
+  ImplStable<OpName::kForeachMax>(m, AtenForeachMax);
+  ImplStable<OpName::kForeachMaximumList>(m, AtenForeachMaximumList);
+  ImplStable<OpName::kForeachMaximumScalar>(m, AtenForeachMaximumScalar);
+  ImplStable<OpName::kForeachMaximumScalarList>(m,
+                                                AtenForeachMaximumScalarList);
+  ImplStable<OpName::kForeachMaximum_List>(m, AtenForeachMaximum_List);
+  ImplStable<OpName::kForeachMaximum_Scalar>(m, AtenForeachMaximum_Scalar);
+  ImplStable<OpName::kForeachMaximum_ScalarList>(m,
+                                                 AtenForeachMaximum_ScalarList);
+  ImplStable<OpName::kForeachMinimumList>(m, AtenForeachMinimumList);
+  ImplStable<OpName::kForeachMinimumScalar>(m, AtenForeachMinimumScalar);
+  ImplStable<OpName::kForeachMinimumScalarList>(m,
+                                                AtenForeachMinimumScalarList);
+  ImplStable<OpName::kForeachMinimum_List>(m, AtenForeachMinimum_List);
+  ImplStable<OpName::kForeachMinimum_Scalar>(m, AtenForeachMinimum_Scalar);
+  ImplStable<OpName::kForeachMinimum_ScalarList>(m,
+                                                 AtenForeachMinimum_ScalarList);
+  ImplStable<OpName::kForeachMulList>(m, AtenForeachMulList);
+  ImplStable<OpName::kForeachMulScalar>(m, AtenForeachMulScalar);
+  ImplStable<OpName::kForeachMulScalarList>(m, AtenForeachMulScalarList);
+  ImplStable<OpName::kForeachMulTensor>(m, AtenForeachMulTensor);
+  ImplStable<OpName::kForeachMul_List>(m, AtenForeachMul_List);
+  ImplStable<OpName::kForeachMul_Scalar>(m, AtenForeachMul_Scalar);
+  ImplStable<OpName::kForeachMul_ScalarList>(m, AtenForeachMul_ScalarList);
+  ImplStable<OpName::kForeachMul_Tensor>(m, AtenForeachMul_Tensor);
+  ImplStable<OpName::kForeachNeg>(m, AtenForeachNeg);
+  ImplStable<OpName::kForeachNeg_>(m, AtenForeachNeg_);
+  ImplStable<OpName::kForeachNormScalar>(m, AtenForeachNormScalar);
+  ImplStable<OpName::kForeachPowList>(m, AtenForeachPowList);
+  ImplStable<OpName::kForeachPowScalar>(m, AtenForeachPowScalar);
+  ImplStable<OpName::kForeachPowScalarAndTensor>(m,
+                                                 AtenForeachPowScalarAndTensor);
+  ImplStable<OpName::kForeachPowScalarList>(m, AtenForeachPowScalarList);
+  ImplStable<OpName::kForeachPow_List>(m, AtenForeachPow_List);
+  ImplStable<OpName::kForeachPow_Scalar>(m, AtenForeachPow_Scalar);
+  ImplStable<OpName::kForeachPow_ScalarList>(m, AtenForeachPow_ScalarList);
+  ImplStable<OpName::kForeachReciprocal>(m, AtenForeachReciprocal);
+  ImplStable<OpName::kForeachReciprocal_>(m, AtenForeachReciprocal_);
+  ImplStable<OpName::kForeachRound>(m, AtenForeachRound);
+  ImplStable<OpName::kForeachRound_>(m, AtenForeachRound_);
+  ImplStable<OpName::kForeachRsqrt>(m, AtenForeachRsqrt);
+  ImplStable<OpName::kForeachRsqrt_>(m, AtenForeachRsqrt_);
+  ImplStable<OpName::kForeachSigmoid>(m, AtenForeachSigmoid);
+  ImplStable<OpName::kForeachSigmoid_>(m, AtenForeachSigmoid_);
+  ImplStable<OpName::kForeachSign>(m, AtenForeachSign);
+  ImplStable<OpName::kForeachSign_>(m, AtenForeachSign_);
+  ImplStable<OpName::kForeachSin>(m, AtenForeachSin);
+  ImplStable<OpName::kForeachSin_>(m, AtenForeachSin_);
+  ImplStable<OpName::kForeachSinh>(m, AtenForeachSinh);
+  ImplStable<OpName::kForeachSinh_>(m, AtenForeachSinh_);
+  ImplStable<OpName::kForeachSqrt>(m, AtenForeachSqrt);
+  ImplStable<OpName::kForeachSqrt_>(m, AtenForeachSqrt_);
+  ImplStable<OpName::kForeachSubList>(m, AtenForeachSubList);
+  ImplStable<OpName::kForeachSubScalar>(m, AtenForeachSubScalar);
+  ImplStable<OpName::kForeachSubScalarList>(m, AtenForeachSubScalarList);
+  ImplStable<OpName::kForeachSub_List>(m, AtenForeachSub_List);
+  ImplStable<OpName::kForeachSub_Scalar>(m, AtenForeachSub_Scalar);
+  ImplStable<OpName::kForeachSub_ScalarList>(m, AtenForeachSub_ScalarList);
+  ImplStable<OpName::kForeachTan>(m, AtenForeachTan);
+  ImplStable<OpName::kForeachTan_>(m, AtenForeachTan_);
+  ImplStable<OpName::kForeachTanh>(m, AtenForeachTanh);
+  ImplStable<OpName::kForeachTanh_>(m, AtenForeachTanh_);
+  ImplStable<OpName::kForeachTrunc>(m, AtenForeachTrunc);
+  ImplStable<OpName::kForeachTrunc_>(m, AtenForeachTrunc_);
+  ImplStable<OpName::kForeachZero_>(m, AtenForeachZero_);
+  ImplStable<OpName::kFusedAdam>(m, AtenFusedAdam);
+  ImplStable<OpName::kFusedAdamTensorLr>(m, AtenFusedAdamTensorLr);
+  ImplStable<OpName::kFusedAdamw>(m, AtenFusedAdamw);
+  ImplStable<OpName::kFusedAdamwTensorLr>(m, AtenFusedAdamwTensorLr);
+  ImplStable<OpName::kFusedDropout>(m, AtenFusedDropout);
+  ImplStable<OpName::kFusedRmsNorm>(m, AtenFusedRmsNorm);
+  ImplStable<OpName::kFusedRmsNormBackward>(m, AtenFusedRmsNormBackward);
+  ImplStable<OpName::kFusedSgd>(m, AtenFusedSgd);
+  ImplStable<OpName::kFusedSgdTensorLr>(m, AtenFusedSgdTensorLr);
+  ImplStable<OpName::kGather>(m, AtenGather);
+  ImplStable<OpName::kGatherOut>(m, AtenGatherOut);
+  ImplStable<OpName::kGeScalarOut>(m, AtenGeScalarOut);
+  ImplStable<OpName::kGeTensorOut>(m, AtenGeTensorOut);
+  ImplStable<OpName::kGelu>(m, AtenGelu);
+  ImplStable<OpName::kGeluBackwardGradInput>(m, AtenGeluBackwardGradInput);
+  ImplStable<OpName::kGeluOut>(m, AtenGeluOut);
+  ImplStable<OpName::kGeqrf>(m, AtenGeqrf);
+  ImplStable<OpName::kGeqrfA>(m, AtenGeqrfA);
+  ImplStable<OpName::kGluBackward>(m, AtenGluBackward);
+  ImplStable<OpName::kGluBackwardGradInput>(m, AtenGluBackwardGradInput);
+  ImplStable<OpName::kGluOut>(m, AtenGluOut);
+  ImplStable<OpName::kGridSampler2d>(m, AtenGridSampler2d);
+  ImplStable<OpName::kGridSampler2dBackward>(m, AtenGridSampler2dBackward);
+  ImplStable<OpName::kGridSampler3d>(m, AtenGridSampler3d);
+  ImplStable<OpName::kGridSampler3dBackward>(m, AtenGridSampler3dBackward);
+  ImplStable<OpName::kGroupedMm>(m, AtenGroupedMm);
+  ImplStable<OpName::kGtScalarOut>(m, AtenGtScalarOut);
+  ImplStable<OpName::kGtTensorOut>(m, AtenGtTensorOut);
+  ImplStable<OpName::kHardsigmoidBackwardGradInput>(
+      m, AtenHardsigmoidBackwardGradInput);
+  ImplStable<OpName::kHardsigmoidOut>(m, AtenHardsigmoidOut);
+  ImplStable<OpName::kHardswish>(m, AtenHardswish);
+  ImplStable<OpName::kHardswishBackward>(m, AtenHardswishBackward);
+  ImplStable<OpName::kHardswishOut>(m, AtenHardswishOut);
+  ImplStable<OpName::kHardswish_>(m, AtenHardswish_);
+  ImplStable<OpName::kHardtanh>(m, AtenHardtanh);
+  ImplStable<OpName::kHardtanhBackward>(m, AtenHardtanhBackward);
+  ImplStable<OpName::kHardtanhBackwardGradInput>(m,
+                                                 AtenHardtanhBackwardGradInput);
+  ImplStable<OpName::kHardtanhOut>(m, AtenHardtanhOut);
+  ImplStable<OpName::kHardtanh_>(m, AtenHardtanh_);
+  ImplStable<OpName::kHistc>(m, AtenHistc);
+  ImplStable<OpName::kHistcOut>(m, AtenHistcOut);
+  ImplStable<OpName::kIlshiftScalar>(m, AtenIlshiftScalar);
+  ImplStable<OpName::kIlshiftTensor>(m, AtenIlshiftTensor);
+  ImplStable<OpName::kIm2Col>(m, AtenIm2Col);
+  ImplStable<OpName::kIm2ColOut>(m, AtenIm2ColOut);
+  ImplStable<OpName::kIndexAddOut>(m, TpuAtenIndexAddOut);
+  ImplStable<OpName::kIndexCopyOut>(m, AtenIndexCopyOut);
+  ImplStable<OpName::kIndexFillIntScalar>(m, AtenIndexFillIntScalar_);
+  ImplStable<OpName::kIndexFillIntTensor>(m, AtenIndexFillIntTensor_);
+  ImplStable<OpName::kIndexPutImpl_>(m, TpuAtenIndexPutImpl_);
+  ImplStable<OpName::kIndexReduceOut>(m, TpuAtenIndexReduceOut);
+  ImplStable<OpName::kIndexSelect>(m, TpuAtenIndexSelect);
+  ImplStable<OpName::kIndexTensorOut>(m, AtenIndexTensorOut);
+  ImplStable<OpName::kIrshiftScalar>(m, AtenIrshiftScalar);
+  ImplStable<OpName::kIrshiftTensor>(m, AtenIrshiftTensor);
+  ImplStable<OpName::kIsInScalarTensorOut>(m, AtenIsInScalarTensorOut);
+  ImplStable<OpName::kIsInTensorScalarOut>(m, AtenIsInTensorScalarOut);
+  ImplStable<OpName::kIsInTensorTensorOut>(m, AtenIsInTensorTensorOut);
+  ImplStable<OpName::kIsNan>(m, AtenIsNan);
+  ImplStable<OpName::kIsNegInfOut>(m, AtenIsNegInfOut);
+  ImplStable<OpName::kIsPosInfOut>(m, AtenIsPosInfOut);
+  ImplStable<OpName::kLdexpOut>(m, AtenLdexpOut);
+  ImplStable<OpName::kLdexpTensor>(m, AtenLdexpTensor);
+  ImplStable<OpName::kLdexp_>(m, AtenLdexp_);
+  ImplStable<OpName::kLeScalarOut>(m, AtenLeScalarOut);
+  ImplStable<OpName::kLeTensorOut>(m, AtenLeTensorOut);
+  ImplStable<OpName::kLeakyReluBackward>(m, AtenLeakyReluBackwardGradInput);
+  ImplStable<OpName::kLeakyReluOut>(m, AtenLeakyReluOut);
+  ImplStable<OpName::kLerpScalarOut>(m, AtenLerpScalarOut);
+  ImplStable<OpName::kLerpTensorOut>(m, AtenLerpTensorOut);
+  ImplStable<OpName::kLgammaOut>(m, AtenLgammaOut);
+  ImplStable<OpName::kLinalgInvExInverse>(m, AtenLinalgInvExInverse);
+  ImplStable<OpName::kLinalgLuFactorExOut>(m, AtenLinalgLuFactorExOut);
+  ImplStable<OpName::kLinalgLuOut>(m, AtenLinalgLuOut);
+  ImplStable<OpName::kLinalgLuSolveOut>(m, AtenLinalgLuSolveOut);
+  ImplStable<OpName::kLinalgQrOut>(m, AtenLinalgQrOut);
+  ImplStable<OpName::kLinalgSolveExOut>(m, AtenLinalgSolveExOut);
+  ImplStable<OpName::kLinalgSolveTriangular>(m, AtenLinalgSolveTriangular);
+  ImplStable<OpName::kLinalgSolveTriangularOut>(m,
+                                                AtenLinalgSolveTriangularOut);
+  ImplStable<OpName::kLinalgVectorNormOut>(m, AtenLinalgVectorNormOut);
+  ImplStable<OpName::kLinspaceOut>(m, AtenLinspaceOut);
+  ImplStable<OpName::kLocalScalarDense>(m, AtenLocalScalarDense);
+  ImplStable<OpName::kLog10Out>(m, AtenLog10Out);
+  ImplStable<OpName::kLog1pOut>(m, AtenLog1pOut);
+  ImplStable<OpName::kLog2Out>(m, AtenLog2Out);
+  ImplStable<OpName::kLogOut>(m, AtenLogOut);
+  ImplStable<OpName::kLogSigmoidBackward>(m, AtenLogSigmoidBackward);
+  ImplStable<OpName::kLogSigmoidBackwardGradInput>(
+      m, AtenLogSigmoidBackwardGradInput);
+  ImplStable<OpName::kLogSigmoidForward>(m, AtenLogSigmoidForward);
+  ImplStable<OpName::kLogSigmoidForwardOut>(m, AtenLogSigmoidForwardOut);
+  ImplStable<OpName::kLogSoftmaxBackwardDataOut>(m,
+                                                 AtenLogSoftmaxBackwardDataOut);
+  ImplStable<OpName::kLogSoftmaxOut>(m, AtenLogSoftmaxOut);
+  ImplStable<OpName::kLogcumsumexp>(m, AtenLogcumsumexp);
+  ImplStable<OpName::kLogcumsumexpOut>(m, AtenLogcumsumexpOut);
+  ImplStable<OpName::kLogicalAndOut>(m, AtenLogicalAndOut);
+  ImplStable<OpName::kLogicalNotOut>(m, AtenLogicalNotOut);
+  ImplStable<OpName::kLogicalOrOut>(m, AtenLogicalOrOut);
+  ImplStable<OpName::kLogicalXorOut>(m, AtenLogicalXorOut);
+  ImplStable<OpName::kLshiftScalar>(m, AtenLshiftScalar);
+  ImplStable<OpName::kLshiftTensor>(m, AtenLshiftTensor);
+  ImplStable<OpName::kLtScalarOut>(m, AtenLtScalarOut);
+  ImplStable<OpName::kLtTensorOut>(m, AtenLtTensorOut);
+  ImplStable<OpName::kLuUnpackOut>(m, AtenLuUnpackOut);
+  ImplStable<OpName::kMaskedFill_Scalar>(m, AtenMaskedFill_Scalar);
+  ImplStable<OpName::kMaskedFill_Tensor>(m, AtenMaskedFill_Tensor);
+  ImplStable<OpName::kMaskedScatter_>(m, AtenMaskedScatter_);
+  ImplStable<OpName::kMaskedSelect>(m, AtenMaskedSelect);
+  ImplStable<OpName::kMaskedSelectOut>(m, AtenMaskedSelectOut);
+  ImplStable<OpName::kMax>(m, AtenMax);
+  ImplStable<OpName::kMaxDimMax>(m, AtenMaxDimMax);
+  ImplStable<OpName::kMaxPool2dWithIndicesBackwardGradInput>(
+      m, AtenMaxPool2dWithIndicesBackwardGradInput);
+  ImplStable<OpName::kMaxPool2dWithIndicesOut>(m, AtenMaxPool2dWithIndicesOut);
+  ImplStable<OpName::kMaxPool3dWithIndices>(m, AtenMaxPool3dWithIndices);
+  ImplStable<OpName::kMaxPool3dWithIndicesBackward>(
+      m, AtenMaxPool3dWithIndicesBackward);
+  ImplStable<OpName::kMaxPool3dWithIndicesBackwardGradInput>(
+      m, AtenMaxPool3dWithIndicesBackwardGradInput);
+  ImplStable<OpName::kMaxPool3dWithIndicesOut>(m, AtenMaxPool3dWithIndicesOut);
+  ImplStable<OpName::kMaxUnaryOut>(m, AtenMaxUnaryOut);
+  ImplStable<OpName::kMaximumOut>(m, AtenMaximumOut);
+  ImplStable<OpName::kMeanOut>(m, AtenMeanOut);
+  ImplStable<OpName::kMin>(m, AtenMin);
+  ImplStable<OpName::kMinDimMin>(m, AtenMinDimMin);
+  ImplStable<OpName::kMinUnaryOut>(m, AtenMinUnaryOut);
+  ImplStable<OpName::kMinimumOut>(m, AtenMinimumOut);
+  ImplStable<OpName::kMmDtype>(m, AtenMmDtype);
+  ImplStable<OpName::kMmDtypeOut>(m, AtenMmDtypeOut);
+  ImplStable<OpName::kMmOut>(m, AtenMmOut);
+  ImplStable<OpName::kMseLossBackward>(m, AtenMseLossBackward);
+  ImplStable<OpName::kMseLossOut>(m, AtenMseLossOut);
+  ImplStable<OpName::kMulOut>(m, AtenMulOut);
+  ImplStable<OpName::kMultinomial>(m, AtenMultinomial);
+  ImplStable<OpName::kMultinomialOut>(m, AtenMultinomialOut);
+  ImplStable<OpName::kNanToNumOut>(m, AtenNanToNumOut);
+  ImplStable<OpName::kNativeBatchNorm>(m, AtenNativeBatchNorm);
+  ImplStable<OpName::kNativeBatchNormBackward>(m, AtenNativeBatchNormBackward);
+  ImplStable<OpName::kNativeBatchNormLegit>(m, AtenNativeBatchNormLegit);
+  ImplStable<OpName::kNativeBatchNormLegitNoStats>(
+      m, AtenNativeBatchNormLegitNoStats);
+  ImplStable<OpName::kNativeBatchNormLegitNoStatsOut>(
+      m, AtenNativeBatchNormLegitNoStatsOut);
+  ImplStable<OpName::kNativeBatchNormLegitOut>(m, AtenNativeBatchNormLegitOut);
+  ImplStable<OpName::kNativeBatchNormOut>(m, AtenNativeBatchNormOut);
+  ImplStable<OpName::kNativeDropout>(m, AtenDropout);
+  ImplStable<OpName::kNativeDropoutBackward>(m, AtenNativeDropoutBackward);
+  ImplStable<OpName::kNativeGroupNormBackward>(m, AtenNativeGroupNormBackward);
+  ImplStable<OpName::kNativeLayerNorm>(m, AtenNativeLayerNorm);
+  ImplStable<OpName::kNativeLayerNormBackward>(m, AtenLayerNormBackward);
+  ImplStable<OpName::kNativeNorm>(m, AtenNativeNormScalar);
+  ImplStable<OpName::kNativeNormScalarOptDimDtype>(
+      m, AtenNativeNormScalarOptDimDtype);
+  ImplStable<OpName::kNeScalarOut>(m, AtenNeScalarOut);
+  ImplStable<OpName::kNeTensorOut>(m, AtenNeTensorOut);
+  ImplStable<OpName::kNegOut>(m, AtenNegOut);
+  ImplStable<OpName::kNllLoss2dBackward>(m, AtenNllLoss2dBackward);
+  ImplStable<OpName::kNllLoss2dBackwardGradInput>(
+      m, AtenNllLoss2dBackwardGradInput);
+  ImplStable<OpName::kNllLoss2dForward>(m, AtenNllLoss2dForward);
+  ImplStable<OpName::kNllLoss2dForwardOut>(m, AtenNllLoss2dForwardOut);
+  ImplStable<OpName::kNllLossBackwardGradInput>(m,
+                                                AtenNllLossBackwardGradInput);
+  ImplStable<OpName::kNllLossForwardOut>(m, AtenNllLossForwardOut);
+  ImplStable<OpName::kNonzero>(m, AtenNonzero);
+  ImplStable<OpName::kNonzeroOut>(m, AtenNonzeroOut);
+  ImplStable<OpName::kNormalFloatTensor>(m, AtenNormalFloatTensor);
+  ImplStable<OpName::kNormalFloatTensorOut>(m, AtenNormalFloatTensorOut);
+  ImplStable<OpName::kNormalTensorFloat>(m, AtenNormalTensorFloat);
+  ImplStable<OpName::kNormalTensorFloatOut>(m, AtenNormalTensorFloatOut);
+  ImplStable<OpName::kNormalTensorTensor>(m, AtenNormalTensorTensor);
+  ImplStable<OpName::kNormalTensorTensorOut>(m, AtenNormalTensorTensorOut);
+  ImplStable<OpName::kNormal_>(m, AtenNormal_);
+  ImplStable<OpName::kPdistBackward>(m, AtenPdistBackward);
+  ImplStable<OpName::kPdistForward>(m, AtenPdistForward);
+  ImplStable<OpName::kPolarOut>(m, AtenPolarOut);
+  ImplStable<OpName::kPolygammaOut>(m, AtenPolygammaOut);
+  ImplStable<OpName::kPowScalarOut>(m, AtenPowScalarOut);
+  ImplStable<OpName::kPowTensorScalarOut>(m, AtenPowTensorScalarOut);
+  ImplStable<OpName::kPowTensorTensorOut>(m, AtenPowTensorTensorOut);
+  ImplStable<OpName::kProd>(m, AtenProd);
+  ImplStable<OpName::kProdDimOut>(m, AtenProdDimOut);
+  ImplStable<OpName::kPut_>(m, AtenPut_);
+  ImplStable<OpName::kRandom_>(m, AtenRandom_);
+  ImplStable<OpName::kRandom_From>(m, AtenRandom_From);
+  ImplStable<OpName::kRandom_To>(m, AtenRandom_To);
+  ImplStable<OpName::kRandpermGeneratorOut>(m, AtenRandpermGeneratorOut);
+  ImplStable<OpName::kReciprocalOut>(m, AtenReciprocalOut);
+  ImplStable<OpName::kReflectionPad1dBackwardGradInput>(
+      m, AtenReflectionPad1dBackwardGradInput);
+  ImplStable<OpName::kReflectionPad1dOut>(m, AtenReflectionPad1dOut);
+  ImplStable<OpName::kReflectionPad2d>(m, AtenReflectionPad2d);
+  ImplStable<OpName::kReflectionPad2dBackward>(m, AtenReflectionPad2dBackward);
+  ImplStable<OpName::kReflectionPad2dBackwardGradInput>(
+      m, AtenReflectionPad2dBackwardGradInput);
+  ImplStable<OpName::kReflectionPad2dOut>(m, AtenReflectionPad2dOut);
+  ImplStable<OpName::kReflectionPad3dBackwardGradInput>(
+      m, AtenReflectionPad3dBackwardGradInput);
+  ImplStable<OpName::kReflectionPad3dOut>(m, AtenReflectionPad3dOut);
+  ImplStable<OpName::kRelu>(m, AtenRelu);
+  ImplStable<OpName::kRelu_>(m, AtenRelu_);
+  ImplStable<OpName::kRemainderScalarTensor>(m, AtenRemainderScalarTensor);
+  ImplStable<OpName::kRemainderTensorOut>(m, AtenRemainderTensorOut);
+  ImplStable<OpName::kRepeatInterleaveSelfTensor>(m, AtenRepeatInterleave);
+  ImplStable<OpName::kReplicationPad1dBackwardGradInput>(
+      m, AtenReplicationPad1dBackwardGradInput);
+  ImplStable<OpName::kReplicationPad1dOut>(m, AtenReplicationPad1dOut);
+  ImplStable<OpName::kReplicationPad2dBackward>(m,
+                                                AtenReplicationPad2dBackward);
+  ImplStable<OpName::kReplicationPad2dBackwardGradInput>(
+      m, AtenReplicationPad2dBackwardGradInput);
+  ImplStable<OpName::kReplicationPad2dOut>(m, AtenReplicationPad2dOut);
+  ImplStable<OpName::kReplicationPad3dBackward>(m,
+                                                AtenReplicationPad3dBackward);
+  ImplStable<OpName::kReplicationPad3dBackwardGradInput>(
+      m, AtenReplicationPad3dBackwardGradInput);
+  ImplStable<OpName::kReplicationPad3dOut>(m, AtenReplicationPad3dOut);
+  ImplStable<OpName::kReshapeAlias>(m, AtenReshapeAlias);
+  ImplStable<OpName::kResize_>(m, AtenResize_);
+  ImplStable<OpName::kRoll>(m, AtenRoll);
+  ImplStable<OpName::kRoundDecimalsOut>(m, AtenRoundDecimalsOut);
+  ImplStable<OpName::kRoundOut>(m, AtenRoundOut);
+  ImplStable<OpName::kRshiftScalar>(m, AtenRshiftScalar);
+  ImplStable<OpName::kRshiftTensor>(m, AtenRshiftTensor);
+  ImplStable<OpName::kRsqrtOut>(m, AtenRsqrtOut);
+  ImplStable<OpName::kRsubTensor>(m, AtenRsubTensor);
+  ImplStable<OpName::kScaledDotProductEfficientAttention>(
+      m, AtenScaledDotProductEfficientAttention);
+  ImplStable<OpName::kScaledDotProductEfficientAttentionBackward>(
+      m, AtenScaledDotProductEfficientAttentionBackward);
+  ImplStable<OpName::kScaledDotProductFlashAttention>(
+      m, AtenScaledDotProductFlashAttention);
+  ImplStable<OpName::kScaledDotProductFlashAttentionBackward>(
+      m, AtenScaledDotProductFlashAttentionBackward);
+  ImplStable<OpName::kScaledDotProductFusedAttentionOverrideable>(
+      m, AtenScaledDotProductFusedAttentionOverrideable);
+  ImplStable<OpName::kScaledDotProductFusedAttentionOverrideableBackward>(
+      m, AtenScaledDotProductFusedAttentionOverrideableBackward);
+  ImplStable<OpName::kScaledMm>(m, AtenScaledMm);
+  ImplStable<OpName::kScaledMmOut>(m, AtenScaledMmOut);
+  ImplStable<OpName::kScatterAddOut>(m, AtenScatterAddOut);
+  ImplStable<OpName::kScatterReduceOut>(m, AtenScatterReduceOut);
+  ImplStable<OpName::kScatterReduceTwoOut>(m, AtenScatterReduceTwoOut);
+  ImplStable<OpName::kScatterSrcOut>(m, AtenScatterSrcOut);
+  ImplStable<OpName::kScatterValueOut>(m, AtenScatterValueOut);
+  ImplStable<OpName::kScatterValueReduceOut>(m, AtenScatterValueReduceOut);
+  ImplStable<OpName::kSet_>(m, AtenSet_);
+  ImplStable<OpName::kSet_SourceStorage>(m, AtenSet_SourceStorage);
+  ImplStable<OpName::kSet_SourceStorageOffset>(m, AtenSet_SourceStorageOffset);
+  ImplStable<OpName::kSet_SourceTensor>(m, AtenSet_SourceTensor);
+  ImplStable<OpName::kSgnOut>(m, AtenSgnOut);
+  ImplStable<OpName::kSigmoidBackwardGradInput>(m,
+                                                AtenSigmoidBackwardGradInput);
+  ImplStable<OpName::kSigmoidOut>(m, AtenSigmoidOut);
+  ImplStable<OpName::kSignOut>(m, AtenSignOut);
+  ImplStable<OpName::kSignbitOut>(m, AtenSignbitOut);
+  ImplStable<OpName::kSiluOut>(m, AtenSiluOut);
+  ImplStable<OpName::kSinOut>(m, AtenSinOut);
+  ImplStable<OpName::kSinhOut>(m, AtenSinhOut);
+  ImplStable<OpName::kSliceScatter>(m, AtenSliceScatter);
+  ImplStable<OpName::kSoftmaxBackwardDataOut>(m, AtenSoftmaxBackwardDataOut);
+  ImplStable<OpName::kSoftmaxOut>(m, AtenSoftmaxOut);
+  ImplStable<OpName::kSoftplusBackwardGradInput>(m,
+                                                 AtenSoftplusBackwardGradInput);
+  ImplStable<OpName::kSoftplusOut>(m, AtenSoftplusOut);
+  ImplStable<OpName::kSortValuesStable>(m, AtenSortValuesStable);
+  ImplStable<OpName::kSplitWithSizesCopyOut>(m, AtenSplitWithSizesCopyOut);
+  ImplStable<OpName::kSqrtOut>(m, AtenSqrtOut);
+  ImplStable<OpName::kSubOut>(m, AtenSubOut);
+  ImplStable<OpName::kSumIntListOut>(m, AtenSumIntListOut);
+  ImplStable<OpName::kTake>(m, AtenTake);
+  ImplStable<OpName::kTakeOut>(m, AtenTakeOut);
+  ImplStable<OpName::kTanOut>(m, AtenTanOut);
+  ImplStable<OpName::kTanhBackwardGradInput>(m, AtenTanhBackwardGradInput);
+  ImplStable<OpName::kTanhOut>(m, AtenTanhOut);
+  ImplStable<OpName::kThresholdBackwardGradInput>(
+      m, AtenThresholdBackwardGradInput);
+  ImplStable<OpName::kThresholdOut>(m, AtenThresholdOut);
+  ImplStable<OpName::kToCopy>(m, AtenToCopy);
+  ImplStable<OpName::kTopkValues>(m, AtenTopKValues);
+  ImplStable<OpName::kTrilIndices>(m, AtenTrilIndices);
+  ImplStable<OpName::kTrilOut>(m, AtenTrilOut);
+  ImplStable<OpName::kTriuOut>(m, AtenTriuOut);
+  ImplStable<OpName::kTruncOut>(m, AtenTruncOut);
+  ImplStable<OpName::kUnfold>(m, AtenUnfold);
+  ImplStable<OpName::kUnfoldBackward>(m, AtenUnfoldBackward);
+  ImplStable<OpName::kUniform_>(m, AtenUniform_);
+  ImplStable<OpName::kUnique2>(m, AtenUnique2);
+  ImplStable<OpName::kUpsampleBicubic2dBackwardGradInput>(
+      m, AtenUpsampleBicubic2dBackwardGradInput);
+  ImplStable<OpName::kUpsampleBicubic2dOut>(m, AtenUpsampleBicubic2dOut);
+  ImplStable<OpName::kUpsampleBilinear2dBackwardGradInput>(
+      m, AtenUpsampleBilinear2dBackwardGradInput);
+  ImplStable<OpName::kUpsampleBilinear2dOut>(m, AtenUpsampleBilinear2dOut);
+  ImplStable<OpName::kUpsampleNearest1dBackwardGradInput>(
+      m, AtenUpsampleNearest1dBackwardGradInput);
+  ImplStable<OpName::kUpsampleNearest1dOut>(m, AtenUpsampleNearest1dOut);
+  ImplStable<OpName::kUpsampleNearest2dBackwardGradInput>(
+      m, AtenUpsampleNearest2dBackwardGradInput);
+  ImplStable<OpName::kUpsampleNearest2dOut>(m, AtenUpsampleNearest2dOut);
+  ImplStable<OpName::kUpsampleNearest3dBackwardGradInput>(
+      m, AtenUpsampleNearest3dBackwardGradInput);
+  ImplStable<OpName::kUpsampleNearest3dOut>(m, AtenUpsampleNearest3dOut);
+  ImplStable<OpName::kUpsampleNearestExact1dBackwardGradInput>(
+      m, AtenUpsampleNearestExact1dBackwardGradInput);
+  ImplStable<OpName::kUpsampleNearestExact1dOut>(m,
+                                                 AtenUpsampleNearestExact1dOut);
+  ImplStable<OpName::kUpsampleNearestExact2dBackwardGradInput>(
+      m, AtenUpsampleNearestExact2dBackwardGradInput);
+  ImplStable<OpName::kUpsampleNearestExact2dOut>(m,
+                                                 AtenUpsampleNearestExact2dOut);
+  ImplStable<OpName::kUpsampleNearestExact3dBackwardGradInput>(
+      m, AtenUpsampleNearestExact3dBackwardGradInput);
+  ImplStable<OpName::kUpsampleNearestExact3dOut>(m,
+                                                 AtenUpsampleNearestExact3dOut);
+  ImplStable<OpName::kVarCorrection>(m, AtenVar);
+  ImplStable<OpName::kVarCorrectionOut>(m, AtenVarOut);
+  ImplStable<OpName::kVarMeanCorrection>(m, AtenVarMeanCorrection);
+  ImplStable<OpName::kVdot>(m, AtenVdot);
+  ImplStable<OpName::kView>(m, AtenView);
+  ImplStable<OpName::kViewAsComplex>(m, AtenViewAsComplex);
+  ImplStable<OpName::kViewAsReal>(m, AtenViewAsReal);
+  ImplStable<OpName::kWeightNormInterface>(m, AtenWeightNormInterface);
+  ImplStable<OpName::kWhereSelf>(m, AtenWhereSelf);
+  ImplStable<OpName::kWhereSelfOut>(m, AtenWhereSelfOut);
+  ImplStable<OpName::kXlogyOutTensor>(m, AtenXlogyOutTensor);
+  ImplStable<OpName::kZero_>(m, AtenZero_);
   // go/keep-sorted end
 }
 
@@ -790,7 +961,7 @@ void TpuMissingOpFallback(const c10::OperatorHandle& op,
                           torch::jit::Stack* const stack) {
   const auto& op_name = op.schema().operator_name();
   if (!IsCpuFallbackEnabled()) {
-    TT_CHECK_THROW(false, error::kUnimplemented)
+    TT_CHECK_THROW(false, error::kPythonNotImplementedError)
         << "operator '" << op_name
         << "' is not implemented for TPU. Please file a feature request";
   } else {
@@ -820,8 +991,8 @@ TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
   // it means PyTorch's autograd no longer knows how to differentiate it.
   // Therefore, we must explicitly provide this autograd override to map
   // ctc_loss to our custom forward/backward autograd implementation.
-  Impl(m, OpName::kCtcLossPublic, AtenCtcLossPublicAutograd);
-  Impl(m, OpName::kCtcLossPublicTensor, AtenCtcLossPublicTensorAutograd);
+  ImplStable<OpName::kCtcLossPublic>(m, AtenCtcLossPublicAutograd);
+  ImplStable<OpName::kCtcLossPublicTensor>(m, AtenCtcLossPublicTensorAutograd);
   // MaxPool is by default a CompositeImplicitAutograd op. The decomposition
   // replaces it with MaxPool2dWithIndices (even when return_indices=False).
   // Intuitively, the with-indices variant would be helpful for training,
@@ -833,31 +1004,32 @@ TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
   // for both forward and backward, the latter leveraging SelectAndScatter.
   // SelectAndScatter does not support dilations however, so we fallback to the
   // indices variant and preserve the default composite behavior in this case.
-  Impl(m, OpName::kMaxPool2d, AtenMaxPool2d);
+  ImplStable<OpName::kMaxPool2d>(m, AtenMaxPool2d);
 }
 
-TORCH_LIBRARY(torch_tpu, m) {
+// Signatures of custom ops in torch.ops.tpu. Their C++ bindings are registered
+// in TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) below.
+TORCH_LIBRARY(tpu, m) {
   m.def(
       "max_pool2d(Tensor self, int[] kernel_size, int[] stride, int[] padding, "
-      "int[] dilation, "
-      "bool ceil_mode) "
-      "-> Tensor");
+      "int[] dilation, bool ceil_mode) -> Tensor");
   m.def(
       "max_pool2d_backward(Tensor grad_output, Tensor self, int[] kernel_size, "
-      "int[] stride, int[] padding, int[] dilation, bool ceil_mode) "
-      "-> Tensor");
+      "int[] stride, int[] padding, int[] dilation, bool ceil_mode) -> Tensor");
   m.def("ragged_dot(Tensor lhs, Tensor rhs, Tensor group_sizes) -> Tensor");
   m.def(
-      "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor grop_sizes, *, "
+      "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor group_sizes, *, "
       "Tensor(a!) out) -> Tensor(a!)");
   m.def(
       "ragged_all_to_all(Tensor operand, Tensor output, Tensor "
       "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
-      "recv_sizes, Tensor replica_groups) -> Tensor");
+      "recv_sizes, str process_group_name) -> "
+      "Tensor");
   m.def(
       "ragged_all_to_all.out(Tensor operand, Tensor output, Tensor "
       "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
-      "recv_sizes, Tensor replica_groups, *, Tensor(a!) out) "
+      "recv_sizes, str process_group_name, *, "
+      "Tensor(a!) out) "
       "-> Tensor(a!)");
   m.def("optimization_barrier(Tensor[] inputs) -> Tensor[]");
   // This op is a torch_tpu custom op for use in torch.compile() mode to handle
@@ -899,49 +1071,207 @@ TORCH_LIBRARY(torch_tpu, m) {
       "dynamic_arange(Tensor start, Tensor end, Tensor step, "
       "int max_length, ScalarType dtype) -> Tensor");
 
+  // Broadcasts the input tensor to a dynamic output shape.
+  //
+  // This operator is used in torch.compile() mode to support broadcasting
+  // tensors with bounded dynamism on TPU. It lowers to
+  // stablehlo.broadcast_in_dim followed by stablehlo.set_dimension_size for
+  // dynamic dimensions.
+  //
+  // Args:
+  //   input: The input tensor to broadcast.
+  //   shape: List of 0-D (scalar) int32 tensors containing the runtime sizes of
+  //     the output dimensions.
+  //   broadcast_dims: Specifies which dimensions of the output correspond to
+  //     dimensions of the input.
+  //   static_shape: The static upper bound for the output shape. Used for
+  //     static allocation.
+  //   is_dynamic: List of booleans indicating which output dimensions are
+  //     dynamic.
+  //
+  // Returns:
+  //   The broadcasted tensor, bounded to its dynamic shape.
+  m.def(
+      "dynamic_broadcast(Tensor input, Tensor[] shape, int[] broadcast_dims, "
+      "int[] static_shape, bool[] is_dynamic) -> Tensor");
+
+  // This op is a torch_tpu custom op for use in torch.compile() mode to handle
+  // dynamic reshape operations on TPU. It reshapes the input tensor to the
+  // specified shape.
+  // Args:
+  //   input: The input tensor to reshape.
+  //   shape: List of 0-D (scalar) int32 tensors containing the runtime sizes of
+  //     the output dimensions.
+  //   static_shape: The static upper bound for the output shape. Used for
+  //     static allocation.
+  //   is_dynamic: List of booleans indicating which output dimensions are
+  //     dynamic.
+  // Returns:
+  //   The reshaped tensor, bounded to its dynamic shape.
+  m.def(
+      "dynamic_reshape(Tensor input, Tensor[] shape, int[] static_shape, "
+      "bool[] is_dynamic) -> Tensor");
+
   // Experimental P2P communication ops for ProcessGroupTpu.
   // Isolated from the public torch.distributed API to safely prototype new
   // behaviors.
   m.def("experimental_send(Tensor[] tensors, int dst, int tag) -> Any");
   m.def("experimental_recv(Tensor[] tensors, int src, int tag) -> Any");
+  m.def(
+      "sparse_dense_matmul(Tensor row_pointers, Tensor embedding_ids, Tensor "
+      "sample_ids, Tensor gains, Tensor embedding_table, int "
+      "device_batch_size, int max_ids_per_partition, int "
+      "max_unique_ids_per_partition) -> Tensor");
+  m.def(
+      "sparse_dense_matmul_grad_with_adagrad(Tensor row_pointers, Tensor "
+      "embedding_ids, Tensor sample_ids, Tensor gains, Tensor embedding_table, "
+      "Tensor accumulator, Tensor activations_grad, Tensor learning_rate, "
+      "Tensor epsilon, int "
+      "device_batch_size, int max_ids_per_partition, int "
+      "max_unique_ids_per_partition, str computation_name) -> (Tensor, "
+      "Tensor)");
+  m.def(
+      "sparse_dense_matmul_grad_with_sgd(Tensor row_pointers, Tensor "
+      "embedding_ids, Tensor sample_ids, Tensor gains, Tensor embedding_table, "
+      "Tensor activations_grad, Tensor learning_rate, int device_batch_size, "
+      "int max_ids_per_partition, int max_unique_ids_per_partition, str "
+      "computation_name) -> Tensor");
+  m.def(
+      "sparse_dense_matmul_grad_with_adam(Tensor row_pointers, Tensor "
+      "embedding_ids, Tensor sample_ids, Tensor gains, Tensor embedding_table, "
+      "Tensor momentum, Tensor velocity, Tensor activations_grad, Tensor "
+      "alpha_t, float beta_1, float beta_2, float epsilon, int "
+      "device_batch_size, int max_ids_per_partition, int "
+      "max_unique_ids_per_partition, str computation_name) -> (Tensor, Tensor, "
+      "Tensor)");
 }
 
-TORCH_LIBRARY_IMPL(torch_tpu, Meta, m) {
-  Impl(m, OpName::kMaxPool2d,
-       [](const at::Tensor& self, at::IntArrayRef kernel_size,
-          at::IntArrayRef stride, at::IntArrayRef padding,
-          at::IntArrayRef dilation, bool ceil_mode) {
-         return at::empty(
-             GetMaxPoolOutputSize(self.sizes(), kernel_size, stride, padding,
-                                  dilation, ceil_mode, 2),
-             self.options());
-       });
-  Impl(m, OpName::kMaxPool2dBackward,
-       [](const at::Tensor& grad_output, const at::Tensor& self,
-          at::IntArrayRef kernel_size, at::IntArrayRef stride,
-          at::IntArrayRef padding, at::IntArrayRef dilation,
-          bool ceil_mode) { return at::empty(self.sizes(), self.options()); });
+TORCH_LIBRARY_IMPL(tpu, Meta, m) {
+  ImplStable<OpName::kMaxPool2d>(
+      m, [](const at::Tensor& self, at::IntArrayRef kernel_size,
+            at::IntArrayRef stride, at::IntArrayRef padding,
+            at::IntArrayRef dilation, bool ceil_mode) {
+        return at::empty(GetMaxPoolOutputSize(self.sizes(), kernel_size, stride,
+                                              padding, dilation, ceil_mode, 2),
+                         self.options());
+      });
+  ImplStable<OpName::kMaxPool2dBackward>(
+      m, [](const at::Tensor& grad_output, const at::Tensor& self,
+            at::IntArrayRef kernel_size, at::IntArrayRef stride,
+            at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode) {
+        return at::empty(self.sizes(), self.options());
+      });
+  ImplStable<OpName::kSparseDenseMatmul>(
+      m,
+      [](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
+         const at::Tensor& sample_ids, const at::Tensor& gains,
+         const at::Tensor& embedding_table, int64_t device_batch_size,
+         int64_t max_ids_per_partition,
+         int64_t max_unique_ids_per_partition) -> at::Tensor {
+        TT_CHECK_THROW(embedding_table.dim() == 2, error::kInvalidArgument)
+            << "embedding_table must be 2D";
+        return at::empty({device_batch_size, embedding_table.size(1)},
+                         embedding_table.options());
+      });
+  ImplStable<OpName::kSparseDenseMatmulGradWithSgd>(
+      m,
+      [](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
+         const at::Tensor& sample_ids, const at::Tensor& gains,
+         const at::Tensor& embedding_table, const at::Tensor& activations_grad,
+         const at::Tensor& learning_rate, int64_t device_batch_size,
+         int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+         std::string_view computation_name) {
+        return at::empty_like(embedding_table);
+      });
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdagrad>(
+      m,
+      +[](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
+          const at::Tensor& sample_ids, const at::Tensor& gains,
+          const at::Tensor& embedding_table, const at::Tensor& accumulator,
+          const at::Tensor& activations_grad, const at::Tensor& learning_rate,
+          const at::Tensor& epsilon, int64_t device_batch_size,
+          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+          std::string_view computation_name) {
+        return std::make_tuple(at::empty_like(embedding_table),
+                               at::empty_like(accumulator));
+      });
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdam>(
+      m,
+      +[](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
+          const at::Tensor& sample_ids, const at::Tensor& gains,
+          const at::Tensor& embedding_table, const at::Tensor& momentum,
+          const at::Tensor& velocity, const at::Tensor& activations_grad,
+          const at::Tensor& alpha_t, double beta_1, double beta_2,
+          double epsilon, int64_t device_batch_size,
+          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+          std::string_view computation_name) {
+        return std::make_tuple(at::empty_like(embedding_table),
+                               at::empty_like(momentum),
+                               at::empty_like(velocity));
+      });
+  ImplStable<OpName::kRaggedDot>(
+      m, +[](const at::Tensor& lhs, const at::Tensor& rhs,
+             const at::Tensor& group_sizes) {
+        return at::empty({lhs.size(0), rhs.size(2)},
+                         lhs.options().dtype(at::result_type(lhs, rhs)));
+      });
+  ImplStable<OpName::kRaggedDotOut>(
+      m,
+      +[](const at::Tensor& lhs, const at::Tensor& rhs,
+          const at::Tensor& group_sizes, at::Tensor& out) -> at::Tensor& {
+        at::native::resize_output(out, {lhs.size(0), rhs.size(2)});
+        return out;
+      });
+  ImplStable<OpName::kRaggedAllToAll>(
+      m, +[](const at::Tensor& operand, const at::Tensor& output,
+             const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+             const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+             std::string_view process_group_name) {
+        return at::empty_like(output);
+      });
+  ImplStable<OpName::kRaggedAllToAllOut>(
+      m,
+      +[](const at::Tensor& operand, const at::Tensor& output,
+          const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+          const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+          std::string_view process_group_name, at::Tensor& out) -> at::Tensor& {
+        at::native::resize_output(out, output.sizes());
+        return out;
+      });
 }
 
-TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
-  Impl(m, OpName::kDistributedExperimentalSend, TorchTpuExperimentalSend);
-  Impl(m, OpName::kDistributedExperimentalRecv, TorchTpuExperimentalRecv);
-  Impl(m, OpName::kMaxPool2d, TpuMaxPool2d);
-  Impl(m, OpName::kMaxPool2dBackward, TpuMaxPool2dBackward);
-  Impl(m, OpName::kRaggedDot, AtenRaggedDot);
-  Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
-  Impl(m, OpName::kRaggedAllToAll, AtenRaggedAllToAll);
-  Impl(m, OpName::kRaggedAllToAllOut, AtenRaggedAllToAllOut);
-  Impl(m, OpName::kTorchTpuOptimizationBarrier, TorchTpuOptimizationBarrier);
-  Impl(m, OpName::kSetDimensionLogicalSize, SetDimensionLogicalSize);
-  Impl(m, OpName::kDynamicArange, DynamicArange);
+TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
+  ImplExperimental<OpName::kDistributedExperimentalSend>(
+      m, TorchTpuExperimentalSend);
+  ImplExperimental<OpName::kDistributedExperimentalRecv>(
+      m, TorchTpuExperimentalRecv);
+  ImplExperimental<OpName::kMaxPool2d>(m, TpuMaxPool2d);
+  ImplExperimental<OpName::kMaxPool2dBackward>(m, TpuMaxPool2dBackward);
+  ImplExperimental<OpName::kRaggedDot>(m, AtenRaggedDot);
+  ImplExperimental<OpName::kRaggedDotOut>(m, AtenRaggedDotOut);
+  ImplExperimental<OpName::kRaggedAllToAll>(m, AtenRaggedAllToAll);
+  ImplExperimental<OpName::kRaggedAllToAllOut>(m, AtenRaggedAllToAllOut);
+  ImplExperimental<OpName::kTorchTpuOptimizationBarrier>(
+      m, TorchTpuOptimizationBarrier);
+  ImplExperimental<OpName::kSetDimensionLogicalSize>(m,
+                                                     SetDimensionLogicalSize);
+  ImplExperimental<OpName::kDynamicArange>(m, DynamicArange);
+  ImplExperimental<OpName::kDynamicBroadcast>(m, DynamicBroadcast);
+  ImplExperimental<OpName::kDynamicReshape>(m, DynamicReshape);
+  ImplExperimental<OpName::kSparseDenseMatmul>(m, AtenSparseDenseMatmul);
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
+      m, AtenSparseDenseMatmulGradWithSgd);
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdagrad>(
+      m, AtenSparseDenseMatmulGradWithAdagrad);
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdam>(
+      m, AtenSparseDenseMatmulGradWithAdam);
 }
 
-TORCH_LIBRARY_IMPL(torch_tpu, CPU, m) {
-  Impl(m, OpName::kRaggedDot, AtenRaggedDot);
-  Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
-  Impl(m, OpName::kRaggedAllToAll, AtenRaggedAllToAll);
-  Impl(m, OpName::kRaggedAllToAllOut, AtenRaggedAllToAllOut);
+TORCH_LIBRARY_IMPL(tpu, CPU, m) {
+  ImplExperimental<OpName::kRaggedDot>(m, AtenRaggedDot);
+  ImplExperimental<OpName::kRaggedDotOut>(m, AtenRaggedDotOut);
+  ImplExperimental<OpName::kRaggedAllToAll>(m, AtenRaggedAllToAll);
+  ImplExperimental<OpName::kRaggedAllToAllOut>(m, AtenRaggedAllToAllOut);
 }
 
 // Returns a mutable reference to the global CPU fallback mode (defaulted to

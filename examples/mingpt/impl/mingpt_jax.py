@@ -74,15 +74,15 @@ class CfgNode:
 
 def get_default_config():
   C = CfgNode()
-  C.model_type = 'gpt'
-  C.n_layer = None
-  C.n_head = None
-  C.n_embd = None
-  C.vocab_size = None
-  C.block_size = None
-  C.embd_pdrop = 0.1
-  C.resid_pdrop = 0.1
-  C.attn_pdrop = 0.1
+  C.model_type = 'gpt'  # pyrefly: ignore[missing-attribute]
+  C.n_layer = None  # pyrefly: ignore[missing-attribute]
+  C.n_head = None  # pyrefly: ignore[missing-attribute]
+  C.n_embd = None  # pyrefly: ignore[missing-attribute]
+  C.vocab_size = None  # pyrefly: ignore[missing-attribute]
+  C.block_size = None  # pyrefly: ignore[missing-attribute]
+  C.embd_pdrop = 0.1  # pyrefly: ignore[missing-attribute]
+  C.resid_pdrop = 0.1  # pyrefly: ignore[missing-attribute]
+  C.attn_pdrop = 0.1  # pyrefly: ignore[missing-attribute]
   return C
 
 

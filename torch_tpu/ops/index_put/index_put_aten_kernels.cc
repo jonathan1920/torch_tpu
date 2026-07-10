@@ -476,7 +476,7 @@ absl::StatusOr<DeviceBufferRef> IndexPut(
 absl::StatusOr<DeviceBufferRef> IndexPutHelper(
     at::Tensor& self,
     const c10::List<std::optional<at::Tensor>>& indices_list_opt,
-    const at::Tensor& values, const bool accumulate, const bool unsafe) {
+    const at::Tensor& values, const bool accumulate) {
   ABSL_VLOG(1) << "[IndexPut] self: " << self.sizes();
   ABSL_VLOG(1) << "[IndexPut] values: " << values.sizes();
   ABSL_VLOG(1) << "[IndexPut] indices_list_opt: " << indices_list_opt.size();
@@ -512,13 +512,12 @@ at::Tensor& TpuAtenIndexPutImpl_(
     const at::Tensor& values, bool accumulate, bool unsafe) {
   TT_KERNEL(
       OpName::kIndexPutImpl_, _,
-      (self, IgnoreInCacheKey(indices, "Legacy usage"), values,
-       IgnoreInCacheKey(accumulate, "Legacy usage"),
-       IgnoreInCacheKey(unsafe, "Legacy usage")),
+      (self, IgnoreInCacheKey(indices, "Delegates to IndexPutHelper()"), values,
+       IgnoreInCacheKey(accumulate, "Delegates to IndexPutHelper()"),
+       IgnoreInCacheKey(unsafe, "Unused")),
       {
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef result_buf,
-            IndexPutHelper(self, indices, values, accumulate, unsafe));
+        TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
+                           IndexPutHelper(self, indices, values, accumulate));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
         return self;
       });

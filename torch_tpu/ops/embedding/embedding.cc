@@ -31,16 +31,16 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/cumsum/cumsum.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/reductions/reductions.h"
 #include "torch_tpu/ops/reductions/sum.h"
+#include "torch_tpu/ops/unary.h"
 
 namespace torch_tpu {
 namespace {
-
-enum class EmbeddingBagMode { kSum = 0, kMean = 1, kMax = 2 };
 
 struct MaxAggregationResult {
   mlir::MlirOp output;
@@ -217,6 +217,10 @@ absl::StatusOr<mlir::MlirOp> BuildRenormRow(mlir::MlirBuilder& builder,
   mlir::Type elem_type =
       needs_upcast ? builder.getOpBuilder().getF32Type() : orig_elem_type;
 
+  TT_ASSIGN_OR_RETURN(mlir::ElementType elem_dtype,
+                      ConvertTo<mlir::ElementType>(elem_type));
+  mlir::ElementType real_elem_type = RealComponentOf(elem_dtype);
+
   mlir::MlirOp acc_row = row;
   if (needs_upcast) {
     TT_ASSIGN_OR_RETURN(acc_row, PromoteFloatDtype(acc_row));
@@ -228,13 +232,23 @@ absl::StatusOr<mlir::MlirOp> BuildRenormRow(mlir::MlirBuilder& builder,
     TT_ASSIGN_OR_RETURN(norm, BuildSumShlo(abs_row, {row_type.getRank() - 1},
                                            ReductionMode::kKeepDims));
   } else if (norm_type == 2.0) {
-    mlir::MlirOp mul_row = mlir::stablehlo::Mul(acc_row, acc_row);
+    mlir::MlirOp mul_row;
+    if (llvm::isa<mlir::ComplexType>(elem_type)) {
+      TT_ASSIGN_OR_RETURN(mlir::MlirOp conj_row,
+                          BuildConjPhysicalShlo(acc_row));
+      mlir::MlirOp complex_mul = mlir::stablehlo::Mul(acc_row, conj_row);
+      // complex_mul is guaranteed to be a real number
+      mul_row = mlir::stablehlo::Real(complex_mul);
+    } else {
+      mul_row = mlir::stablehlo::Mul(acc_row, acc_row);
+    }
     TT_ASSIGN_OR_RETURN(norm, BuildSumShlo(mul_row, {row_type.getRank() - 1},
                                            ReductionMode::kKeepDims));
     norm = mlir::stablehlo::Sqrt(norm);
   } else {
-    auto p_scalar = MakeScalarConstant(builder, norm_type, elem_type);
-    auto p_inv_scalar = MakeScalarConstant(builder, 1.0 / norm_type, elem_type);
+    auto p_scalar = MakeScalarConstant(builder, norm_type, real_elem_type);
+    auto p_inv_scalar =
+        MakeScalarConstant(builder, 1.0 / norm_type, real_elem_type);
     mlir::MlirOp abs_row = mlir::stablehlo::Abs(acc_row);
     TT_ASSIGN_OR_RETURN(auto p_bcst, BroadcastIfNeeded(p_scalar, abs_row));
     mlir::MlirOp pow_row = mlir::stablehlo::Pow(abs_row, p_bcst);
@@ -243,22 +257,27 @@ absl::StatusOr<mlir::MlirOp> BuildRenormRow(mlir::MlirBuilder& builder,
     TT_ASSIGN_OR_RETURN(auto p_inv_bcst, BroadcastIfNeeded(p_inv_scalar, norm));
     norm = mlir::stablehlo::Pow(norm, p_inv_bcst);
   }
-  auto max_norm_scalar = MakeScalarConstant(builder, max_norm, elem_type);
+  auto max_norm_scalar = MakeScalarConstant(builder, max_norm, real_elem_type);
   TT_ASSIGN_OR_RETURN(auto max_norm_bcst,
                       BroadcastIfNeeded(max_norm_scalar, norm));
   auto too_large = mlir::stablehlo::Compare(
       norm, max_norm_bcst, mlir::stablehlo::ComparisonDirection::GT);
-  auto eps_scalar = MakeScalarConstant(builder, 1e-7, elem_type);
+  auto eps_scalar = MakeScalarConstant(builder, 1e-7, real_elem_type);
   TT_ASSIGN_OR_RETURN(auto eps_bcst, BroadcastIfNeeded(eps_scalar, norm));
   auto norm_plus_eps = mlir::stablehlo::Add(norm, eps_bcst);
   auto multiplier = mlir::stablehlo::Div(max_norm_bcst, norm_plus_eps);
-  auto ones_scalar = MakeScalarConstant(builder, 1.0, elem_type);
+  auto ones_scalar = MakeScalarConstant(builder, 1.0, real_elem_type);
   TT_ASSIGN_OR_RETURN(auto ones_bcst,
                       BroadcastIfNeeded(ones_scalar, multiplier));
   auto safe_multiplier =
       mlir::stablehlo::Select(too_large, multiplier, ones_bcst);
-  TT_ASSIGN_OR_RETURN(auto mult_bcst,
-                      BroadcastIfNeeded(safe_multiplier, acc_row));
+
+  mlir::MlirOp mult_bcst = safe_multiplier;
+  if (llvm::isa<mlir::ComplexType>(elem_type)) {
+    mult_bcst = mlir::stablehlo::ConvertElementType(safe_multiplier, elem_type);
+  }
+
+  TT_ASSIGN_OR_RETURN(mult_bcst, BroadcastIfNeeded(mult_bcst, acc_row));
   auto result = mlir::stablehlo::Mul(acc_row, mult_bcst);
   if (needs_upcast) {
     result = mlir::stablehlo::ConvertElementType(result, orig_elem_type);
@@ -303,10 +322,13 @@ absl::StatusOr<MlirOpResults<4>> BuildEmbeddingBagShlo(
       builder, mlir::DenseElementsAttr::get(
                    mlir::RankedTensorType::get({batch_size}, i64_type),
                    builder.getOpBuilder().getZeroAttr(i64_type)));
+  mlir::RankedTensorType max_indices_type =
+      (mode == 2) ? mlir::RankedTensorType::get({batch_size, emb_dim}, i64_type)
+                  : mlir::RankedTensorType::get({batch_size}, i64_type);
   auto max_indices_init = mlir::stablehlo::Constant(
-      builder, mlir::DenseElementsAttr::get(
-                   mlir::RankedTensorType::get({batch_size, emb_dim}, i64_type),
-                   builder.getOpBuilder().getZeroAttr(i64_type)));
+      builder,
+      mlir::DenseElementsAttr::get(
+          max_indices_type, builder.getOpBuilder().getZeroAttr(i64_type)));
   if (num_indices == 0) {
     auto empty_idx = mlir::stablehlo::Constant(
         builder, mlir::DenseElementsAttr::get(
@@ -350,60 +372,91 @@ absl::StatusOr<MlirOpResults<4>> BuildEmbeddingBagShlo(
                       BuildOffset2Bag(builder, flattened_indices, offsets,
                                       i64_type, batch_size));
   TT_ASSIGN_OR_RETURN(auto scatter_indices, Unsqueeze(offset2bag, 1));
-  mlir::MlirOp output, max_indices;
-  if (mode == 2) {
-    auto neg_inf_scalar = MakeScalarConstant(builder, -INFINITY, acc_elem_type);
-    TT_ASSIGN_OR_RETURN(auto neg_inf_bcst,
-                        BroadcastIfNeeded(neg_inf_scalar, output_init));
-    TT_ASSIGN_OR_RETURN(
-        auto max_res, BuildMaxAggregation(builder, gathered, scatter_indices,
-                                          neg_inf_bcst, max_indices_init,
-                                          i64_type, acc_elem_type, offset2bag));
-    output = max_res.output;
-    max_indices = max_res.max_indices;
+  mlir::MlirOp output;
+  mlir::MlirOp final_bag_size;
+  mlir::MlirOp max_indices;
 
-    auto is_neg_inf = mlir::stablehlo::Compare(
-        output, neg_inf_bcst, mlir::stablehlo::ComparisonDirection::EQ);
-    auto zero_scalar = MakeScalarConstant(builder, 0.0, acc_elem_type);
-    TT_ASSIGN_OR_RETURN(auto zero_bcst, BroadcastIfNeeded(zero_scalar, output));
-    output = mlir::stablehlo::Select(is_neg_inf, zero_bcst, output);
-  } else {
-    output = BuildSimpleScatter(builder, output_init, scatter_indices, gathered,
-                                /*has_window=*/true);
-    max_indices = max_indices_init;
+  auto bag_mode = static_cast<EmbeddingBagMode>(mode);
+
+  auto build_bag_size = [&]() -> absl::StatusOr<mlir::MlirOp> {
+    mlir::MlirOp ones_indices = mlir::stablehlo::Constant(
+        builder, mlir::DenseElementsAttr::get(
+                     mlir::RankedTensorType::get({num_indices}, i64_type),
+                     builder.getOpBuilder().getIntegerAttr(i64_type, 1)));
+    if (padding_idx >= 0) {
+      auto zero_i64 = MakeScalarConstant(builder, 0, i64_type);
+      TT_ASSIGN_OR_RETURN(auto zero_i64_bcst,
+                          BroadcastIfNeeded(zero_i64, ones_indices));
+      ones_indices =
+          mlir::stablehlo::Select(is_padding, zero_i64_bcst, ones_indices);
+    }
+    return BuildSimpleScatter(builder, bag_size_init, scatter_indices,
+                              ones_indices, /*has_window=*/false);
+  };
+
+  switch (bag_mode) {
+    case EmbeddingBagMode::kSum: {
+      output =
+          BuildSimpleScatter(builder, output_init, scatter_indices, gathered,
+                             /*has_window=*/true);
+      final_bag_size = bag_size_init;
+      max_indices = bag_size_init;
+      break;
+    }
+    case EmbeddingBagMode::kMean: {
+      output =
+          BuildSimpleScatter(builder, output_init, scatter_indices, gathered,
+                             /*has_window=*/true);
+      TT_ASSIGN_OR_RETURN(final_bag_size, build_bag_size());
+      max_indices = final_bag_size;
+
+      // Scale output by bag_size
+      auto bag_size_float =
+          mlir::stablehlo::ConvertElementType(final_bag_size, acc_elem_type);
+      TT_ASSIGN_OR_RETURN(auto bs_unsqueezed, Unsqueeze(bag_size_float, 1));
+      TT_ASSIGN_OR_RETURN(auto bs_bcst,
+                          BroadcastIfNeeded(bs_unsqueezed, output));
+      auto zeros_float = MakeScalarConstant(builder, 0.0, acc_elem_type);
+      TT_ASSIGN_OR_RETURN(auto zeros_bcst,
+                          BroadcastIfNeeded(zeros_float, bs_bcst));
+      auto is_empty = mlir::stablehlo::Compare(
+          bs_bcst, zeros_bcst, mlir::stablehlo::ComparisonDirection::EQ);
+      auto ones_float = MakeScalarConstant(builder, 1.0, acc_elem_type);
+      TT_ASSIGN_OR_RETURN(auto ones_bcst,
+                          BroadcastIfNeeded(ones_float, bs_bcst));
+      auto safe_divisor = mlir::stablehlo::Select(is_empty, ones_bcst, bs_bcst);
+      output = mlir::stablehlo::Div(output, safe_divisor);
+      break;
+    }
+    case EmbeddingBagMode::kMax: {
+      auto neg_inf_scalar =
+          MakeScalarConstant(builder, -INFINITY, acc_elem_type);
+      TT_ASSIGN_OR_RETURN(auto neg_inf_bcst,
+                          BroadcastIfNeeded(neg_inf_scalar, output_init));
+      TT_ASSIGN_OR_RETURN(
+          auto max_res,
+          BuildMaxAggregation(builder, gathered, scatter_indices, neg_inf_bcst,
+                              max_indices_init, i64_type, acc_elem_type,
+                              offset2bag));
+      output = max_res.output;
+      max_indices = max_res.max_indices;
+
+      auto is_neg_inf = mlir::stablehlo::Compare(
+          output, neg_inf_bcst, mlir::stablehlo::ComparisonDirection::EQ);
+      auto zero_scalar = MakeScalarConstant(builder, 0.0, acc_elem_type);
+      TT_ASSIGN_OR_RETURN(auto zero_bcst,
+                          BroadcastIfNeeded(zero_scalar, output));
+      output = mlir::stablehlo::Select(is_neg_inf, zero_bcst, output);
+
+      TT_ASSIGN_OR_RETURN(final_bag_size, build_bag_size());
+      break;
+    }
   }
-  mlir::MlirOp ones_indices = mlir::stablehlo::Constant(
-      builder, mlir::DenseElementsAttr::get(
-                   mlir::RankedTensorType::get({num_indices}, i64_type),
-                   builder.getOpBuilder().getIntegerAttr(i64_type, 1)));
-  if (padding_idx >= 0) {
-    auto zero_i64 = MakeScalarConstant(builder, 0, i64_type);
-    TT_ASSIGN_OR_RETURN(auto zero_i64_bcst,
-                        BroadcastIfNeeded(zero_i64, ones_indices));
-    ones_indices =
-        mlir::stablehlo::Select(is_padding, zero_i64_bcst, ones_indices);
-  }
-  auto bag_size = BuildSimpleScatter(builder, bag_size_init, scatter_indices,
-                                     ones_indices, /*has_window=*/false);
-  if (mode == 1) {
-    auto bag_size_float =
-        mlir::stablehlo::ConvertElementType(bag_size, acc_elem_type);
-    TT_ASSIGN_OR_RETURN(auto bs_unsqueezed, Unsqueeze(bag_size_float, 1));
-    TT_ASSIGN_OR_RETURN(auto bs_bcst, BroadcastIfNeeded(bs_unsqueezed, output));
-    auto zeros_float = MakeScalarConstant(builder, 0.0, acc_elem_type);
-    TT_ASSIGN_OR_RETURN(auto zeros_bcst,
-                        BroadcastIfNeeded(zeros_float, bs_bcst));
-    auto is_empty = mlir::stablehlo::Compare(
-        bs_bcst, zeros_bcst, mlir::stablehlo::ComparisonDirection::EQ);
-    auto ones_float = MakeScalarConstant(builder, 1.0, acc_elem_type);
-    TT_ASSIGN_OR_RETURN(auto ones_bcst, BroadcastIfNeeded(ones_float, bs_bcst));
-    auto safe_divisor = mlir::stablehlo::Select(is_empty, ones_bcst, bs_bcst);
-    output = mlir::stablehlo::Div(output, safe_divisor);
-  }
+
   if (needs_upcast) {
     output = mlir::stablehlo::ConvertElementType(output, weight_elem_type);
   }
-  return MlirOpResults<4>({output, offset2bag, bag_size, max_indices});
+  return MlirOpResults<4>({output, offset2bag, final_bag_size, max_indices});
 }
 
 absl::StatusOr<mlir::MlirOp> BuildEmbeddingBagBackwardShlo(
@@ -439,85 +492,98 @@ absl::StatusOr<mlir::MlirOp> BuildEmbeddingBagBackwardShlo(
                                                               grad_elem_type)
                         : grad_weight_init;
   }
-  auto bag_size_acc = mlir::stablehlo::ConvertElementType(
-      bag_size, GetTensorTypeOrDie(flattened_indices).getElementType());
-  auto zero_idx_scalar = MakeScalarConstant(
-      builder, 0, GetTensorTypeOrDie(flattened_indices).getElementType());
-  TT_ASSIGN_OR_RETURN(auto zero_idx_bcst,
-                      BroadcastIfNeeded(zero_idx_scalar, bag_size_acc));
-  auto bag_is_empty = mlir::stablehlo::Compare(
-      bag_size_acc, zero_idx_bcst, mlir::stablehlo::ComparisonDirection::EQ);
-  TT_ASSIGN_OR_RETURN(auto bie_u, Unsqueeze(bag_is_empty, 1));
-  TT_ASSIGN_OR_RETURN(auto bie_b, BroadcastIfNeeded(bie_u, acc_grad));
   auto zeros_float = MakeScalarConstant(builder, 0.0, acc_elem_type);
-  TT_ASSIGN_OR_RETURN(auto zeros_bcst,
-                      BroadcastIfNeeded(zeros_float, acc_grad));
-  acc_grad = mlir::stablehlo::Select(bie_b, zeros_bcst, acc_grad);
-  mlir::MlirOp grad_indices;
-  if (mode < 2) {
-    TT_ASSIGN_OR_RETURN(grad_indices,
-                        BuildEmbeddingGather(builder, acc_grad, offset2bag));
-    if (mode == 1) {
-      auto bag_size_float =
-          mlir::stablehlo::ConvertElementType(bag_size, acc_elem_type);
-      TT_ASSIGN_OR_RETURN(
-          auto bs_g, BuildEmbeddingGather(builder, bag_size_float, offset2bag));
-      TT_ASSIGN_OR_RETURN(auto bs_u, Unsqueeze(bs_g, 1));
-      TT_ASSIGN_OR_RETURN(auto bs_b, BroadcastIfNeeded(bs_u, grad_indices));
-      TT_ASSIGN_OR_RETURN(auto zeros_bcst_bs,
-                          BroadcastIfNeeded(zeros_float, bs_b));
-      auto is_zero = mlir::stablehlo::Compare(
-          bs_b, zeros_bcst_bs, mlir::stablehlo::ComparisonDirection::EQ);
-      auto ones_float = MakeScalarConstant(builder, 1.0, acc_elem_type);
-      TT_ASSIGN_OR_RETURN(auto ones_bcst, BroadcastIfNeeded(ones_float, bs_b));
-      auto safe_bs = mlir::stablehlo::Select(is_zero, ones_bcst, bs_b);
-      grad_indices = mlir::stablehlo::Div(grad_indices, safe_bs);
-    }
-    if (per_sample_weights.has_value()) {
-      mlir::MlirOp psw = *per_sample_weights;
-      if (GetTensorTypeOrDie(psw).getRank() != 1) psw = Flatten(psw);
-      if (needs_upcast) {
-        TT_ASSIGN_OR_RETURN(psw, PromoteFloatDtype(psw));
-      }
-      TT_ASSIGN_OR_RETURN(auto psw_u, Unsqueeze(psw, 1));
-      TT_ASSIGN_OR_RETURN(auto psw_b, BroadcastIfNeeded(psw_u, grad_indices));
-      grad_indices = mlir::stablehlo::Mul(grad_indices, psw_b);
-    }
-  } else {
-    auto gi_init = mlir::stablehlo::Constant(
-        builder,
-        mlir::DenseElementsAttr::get(
-            mlir::RankedTensorType::get({num_indices, emb_dim}, acc_elem_type),
-            builder.getOpBuilder().getZeroAttr(acc_elem_type)));
-    auto d1i = mlir::stablehlo::Iota(
-        builder, mlir::RankedTensorType::get({emb_dim}, i64_type), 0);
-    TT_ASSIGN_OR_RETURN(auto d1b, BroadcastIfNeeded(d1i, max_indices));
-    TT_ASSIGN_OR_RETURN(auto mu, Unsqueeze(max_indices, 2));
-    TT_ASSIGN_OR_RETURN(auto d1u, Unsqueeze(d1b, 2));
-    auto coords = mlir::stablehlo::Concatenate(builder, {mu, d1u}, 2);
-    auto neg1_scalar = MakeScalarConstant(builder, -1, i64_type);
-    TT_ASSIGN_OR_RETURN(auto neg1_bcst,
-                        BroadcastIfNeeded(neg1_scalar, max_indices));
-    auto is_v = mlir::stablehlo::Compare(
-        max_indices, neg1_bcst, mlir::stablehlo::ComparisonDirection::GT);
-    TT_ASSIGN_OR_RETURN(auto isv_u, Unsqueeze(is_v, 2));
-    TT_ASSIGN_OR_RETURN(auto isv_b, BroadcastIfNeeded(isv_u, coords));
-    auto zero_c = mlir::stablehlo::Constant(
-        builder, mlir::DenseElementsAttr::get(
-                     GetTensorTypeOrDie(coords),
-                     builder.getOpBuilder().getI64IntegerAttr(0)));
-    auto safe_coords = mlir::stablehlo::Select(isv_b, coords, zero_c);
-    auto body = [acc_elem_type](mlir::RegionBuilder& rb) {
-      mlir::stablehlo::buildReduceBody<mlir::stablehlo::AddOp>(
-          acc_elem_type, rb.getRegion(), rb.getOpBuilder());
-    };
-    TT_ASSIGN_OR_RETURN(auto ag_zero_bcst,
+  auto bag_mode = static_cast<EmbeddingBagMode>(mode);
+
+  if (bag_mode == EmbeddingBagMode::kMax) {
+    auto bag_size_acc = mlir::stablehlo::ConvertElementType(
+        bag_size, GetTensorTypeOrDie(flattened_indices).getElementType());
+    auto zero_idx_scalar = MakeScalarConstant(
+        builder, 0, GetTensorTypeOrDie(flattened_indices).getElementType());
+    TT_ASSIGN_OR_RETURN(auto zero_idx_bcst,
+                        BroadcastIfNeeded(zero_idx_scalar, bag_size_acc));
+    auto bag_is_empty = mlir::stablehlo::Compare(
+        bag_size_acc, zero_idx_bcst, mlir::stablehlo::ComparisonDirection::EQ);
+    TT_ASSIGN_OR_RETURN(auto bie_u, Unsqueeze(bag_is_empty, 1));
+    TT_ASSIGN_OR_RETURN(auto bie_b, BroadcastIfNeeded(bie_u, acc_grad));
+    TT_ASSIGN_OR_RETURN(auto zeros_bcst,
                         BroadcastIfNeeded(zeros_float, acc_grad));
-    auto safe_updates = mlir::stablehlo::Select(is_v, acc_grad, ag_zero_bcst);
-    auto scatter_dims = mlir::stablehlo::ScatterDimensionNumbersAttr::get(
-        &builder.getContext(), {}, {0, 1}, {}, {}, {0, 1}, 2);
-    grad_indices = mlir::stablehlo::Scatter(
-        {gi_init}, safe_coords, {safe_updates}, body, scatter_dims)[0];
+    acc_grad = mlir::stablehlo::Select(bie_b, zeros_bcst, acc_grad);
+  }
+
+  mlir::MlirOp grad_indices;
+  switch (bag_mode) {
+    case EmbeddingBagMode::kSum:
+    case EmbeddingBagMode::kMean: {
+      TT_ASSIGN_OR_RETURN(grad_indices,
+                          BuildEmbeddingGather(builder, acc_grad, offset2bag));
+      if (bag_mode == EmbeddingBagMode::kMean) {
+        auto bag_size_float =
+            mlir::stablehlo::ConvertElementType(bag_size, acc_elem_type);
+        TT_ASSIGN_OR_RETURN(
+            auto bs_g,
+            BuildEmbeddingGather(builder, bag_size_float, offset2bag));
+        TT_ASSIGN_OR_RETURN(auto bs_u, Unsqueeze(bs_g, 1));
+        TT_ASSIGN_OR_RETURN(auto bs_b, BroadcastIfNeeded(bs_u, grad_indices));
+        TT_ASSIGN_OR_RETURN(auto zeros_bcst_bs,
+                            BroadcastIfNeeded(zeros_float, bs_b));
+        auto is_zero = mlir::stablehlo::Compare(
+            bs_b, zeros_bcst_bs, mlir::stablehlo::ComparisonDirection::EQ);
+        auto ones_float = MakeScalarConstant(builder, 1.0, acc_elem_type);
+        TT_ASSIGN_OR_RETURN(auto ones_bcst,
+                            BroadcastIfNeeded(ones_float, bs_b));
+        auto safe_bs = mlir::stablehlo::Select(is_zero, ones_bcst, bs_b);
+        grad_indices = mlir::stablehlo::Div(grad_indices, safe_bs);
+      }
+      if (per_sample_weights.has_value()) {
+        mlir::MlirOp psw = *per_sample_weights;
+        if (GetTensorTypeOrDie(psw).getRank() != 1) psw = Flatten(psw);
+        if (needs_upcast) {
+          TT_ASSIGN_OR_RETURN(psw, PromoteFloatDtype(psw));
+        }
+        TT_ASSIGN_OR_RETURN(auto psw_u, Unsqueeze(psw, 1));
+        TT_ASSIGN_OR_RETURN(auto psw_b, BroadcastIfNeeded(psw_u, grad_indices));
+        grad_indices = mlir::stablehlo::Mul(grad_indices, psw_b);
+      }
+      break;
+    }
+    case EmbeddingBagMode::kMax: {
+      auto gi_init = mlir::stablehlo::Constant(
+          builder, mlir::DenseElementsAttr::get(
+                       mlir::RankedTensorType::get({num_indices, emb_dim},
+                                                   acc_elem_type),
+                       builder.getOpBuilder().getZeroAttr(acc_elem_type)));
+      auto d1i = mlir::stablehlo::Iota(
+          builder, mlir::RankedTensorType::get({emb_dim}, i64_type), 0);
+      TT_ASSIGN_OR_RETURN(auto d1b, BroadcastIfNeeded(d1i, max_indices));
+      TT_ASSIGN_OR_RETURN(auto mu, Unsqueeze(max_indices, 2));
+      TT_ASSIGN_OR_RETURN(auto d1u, Unsqueeze(d1b, 2));
+      auto coords = mlir::stablehlo::Concatenate(builder, {mu, d1u}, 2);
+      auto neg1_scalar = MakeScalarConstant(builder, -1, i64_type);
+      TT_ASSIGN_OR_RETURN(auto neg1_bcst,
+                          BroadcastIfNeeded(neg1_scalar, max_indices));
+      auto is_v = mlir::stablehlo::Compare(
+          max_indices, neg1_bcst, mlir::stablehlo::ComparisonDirection::GT);
+      TT_ASSIGN_OR_RETURN(auto isv_u, Unsqueeze(is_v, 2));
+      TT_ASSIGN_OR_RETURN(auto isv_b, BroadcastIfNeeded(isv_u, coords));
+      auto zero_c = mlir::stablehlo::Constant(
+          builder, mlir::DenseElementsAttr::get(
+                       GetTensorTypeOrDie(coords),
+                       builder.getOpBuilder().getI64IntegerAttr(0)));
+      auto safe_coords = mlir::stablehlo::Select(isv_b, coords, zero_c);
+      auto body = [acc_elem_type](mlir::RegionBuilder& rb) {
+        mlir::stablehlo::buildReduceBody<mlir::stablehlo::AddOp>(
+            acc_elem_type, rb.getRegion(), rb.getOpBuilder());
+      };
+      TT_ASSIGN_OR_RETURN(auto ag_zero_bcst,
+                          BroadcastIfNeeded(zeros_float, acc_grad));
+      auto safe_updates = mlir::stablehlo::Select(is_v, acc_grad, ag_zero_bcst);
+      auto scatter_dims = mlir::stablehlo::ScatterDimensionNumbersAttr::get(
+          &builder.getContext(), {}, {0, 1}, {}, {}, {0, 1}, 2);
+      grad_indices = mlir::stablehlo::Scatter(
+          {gi_init}, safe_coords, {safe_updates}, body, scatter_dims)[0];
+      break;
+    }
   }
   if (padding_idx >= 0) {
     auto pad_scalar = MakeScalarConstant(

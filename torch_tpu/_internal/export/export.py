@@ -106,6 +106,7 @@ class ExportedMlir:
       generator state. If so, one additional input tensor as the last argument
       is expected for the generator state tensor, and the one additional tensor
       as the last output is expected for the updated generator state tensor.
+    is_noop: Whether the FX graph is a no-op (i.e. has no output tensors).
   """
 
   module: tpu_torch_compile.ContextedModule | None
@@ -115,6 +116,7 @@ class ExportedMlir:
       [Sequence[Any], Sequence[torch.Tensor]], Any
   ]
   updates_default_generator_state: bool
+  is_noop: bool = False
 
   def serialize_text(self, enable_debug_info: bool = False) -> str:
     """Returns the MLIR representation of the graph as text."""
@@ -273,7 +275,10 @@ def _reconstruct_fx_outputs(
 
       # Force the contiguous output to have the expected layout.
       # b/514662948: avoid the copy/slice for broadcasted return values
-      if expected_layout.matches_tensor(contiguous_output_tensor):
+      is_dynamic = tpu_torch_compile.is_device_shape_dynamic(
+          contiguous_output_tensor
+      )
+      if is_dynamic or expected_layout.matches_tensor(contiguous_output_tensor):
         reconstructed_flat.append(contiguous_output_tensor)
       else:
         reconstructed_flat.append(
@@ -441,6 +446,8 @@ def fx_to_mlir(
     module: torch.fx.GraphModule,
     args: list[torch.Tensor | Any],
     build_mlir_module: bool = True,
+    use_stablehlo_bounds: bool = False,
+    argument_layouts: list[list[int]] | None = None,
 ) -> ExportedMlir:
   """Converts an FX graph module to MLIR using TorchTPU's defer mode.
 
@@ -456,6 +463,8 @@ def fx_to_mlir(
       through an FX graph interpreter to identify the graph's output tensors.
     build_mlir_module: Whether to build and return the MLIR module in the
       result.
+    use_stablehlo_bounds: Whether to use StableHLO bounds.
+    argument_layouts: A list of forced layouts for input arguments.
 
   Returns:
     An `ExportedMlir` object containing the MLIR representation of the graph and
@@ -463,6 +472,14 @@ def fx_to_mlir(
   """
   # Filter out non-tensor arguments.
   argument_tensors = [a for a in args if isinstance(a, torch.Tensor)]
+  if argument_layouts is not None:
+    assert len(argument_layouts) == len(argument_tensors), (
+        f"argument_layouts size mismatch: expected {len(argument_tensors)}, got"
+        f" {len(argument_layouts)}"
+    )
+    internal_layouts = list(argument_layouts)
+  else:
+    internal_layouts = []
 
   # Run the module through the EagerLikeFxInterpreter with MLIR location
   # tracebacks enabled by default so that the MLIR we generate has file
@@ -488,6 +505,8 @@ def fx_to_mlir(
 
     # Add placeholder to the argument tensors for traversal.
     argument_tensors.append(begin_state_tensor)
+    if internal_layouts:
+      internal_layouts.append([])
 
   try:
     with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
@@ -518,15 +537,30 @@ def fx_to_mlir(
         != end_default_state_tensor.data_ptr()
     )
     if not updates_default_generator_state:
-      # Remove the default generator state tensor from the arguments and
-      # outputs since it is not used.
-      argument_tensors.pop()
-      result_tensors.pop()
+      if len(result_tensors) > 1:
+        # Remove the default generator state tensor from the arguments and
+        # outputs since it is not used.
+        argument_tensors.pop()
+        result_tensors.pop()
+        if internal_layouts:
+          internal_layouts.pop()
+      else:
+        # No RNG update and nothing to compute: this graph is a no-op.
+        return ExportedMlir(
+            module=None,
+            executable=None,
+            mlir_result_tensors=[],
+            reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
+            updates_default_generator_state=False,
+            is_noop=True,
+        )
 
     compile_result = tpu_torch_compile.traverse_and_compile(
         result_tensors=result_tensors,
         argument_tensors=argument_tensors,
         build_mlir_module=build_mlir_module,
+        use_stablehlo_bounds=use_stablehlo_bounds,
+        argument_layouts=internal_layouts,
     )
   finally:
     # Restore original generator states.

@@ -25,7 +25,6 @@ def _():
   import os
   import shutil
   import time
-  from tpu_utils import safe_init
 
   # Pre-set environment variables globally for HTML export so that all examples have output
   os.environ["TORCH_SHOW_CPP_STACKTRACES"] = "1"
@@ -51,7 +50,7 @@ def _():
   os.environ["TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK"] = (
       "1"
   )
-  return mo, os, safe_init
+  return mo, os
 
 
 @app.cell(hide_code=True)
@@ -62,7 +61,7 @@ def _(mo):
     TorchTPU's behavior is controlled through several environment variables that configure the XLA compiler, the TPU driver (`libtpu`), and PyTorch's own debug subsystem.
 
     ### ⚠️ **CRITICAL: Process-Global Initialization**
-    TorchTPU/XLA environment variables are **locked** the moment the backend initializes (usually during `import torch` or `api.tpu_device()`).
+    TorchTPU environment variables are **locked** the moment the backend initializes (usually during `import torch` or `torch.device("tpu")`).
 
     **To try a different environment variable snippet:**
     1.  **Restart the Marimo Kernel** (Click the restart icon in the bottom menu or use the keyboard shortcut).
@@ -90,13 +89,13 @@ def _(mo):
 
 
 @app.cell
-def _(os, safe_init):
+def _(os):
   def _run():
     # RESTART KERNEL BEFORE RUNNING
     import torch
 
     os.environ["TORCH_SHOW_CPP_STACKTRACES"] = "1"
-    device_debug = safe_init()
+    device_debug = torch.device("tpu")
 
     # Trigger a shape mismatch error
     a = torch.randn(10).to(device_debug)
@@ -125,13 +124,13 @@ def _(mo):
 
 
 @app.cell
-def _(os, safe_init):
+def _(os):
   def _run():
     # RESTART KERNEL BEFORE RUNNING
     import torch
 
     os.environ["TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS"] = "1"
-    device_safe = safe_init()
+    device_safe = torch.device("tpu")
 
     # DEMONSTRATE: Index Validation
     # Without this variable, TPU skips bounds checks for speed.
@@ -192,13 +191,13 @@ def _(mo):
 
 
 @app.cell
-def _(os, safe_init):
+def _(os):
   def _run():
     # RESTART KERNEL BEFORE RUNNING
     import torch
 
     os.environ["TORCH_TPU_INTERNAL_XLA_OPTIONS"] = "xla_optimization_level=O3"
-    device_xla = safe_init()
+    device_xla = torch.device("tpu")
 
     # Run a complex op
     x = torch.randn(1024, 1024).to(device_xla)
@@ -225,7 +224,7 @@ def _(mo):
 
 
 @app.cell
-def _(os, safe_init):
+def _(os):
   def _run():
     # RESTART KERNEL BEFORE RUNNING
     import torch
@@ -237,7 +236,7 @@ def _(os, safe_init):
 
     # Force dumping of HLO as text to a specific directory
     os.environ["XLA_FLAGS"] = f"--xla_dump_hlo_as_text --xla_dump_to={dump_dir}"
-    device_hlo = safe_init()
+    device_hlo = torch.device("tpu")
 
     # Run a simple op to generate the HLO
     x = torch.randn(10).to(device_hlo)
@@ -327,7 +326,7 @@ def _(os, safe_init):
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK"
     ] = "1"
 
-    device_cache = safe_init()
+    device_cache = torch.device("tpu")
 
     # Run multiple operations with different shapes/parameters to generate multiple cache entries
     def run_ops(d):
@@ -383,10 +382,10 @@ def _(mo):
     | `RANK` | Launcher | `import torch` | `0`, `1`, `2`, ... (integer) |
     | `TORCH_SHOW_CPP_STACKTRACES` | Debug | `import torch` | `0` (False), `1` (True) |
     | `TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS` | Safety | `import torch` | `0` (False), `1` (True) |
-    | `TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE` | Cache | `api.tpu_device()` | `/dev/shm/xla_cache_dir/`, `<local_path>` |
-    | `TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK` | Cache | `api.tpu_device()` | `0` (False), `1` (True) |
-    | `TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT` | Cache | `api.tpu_device()` | `gs://<bucket_name>/<path_to_cache>` |
-    | `TORCH_TPU_INTERNAL_XLA_OPTIONS` | XLA Tuning | `api.tpu_device()` | `xla_optimization_level=O[0-3]`, `--xla_tpu_...` |
+    | `TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE` | Cache | `torch.device("tpu")` | `/dev/shm/xla_cache_dir/`, `<local_path>` |
+    | `TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK` | Cache | `torch.device("tpu")` | `0` (False), `1` (True) |
+    | `TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT` | Cache | `torch.device("tpu")` | `gs://<bucket_name>/<path_to_cache>` |
+    | `TORCH_TPU_INTERNAL_XLA_OPTIONS` | XLA Tuning | `torch.device("tpu")` | `xla_optimization_level=O[0-3]`, `--xla_tpu_...` |
     | `TORCH_TPU_SLICEBUILDER_ADDRESSES` | Cloud | `import torch` | `10.0.0.1:8471,10.0.0.2:8471` |
     | `TORCH_TPU_TOPOLOGY` | Cloud | `import torch` | `2x2x1`, `2x2x4`, `4x4x4`, etc. |
     | `TPU_CHIPS_PER_HOST_BOUNDS` | Cloud | `N/A` (Set by GCE) | `1,1,1`, `2,2,1`, `2,2,2` |

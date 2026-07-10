@@ -65,12 +65,10 @@ def _(mo):
 @app.cell
 def _():
   import torch
-  from torch_tpu import api
   from torch_tpu._internal import profiler
   from torch_tpu._internal import sync
-  import tpu_utils
 
-  device = tpu_utils.safe_init()
+  device = torch.device("tpu")
   return device, profiler, sync, torch
 
 
@@ -111,7 +109,7 @@ def _(device, profiler, sync, torch):
   with profiler.profile(
       activities=[
           profiler.ProfilerActivity.CPU,
-          profiler.ProfilerActivity.TPU,
+          profiler.ProfilerActivity.TPU,  # type: ignore
       ],
       on_trace_ready=profiler.xprof_trace_handler(dir_name=log_dir),
   ):

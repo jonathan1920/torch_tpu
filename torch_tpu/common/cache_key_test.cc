@@ -61,14 +61,15 @@ TEST(OpParamCacheKeys, DefaultIsEmpty) {
 TEST(OpParamCacheKeys, SetParamScalar) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", at::Scalar(123));
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "123:Long")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "123:int64")));
 }
 
 TEST(OpParamCacheKeys, SetParamMaybePromotedScalar_Promoted) {
   auto dummy_promoter =
       [](const at::Scalar&,
          std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
-    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "Not implemented in test";
   };
   PromotedScalar ps(dummy_promoter, at::Scalar(5));
   MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
@@ -82,7 +83,8 @@ TEST(OpParamCacheKeys, SetParamMaybePromotedScalarExcludedZero) {
   auto dummy_promoter =
       [](const at::Scalar&,
          std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
-    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "Not implemented in test";
   };
   PromotedScalar ps(dummy_promoter, at::Scalar(0));
   MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
@@ -96,7 +98,8 @@ TEST(OpParamCacheKeys, SetParamMaybePromotedScalarExcludedOne) {
   auto dummy_promoter =
       [](const at::Scalar&,
          std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
-    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "Not implemented in test";
   };
   PromotedScalar ps(dummy_promoter, at::Scalar(1));
   MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
@@ -110,7 +113,8 @@ TEST(MaybePromotedScalar, IsZeroAndIsOne) {
   auto dummy_promoter =
       [](const at::Scalar&,
          std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
-    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "Not implemented in test";
   };
 
   {
@@ -139,7 +143,7 @@ TEST(OpParamCacheKeys, SetParamScalarType) {
   auto params_or =
       *OpParamCacheKeysBuilder().SetParam("foo", at::ScalarType::Float);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "Float")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "float32")));
 }
 
 TEST(OpParamCacheKeysDeathTest, SetSameParamTwiceCrashes) {
@@ -152,7 +156,8 @@ void KernelWithMaybePromotedScalar(at::Scalar s) {
   auto dummy_promoter =
       [](const at::Scalar&,
          std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
-    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "Not implemented in test";
   };
   PromotedScalar ps(dummy_promoter, s);
   MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
@@ -191,7 +196,7 @@ TEST(OpParamCacheKeys, SetParamScalarArray) {
       "foo", at::ArrayRef<at::Scalar>(scalars));
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("foo", "[123:Long,4.5:Double,1:Bool]")));
+              ElementsAre(Pair("foo", "[123:int64,4.5:float64,1:bool]")));
 
   auto params2_or =
       *OpParamCacheKeysBuilder().SetParam("foo", at::ArrayRef<at::Scalar>());
@@ -330,12 +335,10 @@ TEST(OpParamCacheKeys, SetParamOptionalTensor) {
                         .SetParam("bar", undefined_tensor)
                         .SetParam("baz", defined_tensor);
   ASSERT_TRUE(params_or.ok());
-  // foo should be omitted from the cache keys.
-  // bar should be formatted as "u" to indicate the presence of an undefined
-  // tensor. baz should be formatted as "t" to indicate the presence of a
+  // Both foo and bar should be omitted from the cache keys.
+  // baz should be formatted as "t" to indicate the presence of a
   // defined tensor.
-  EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("bar", "u"), Pair("baz", "t")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("baz", "t")));
 }
 
 TEST(OpParamCacheKeys, SetParamMemoryFormat) {

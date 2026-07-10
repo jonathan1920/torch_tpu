@@ -28,6 +28,7 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "c10/core/Device.h"
+#include "c10/core/Stream.h"
 #include "torch_tpu/common/device_type.h"
 #include "xla/future.h"
 #include "xla/pjrt/host_memory_allocator.h"
@@ -74,6 +75,11 @@ class PjrtBackend {
   [[nodiscard]] xla::PjRtClient* absl_nullable GetClient()
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Returns a shared pointer to the PjRtClient. Triggers lazy initialization if
+  // needed.
+  absl::StatusOr<absl_nonnull std::shared_ptr<xla::PjRtClient>>
+  GetSharedClient() ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Returns the PjRtDevice singleton. Triggers lazy initialization if needed.
   [[nodiscard]] xla::PjRtDevice* absl_nullable GetDevice()
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -92,27 +98,15 @@ class PjrtBackend {
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats()
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Clears allocator stats for the current PjRt device.
+  absl::Status ClearAllocatorStats() ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Returns the PjRt host allocator from the PjRt client.
   absl::StatusOr<xla::HostMemoryAllocator*> GetHostAllocator()
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Shuts down the PjRt runtime and resets the global state.
   void Shutdown() ABSL_LOCKS_EXCLUDED(mutex_);
-
-  // Updates the tracked future for the given device and stream.
-  void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
-                        xla::Future<void> future);
-
-  // Updates the tracked future for the current stream.
-  void MarkStreamActive(xla::Future<void> future);
-
-  // Blocks until all pending operations on the given device and stream have
-  // completed.
-  void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id);
-
-  // Blocks until all pending operations on ALL streams of the given device have
-  // completed.
-  void SynchronizeDevice(c10::DeviceIndex device_index);
 
  private:
   friend class absl::NoDestructor<PjrtBackend>;
@@ -124,7 +118,9 @@ class PjrtBackend {
   absl::Status InitializeInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
-  std::unique_ptr<xla::PjRtClient> absl_nullable client_
+  // The PjRtClient singleton. Nullable because it is lazily initialized on the
+  // first device/client request and is reset to nullptr on Shutdown.
+  std::shared_ptr<xla::PjRtClient> absl_nullable client_
       ABSL_GUARDED_BY(mutex_);
   xla::PjRtDevice* absl_nullable device_ ABSL_GUARDED_BY(mutex_) = nullptr;
   PjRtDeviceType device_type_ ABSL_GUARDED_BY(mutex_) =
@@ -136,18 +132,49 @@ class PjrtBackend {
   absl::Status init_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
 };
 
-// Records a fence over the async d2h copies already enqueued on the device and
-// stream.
-int64_t RecordEventSnapshot(c10::DeviceIndex device_index, int64_t stream_id);
+// Updates the tracked future for the given device and stream.
+void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
+                      xla::Future<void> future);
 
-// Blocks until the event snapshot has completed.
-absl::Status WaitEventSnapshot(int64_t event_id);
+// Updates the tracked future for the current stream.
+void MarkStreamActive(xla::Future<void> future);
 
-// Returns whether the event snapshot has completed.
-absl::StatusOr<bool> QueryEventSnapshot(int64_t event_id);
+// Blocks until all pending operations on the given device and stream have
+// completed.
+void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id);
 
-// Releases the event snapshot. Safe to call multiple times.
-void ReleaseEventSnapshot(int64_t event_id);
+// Blocks until all pending operations on ALL streams of the given device have
+// completed.
+void SynchronizeDevice(c10::DeviceIndex device_index);
+
+// An EventSnapshot is a collection of XLA futures that represents the state of
+// a stream at a particular point in time.
+class EventSnapshot {
+ public:
+  ~EventSnapshot();
+
+  // Records an event snapshot for the given device and stream.
+  // This is an awaitable and queryable checkpoint; when it is reached, all
+  // prior async host-to-device and device-to-host operations on the stream
+  // are complete, as well as other futures recorded using MarkStreamActive().
+  // TODO(bawilson): also include deferred ops in the snapshot
+  static std::shared_ptr<EventSnapshot> Record(c10::DeviceIndex device_index,
+                                               c10::StreamId stream_id);
+
+  // Wait for the event snapshot to complete.
+  absl::Status Wait() const;
+
+  // Query whether the event snapshot has completed.
+  absl::StatusOr<bool> Query() const;
+
+ private:
+  // The event ID of the event snapshot.
+  // Private; must use Record() so that the snapshot is tracked on the stream.
+  explicit EventSnapshot(int64_t event_id) : event_id_(event_id) {}
+
+  // The event ID of the event snapshot.
+  const int64_t event_id_;
+};
 
 }  // namespace torch_tpu
 

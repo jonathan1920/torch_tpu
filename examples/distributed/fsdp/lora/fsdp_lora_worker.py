@@ -69,7 +69,7 @@ def worker_fn() -> None:
       lora_dropout=0.0,
       bias='none',
   )
-  simple_model = peft.get_peft_model(simple_model, peft_config)
+  simple_model = peft.get_peft_model(simple_model, peft_config)  # pyrefly: ignore[bad-argument-type]
 
   fsdp.fully_shard(simple_model.linear1)
   fsdp.fully_shard(simple_model.linear2)
@@ -122,7 +122,7 @@ def worker_fn() -> None:
     base_model.linear1.bias = nn.Parameter(bias1)
     base_model.linear2.weight = nn.Parameter(weight2)
     base_model.linear2.bias = nn.Parameter(bias2)
-    single_device_model = peft.get_peft_model(base_model, peft_config)
+    single_device_model = peft.get_peft_model(base_model, peft_config)  # pyrefly: ignore[bad-argument-type]
     single_device_model.linear1.lora_A['default'].weight = nn.Parameter(lora_a1)
     single_device_model.linear1.lora_B['default'].weight = nn.Parameter(lora_b1)
     single_device_model.linear2.lora_A['default'].weight = nn.Parameter(lora_a2)

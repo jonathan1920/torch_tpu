@@ -46,7 +46,7 @@ class Qwen317BQualityBenchmarkModel(
         torch_dtype=torch.bfloat16,
     )
     self._model = spec.module_factory()
-    self._tokenizer = spec.preprocessor_factory()
+    self._tokenizer = spec.preprocessor_factory()  # pyrefly: ignore[not-callable]
 
     self._model.eval()
     self._model.to(self._device)
@@ -118,7 +118,7 @@ class Qwen317BQualityBenchmarkModel(
 
   def get_model(self) -> torch.nn.Module:
     """Gets the model."""
-    return self._model
+    return self._model  # pyrefly: ignore[bad-return]
 
   def _compile_model_once(self) -> None:
     """Compiles the model for the target device."""

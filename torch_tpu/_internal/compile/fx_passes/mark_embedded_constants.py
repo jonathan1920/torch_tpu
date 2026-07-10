@@ -34,12 +34,16 @@ def apply(
   Args:
     gm_or_graph: The FX GraphModule or Graph to modify.
   """
+  # pylint: disable=protected-access
   if isinstance(gm_or_graph, torch.fx.GraphModule):
     gm = gm_or_graph
     graph = gm_or_graph.graph
   else:
     gm = gm_or_graph.owning_module
     graph = gm_or_graph
+
+  if not hasattr(gm, "_processed_constant_attrs"):
+    gm._processed_constant_attrs = set()
 
   # Exit Fake mode since we're creating new tensors.
   with unset_fake_temporarily():
@@ -48,8 +52,11 @@ def apply(
     )
 
     for attr_target in unique_attr_targets:
+      if attr_target in gm._processed_constant_attrs:
+        continue
+
       # pylint: disable-next=protected-access
-      target = torch.fx.graph_module._get_attr(gm, attr_target)
+      target = torch.fx.graph_module._get_attr(gm, attr_target)  # pyrefly: ignore[bad-argument-type]
       if not isinstance(target, torch.Tensor):
         continue
 
@@ -57,4 +64,5 @@ def apply(
       # transfer it back to CPU so that we can access the data.
       new_target = tpu_torch_compile.make_constant_tensor(target.to("cpu"))
       # pylint: disable-next=protected-access
-      _assign_attr(new_target, gm, attr_target, _AttrKind.CONSTANT)
+      _assign_attr(new_target, gm, attr_target, _AttrKind.CONSTANT)  # pyrefly: ignore[bad-argument-type]
+      gm._processed_constant_attrs.add(attr_target)

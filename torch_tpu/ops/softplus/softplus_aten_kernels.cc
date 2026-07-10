@@ -95,7 +95,7 @@ at::Tensor& AtenSoftplusOut(const at::Tensor& self, const at::Scalar& beta,
         TT_CHECK_THROW(
             !isIntegralType(self.scalar_type(), /*includeBool=*/true) &&
                 !IsComplex(self),
-            error::kUnimplemented)
+            error::kPythonNotImplementedError)
             << "expected the input dtype to be floating-point, "
             << "got " << ToString(self.scalar_type());
 
@@ -139,7 +139,7 @@ at::Tensor& AtenSoftplusBackwardGradInput(const at::Tensor& grad_output,
         TT_CHECK_THROW(
             !isIntegralType(self.scalar_type(), /*includeBool=*/true) &&
                 !IsComplex(self),
-            error::kUnimplemented)
+            error::kPythonNotImplementedError)
             << "expected the input dtype to be floating-point, got "
             << ToString(self.scalar_type());
 

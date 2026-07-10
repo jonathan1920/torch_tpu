@@ -49,7 +49,7 @@ def test_capture_profile(device):
   with profiler.profile(
       activities=[
           profiler.ProfilerActivity.CPU,
-          profiler.ProfilerActivity.TPU,
+          profiler.ProfilerActivity.TPU,  # type: ignore
       ],
       on_trace_ready=profiler.xprof_trace_handler(dir_name=log_dir),
   ):

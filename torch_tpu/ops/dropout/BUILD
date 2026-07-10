@@ -30,6 +30,7 @@ torch_tpu_cc_library(
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/common:cache_key",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:fixed_size_span",
@@ -55,8 +56,8 @@ torch_tpu_cc_library(
     srcs = ["dropout.cc"],
     hdrs = ["dropout.h"],
     deps = [
-        "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_builder_utils",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",

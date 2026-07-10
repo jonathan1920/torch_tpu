@@ -105,7 +105,7 @@ def export_forward_kernel(header_path, implementation_path):
     kernel_utils.generate_embedded_file(
         header_path,
         implementation_path,
-        [(
+        [(  # pyrefly: ignore[bad-argument-type]
             _KERNEL_NAME.value,
             # TODO(elliotenglish): change this to use mlir bytecode
             exported.mlir_module().encode(),
@@ -127,7 +127,7 @@ def export_backward_kernel(header_path, implementation_path):
     kernel_utils.generate_embedded_file(
         header_path,
         implementation_path,
-        [(
+        [(  # pyrefly: ignore[bad-argument-type]
             _KERNEL_NAME.value,
             # TODO(elliotenglish): change this to use mlir bytecode
             exported.mlir_module().encode(),

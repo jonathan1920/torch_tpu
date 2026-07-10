@@ -17,13 +17,17 @@
 #include "torch_tpu/ops/experimental/ragged_all_to_all/ragged_all_to_all_aten_kernels.h"
 
 #include <cstdint>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "c10/util/intrusive_ptr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -32,6 +36,9 @@
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "torch/csrc/distributed/c10d/Backend.hpp"
+#include "torch/csrc/distributed/c10d/GroupRegistry.hpp"
+#include "torch/csrc/distributed/c10d/ProcessGroup.hpp"
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
@@ -39,6 +46,8 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/utils.h"
+#include "torch_tpu/distributed/process_group_tpu.h"
+#include "torch_tpu/distributed/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -48,6 +57,24 @@
 
 namespace torch_tpu {
 namespace {
+
+absl::StatusOr<ProcessGroupTpu* absl_nonnull> GetProcessGroupTpu(
+    std::string_view process_group_name) {
+  std::string process_group_name_str(process_group_name);
+  c10::intrusive_ptr<c10d::ProcessGroup> pg =
+      c10d::resolve_process_group(process_group_name_str);
+  TT_RET_CHECK(pg != nullptr, error::kInternal)
+      << "failed to resolve given process group";
+  c10::intrusive_ptr<c10d::Backend> backend =
+      pg->getBackend(c10::DeviceType::PrivateUse1);
+  TT_RET_CHECK(backend != nullptr, error::kInternal)
+      << "failed to get backend for tpu device";
+
+  auto* process_group_tpu = dynamic_cast<ProcessGroupTpu*>(backend.get());
+  TT_RET_CHECK(process_group_tpu != nullptr, error::kInternal)
+      << "failed to cast c10d::Backend to ProcessGroupTpu";
+  return process_group_tpu;
+}
 
 static absl::StatusOr<mlir::MlirOp> BuildRaggedAllToAllShlo(
     mlir::MlirOp operand, mlir::MlirOp output, mlir::MlirOp input_offsets,
@@ -102,38 +129,26 @@ static absl::StatusOr<DeviceBufferRef> RaggedAllToAllCommon(
     const at::Tensor& operand, const at::Tensor& output,
     const at::Tensor& input_offsets, const at::Tensor& send_sizes,
     const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-    const at::Tensor& replica_groups, OpParamCacheKeys& param_keys) {
+    std::string_view process_group_name, OpParamCacheKeys& param_keys) {
   at::ScalarType out_scalar_type = output.scalar_type();
   TT_ASSIGN_OR_RETURN(auto out_dtype,
                       ConvertTo<mlir::ElementType>(out_scalar_type));
 
-  // Hardcode channel_id to 1 as it is always 1.
-  int64_t channel_id = 1;
+  std::string process_group_name_str(process_group_name);
 
-  // Assume replica_groups is a CPU tensor of shape (num_groups, group_size)
-  auto replica_groups_cpu = replica_groups.to(at::kCPU);
-  auto accessor = replica_groups_cpu.accessor<int64_t, 2>();
-  std::vector<int64_t> replica_groups_vec;  // INT_VEC_OK
-  int64_t size0 = accessor.size(0);
-  int64_t size1 = accessor.size(1);
-  replica_groups_vec.reserve(size0 * size1);
-  for (int i = 0; i < size0; ++i) {
-    for (int j = 0; j < size1; ++j) {
-      replica_groups_vec.push_back(accessor[i][j]);
-    }
-  }
-
-  auto op_builder = [replica_groups_vec, channel_id, size0,
-                     size1](FixedSizeSpan<mlir::MlirOp, 6> inputs)
+  auto op_builder =
+      [process_group_name_str](FixedSizeSpan<mlir::MlirOp, 6> inputs)
       -> absl::StatusOr<mlir::MlirOp> {
     auto& [operand, output, input_offsets, send_sizes, output_offsets,
            recv_sizes] = inputs;
     auto& builder = operand.getBuilder();
-    auto& op_builder = builder.getOpBuilder();
-    auto shaped_type =
-        mlir::RankedTensorType::get({size0, size1}, op_builder.getI64Type());
-    auto replica_groups_attr =
-        mlir::DenseIntElementsAttr::get(shaped_type, replica_groups_vec);
+    TT_ASSIGN_OR_RETURN(ProcessGroupTpu * pg,
+                        GetProcessGroupTpu(process_group_name_str));
+    mlir::DenseIntElementsAttr replica_groups_attr =
+        BuildReplicaGroupsAttr(builder, pg->GetSubgroupDeviceIds());
+
+    // Hardcode channel_id to 1 as it is always 1.
+    int64_t channel_id = 1;
 
     return BuildRaggedAllToAllShlo(operand, output, input_offsets, send_sizes,
                                    output_offsets, recv_sizes,
@@ -156,16 +171,16 @@ at::Tensor AtenRaggedAllToAll(const at::Tensor& operand,
                               const at::Tensor& send_sizes,
                               const at::Tensor& output_offsets,
                               const at::Tensor& recv_sizes,
-                              const at::Tensor& replica_groups) {
+                              std::string_view process_group_name) {
   TT_KERNEL(OpName::kRaggedAllToAll, param_keys,
             (operand, output, input_offsets, send_sizes, output_offsets,
-             recv_sizes, replica_groups),
+             recv_sizes, process_group_name),
             {
               TT_ASSIGN_OR_THROW(
                   auto result,
                   RaggedAllToAllCommon(operand, output, input_offsets,
                                        send_sizes, output_offsets, recv_sizes,
-                                       replica_groups, param_keys));
+                                       process_group_name, param_keys));
               return MakeTensor(std::move(result));
             });
 }
@@ -174,16 +189,16 @@ at::Tensor& AtenRaggedAllToAllOut(
     const at::Tensor& operand, const at::Tensor& output,
     const at::Tensor& input_offsets, const at::Tensor& send_sizes,
     const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-    const at::Tensor& replica_groups, at::Tensor& out) {
+    std::string_view process_group_name, at::Tensor& out) {
   TT_KERNEL(OpName::kRaggedAllToAll, param_keys,
             (operand, output, input_offsets, send_sizes, output_offsets,
-             recv_sizes, replica_groups, out),
+             recv_sizes, process_group_name, out),
             {
               TT_ASSIGN_OR_THROW(
                   auto result,
                   RaggedAllToAllCommon(operand, output, input_offsets,
                                        send_sizes, output_offsets, recv_sizes,
-                                       replica_groups, param_keys));
+                                       process_group_name, param_keys));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;
             });

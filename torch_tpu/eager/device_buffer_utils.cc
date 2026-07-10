@@ -25,7 +25,6 @@
 #include <variant>
 #include <vector>
 
-#include "absl/flags/declare.h"
 #include "absl/hash/hash.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -43,16 +42,16 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
+#include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/repeated_ops_heuristic.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
-#include "torch_tpu/experimental/eager/materialize_new.h"
+#include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -62,8 +61,6 @@
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/ops/view_decomposition/view_sequence.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
-
-ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
 namespace {
@@ -131,34 +128,19 @@ void ApplyComputationDtype(internal::DeferredOpParams& params) {
 // Handles post-op creation events for the kDeferNever and
 // kDeferNeverAndLaunchBlocking eager modes.
 absl::Status DeferNeverDispatch(absl::Span<const DeviceBufferRef> results,
-                                const OpName op_name,
-                                const OpSplitMode split_mode,
-                                const bool block) {
+                                const OpName op_name, const bool block) {
   const auto& device_buffer_list = results[0].device_buffer_list();
   if (IsMetadataOnly(op_name)) {
     // Don't eagerly materialize metadata-only ops.
     return absl::OkStatus();
   }
-  if (IsSplitBefore(split_mode)) {
-    // Most of the time, this Materialize() should be a no-op; all non-view,
-    // non-`empty()` tensors should already be materialized.
-    // If this isn't the case, then using kSplitGraph will insert additional
-    // materialization points to ensure all deferred inputs are materialized
-    // or dropped.
-    const auto deferred_op = device_buffer_list->deferred_op();
-    ABSL_CHECK(deferred_op != nullptr);  // CRASH_OK=just created it
-    TT_RETURN_IF_ERROR(Materialize(deferred_op->inputs(),
-                                   MaterializationReason::kDebugMode,
-                                   MaterializationMode::kSplitGraph));
-    // Don't block here even in kDeferNeverAndLaunchBlocking mode; block after
-    // the new op, not after its inputs.
-  }
-
+  // materialize.cc and events_queue.h will respect OpSplitMode, even with
+  // MaterializationMode::kFullGraph.
   TT_RETURN_IF_ERROR(Materialize(device_buffer_list,
                                  MaterializationReason::kDebugMode,
                                  MaterializationMode::kFullGraph));
   for (const auto& result : results) {
-    PjrtBackend::GetInstance().MarkStreamActive(result.GetReadyFuture());
+    MarkStreamActive(result.GetReadyFuture());
   }
   if (block) {
     return device_buffer_list->Synchronize();
@@ -170,29 +152,12 @@ absl::Status DeferNeverDispatch(absl::Span<const DeviceBufferRef> results,
 absl::Status DeferAndFuseDispatch(absl::Span<const DeviceBufferRef> results,
                                   const OpName op_name) {
   const auto& device_buffer_list = results[0].device_buffer_list();
-  if (GetFlagOnce<bool,
-                  &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
-    TT_RETURN_IF_ERROR(OnNewOpDispatch(device_buffer_list));
-  }
 
   // Don't consider metadata-only ops for the repeated ops heuristic.
   if (MustApplyRepeatedOpsHeuristic() && !IsMetadataOnly(op_name)) {
     return ApplyRepeatedOpsHeuristic(device_buffer_list);
   }
   return absl::OkStatus();
-}
-
-bool SkipSubgraph(const OpName op_name) {
-  const auto eager_mode = GetEagerMode();
-  // In either kDeferNever mode, we want to enqueue each op's execution as
-  // quickly as possible to unblock the main thread.
-  // To achieve this, we skip connecting the newly-created node to any
-  // Subgraph, and we use kFullGraph to skip the SplitTraveral logic.
-  // Skipping SplitTraversal means we need to manually apply kSplitBefore for
-  // relevant ops.
-  return (((eager_mode == EagerMode::kDeferNever) ||
-           (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking)) &&
-          !IsMetadataOnly(op_name));
 }
 
 }  // namespace
@@ -209,26 +174,23 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
           params.op_name, std::move(params.op_builder),
           std::move(params.inputs), std::move(params.op_param_cache_keys),
           std::move(params.output_shapes), params.split_mode,
-          std::move(params.donated_indices), SkipSubgraph(params.op_name)));
+          std::move(params.donated_indices)));
+
+  RecordDeferredOpCreated(results[0].device_buffer_list());
 
   switch (GetEagerMode()) {
     case EagerMode::kDeferNever:
       TT_RETURN_IF_ERROR(DeferNeverDispatch(results, params.op_name,
-                                            params.split_mode,
                                             /*block=*/false));
       break;
     case EagerMode::kDeferNeverAndLaunchBlocking:
       TT_RETURN_IF_ERROR(DeferNeverDispatch(results, params.op_name,
-                                            params.split_mode,
                                             /*block=*/true));
       break;
     case EagerMode::kDeferAndFuse:
       TT_RETURN_IF_ERROR(DeferAndFuseDispatch(results, params.op_name));
       break;
     case EagerMode::kInternalDeferAll:
-      // Do not register the DeferredOp with the materialize_new
-      // MaterializationWorker.
-      // Do not materialize the op.
       break;
   }
   return results;
@@ -236,11 +198,14 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
 
 }  // namespace internal
 
-absl::StatusOr<DeviceBufferRef> CreateConstantDeviceBufferRef(
+namespace {
+
+// Common pathway for CreateConstantDeviceBufferRef and
+// CreateZeroSizeDeviceBufferRef, allowing for different op names.
+absl::StatusOr<DeviceBufferRef> CreateConstantDeviceBufferRefImpl(
     std::vector<char> cpu_tensor_data, Dimensions dimensions,
-    mlir::ElementType element_type) {
+    mlir::ElementType element_type, OpName op_name) {
   // Create the components of the DeferredOp.
-  auto op_name = OpName::kTorchTpuInternalConstant;
   ScopedPythonContextCapturer capturer(op_name);
 
   // Create the cache keys for the op parameters.
@@ -316,6 +281,16 @@ absl::StatusOr<DeviceBufferRef> CreateConstantDeviceBufferRef(
   return std::move(results[0]);
 }
 
+}  // namespace
+
+absl::StatusOr<DeviceBufferRef> CreateConstantDeviceBufferRef(
+    std::vector<char> cpu_tensor_data, Dimensions dimensions,
+    mlir::ElementType element_type) {
+  return CreateConstantDeviceBufferRefImpl(std::move(cpu_tensor_data),
+                                           std::move(dimensions), element_type,
+                                           OpName::kTorchTpuInternalConstant);
+}
+
 absl::StatusOr<DeviceBufferRef> CreateEmptyDeviceBufferRef(
     Dimensions dimensions, mlir::ElementType element_type) {
   TT_RETURN_IF_ERROR(ValidateTensorByteSize(dimensions, element_type));
@@ -356,7 +331,9 @@ absl::StatusOr<DeviceBufferRef> CreateZeroSizeDeviceBufferRef(
   TT_RET_CHECK(is_zero_sized, error::kInvalidArgument)
       << "CreateZeroSizeDeviceBufferRef requires a zero-sized tensor, but got: "
       << ToString(dimensions);
-  return CreateConstantDeviceBufferRef({}, std::move(dimensions), element_type);
+  return CreateConstantDeviceBufferRefImpl({}, std::move(dimensions),
+                                           element_type,
+                                           OpName::kTorchTpuInternalZeroSize);
 }
 
 namespace {
@@ -485,7 +462,7 @@ absl::StatusOr<DeviceBufferRef> CreateViewDeviceBufferRef(
        7) /
       8;
 
-  TT_RET_CHECK(required_bytes <= actual_bytes, error::kOutOfRange)
+  TT_RET_CHECK(required_bytes <= actual_bytes, error::kPythonIndexError)
       << "cannot read " << required_bytes << " bytes ("
       << c10::multiply_integers(view_dimensions) << " elements of type "
       << ToString(view_element_type) << " with an offset of "
@@ -595,9 +572,8 @@ absl::StatusOr<DeviceBufferRef> CreateInverseViewDeviceBufferRef(
       std::move(write_buf));
 
   TT_ASSIGN_OR_RETURN(OpParamCacheKeys param_keys,
-                      *OpParamCacheKeysBuilder()
-                           .SetParam("strides", view_strides)
-                           .SetParam("storage_offset", view_storage_offset));
+                      TT_MAKE_OP_PARAM_CACHE_KEYS(
+                          view_strides, view_storage_offset, view_is_conj));
 
   // Create the deferred DeviceBufferRef.
   internal::DeferredOpParams params{

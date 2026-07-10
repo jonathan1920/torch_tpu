@@ -21,7 +21,6 @@ from absl import logging
 import torch
 from torch._inductor.utils import InputType
 from torch._logging import LazyString
-from torch.utils import _pytree
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.dynamic.dynamic_adapters import DynamicAdapterLinearHypothesis
@@ -33,8 +32,8 @@ from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
 
 def _get_example_inputs(
     example_inputs: Sequence[Any], sym_shape_manager: SymShapeManager
-) -> list[torch.Tensor | int]:
-  """Specializes dynamic inputs to their static upper bounds.
+) -> tuple[list[torch.Tensor | int], list[Any]]:
+  """Specializes dynamic inputs to their static upper bounds and constructs bounds.
 
   Args:
     example_inputs: The example inputs to the FX graph.
@@ -42,27 +41,20 @@ def _get_example_inputs(
       information.
 
   Returns:
-    A list of updated example inputs with SymInts in inputs replaced by
-    their upper bounds. The updated example inputs also include
-    any new runtime size placeholders introduced for dynamic tensors and
-    generative ops.
-
-  Example:
-    example_inputs = [SymInt(s0), tensor(s0, 2)]  # s0 <= 10
-
-    Returns:
-      updated_example_inputs = [
-          10,  # s0 -> upper bound
-          tensor(),  # runtime size placeholder for s0
-          tensor(10, 2),  # tensor with upper bounds
-      ]
+    A tuple containing:
+      - A list of updated example inputs with SymInts replaced by their upper
+        bounds, and new runtime size placeholders added.
+      - A list of TensorBounds (or None) aligned with the updated example
+        inputs.
   """
   updated_example_inputs = []
+  aligned_bounds = []
   for index, arg in enumerate(example_inputs):
     if isinstance(arg, torch.Tensor):
       num_dynamic_dims = sym_shape_manager.get_num_dynamic_dims(index)
       if num_dynamic_dims == 0:
         updated_example_inputs.append(arg)
+        aligned_bounds.append(None)
         continue
       bounded_shape = sym_shape_manager.get_bounded_shape(index)
       updated_example_inputs.append(
@@ -72,15 +64,40 @@ def _get_example_inputs(
               requires_grad=arg.requires_grad,
           )
       )
+      # Construct TensorBounds
+      tensor_metadata = sym_shape_manager.input_tensors_metadata[index]
+      dynamic_dims = list(tensor_metadata.dynamic_dims)
+      upper_bounds = [upper for _, upper in tensor_metadata.dynamic_bounds]
+      bounds_obj = tpu_torch_compile.TensorBounds((dynamic_dims, upper_bounds))
+      aligned_bounds.append(bounds_obj)
+
     elif isinstance(arg, torch.SymInt):
       _, upper = get_symint_bounds(arg)
       updated_example_inputs.append(upper)
+      aligned_bounds.append(None)
       # Add an input for the runtime size placeholder for the symint.
       updated_example_inputs.append(torch.tensor(upper, dtype=torch.int32))
+      aligned_bounds.append(None)
     else:
       updated_example_inputs.append(arg)
+      aligned_bounds.append(None)
 
-  return updated_example_inputs
+  return updated_example_inputs, aligned_bounds
+
+
+def _extract_minor_to_major(
+    parameter_layouts: Sequence[Any] | None,
+) -> tuple[tuple[int, ...], ...]:
+  """Extracts minor_to_major layouts from XLA parameter layouts."""
+  if parameter_layouts is None:
+    return ()
+  layouts = []
+  for layout in parameter_layouts:
+    if layout is not None:
+      layouts.append(tuple(layout[0]))
+    else:
+      layouts.append(())
+  return tuple(layouts)
 
 
 class _TensorInfo(NamedTuple):
@@ -93,47 +110,6 @@ class _TensorInfo(NamedTuple):
 
   shape: list[int]
   dtype: torch.dtype
-
-
-def _compile_and_execute_slice_subgraph(
-    tensor_outputs: Sequence[torch.Tensor],
-    output_shapes: Sequence[list[int]],
-) -> list[torch.Tensor]:
-  """Compiles and executes the slice subgraph."""
-  target_shapes = []
-  padded_shapes = []
-  input_scalar_types = []
-
-  for tensor, target_shape in zip(tensor_outputs, output_shapes):
-    target_shapes.append(target_shape)
-    padded_shapes.append(list(tensor.shape))
-    input_scalar_types.append(tensor.dtype)
-
-  logging.debug(
-      "[DynamicTpuBackend] Compile Slice Subgraph, target_shapes: %s,"
-      " padded_shapes: %s",
-      LazyString(lambda: str(target_shapes)),
-      LazyString(lambda: str(padded_shapes)),
-  )
-
-  build_mlir_module = logging.vlog_is_on(logging.DEBUG)
-
-  compile_result = tpu_torch_compile.get_or_compile_slice_module(
-      target_shapes,
-      padded_shapes,
-      input_scalar_types,
-      build_mlir_module=build_mlir_module,
-  )
-
-  if compile_result.module is not None:
-    logging.debug(
-        "[DynamicTpuBackend] MLIR slice module: %s",
-        LazyString(
-            lambda: tpu_torch_compile.serialize_mlir_text(compile_result.module)
-        ),
-    )
-
-  return tpu_torch_compile.execute(compile_result.executable, tensor_outputs)
 
 
 def _compute_output_shapes(
@@ -159,13 +135,32 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
 
   def __init__(
       self,
-      model_executable: Any,
+      static_compiler: compiler.StaticCompiler,
+      graph_module: torch.fx.GraphModule,
+      example_inputs: Sequence[Any],
       sym_shape_manager: SymShapeManager,
+      is_fwd: bool,
       precompile_steps: int,
+      default_executable: Any,
+      default_layout_key: tuple[tuple[int, ...], ...],
   ):
-    self.model_executable = model_executable
+    self.static_compiler = static_compiler
+    self.graph_module = graph_module
+    self.example_inputs = example_inputs
     self.sym_shape_manager = sym_shape_manager
+    self.is_fwd = is_fwd
     self._precompile_steps = precompile_steps
+
+    # Cache for compiled executables: layout_key -> executable.
+    self.model_executables: dict[tuple[tuple[int, ...], ...], Any] = {
+        default_layout_key: default_executable
+    }
+
+    # Precompute static inputs and bounds for the transformed graph.
+    self.model_example_inputs, self.aligned_bounds = _get_example_inputs(
+        example_inputs, sym_shape_manager
+    )
+
     self._precomputed_bounds_list = self._precompute_bounds_list()
     self.input_linear_hypothesis = DynamicAdapterLinearHypothesis(
         self._precomputed_bounds_list
@@ -221,25 +216,60 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
         self._precomputed_bounds_list,
     )
 
-    build_mlir_module = logging.vlog_is_on(logging.DEBUG)
+    outputs = [None] * len(tensor_args)
+    pad_module_indices = []
+    pad_module_args = []
+    pad_module_info = []
+    pad_module_bounds = []
 
-    compile_result = tpu_torch_compile.get_or_compile_pad_module(
-        tensor_info,
-        self._precomputed_bounds_list,
-        build_mlir_module=build_mlir_module,
-    )
+    for i, (tensor, info) in enumerate(zip(tensor_args, tensor_info)):
+      bounds = self._precomputed_bounds_list[i]
+      padded_shape = list(tensor.shape)
+      for dim, upper_bound in zip(bounds.dynamic_dims, bounds.upper_bounds):
+        padded_shape[dim] = upper_bound
 
-    if compile_result.module is not None:
+      if tpu_torch_compile.is_device_shape_dynamic(tensor):
+        # Already dynamic, reuse it
+        outputs[i] = tensor
+      else:
+        # Non-dynamic tensor, pad and make it dynamic
+        pad_module_indices.append(i)
+        pad_module_args.append(tensor)
+        pad_module_info.append(info)
+        pad_module_bounds.append(bounds)
+
+    if pad_module_args:
       logging.debug(
-          "[DynamicTpuBackend] MLIR pad module: %s",
-          LazyString(
-              lambda: tpu_torch_compile.serialize_mlir_text(
-                  compile_result.module
-              )
-          ),
+          "[DynamicTpuBackend] Compile Pad Subgraph, tensor_info: %s,"
+          " bounds_list: %s",
+          pad_module_info,
+          pad_module_bounds,
       )
 
-    return tpu_torch_compile.execute(compile_result.executable, tensor_args)
+      compile_result = tpu_torch_compile.get_dynamic_pad_module(
+          pad_module_info,
+          pad_module_bounds,
+      )
+
+      if compile_result.module is not None:
+        logging.debug(
+            "[DynamicTpuBackend] MLIR pad module: %s",
+            LazyString(
+                lambda: tpu_torch_compile.serialize_mlir_text(
+                    compile_result.module
+                )
+            ),
+        )
+
+      pad_outputs = tpu_torch_compile.execute(
+          compile_result.executable, pad_module_args
+      )
+
+      for idx, output in zip(pad_module_indices, pad_outputs):
+        outputs[idx] = output
+
+    assert all(x is not None for x in outputs), "Not all outputs were filled"
+    return outputs
 
   def _precompute_bounds_list(self) -> list[ShapeBoundInfo]:
     """Precomputes a list of shape bound information for dynamic input tensors.
@@ -351,6 +381,25 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     )
     return padded_output_shapes
 
+  def _get_model_inputs_layouts(
+      self, model_inputs: Sequence[Any]
+  ) -> tuple[tuple[tuple[int, ...], ...], list[list[int]]]:
+    argument_layouts = []
+    for val in model_inputs:
+      if isinstance(val, torch.Tensor):
+        layout = tpu_torch_compile.get_device_layout_if_materialized(val)
+        if layout is not None:
+          minor_to_major = layout[0]
+        else:
+          default_layout_info = tpu_torch_compile.get_default_layout(
+              val.dtype, val.shape
+          )
+          minor_to_major = default_layout_info[0] if default_layout_info else []
+        argument_layouts.append(minor_to_major)
+
+    layout_key = tuple(tuple(l) for l in argument_layouts)
+    return layout_key, argument_layouts
+
   def _precompile_dynamic_adapters(
       self,
       args: Sequence[Any],
@@ -435,48 +484,52 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     if not args:
       # If no args are passed, we assume there is no dynamic shape and we can
       # directly execute the model executable.
-      return self.model_executable(list(args))
+      # Since we compile it at compile time, it is guaranteed to be in cache.
+      return self.model_executables[()](list(args))
 
     tensor_args, tensor_info = self._get_pad_subgraph_inputs(args)
 
-    # Compile and run pad executable to get statically padded tensors
+    # Run pad subgraph first (no model_executable needed)
     pad_outputs = self._compile_and_execute_pad_subgraph(
         tensor_args, tensor_info
     )
-    # Create input for the model executable
+
+    # Construct inputs for the model executable
     model_inputs = self._get_model_inputs(args, pad_outputs)
 
-    # Run model executable with constructed inputs
-    outputs = self.model_executable(model_inputs)
+    # Extract layouts of the constructed model_inputs to construct layout_key
+    # and argument_layouts
+    layout_key, argument_layouts = self._get_model_inputs_layouts(model_inputs)
 
-    if self._precompile_steps > 0:
-      self._precompile_dynamic_adapters(args, tensor_info)
+    # Check cache, compile if miss
+    if layout_key not in self.model_executables:
+      logging.debug(
+          "[DynamicTpuBackend] Compilation cache miss for layouts: %s."
+          " Compiling new executable.",
+          layout_key,
+      )
+      executable = self.static_compiler(
+          self.graph_module,
+          self.model_example_inputs,
+          is_fwd=self.is_fwd,
+          bounds=self.aligned_bounds,
+          argument_layouts=argument_layouts,
+      )
+      logging.debug(
+          "[DynamicTpuBackend] Compiled model executable layouts %s",
+          executable.parameter_layouts,  # type: ignore[attr-defined]
+      )
+      self.model_executables[layout_key] = executable
+
+    executable = self.model_executables[layout_key]
 
     output_shapes = _compute_output_shapes(self.sym_shape_manager, args)
 
-    # If the output has dynamic shape, we need to slice it back
-    if output_shapes is not None:
-      flat_outputs, spec = _pytree.tree_flatten(outputs)
-      tensor_outputs = []
-      tensor_indices = []
-      target_shapes = []
+    # Run model executable with constructed inputs
+    outputs = executable(model_inputs, output_shapes=output_shapes)
 
-      for idx, (output_tensor, target_shape) in enumerate(
-          zip(flat_outputs, output_shapes)
-      ):
-        if isinstance(output_tensor, torch.Tensor):
-          tensor_outputs.append(output_tensor)
-          tensor_indices.append(idx)
-          target_shapes.append(target_shape)
-
-      if tensor_outputs:
-        sliced_tensors = _compile_and_execute_slice_subgraph(
-            tensor_outputs, target_shapes
-        )
-        for idx, sliced_tensor in zip(tensor_indices, sliced_tensors):
-          flat_outputs[idx] = sliced_tensor
-
-      return _pytree.tree_unflatten(flat_outputs, spec)
+    if self._precompile_steps > 0:
+      self._precompile_dynamic_adapters(args, tensor_info)
     return outputs
 
   def __reduce__(self) -> tuple[Callable[..., Any], tuple[Any, ...]]:
@@ -509,7 +562,7 @@ class DynamicCompiler(compiler.Compiler):
     super().__init__(compilation_context, debug=debug)
     self._precompile_steps = precompile_steps
     self.static_compiler = compiler.StaticCompiler(
-        compilation_context, debug=debug
+        compilation_context, debug=debug, use_stablehlo_bounds=True
     )
 
   def execute_pre_grad_passes(
@@ -557,30 +610,46 @@ class DynamicCompiler(compiler.Compiler):
         LazyString(graph_module.print_readable),
     )
 
-    # Create example inputs for the model executable.
-    model_example_inputs = _get_example_inputs(
+    # Create example inputs for the model executable and construct aligned
+    # bounds.
+    model_example_inputs, aligned_bounds = _get_example_inputs(
         example_inputs, sym_shape_manager
     )
 
     logging.debug(
-        "[DynamicTpuBackend] Example inputs: %s",
+        "[DynamicTpuBackend] Example inputs: %s, aligned bounds: %s",
         model_example_inputs,
+        aligned_bounds,
     )
 
-    # Create a static model executable with padded shape tensors as inputs
-    static_model_executable = self.static_compiler(
+    # Create a model executable using the provided example inputs and bounds.
+    default_executable = self.static_compiler(
         graph_module,
         model_example_inputs,
         is_fwd=is_fwd,
+        bounds=aligned_bounds,
     )
 
     logging.debug(
         "[DynamicTpuBackend] Static Model Executable MLIR: %s",
-        LazyString(lambda: static_model_executable.mlir_text),
+        LazyString(lambda: getattr(default_executable, "mlir_text", None)),  # pyrefly: ignore[bad-argument-type]
+    )
+
+    default_layout_key = _extract_minor_to_major(
+        default_executable.parameter_layouts,  # type: ignore[attr-defined]
+    )
+    logging.info(
+        "[DynamicTpuBackend] Compiled default executable with layouts: %s",
+        default_layout_key,
     )
 
     return _DynamicTpuCompiledExecutable(
-        model_executable=static_model_executable,
+        static_compiler=self.static_compiler,
+        graph_module=graph_module,
+        example_inputs=example_inputs,
         sym_shape_manager=sym_shape_manager,
+        is_fwd=is_fwd,
         precompile_steps=self._precompile_steps,
+        default_executable=default_executable,
+        default_layout_key=default_layout_key,
     )

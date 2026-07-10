@@ -15,9 +15,29 @@
 # Backend performance benchmark functions database.
 """Database of benchmark execution functions for backend performance tests."""
 
+import contextlib
 from typing import Any, Callable
 
 import torch
+from examples.benchmarks.e2e import common
+
+
+@contextlib.contextmanager
+def _sdpa_kernel_if_not_cuda(use_math_attention_fallback: bool = False):
+  device = common.get_torch_device(common.PLATFORM.value)
+  is_cuda = device.type == "cuda"
+
+  if is_cuda:
+    yield
+  else:
+    attention_kernels = [
+        torch.nn.attention.SDPBackend.OVERRIDEABLE,
+    ]
+    if use_math_attention_fallback:
+      attention_kernels.append(torch.nn.attention.SDPBackend.MATH)
+    with torch.nn.attention.sdpa_kernel(attention_kernels):
+      yield
+
 
 # ==============================================================================
 # 1. HUGGING FACE LLM FACTORIES & RUNNERS
@@ -42,7 +62,8 @@ def huggingface_eval_factory() -> Callable[..., Any]:
     # torch.inference_mode(). Currently it raises: RuntimeError: Cannot set
     # version_counter for inference tensor in torch.embedding.
     with torch.no_grad():
-      result = model(**inputs)
+      with _sdpa_kernel_if_not_cuda():
+        result = model(**inputs)
       if hasattr(result, "logits"):
         result = result.logits
       return result
@@ -52,7 +73,8 @@ def huggingface_eval_factory() -> Callable[..., Any]:
 
 def huggingface_llm_train_factory(
     grad_accumulation_steps: int,
-) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], Any]:
+    use_math_attention_fallback: bool = False,
+) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], torch.Tensor]:
   """Returns the benchmark function for training a Hugging Face LLM.
 
   Args:
@@ -60,22 +82,24 @@ def huggingface_llm_train_factory(
 
   Returns:
     A callable step function that executes training iterations with gradient
-    accumulation and returns the average step loss as a float.
+    accumulation and returns the average step loss as a tensor.
   """
 
   def train_step(
       model: torch.nn.Module, inputs: Any, optimizer: torch.optim.Optimizer
-  ) -> float:
+  ) -> torch.Tensor:
     if optimizer is None:
       raise ValueError("Optimizer must be provided for training.")
     accumulated_losses = []
     optimizer.zero_grad()
     for _ in range(grad_accumulation_steps):
-      output = model(**inputs)
-      output.loss.backward()
+      # Dynamic attention kernel overrides for HuggingFace training.
+      with _sdpa_kernel_if_not_cuda(use_math_attention_fallback):
+        output = model(**inputs)
+        output.loss.backward()
       accumulated_losses.append(output.loss.detach())
     optimizer.step()
-    step_loss = torch.sum(torch.stack(accumulated_losses)).item()
+    step_loss = torch.sum(torch.stack(accumulated_losses))
     return step_loss
 
   return train_step
@@ -102,7 +126,8 @@ def meta_llama_eval_factory() -> Callable[..., Any]:
     del optimizer  # Unused
     tokens, start_pos = inputs
     with torch.no_grad():
-      result = model(tokens, start_pos)
+      with _sdpa_kernel_if_not_cuda():
+        result = model(tokens, start_pos)
     return result
 
   return step_fn
@@ -115,7 +140,7 @@ def meta_llama_eval_factory() -> Callable[..., Any]:
 
 def huggingface_diffuser_train_factory(
     grad_accumulation_steps: int,
-) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], Any]:
+) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], torch.Tensor]:
   """Returns the benchmark function for training a Hugging Face Diffuser.
 
   Args:
@@ -123,18 +148,19 @@ def huggingface_diffuser_train_factory(
 
   Returns:
     A callable step function that executes training iterations with gradient
-    accumulation and returns the average step loss as a float.
+    accumulation and returns the average step loss as a tensor.
   """
 
   def train_step(
       model: torch.nn.Module, inputs: Any, optimizer: torch.optim.Optimizer
-  ) -> float:
+  ) -> torch.Tensor:
     if optimizer is None:
       raise ValueError("Optimizer must be provided for training.")
     accumulated_losses = []
     optimizer.zero_grad()
     for _ in range(grad_accumulation_steps):
-      output = model(**inputs)
+      with _sdpa_kernel_if_not_cuda():
+        output = model(**inputs)
       if hasattr(output, "sample"):
         loss = torch.mean(output.sample)
       elif isinstance(output, tuple):
@@ -144,7 +170,7 @@ def huggingface_diffuser_train_factory(
       loss.backward()
       accumulated_losses.append(loss.detach())
     optimizer.step()
-    step_loss = torch.sum(torch.stack(accumulated_losses)).item()
+    step_loss = torch.sum(torch.stack(accumulated_losses))
     return step_loss
 
   return train_step
@@ -170,7 +196,8 @@ def timm_eval_factory() -> Callable[..., Any]:
   ) -> torch.Tensor:
     del optimizer  # Unused
     with torch.inference_mode():
-      out = model(inputs)
+      with _sdpa_kernel_if_not_cuda():
+        out = model(inputs)
     return out
 
   return step_fn
@@ -196,15 +223,16 @@ def simple_eval_factory() -> Callable[..., Any]:
   ) -> torch.Tensor:
     del optimizer  # Unused
     with torch.inference_mode():
-      if isinstance(inputs, tuple):
-        return model(*inputs)
-      return model(inputs)
+      with _sdpa_kernel_if_not_cuda():
+        if isinstance(inputs, tuple):
+          return model(*inputs)
+        return model(inputs)
 
   return step_fn
 
 
 def simple_train_factory() -> (
-    Callable[[torch.nn.Module, Any, torch.optim.Optimizer], Any]
+    Callable[[torch.nn.Module, Any, torch.optim.Optimizer | None], torch.Tensor]
 ):
   """Returns the benchmark function for training a simple layer/model.
 
@@ -219,10 +247,11 @@ def simple_train_factory() -> (
       optimizer: torch.optim.Optimizer | None = None,
   ) -> torch.Tensor:
     del optimizer  # Unused in simple training step
-    if isinstance(inputs, tuple):
-      y_pred = model(*inputs)
-    else:
-      y_pred = model(inputs)
+    with _sdpa_kernel_if_not_cuda():
+      if isinstance(inputs, tuple):
+        y_pred = model(*inputs)
+      else:
+        y_pred = model(inputs)
     if isinstance(y_pred, tuple):
       y_pred = y_pred[0]
     loss = torch.mean(y_pred)
@@ -235,7 +264,7 @@ def simple_train_factory() -> (
 # TODO(lukeboyer): Refactor generic_train_factory later to improve failure debugging.
 def generic_train_factory(
     grad_accumulation_steps: int,
-) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], Any]:
+) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], torch.Tensor]:
   """A fully generic training step runner supporting NLP, Diffusers, and TIMM.
 
   Args:
@@ -248,19 +277,20 @@ def generic_train_factory(
 
   def train_step(
       model: torch.nn.Module, inputs: Any, optimizer: torch.optim.Optimizer
-  ) -> float:
+  ) -> torch.Tensor:
     if optimizer is None:
       raise ValueError("Optimizer must be provided for training.")
     accumulated_losses = []
     optimizer.zero_grad()
     for _ in range(grad_accumulation_steps):
       # Forward pass based on input format
-      if isinstance(inputs, dict):
-        output = model(**inputs)
-      elif isinstance(inputs, tuple):
-        output = model(*inputs)
-      else:
-        output = model(inputs)
+      with _sdpa_kernel_if_not_cuda():
+        if isinstance(inputs, dict):
+          output = model(**inputs)
+        elif isinstance(inputs, tuple):
+          output = model(*inputs)
+        else:
+          output = model(inputs)
 
       # Resolve loss based on output format
       if hasattr(output, "loss") and output.loss is not None:
@@ -277,7 +307,7 @@ def generic_train_factory(
       loss.backward()
       accumulated_losses.append(loss.detach())
     optimizer.step()
-    step_loss = torch.sum(torch.stack(accumulated_losses)).item()
+    step_loss = torch.sum(torch.stack(accumulated_losses))
     return step_loss
 
   return train_step

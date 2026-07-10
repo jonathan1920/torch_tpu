@@ -21,17 +21,14 @@ artifacts produced during compilation.
 """
 
 import abc
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 import dataclasses
-import operator
-from typing import Any, TypeAlias
+from typing import Any
 
-from absl import logging
 import torch
 from torch._dynamo.utils import dynamo_timed
 from torch._functorch._aot_autograd.schemas import AOTDispatchCompiler
 from torch._inductor.fx_passes import post_grad
-from torch._inductor.output_code import OutputCode
 from torch._inductor.utils import InputType
 from torch._logging import trace_structured
 from torch._logging._internal import trace_log
@@ -42,61 +39,9 @@ from torch_tpu._internal import export as torch_tpu_export
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.fx_passes import mark_activation_checkpoints
 from torch_tpu._internal.compile.fx_passes import mark_embedded_constants
-
-_UNSET_GRAPH_HELPER_STR = (
-    "FX/MLIR graph is not recorded by default. To record it, use debug mode:"
-    " from torch_tpu._internal.compile import TpuBackend; "
-    "torch.compile(..., backend=TpuBackend(debug=True))"
-)
-
-# Callable type for reconstructing the FX graph outputs from TPU execution
-# results. The callable takes:
-#   1. original_args: The original positional arguments to the compiled
-#   function.
-#   2. tpu_outputs: The sequence of torch.Tensor results from the TPU
-#   execution.
-# It should return a Sequence[Any] representing the final outputs.
-_ReconstructFxOutputsFn: TypeAlias = Callable[
-    [Sequence[Any], Sequence[torch.Tensor]], Sequence[Any]
-]
-
-
-class CompiledArtifact(abc.ABC, OutputCode):
-  """Abstract base class for a compiled executable.
-
-  This class defines the interface for the result of a compilation,
-  which can be called like a function and supports pickling/unpickling.
-  Pickling support is required for integration into PyTorch-native caching
-  mechanisms at the Dynamo/AOT Autograd layers.
-  """
-
-  @abc.abstractmethod
-  def __call__(self, inputs: Sequence[InputType]) -> Any:
-    """Executes the compiled artifact.
-
-    Args:
-      inputs: Arguments to be passed to the compiled function.
-
-    Returns:
-      The result of executing the compiled code with the provided arguments.
-      The type of the result depends on the compiled function.
-    """
-    pass
-
-  @abc.abstractmethod
-  def __reduce__(self) -> tuple[Callable[..., Any], tuple[Any, ...]]:
-    """Enables pickling of the compiled artifact.
-
-    This method is part of Python's pickle protocol. It should return a tuple
-    containing two elements:
-      - A callable object that will be called to recreate the object.
-      - A tuple of arguments to be passed to the callable object.
-
-    Returns:
-      A tuple (callable, args_tuple) to be used by the pickle module to
-      serialize the object.
-    """
-    pass
+from torch_tpu._internal.compile.torch_tpu_compiled_executable import CompiledArtifact
+from torch_tpu._internal.compile.torch_tpu_compiled_executable import NoOpCompiledArtifact
+from torch_tpu._internal.compile.torch_tpu_compiled_executable import TorchTpuCompiledExecutable
 
 
 @dataclasses.dataclass
@@ -124,6 +69,7 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
       compilation_context: CompilationContext | None = None,
       *,
       debug: bool = False,
+      use_stablehlo_bounds: bool = False,
   ):
     """Initializes the Compiler.
 
@@ -133,6 +79,8 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
         constructed.
       debug: Enable debug mode, which may store additional artifacts and log
         more information.
+      use_stablehlo_bounds: Whether to use StableHLO bounds during compilation
+        for dynamic inputs.
     """
     self.compilation_context = (
         compilation_context
@@ -140,6 +88,7 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
         else CompilationContext()
     )
     self._debug = debug
+    self._use_stablehlo_bounds = use_stablehlo_bounds
 
   def execute_pre_grad_passes(
       self,
@@ -180,300 +129,6 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
       A CompiledArtifact object, which is a callable representation of the
       compiled graph.
     """
-    pass
-
-
-def _unpickle_compiled_executable(
-    serialized_bytes: bytes,
-    reconstruct_fx_outputs_fn: _ReconstructFxOutputsFn | None,
-    updates_default_generator_state: bool,
-) -> "_TorchTpuCompiledExecutable":
-  """Reconstructs a _TorchTpuCompiledExecutable from serialized bytes.
-
-  This function is used as the callable in the tuple returned by
-  _TorchTpuCompiledExecutable.__reduce__, enabling the object to be
-  unpickled.
-
-  Args:
-    serialized_bytes: A byte string containing the serialized
-      PjRtLoadedExecutable, originally produced by
-      tpu_torch_compile.serialize_executable.
-    reconstruct_fx_outputs_fn: An optional callable that transforms the output
-      from the TPU executable back to the output structure expected by PyTorch.
-      This is the same function that was passed to the
-      _TorchTpuCompiledExecutable constructor.
-    updates_default_generator_state: Whether the executable updates the default
-      generator state.
-
-  Returns:
-    A deserialized _TorchTpuCompiledExecutable instance.
-  """
-  return _TorchTpuCompiledExecutable(
-      executable=tpu_torch_compile.load_serialized_executable(serialized_bytes),
-      reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
-      updates_default_generator_state=updates_default_generator_state,
-  )
-
-
-class _TorchTpuCompiledExecutable(CompiledArtifact):
-  """A callable for a TorchTPU compiled executable.
-
-  This class is returned to dynamo and stored in the dynamo cache. Any time an
-  FX graph being traced by dynamo satisfies the guards set up to produce this
-  executable, a call to the __call__ method is made.
-  """
-
-  def __init__(
-      self,
-      executable: tpu_torch_compile.PjRtLoadedExecutable,
-      reconstruct_fx_outputs_fn: _ReconstructFxOutputsFn | None,
-      updates_default_generator_state: bool,
-  ):
-    """Initializes the compiled executable wrapper.
-
-    Args:
-      executable: The result returned by `tpu_torch_compile.compile_mlir`.
-      reconstruct_fx_outputs_fn: An optional callable that transforms the output
-        from the TPU executable back to the output structure expected by
-        PyTorch. The existing use case is to re-insert `None` values into the
-        output list if they were filtered out during MLIR conversion. This
-        callable should accept two arguments:
-
-          1. original_args: The original positional arguments passed to the
-             __call__ method of this executable.
-          2. tpu_outputs: The sequence of torch.Tensor results returned by the
-             underlying PjRt execution.
-
-        It should return a Sequence[Any] representing
-        the final outputs as expected by the FX graph's consumer.
-      updates_default_generator_state: Whether the executable updates the
-        default generator state.
-    """  # fmt: skip
-    self._executable = executable
-    self._reconstruct_fx_outputs_fn = reconstruct_fx_outputs_fn
-    self._tensor_arg_indices = None
-    self._graph_module_debug_str: str | None = None
-    self._mlir_text: str | None = None
-    self._updates_default_generator_state: bool = (
-        updates_default_generator_state
-    )
-
-  @property
-  def graph_module_debug_str(self) -> str | None:
-    """The string representation of the FX graph module's code.
-
-    Returns:
-        A string containing the Python code of the FX graph module, or None
-        if not set. Accessing this property before it's set will log a
-        message indicating how to enable debug mode.
-    """
-    if self._graph_module_debug_str is None:
-      logging.warning("%s", _UNSET_GRAPH_HELPER_STR)
-    return self._graph_module_debug_str
-
-  @graph_module_debug_str.setter
-  def graph_module_debug_str(self, value: str) -> None:
-    """Sets the string representation of the FX graph module's code.
-
-    This is typically set only when debug mode is enabled in the Compiler.
-
-    Args:
-      value: The string representation of the graph module's code.
-    """
-    self._graph_module_debug_str = value
-
-  @property
-  def mlir_text(self) -> str | None:
-    """The MLIR text representation of the compiled module.
-
-    Returns:
-        A string containing the MLIR code, or None if not set.
-        Accessing this property before it's set will log a message
-        indicating how to enable debug mode.
-    """
-    if self._mlir_text is None:
-      logging.warning("%s", _UNSET_GRAPH_HELPER_STR)
-    return self._mlir_text
-
-  @mlir_text.setter
-  def mlir_text(self, value: str) -> None:
-    """Sets the MLIR text representation of the compiled module.
-
-    This is typically set only when debug mode is enabled in the Compiler.
-
-    Args:
-      value: The string representation of the MLIR code.
-    """
-    self._mlir_text = value
-
-  def _take_tensor_args(
-      self, args: tuple[Any, ...]
-  ) -> tuple[torch.Tensor, ...]:
-    """Filters out non-tensor arguments from the top level of the input tuple.
-
-    This method iterates through the provided arguments and returns a new tuple
-    containing only the elements that are instances of torch.Tensor. It does
-    not recursively traverse nested structures like lists, dicts, or tuples
-    within the arguments.
-
-    Args:
-      args: A tuple of arguments.
-
-    Returns:
-      A tuple containing only the torch.Tensor arguments from the input.
-    """
-    if self._tensor_arg_indices is None:
-      # Pre-compute indices for filtering out non-tensor args once.
-      # Assume args will have the same structure for subsequent calls.
-      self._tensor_arg_indices = tuple(
-          i for i, arg in enumerate(args) if isinstance(arg, torch.Tensor)
-      )
-
-    if len(self._tensor_arg_indices) == len(args):
-      return args
-
-    if not self._tensor_arg_indices:
-      return ()
-
-    filtered = operator.itemgetter(*self._tensor_arg_indices)(args)
-
-    # operator.itemgetter returns a single item if called with a single index,
-    # but a tuple if called with multiple indices. We always want a tuple.
-    if len(self._tensor_arg_indices) == 1:
-      return (filtered,)
-    return filtered
-
-  def __call__(
-      self, *args: Any, output_shapes: Sequence[list[int]] | None = None
-  ) -> Any:
-    """Executes the compiled TPU function.
-
-    This method takes the original arguments as inputs, filters out any
-    non-Tensor arguments, executes the underlying PjRtLoadedExecutable,
-    and then potentially reconstructs the output structure to match what
-    the original FX graph's consumer expects.
-
-    Args:
-      *args: The positional arguments to the compiled function. These should
-        match the structure and types expected by the original FX graph before
-        compilation.
-      output_shapes: Optional sequence of shapes for the output tensors. This is
-        typically used in dynamic shape scenarios.
-
-    Returns:
-      The result of the computation. The structure and types of the result
-      are made to match the expected output of the original FX graph,
-      potentially after being processed by `reconstruct_fx_outputs_fn`.
-    """
-    # aot_autograd with SerializableAOTDispatchCompiler passes args as a
-    # single list: fn([t1, t2, ...]). Unwrap when we detect this pattern.
-    if len(args) == 1 and isinstance(args[0], (list, tuple)):
-      args = args[0]
-
-    device = torch.accelerator.current_accelerator()
-    device_module = getattr(torch, device.type)
-
-    # Update RNG state as the last argument.
-    generators = [arg for arg in args if type(arg) is torch.Generator]  # pylint: disable=unidiomatic-typecheck
-    if self._updates_default_generator_state:
-      generators.append(device_module.default_generators[device.index or 0])
-
-    # Map all generators (including user-passed custom generators) to the
-    # canonical default generator for their device. This aligns with PyTorch's
-    # observed CUDA behavior where graphsafe RNG ops always mutate the global
-    # generator's state, making `torch.manual_seed()` work for compiled graphs.
-    # TODO(b/501205098): Confirm the intended behavior and right implementation.
-    generators = [
-        device_module.default_generators[gen.device.index] for gen in generators
-    ]
-
-    # Lock all generators to prevent race conditions when updating their states.
-    # TODO: b/501205098 - Generators are not locked during export.py. Address
-    # this in a follow-up.
-    with tpu_torch_compile.MultiGeneratorLocker(generators):
-      device_state_tensors = [
-          tpu_torch_compile.get_device_state_tensor(gen) for gen in generators
-      ]
-      executable_args = (
-          *self._take_tensor_args(args),
-          *device_state_tensors,
-      )
-
-      # When output_shapes for user-defined outputs are provided, we need to
-      # append the shapes of the device state tensors to match the number of
-      # outputs from the executable.
-      if output_shapes:
-        executable_output_shapes = list(output_shapes) + [
-            list(t.shape) for t in device_state_tensors
-        ]
-      else:
-        executable_output_shapes = []
-
-      outputs_with_device_state_tensors = tpu_torch_compile.execute(
-          self._executable, executable_args, executable_output_shapes
-      )
-
-      if not device_state_tensors:
-        outputs = outputs_with_device_state_tensors
-        updated_device_state_tensors = []
-      else:
-        outputs, updated_device_state_tensors = (
-            outputs_with_device_state_tensors[: -len(device_state_tensors)],
-            outputs_with_device_state_tensors[-len(device_state_tensors) :],
-        )
-
-      # Once the executable has completed, restore the newly updated RNG state
-      # back to each generator.
-      for gen, device_state_tensor in zip(
-          generators, updated_device_state_tensors
-      ):
-        tpu_torch_compile.set_device_state_tensor(gen, device_state_tensor)
-
-    if self._reconstruct_fx_outputs_fn is not None:
-      outputs = self._reconstruct_fx_outputs_fn(args, outputs)
-
-    return outputs
-
-  def __reduce__(self) -> tuple[Callable[..., Any], tuple[Any, ...]]:
-    """Enables pickling of the _TorchTpuCompiledExecutable.
-
-    This method is part of Python's pickle protocol. It returns a tuple
-    containing:
-      1. A callable (_unpickle_compiled_executable) that can be called to
-         recreate the object.
-      2. A tuple of arguments to be passed to the callable. These arguments
-         include the serialized PjRtLoadedExecutable and the
-         reconstruct_fx_outputs_fn.
-
-    Serialization of the executable is necessary for caching compiled
-    artifacts within Dynamo.
-
-    Returns:
-      A tuple (callable, args_tuple) used by the pickle module to
-      serialize the object.
-    """  # fmt: skip
-    serialized = tpu_torch_compile.serialize_executable(self._executable)
-    return (
-        _unpickle_compiled_executable,
-        (
-            serialized,
-            self._reconstruct_fx_outputs_fn,
-            self._updates_default_generator_state,
-        ),
-    )
-
-  def prepare_for_serialization(self) -> None:
-    pass
-
-  def post_compile(
-      self,
-      example_inputs: Sequence[Any],
-      constants: Any,
-      graph_kwargs: Any,
-  ) -> None:
-    pass
-
-  def set_triton_bundle(self, triton_bundle: Any) -> None:
     pass
 
 
@@ -522,7 +177,9 @@ class StaticCompiler(Compiler):
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[InputType],
       is_fwd: bool = True,
-  ) -> _TorchTpuCompiledExecutable:
+      bounds: Sequence[Any] | None = None,
+      argument_layouts: Sequence[Sequence[int]] | None = None,
+  ) -> CompiledArtifact:
     """Compiles the FX graph module for static shapes.
 
     This method performs the following steps:
@@ -536,21 +193,23 @@ class StaticCompiler(Compiler):
         unset_fake_temporarily context to ensure tensor storage.
     5.  Emits MLIR artifacts if tracing is enabled.
     6.  Compiles the MLIR module into a PjRtLoadedExecutable.
-    7.  Wraps the executable in a _TorchTpuCompiledExecutable.
+    7.  Wraps the executable in a TorchTpuCompiledExecutable.
     8.  Stores debug information (graph code, MLIR text) in the
         executable if debug mode is enabled.
 
     Args:
       graph_module: The FX graph module to compile.
-      example_inputs: A sequence of example input tensors used to guide
-        the conversion to MLIR, particularly for determining input
-        specifications.
+      example_inputs: A sequence of example input tensors used to guide the
+        conversion to MLIR, particularly for determining input specifications.
       is_fwd: Indicates whether the forward or backward pass is being compiled.
+      bounds: Optional sequence of TensorBounds for dynamic inputs.
+      argument_layouts: Optional sequence of argument layouts for inputs.
 
     Returns:
       A _TorchTpuCompiledExecutable object, which can be called to execute
       the compiled graph on TPU.
     """  # fmt: skip
+
     # Decompose auto functionalized ops, we need to explicitly do this because
     # the default behaviour inserts flatten and unflatten ops at the boundaries
     # which then blocks buffer donation.
@@ -596,19 +255,39 @@ class StaticCompiler(Compiler):
       #     placeholders will error.
       # (2) Act as TPU-compatible FakeTensors, so that tracing does not depend
       #     on tensor data.
-      placeholder_args = [
-          tpu_torch_compile.placeholder_like(arg)
-          if isinstance(arg, torch.Tensor)
-          else arg
-          for arg in example_inputs
-      ]
+      placeholder_args = []
+      for i, arg in enumerate(example_inputs):
+        if isinstance(arg, torch.Tensor):
+          arg_bounds = bounds[i] if bounds is not None else None
+          if arg_bounds is not None:
+            ph = tpu_torch_compile.dynamic_placeholder(
+                arg.shape,
+                arg.dtype,
+                arg_bounds,
+                arg.requires_grad,
+            )
+            placeholder_args.append(ph)
+          else:
+            placeholder_args.append(tpu_torch_compile.placeholder_like(arg))
+        else:
+          placeholder_args.append(arg)
 
       with dynamo_timed("torchtpu_fx_to_mlir"):
         exported_mlir = torch_tpu_export.fx_to_mlir(
             graph_module,
             placeholder_args,
             build_mlir_module=(tracing_enabled or self._debug),
+            use_stablehlo_bounds=self._use_stablehlo_bounds,
+            argument_layouts=argument_layouts,
         )
+
+    if exported_mlir.is_noop:
+      # The FX graph produced no computed output tensors (e.g. a
+      # fullgraph=False seam between two graph breaks). There is nothing to
+      # compile; return a callable that reconstructs the graph's (all-None /
+      # passthrough) output and runs nothing on device, rather than compiling a
+      # trivial executable.
+      return NoOpCompiledArtifact(exported_mlir.reconstruct_fx_outputs_fn)
 
     mlir_module = exported_mlir.module
 
@@ -627,7 +306,7 @@ class StaticCompiler(Compiler):
           expect_trace_id=True,
       )
 
-    executable = _TorchTpuCompiledExecutable(
+    executable = TorchTpuCompiledExecutable(
         executable=exported_mlir.executable,
         reconstruct_fx_outputs_fn=exported_mlir.reconstruct_fx_outputs_fn,
         updates_default_generator_state=exported_mlir.updates_default_generator_state,

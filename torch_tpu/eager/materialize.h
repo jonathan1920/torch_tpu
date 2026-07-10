@@ -93,9 +93,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
     std::vector<DeviceBufferRef> arguments,
     absl::Span<const Shape> output_shapes, std::string_view task_name = "");
 
-// Given a list of target DeviceBufferLists, adds all leaf nodes of their
-// subgraphs to the list.
-void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes);
+// Shuts down the materialization worker and joins its threads.
+void ShutDownMaterializationState();
 
 }  // namespace torch_tpu
 

@@ -65,17 +65,17 @@ jobs:
           },
           {
             runner: "linux-x86-ct5lp-224-8tpu",
-            bazel_config: "ci_tpu",
+            bazel_config: "ci_tpu_v5",
             extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"',
           },
           {
             runner: "linux-x86-ct6e-180-8tpu",
-            bazel_config: "ci_tpu_on_v6",
+            bazel_config: "ci_tpu_v6",
             extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"',
           },
           {
             runner: "linux-x86-tpu7x-224-4tpu",
-            bazel_config: "ci_tpu_on_v7",
+            bazel_config: "ci_tpu_v7",
             extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"',
           }
         ]
@@ -110,8 +110,27 @@ jobs:
           path: bazel-testlogs/
           retention-days: 7
 
+  build_wheels:
+    runs-on: linux-x86-n4-16
+    container:
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+    outputs:
+      gcs_wheel_path: ${{ steps.build.outputs.gcs_wheel_path }}
+      gcs_wheel_dir: ${{ steps.build.outputs.gcs_wheel_dir }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and upload wheel
+        id: build
+        uses: ./.github/actions/build-wheel
+        with:
+          python_version: "3.12"
+
+
   vllm_perf_eval:
     name: "vLLM Perf Eval"
+    needs: [build_wheels]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: linux-x86-tpu7x-224-4tpu
     container:
@@ -153,46 +172,11 @@ jobs:
           echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> "$GITHUB_ENV"
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
-      - name: Download wheel from GCS for current commit
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download wheel from GCS
         shell: bash
         run: |
-          COMMIT_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
-          WORKFLOW_FILE="build_wheel.yml"
-
           mkdir dist
-          set +e
-          for i in {1..30}; do
-            RUN_INFO=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW_FILE/runs?branch=${{ github.head_ref || github.ref_name }}" \
-              | python3 ci/find_successful_run.py "$COMMIT_SHA")
-            EXIT_CODE=$?
-            if [ $EXIT_CODE -eq 2 ]; then
-              echo "ERROR: No runs found for this commit. Failing immediately."
-              exit 1
-            fi
-            if [ $EXIT_CODE -eq 3 ]; then
-              echo "ERROR: build_wheel workflow failed for this commit. Failing immediately."
-              exit 1
-            fi
-
-            if [ -n "$RUN_INFO" ]; then
-              read RUN_NUMBER RUN_ATTEMPT <<< "$RUN_INFO"
-              break
-            fi
-            echo "Waiting for build_wheel workflow to complete successfully... ($i/30)"
-            sleep 60
-          done
-          set -e
-
-          if [ -z "$RUN_NUMBER" ]; then
-            echo "Error: build_wheel workflow not found or failed after 30 minutes."
-            exit 1
-          fi
-
-          GCS_PATH="gs://torch-tpu-ci-transient/artifacts/Build and Test Wheels/$RUN_NUMBER/$RUN_ATTEMPT"
-          gcloud storage cp "$GCS_PATH/*.whl" dist/
+          gcloud storage cp "${{ needs.build_wheels.outputs.gcs_wheel_path }}" dist/
 
       - name: Install torchtpu-vllm with local wheel override
         run: |
@@ -226,16 +210,16 @@ jobs:
 
   notify_failure:
     name: Notify Failed Runs
-    needs: [run_tests, vllm_perf_eval]
+    needs: [run_tests, build_wheels, vllm_perf_eval]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Get current date
         id: date
-        if: contains(needs.run_tests.result, 'failure') && github.event_name != 'pull_request'
+        if: (contains(needs.run_tests.result, 'failure') || contains(needs.build_wheels.result, 'failure') || contains(needs.vllm_perf_eval.result, 'failure')) && github.event_name != 'pull_request'
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       - name: Check whether one of the jobs failed
-        if: (contains(needs.run_tests.result, 'failure') || contains(needs.vllm_perf_eval.result, 'failure')) && github.event_name != 'pull_request'
+        if: (contains(needs.run_tests.result, 'failure') || contains(needs.build_wheels.result, 'failure') || contains(needs.vllm_perf_eval.result, 'failure')) && github.event_name != 'pull_request'
         uses: jayqi/failed-build-issue-action@1a893bbf43ef1c2a8705e2b115cd4f0fe3c5649b  # v1.2.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

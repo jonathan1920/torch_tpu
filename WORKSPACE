@@ -42,10 +42,15 @@ http_archive(
 load("//bazel:wheel_deps.bzl", "torch_tpu_deps_repo")
 load("//bazel:wheel_version.bzl", "torch_tpu_version_repo")
 
+# Python 3.12 is the established default version for the TorchTPU repository, aligning with the
+# `HERMETIC_PYTHON_VERSION` in .bazelrc and our base Docker images (Dockerfile.multistage).
+# Hardcoding it here ensures standard local Bazel builds resolve dependencies correctly
+# without requiring manual flags. CI jobs testing other Python versions will dynamically
+# override this lockfile via the `python_init_repositories` configuration below.
 torch_tpu_deps_repo(
     name = "torch_tpu_deps",
     pyproject_toml = "//:pyproject.toml",
-    requirements_txt = "//requirements:requirements.txt",
+    requirements_txt = "//requirements:requirements_3_12.txt",
 )
 
 torch_tpu_version_repo(
@@ -81,7 +86,10 @@ python_init_repositories(
     ],
     local_wheel_workspaces = ["//:WORKSPACE"],
     requirements = {
-        "3.12": "//requirements:requirements.txt",
+        "3.11": "//requirements:requirements_3_11.txt",
+        "3.12": "//requirements:requirements_3_12.txt",
+        "3.13": "//requirements:requirements_3_13.txt",
+        "3.14": "//requirements:requirements_3_14.txt",
     },
 )
 

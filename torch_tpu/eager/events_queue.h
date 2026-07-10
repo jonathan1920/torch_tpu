@@ -17,9 +17,14 @@
 #ifndef TORCH_TPU_EAGER_EVENTS_QUEUE_H_
 #define TORCH_TPU_EAGER_EVENTS_QUEUE_H_
 
+#include <memory>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/traversal.h"
 
 namespace torch_tpu {
 
@@ -36,6 +41,9 @@ void RecordNewDataPtrCreated(const DeviceBufferRef& device_buffer_ref);
 // DeviceBufferList can be freed, and does not need to be materialized.
 void RecordDataPtrDestroyed(const DeviceBufferRef& device_buffer_ref);
 
+// Records on the events queue that a new deferred op has been created.
+void RecordDeferredOpCreated(const SharedDeviceBufferList& device_buffer_list);
+
 // Returns a vector of all the DeviceBufferLists that are currently referenced
 // by at least one c10::DataPtr, and are not in a final "ready" state.
 // The order of the returned vector is **not** specified, but will not contain
@@ -44,6 +52,15 @@ std::vector<SharedDeviceBufferList> GetAllLiveUnsyncedDataPtrs();
 
 // Clears all references to DeviceBufferLists from the events queue.
 void ClearEventsQueue();
+
+// Returns a sequence of Traversals that, if compiled and executed, would
+// materialize all live tensors up to and including all nodes_to_materialize
+// (even if any node to materialize is not live).
+//
+// This clears these nodes from the events queue.
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+PrepareMaterializationTraversals(
+    absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
 
 }  // namespace torch_tpu
 

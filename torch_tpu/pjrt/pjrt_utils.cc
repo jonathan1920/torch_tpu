@@ -29,13 +29,13 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/ops/empty.h"
 #include "absl/base/nullability.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "c10/core/Device.h"
 #include "c10/core/TensorImpl.h"
 #include "llvm/ADT/STLExtras.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -80,9 +80,9 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   xla::PjRtDevice* const device = PjrtBackend::GetInstance().GetDevice();
 
-  TT_RET_CHECK(client != nullptr, error::kFailedPrecondition)
+  ABSL_CHECK_NE(client, nullptr)  // CRASH_OK
       << "PjRt client not initialized in TpuMallocAndMemcpyHtoD";
-  TT_RET_CHECK(device != nullptr, error::kFailedPrecondition)
+  ABSL_CHECK_NE(device, nullptr)  // CRASH_OK
       << "PjRt device not initialized in TpuMallocAndMemcpyHtoD";
 
   int64_t num_elements = 1;
@@ -97,8 +97,8 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
                << device->DebugString();
   TT_ASSIGN_OR_RETURN(xla::PjRtMemorySpace* const memory_space,
                       device->default_memory_space());
-  TT_RET_CHECK(memory_space != nullptr, error::kInternal)
-      << "default memory space is null";
+  ABSL_CHECK_NE(memory_space, nullptr)  // CRASH_OK
+      << "Default memory space is null";
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Got memory space: "
                << memory_space->DebugString();
 
@@ -169,7 +169,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   } else {
     ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Backing tensor present, "
                     "creating DeviceBufferRef and marking stream active.";
-    PjrtBackend::GetInstance().MarkStreamActive(future);
+    MarkStreamActive(future);
   }
 
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL EXIT] Created "
@@ -260,7 +260,7 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
         ABSL_LOG(ERROR) << "Async D2H ToLiteral transfer failed: " << s;
       }
     });
-    PjrtBackend::GetInstance().MarkStreamActive(future);
+    MarkStreamActive(future);
     return absl::OkStatus();
   } else {
     return AdaptXlaError(future.Await());
@@ -282,7 +282,7 @@ absl::StatusOr<PjRtBufferPointers> Execute(
                       AdaptXlaError(executable->GetLoadedExecutable()->Execute(
                           execution_arguments, execute_options)));
 
-  TT_RET_CHECK(!results_per_device.empty(), error::kInternal)
+  ABSL_CHECK(!results_per_device.empty())  // CRASH_OK
       << "XLA execution did not return any results";
 
   PjRtBufferPointers result_pointers;

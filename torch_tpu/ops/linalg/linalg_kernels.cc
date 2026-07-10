@@ -25,14 +25,15 @@
 #include "ATen/ops/empty_like.h"
 #include "ATen/ops/ones.h"
 #include "c10/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/linalg/lu/linalg_lu_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -40,35 +41,43 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&, at::Tensor&>
 AtenLinalgSolveExOut(const at::Tensor& a, const at::Tensor& b, bool left,
                      bool check_errors, at::Tensor& result, at::Tensor& lu,
                      at::Tensor& pivots, at::Tensor& info) {
-  TT_KERNEL(OpName::kLinalgSolveExOut, _,
-            (a, b, IgnoreInCacheKey(left, "Legacy usage"),
-             IgnoreInCacheKey(check_errors, "Legacy usage"), result, lu, pivots,
-             info),
-            {
-              if (a.numel() == 0 || b.numel() == 0) {
-                info.zero_();
-                return {result, lu, pivots, info};
-              }
+  TT_KERNEL(
+      OpName::kLinalgSolveExOut, _,
+      (a, b, IgnoreInCacheKey(left, "Delegates to AtenLinalgLuSolveOut"),
+       IgnoreInCacheKey(check_errors, "Doesn't affect SHLO"), result, lu,
+       pivots, info),
+      {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(result, b.sizes()));
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(lu, a.sizes()));
 
-              AtenLinalgLuFactorExOut(a, /*pivot=*/true,
-                                      /*check_errors=*/false, lu, pivots, info);
-              if (check_errors) {
-                at::_linalg_check_errors(info, "solve", a.dim() == 2);
-              }
-              if (b.dim() < a.dim()) {
-                at::Tensor b_expanded =
-                    left ? b.unsqueeze(b.dim()) : b.unsqueeze(b.dim() - 1);
-                at::Tensor expanded_result = at::empty_like(b_expanded);
-                AtenLinalgLuSolveOut(lu, pivots, b_expanded, left,
-                                     /*adjoint=*/false, expanded_result);
-                result.copy_(expanded_result.reshape(result.sizes()));
-              } else {
-                AtenLinalgLuSolveOut(lu, pivots, b, left, /*adjoint=*/false,
-                                     result);
-              }
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(
+            pivots, a.sizes().slice(0, a.dim() - 1)));
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(info, a.sizes().slice(0, a.dim() - 2)));
 
-              return {result, lu, pivots, info};
-            });
+        if (a.numel() == 0 || b.numel() == 0) {
+          info.zero_();
+          return {result, lu, pivots, info};
+        }
+
+        AtenLinalgLuFactorExOut(a, /*pivot=*/true,
+                                /*check_errors=*/false, lu, pivots, info);
+        if (check_errors) {
+          at::_linalg_check_errors(info, "solve", a.dim() == 2);
+        }
+        if (b.dim() < a.dim()) {
+          at::Tensor b_expanded =
+              left ? b.unsqueeze(b.dim()) : b.unsqueeze(b.dim() - 1);
+          at::Tensor expanded_result = at::empty_like(b_expanded);
+          AtenLinalgLuSolveOut(lu, pivots, b_expanded, left,
+                               /*adjoint=*/false, expanded_result);
+          result.copy_(expanded_result.reshape(result.sizes()));
+        } else {
+          AtenLinalgLuSolveOut(lu, pivots, b, left, /*adjoint=*/false, result);
+        }
+
+        return {result, lu, pivots, info};
+      });
 }
 
 std::tuple<at::Tensor&, at::Tensor&> AtenLinalgInvExInverse(const at::Tensor& a,
@@ -77,17 +86,14 @@ std::tuple<at::Tensor&, at::Tensor&> AtenLinalgInvExInverse(const at::Tensor& a,
                                                             at::Tensor& info) {
   TT_KERNEL(
       OpName::kLinalgInvExInverse, _,
-      (a, IgnoreInCacheKey(check_errors, "Legacy usage"), inverse, info), {
+      (a, IgnoreInCacheKey(check_errors, "Doesn't affect SHLO"), inverse, info),
+      {
         TT_CHECK_THROW(a.dim() >= 2, error::kInvalidArgument)
             << "expected the input tensor to have at least 2 dimensions, got "
             << a.dim() << " dimensions of shape " << ToString(a.sizes());
         TT_CHECK_THROW(a.size(-1) == a.size(-2), error::kInvalidArgument)
             << "expected the input tensor's last 2 dimensions to be equal, got "
             << ToString(a.sizes());
-        TT_CHECK_THROW(a.sizes() == inverse.sizes(), error::kInvalidArgument)
-            << "expected the inverse output shape to match the input tensor of "
-               "shape "
-            << ToString(a.sizes()) << ", got " << ToString(inverse.sizes());
         at::Tensor lu = at::empty_like(a);
         Dimensions pivot_dims = CopyIntVector(a.sizes());
         pivot_dims.pop_back();

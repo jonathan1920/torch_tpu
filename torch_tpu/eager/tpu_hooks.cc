@@ -16,7 +16,6 @@
 
 #include "torch_tpu/eager/tpu_hooks.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
@@ -45,6 +44,7 @@
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/eager/current_stream.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/device_gen_impl.h"
@@ -83,26 +83,9 @@ class TpuDeviceGuardImpl final : public c10::impl::DeviceGuardImplInterface {
   void synchronizeStream(const c10::Stream& stream) const override;
   void synchronizeDevice(c10::DeviceIndex device_index) const override;
   void synchronizeEvent(void* event) const override;
-
- private:
-  // TODO: make this per-python-thread.
-  // clang-format off
-  // NOLINTNEXTLINE(whitespace/line_length)
-  static thread_local c10::DeviceIndex current_device_index_;  // CPP_THREAD_LOCAL_OK=State is per-C++-thread for device guard
-  // NOLINTNEXTLINE(whitespace/line_length)
-  static thread_local std::array<c10::StreamId, kMaxDevices> current_stream_ids_;  // CPP_THREAD_LOCAL_OK=State is per-C++-thread for device guard
-  // clang-format on
 };
 
 }  // namespace
-
-// TODO: make this per-python-thread.
-// clang-format off
-// NOLINTNEXTLINE(whitespace/line_length)
-thread_local c10::DeviceIndex TpuDeviceGuardImpl::current_device_index_ = 0;  // CPP_THREAD_LOCAL_OK=State is per-C++-thread for device guard
-// NOLINTNEXTLINE(whitespace/line_length)
-thread_local std::array<c10::StreamId, kMaxDevices> TpuDeviceGuardImpl::current_stream_ids_ = {0};  // CPP_THREAD_LOCAL_OK=State is per-C++-thread for device guard
-// clang-format on
 
 c10::DeviceType TpuDeviceGuardImpl::type() const {
   return GetPrivateUse1DeviceType();
@@ -111,7 +94,6 @@ c10::DeviceType TpuDeviceGuardImpl::type() const {
 c10::Device TpuDeviceGuardImpl::exchangeDevice(c10::Device d) const {
   TT_CHECK_THROW(d.type() == type(), error::kInvalidArgument)
       << "TpuDeviceGuardImpl: invalid device type " << d.type();
-  c10::Device old_device(type(), current_device_index_);
   auto* pjrt_client = PjrtBackend::GetInstance().GetClient();
   if (pjrt_client != nullptr) {
     const int addressable_device_count =
@@ -125,12 +107,12 @@ c10::Device TpuDeviceGuardImpl::exchangeDevice(c10::Device d) const {
     TORCH_WARN("PJRT client not available, but setting TPU device index to ",
                static_cast<int>(d.index()));
   }
-  current_device_index_ = d.index();
-  return old_device;
+  c10::DeviceIndex old_device_index = ExchangeCurrentDeviceIndex(d.index());
+  return c10::Device(type(), old_device_index);
 }
 
 c10::Device TpuDeviceGuardImpl::getDevice() const {
-  return c10::Device(type(), current_device_index_);
+  return c10::Device(type(), GetCurrentDeviceIndex());
 }
 
 void TpuDeviceGuardImpl::setDevice(c10::Device d) const {
@@ -149,12 +131,12 @@ void TpuDeviceGuardImpl::setDevice(c10::Device d) const {
     TORCH_WARN("PJRT client not available, but setting TPU device index to ",
                static_cast<int>(d.index()));
   }
-  current_device_index_ = d.index();
+  ExchangeCurrentDeviceIndex(d.index());
 }
 
 void TpuDeviceGuardImpl::uncheckedSetDevice(c10::Device d) const noexcept {
   if (d.type() == type()) {
-    current_device_index_ = d.index();
+    ExchangeCurrentDeviceIndex(d.index());
   }
 }
 
@@ -164,7 +146,7 @@ c10::Stream TpuDeviceGuardImpl::getStream(c10::Device d) const {
   const c10::DeviceIndex index = d.index();
   TT_CHECK_THROW(index >= 0 && index < kMaxDevices, error::kInvalidArgument)
       << "device index out of bounds: " << index;
-  const c10::StreamId stream_id = current_stream_ids_[index];
+  const c10::StreamId stream_id = GetCurrentStreamId(index);
   return c10::Stream(c10::Stream::UNSAFE, d, stream_id);
 }
 
@@ -176,8 +158,7 @@ c10::Stream TpuDeviceGuardImpl::exchangeStream(c10::Stream s) const {
   TT_CHECK_THROW(device_index >= 0 && device_index < kMaxDevices,
                  error::kInvalidArgument)
       << "device index out of bounds: " << device_index;
-  c10::StreamId old_stream_id = current_stream_ids_[device_index];
-  current_stream_ids_[device_index] = s.id();
+  c10::StreamId old_stream_id = ExchangeCurrentStreamId(device_index, s.id());
   return c10::Stream(c10::Stream::UNSAFE, s.device(), old_stream_id);
 }
 
@@ -214,13 +195,12 @@ bool TpuDeviceGuardImpl::queryStream(const c10::Stream& stream) const {
   return true;
 }
 void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
-  PjrtBackend::GetInstance().SynchronizeStream(stream.device_index(),
-                                               stream.id());
+  SynchronizeStream(stream.device_index(), stream.id());
 }
 void TpuDeviceGuardImpl::synchronizeDevice(
     c10::DeviceIndex device_index) const {
   TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kYes));
-  PjrtBackend::GetInstance().SynchronizeDevice(device_index);
+  SynchronizeDevice(device_index);
 }
 void TpuDeviceGuardImpl::destroyEvent(
     void* event, const c10::DeviceIndex device_index) const noexcept {
@@ -265,8 +245,8 @@ struct TORCH_API TpuHooksInterface : public at::PrivateUse1HooksInterface {
                               size_t new_bytes) const override {
     TT_KERNEL(
         OpName::kUntypedStorageResize_, _,
-        (IgnoreInCacheKey(storage, "Legacy usage"),
-         IgnoreInCacheKey(new_bytes, "Legacy usage")),
+        (IgnoreInCacheKey(storage, "Doesn't affect SHLO"),
+         IgnoreInCacheKey(new_bytes, "Doesn't affect SHLO")),
         {
           const size_t current_bytes = storage.nbytes();
           TT_ASSIGN_OR_THROW(const DeviceBufferRef old_buffer_ref,

@@ -148,4 +148,42 @@ absl::Status ResolveNegativeIndices(std::vector<at::Tensor>& indices,
   return absl::OkStatus();
 }
 
+absl::StatusOr<int64_t> ValidateIndexInputsAndGetDim(const at::Tensor& self,
+                                                     int64_t dim,
+                                                     const at::Tensor& index,
+                                                     const at::Tensor& source) {
+  TT_RET_CHECK(index.dim() == 1, error::kInvalidArgument)
+      << "index must be 1D, got shape " << index.sizes();
+  if (self.dim() == 0) {
+    TT_RET_CHECK(dim == 0, error::kInvalidArgument)
+        << "dim must be 0 for scalar input, got " << dim;
+    TT_RET_CHECK(source.dim() == 0, error::kInvalidArgument)
+        << "source shape must match self shape, excluding the specified "
+           "dimension, got source shape "
+        << source.sizes() << " and self shape " << self.sizes();
+    TT_RET_CHECK(index.size(0) == 1, error::kInvalidArgument)
+        << "index must be 1D of size 1 for scalar input, got shape "
+        << index.sizes();
+    return dim;
+  }
+
+  TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.dim()));
+
+  TT_RET_CHECK(source.dim() == self.dim(), error::kPythonIndexError)
+      << "self and source must have the same number of dimensions, got "
+      << self.dim() << " and " << source.dim();
+  TT_RET_CHECK(source.size(dim) == index.size(0), error::kInvalidArgument)
+      << "source must have the same number of elements as the index along "
+         "dimension "
+      << dim << ", got " << source.size(dim) << " and " << index.size(0);
+  for (int i = 0; i < self.dim(); ++i) {
+    if (i != dim) {
+      TT_RET_CHECK(self.size(i) == source.size(i), error::kInvalidArgument)
+          << "self and source must have the same size along dimension " << i
+          << ", got " << self.size(i) << " and " << source.size(i);
+    }
+  }
+  return dim;
+}
+
 }  // namespace torch_tpu

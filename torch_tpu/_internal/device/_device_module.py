@@ -442,7 +442,7 @@ class _TpuDeviceProperties:
 
 class TpuDeviceModule(_DeviceModule):
   """Device module implementation for TPU devices."""
-  _device_type: Final[str] = "tpu"
+  _device_type: Final[str] = "tpu"  # pyrefly: ignore[bad-override]
 
   @classmethod
   def get_device_name(
@@ -482,13 +482,11 @@ class TpuDeviceModule(_DeviceModule):
 
 
 class XlaCudaDeviceModule(_DeviceModule):
-  """Device module implementation for XLA CUDA devices."""
-  _device_type: Final[str] = "xla_cuda"
+  _device_type: Final[str] = "xla_cuda"  # pyrefly: ignore[bad-override]
 
 
 class XlaCpuDeviceModule(_DeviceModule):
-  """Device module implementation for XLA CPU devices."""
-  _device_type: Final[str] = "xla_cpu"
+  _device_type: Final[str] = "xla_cpu"  # pyrefly: ignore[bad-override]
 
 
 _DEVICE_MODULE_MAPPING: Final[Mapping[str, type[_DeviceModule]]] = {

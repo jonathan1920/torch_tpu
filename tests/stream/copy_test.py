@@ -60,6 +60,18 @@ class CopyTest(absltest.TestCase):
 
     utils.assert_close(t_cpu, t_tpu.to('cpu').to(torch.float64))
 
+  def test_to_copy_contiguous_requested(self):
+    device = torch.device('tpu')
+    x = torch.randn(2, 3, device=device).T
+    y = x.to(dtype=torch.bfloat16, memory_format=torch.contiguous_format)
+    self.assertTrue(y.is_contiguous())
+    # Compare with CPU
+    x_cpu = x.cpu()
+    y_cpu = x_cpu.to(
+        dtype=torch.bfloat16, memory_format=torch.contiguous_format
+    )
+    self.assertEqual(y.stride(), y_cpu.stride())
+
 
 if __name__ == '__main__':
   absltest.main()

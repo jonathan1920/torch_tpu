@@ -34,6 +34,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
+#include "torch_tpu/common/shape.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 
 // The core functions used for Dynamo compiled mode.
@@ -60,6 +61,7 @@ namespace torch_tpu {
 absl::StatusOr<at::Tensor> MakePlaceholder(absl::Span<const int64_t> sizes,
                                            at::ScalarType dtype,
                                            bool requires_grad);
+absl::StatusOr<at::Tensor> MakePlaceholder(Shape shape, bool requires_grad);
 
 // Extracts the MLIR module from the given graph without compiling or
 // materializing.
@@ -68,6 +70,8 @@ absl::StatusOr<at::Tensor> MakePlaceholder(absl::Span<const int64_t> sizes,
 //   mlir_context: The MLIR context to use for the module.
 //   result_tensors: The result tensors of the graph.
 //   arg_tensors: The argument tensors of the graph.
+//   use_stablehlo_bounds: If true, use StableHLO style bounds in the generated
+//     MLIR for dynamic inputs
 //
 // Returns:
 //   The MLIR module.
@@ -75,7 +79,7 @@ absl::StatusOr<at::Tensor> MakePlaceholder(absl::Span<const int64_t> sizes,
 // If the tensors are already materialized, will return status.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
     mlir::MLIRContext& mlir_context, const std::vector<at::Tensor>& arg_tensors,
-    const std::vector<at::Tensor>& result_tensors);
+    const std::vector<at::Tensor>& result_tensors, bool use_stablehlo_bounds);
 
 // Result of TraverseAndCompile, containing the compiled executable and
 // optionally additional compilation artifacts (like the MLIR module) if
@@ -90,6 +94,11 @@ struct TraverseAndCompileOptions {
   CompilationMode compilation_mode = CompilationMode::kFastRuntime;
   // If true, build the MLIR module and return it in the CompileResult.
   bool build_mlir_module = false;
+  // If true, use StableHLO style bounds in the generated MLIR for dynamic
+  // inputs
+  bool use_stablehlo_bounds = false;
+  // Forced layouts for arguments.
+  std::vector<Indices> argument_layouts;
 };
 
 // Traverses the graph from outputs to arguments and compiles it.
@@ -106,9 +115,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
 //
 // Args:
 //   mlir_module_bytecode: The MLIR module bytecode.
-//   compilation_mode: Which compiler profile to use. By default, use the
-//     profile optimized for torch.compile. However, in tests we may specify
-//     the profile optimized for eager.
+//   compile_options: XLA configurations to generate the compiled executable.
 //
 // Returns:
 //   The compiled executable. When the executable runs, the argument tensors
@@ -120,7 +127,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
 // fail or the materialized tensors might be wrong.
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
     std::string_view mlir_module_bytecode,
-    CompilationMode compilation_mode = CompilationMode::kFastRuntime);
+    UniqueCompileOptions compile_options);
 
 // torch.compile integration: this is called by torch.compile() to compile the
 // FX graph, after it has generated the graph and its input/output tensors. This
@@ -129,9 +136,7 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
 //
 // Args:
 //   module: The MLIR module to compile.
-//   compilation_mode: Which compiler profile to use. By default, use the
-//     profile optimized for torch.compile. However, in tests we may specify
-//     the profile optimized for eager.
+//   compile_options: XLA configurations to generate the compiled executable.
 //
 // Returns:
 //   The compiled executable. When the executable runs, the argument tensors
@@ -142,8 +147,7 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
 // by the FX graph, including their order. Otherwise, the compilation might
 // fail or the materialized tensors might be wrong.
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
-    xla::MaybeOwningMlirModule module,
-    CompilationMode compilation_mode = CompilationMode::kFastRuntime);
+    xla::MaybeOwningMlirModule module, UniqueCompileOptions compile_options);
 
 // torch.compile integration: this is called to invoke the compiled executable
 // returned by CompileMlirExecutable, and return new Tensors with the results.

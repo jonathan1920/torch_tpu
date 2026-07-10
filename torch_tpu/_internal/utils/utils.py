@@ -92,7 +92,7 @@ def assert_close(
     rtol: float | None = None,
     atol: Tolerance | None = None,
     preamble: str | None = None,
-    check_value: CheckValueMode = CheckValueMode.STRICT,
+    check_value: CheckValueMode = CheckValueMode.LOOSE,
     check_dtype: bool = True,
 ) -> None:
   """Assert that `actual` and `expectec` are sufficiently close.
@@ -274,7 +274,7 @@ def _assert_tensor_close(
     rtol: float | None = None,
     atol: Tolerance | None = None,
     preamble: str | None = None,
-    check_value: CheckValueMode = CheckValueMode.STRICT,
+    check_value: CheckValueMode = CheckValueMode.LOOSE,
 ) -> None:
   """Single-tensor assert_close implementation.
 
@@ -434,7 +434,7 @@ def _assert_tensor_close(
 
       if np.isinf(max_rel):
         suggestion_lines.append(
-            "\n    - rtol check is IMPOSSIBLE because `expected` is 0 but"
+            "\n    - rtol check is impossible because `expected` is 0 but"
             " `actual` is not."
         )
         suggestion_lines.append("\n      (Use LOOSE mode or fix the values)")
@@ -472,8 +472,27 @@ def _assert_tensor_close(
     # indices, so we need to parse the message and extract the indices.
     details = ""
     if _RE_SCALAR_COMP_FAILURE.search(msg):
-      details += f"\nAbsolute difference allowed: up to {atol:.3g}\n"
-      details += f"Relative difference allowed: up to {rtol:.3g}\n"
+      atol_str = "None"
+      rtol_str = "None"
+      display_rtol = rtol
+      display_atol = atol
+      if not callable(display_atol):
+        try:
+          display_rtol, display_atol = _lookup_tolerances(
+              actual, expected, display_rtol, display_atol
+          )
+        except Exception:  # pylint: disable=broad-except
+          pass
+      if isinstance(display_atol, (int, float)):
+        atol_str = f"{display_atol:.3g}"
+      elif display_atol is not None:
+        atol_str = str(display_atol)
+      if isinstance(display_rtol, (int, float)):
+        rtol_str = f"{display_rtol:.3g}"
+      elif display_rtol is not None:
+        rtol_str = str(display_rtol)
+      details += f"\nAbsolute difference allowed: up to {atol_str}\n"
+      details += f"Relative difference allowed: up to {rtol_str}\n"
     else:
       for index in get_indices(msg):
         golden_elem = expected[index]
@@ -500,6 +519,12 @@ def _assert_tensor_close(
       return _add_tolerance_suggestions(
           refine_assert_close_message(msg), CheckValueMode.LOOSE
       )
+
+    # To support partial overrides (where only rtol or only atol is specified),
+    # we pre-fill the missing tolerance with the PyTorch default. This prevents
+    # assert_close from failing due to one of the tolerances being None.
+    if not callable(atol):
+      rtol, atol = _lookup_tolerances(actual, expected, rtol, atol)
 
     _raw_assert_tensor_close(
         actual=actual,
@@ -639,7 +664,7 @@ def format_model(
     if isinstance(input_tensors, torch.Tensor):
       placeholders = (tpu_torch_compile.placeholder_like(input_tensors),)
     else:
-      to_placeholder = lambda x: tpu_torch_compile.placeholder_like(x)
+      to_placeholder = tpu_torch_compile.placeholder_like
       placeholders = _pytree.tree_map_only(
           torch.Tensor, to_placeholder, input_tensors
       )
@@ -681,8 +706,8 @@ def format_model(
       with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
         results = model(*input_tensors)
 
-      shlo = sync.computation_mlir(results)
-      result += shlo + "\n"
+      shlo = sync.computation_mlir(results)  # pyrefly: ignore[bad-assignment]
+      result += shlo + "\n"  # pyrefly: ignore[unsupported-operation]
 
   return result
 

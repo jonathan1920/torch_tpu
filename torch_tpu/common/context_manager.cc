@@ -24,6 +24,23 @@
 
 namespace torch_tpu {
 
+thread_local  // CPP_THREAD_LOCAL_OK=per dispatch-worker thread boundary
+    bool allow_context_state_access = true;
+
+void DisallowThisThreadToAccessContextState() {
+  allow_context_state_access = false;
+}
+
+namespace internal {
+
+void CrashIfContextStateAccessIsDisallowed() {
+  ABSL_CHECK(allow_context_state_access)  // CRASH_OK
+      << "Thread-local context state access and mutation is only allowed in "
+      << "the dispatch thread. "
+      << "For worker threads, please have the dispatch thread resolve "
+      << "thread-local context states and explicitly pass down parameters.";
+}
+
 void PushContextStateUntyped(ContextManagerState state) {
   // Get the current top node of the shared slot to use as parent.
   const auto* const top = dynamic_cast<ContextManagerNode*>(
@@ -48,4 +65,5 @@ PopContextStateUntyped() {
   return manager_node;
 }
 
+}  // namespace internal
 }  // namespace torch_tpu

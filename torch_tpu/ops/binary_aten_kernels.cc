@@ -22,8 +22,6 @@
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
-#include "ATen/native/Resize.h"
-#include "ATen/ops/div.h"
 #include "ATen/ops/result_type.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -33,7 +31,9 @@
 #include "c10/core/DefaultDtype.h"
 #include "c10/core/ScalarType.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -54,9 +54,9 @@
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/binary.h"
 #include "torch_tpu/ops/macros/kernel.h"
-#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/ops/unary.h"
 
 namespace torch_tpu {
@@ -120,11 +120,15 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
                                        ? *opts.output_dtype_override
                                        : computation_dtype;
 
-  auto op_builder = [bin_op_builder = std::move(bin_op_builder)](
-                        FixedSizeSpan<mlir::MlirOp, 2> inputs) {
-    auto& [self_op, other_op] = inputs;
-    return bin_op_builder(self_op, other_op);
-  };
+  auto op_builder =
+      [bin_op_builder = std::move(bin_op_builder),
+       reverse = opts.reverse_operands](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
+        auto& [self_op, other_op] = inputs;
+        if (reverse) {
+          return bin_op_builder(other_op, self_op);
+        }
+        return bin_op_builder(self_op, other_op);
+      };
   return DispatchOp<2>(
       std::move(op_builder), {self_tpu, other_tpu},
       {.op_name = opts.op_name,
@@ -188,7 +192,8 @@ absl::Status FinalizeOpOutput(at::Tensor& out, DeviceBufferRef result_buf,
            "in-place, which has shape "
         << ToString(out.sizes());
   } else {
-    at::native::resize_output(out, result_buf.dimensions());
+    TT_RETURN_IF_ERROR(
+        ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
   }
 
   return AssignBufferToAtTensor(std::move(result_buf), out);
@@ -231,7 +236,7 @@ absl::Status CheckAlphaTypeSupported(const at::Scalar& alpha) {
     // TODO: add support to complex alpha on TPU.
     TT_ASSIGN_OR_RETURN(const auto alpha_element_type,
                         internal::ToElementType(alpha.type()));
-    return TT_ERROR(error::kUnimplemented)
+    return TT_ERROR(error::kPythonNotImplementedError)
            << ToString(alpha_element_type)
            << " alpha value is not yet supported";
   }
@@ -704,6 +709,237 @@ absl::Status DivOutMode(const at::Tensor& self, const at::Tensor& other,
       {.op_param_cache_keys = std::move(div_opts.op_param_cache_keys)});
 }
 
+absl::Status BitwiseLeftShiftTensor(
+    const at::Tensor& self, const at::Tensor& other, at::Tensor& out,
+    std::optional<OpName> op_name = OpName::kBitwiseLeftShiftTensorOut) {
+  TT_RETURN_IF_ERROR(CheckBitwiseShiftInputs(self, other));
+  // Input/output type conversions are automatically handled in BinaryOpOut.
+  // We override op_name to allow all callers of this helper to share the same
+  // compilation cache entry.
+  return BinaryOpOut(
+      self, other, out, BuildBitwiseLeftShiftShlo,
+      {.op_name = op_name, .op_param_cache_keys = OpParamCacheKeys::Empty()});
+}
+
+absl::Status BitwiseRightShiftTensor(
+    const at::Tensor& self, const at::Tensor& other, at::Tensor& out,
+    std::optional<OpName> op_name = OpName::kBitwiseRightShiftTensorOut) {
+  TT_RETURN_IF_ERROR(CheckBitwiseShiftInputs(self, other));
+  // Input/output type conversions are automatically handled in BinaryOpOut.
+  // We override op_name to allow all callers of this helper to share the same
+  // compilation cache entry.
+  return BinaryOpOut(
+      self, other, out, BuildBitwiseRightShiftShlo,
+      {.op_name = op_name, .op_param_cache_keys = OpParamCacheKeys::Empty()});
+}
+
+// Result helper for each scaling step in the static split method.
+struct ScaleStepResult {
+  mlir::MlirOp result;
+  mlir::MlirOp remaining_exponent;
+};
+
+// Perform a single step of scaling.
+// To prevent intermediate overflow or underflow (e.g. if we computed 2^exponent
+// directly for a large exponent, which would overflow float/half ranges even
+// if the final multiplied value is representable), we clamp the exponent to
+// [min_exp_const, max_exp_const], calculate the scaling factor 2^clamped_exp,
+// multiply 'self' by this factor, and calculate the remaining exponent that
+// still needs to be scaled in subsequent steps.
+absl::StatusOr<ScaleStepResult> ScaleStep(mlir::MlirOp self,
+                                          mlir::MlirOp exponent,
+                                          mlir::MlirOp min_exp_const,
+                                          mlir::MlirOp max_exp_const,
+                                          mlir::MlirOp two) {
+  const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self);
+  auto element_type = self_type.getElementType();
+
+  // Convert exponent to match the element type of 'self' (float/half/double).
+  auto casted_exponent = stablehlo::ConvertElementType(exponent, element_type);
+
+  // Clamp exponent to the safe limits [min_exp_const, max_exp_const] to prevent
+  // overflow/underflow during the Pow (2^exponent) operation.
+  // We use Min and Max instead of Clamp because stablehlo::Clamp drops dynamic
+  // bounds when the first operand (min) is a scalar constant.
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp min_exp_clamped,
+                      BuildMinimumShlo(casted_exponent, max_exp_const));
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp clamp_exp,
+                      BuildMaximumShlo(min_exp_clamped, min_exp_const));
+
+  // Compute 2^clamped_exp
+  auto two_tensor = MakeConstantLike(clamp_exp, 2.0);
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp factor, BuildPowShlo(two_tensor, clamp_exp));
+
+  // Multiply self by 2^clamped_exp
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp result, BuildMulShlo(self, factor));
+
+  // Compute remaining exponent that was not applied in this step
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp remaining_exponent,
+                      BuildSubShlo(casted_exponent, clamp_exp));
+
+  return ScaleStepResult{result, remaining_exponent};
+}
+
+absl::Status CheckLdexpOutput(const at::Tensor& out) {
+  TT_RET_CHECK(IsFloatingPoint(out) || IsComplex(out), error::kInvalidArgument)
+      << "ldexp can't be cast to the desired output type "
+      << ToString(out.scalar_type());
+  return absl::OkStatus();
+}
+
+// Performs 3 successive steps of scaling using ScaleStep to avoid intermediate
+// overflow/underflow.
+absl::StatusOr<mlir::MlirOp> Scale3Steps(mlir::MlirOp val, mlir::MlirOp exp,
+                                         mlir::MlirOp min_exp,
+                                         mlir::MlirOp max_exp,
+                                         mlir::MlirOp two) {
+  TT_ASSIGN_OR_RETURN(auto step1, ScaleStep(val, exp, min_exp, max_exp, two));
+  TT_ASSIGN_OR_RETURN(
+      auto step2,
+      ScaleStep(step1.result, step1.remaining_exponent, min_exp, max_exp, two));
+  TT_ASSIGN_OR_RETURN(
+      auto step3,
+      ScaleStep(step2.result, step2.remaining_exponent, min_exp, max_exp, two));
+  return step3.result;
+}
+
+// Implements ldexp for complex base and/or exponent inputs.
+absl::StatusOr<mlir::MlirOp> BuildLdexpComplexShlo(
+    mlir::MlirOp self_op, mlir::MlirOp other_op,
+    const mlir::RankedTensorType& self_type,
+    const mlir::RankedTensorType& other_type, bool self_is_complex,
+    bool other_is_complex) {
+  auto& builder = self_op.getBuilder();
+  TT_ASSIGN_OR_RETURN((auto [self_bcst, other_bcst]),
+                      ApplyBroadcastIfNeeded(self_op, other_op));
+
+  const mlir::Type float_type =
+      self_is_complex
+          ? mlir::cast<mlir::ComplexType>(self_type.getElementType())
+                .getElementType()
+          : self_type.getElementType();
+
+  // Decompose base into real (a) and imaginary (b) components.
+  mlir::MlirOp a =
+      self_is_complex ? mlir::stablehlo::Real(self_bcst) : self_bcst;
+  mlir::MlirOp b = self_is_complex
+                       ? mlir::stablehlo::Imag(self_bcst)
+                       : MakeConstantLike(self_bcst, 0.0, float_type);
+
+  // Decompose exponent into real (c) and imaginary (d) components.
+  const mlir::MlirOp c =
+      other_is_complex ? mlir::stablehlo::Real(other_bcst) : other_bcst;
+  const mlir::MlirOp d = other_is_complex
+                             ? mlir::stablehlo::Imag(other_bcst)
+                             : MakeConstantLike(other_bcst, 0.0, float_type);
+
+  // Determine the maximum safe exponent range depending on precision limits.
+  auto get_max_exp = [](mlir::Type type) -> absl::StatusOr<double> {
+    if (type.isF64()) {
+      return 1000.0;
+    }
+    if (type.isF32() || type.isBF16()) {
+      return 120.0;
+    }
+    if (type.isF16()) {
+      return 14.0;
+    }
+    return TT_ERROR(error::kInvalidArgument)
+           << "unsupported float type for complex ldexp: " << ToString(type);
+  };
+  TT_ASSIGN_OR_RETURN(const double max_exp, get_max_exp(float_type));
+
+  const auto min_exp_const = MakeScalarConstant(builder, -max_exp, float_type);
+  const auto max_exp_const = MakeScalarConstant(builder, max_exp, float_type);
+  const auto two = MakeScalarConstant(builder, 2.0, float_type);
+
+  // 1. Compute the complex rotation factor (rotation = cos(theta) +
+  // i*sin(theta)) where theta = d * ln(2).
+  const auto ln2 =
+      MakeScalarConstant(builder, 0.693147180559945309417, float_type);
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp angle, BuildMulShlo(d, ln2));
+  const auto one = MakeScalarConstant(builder, 1.0, float_type);
+  TT_ASSIGN_OR_RETURN(auto rotation, BuildPolarShlo(one, angle));
+
+  // 2. Perform rotation: base_rot = base * rotation
+  const auto base = mlir::stablehlo::Complex(a, b);
+  TT_ASSIGN_OR_RETURN(auto base_rot, BuildMulShlo(base, rotation));
+
+  // 3. Decompose the rotated complex tensor back into components for scaling.
+  const auto real_rot = mlir::stablehlo::Real(base_rot);
+  const auto imag_rot = mlir::stablehlo::Imag(base_rot);
+
+  // 4. Scale the components by 2^c using our Scale3Steps helper.
+  TT_ASSIGN_OR_RETURN(
+      mlir::MlirOp real_scaled,
+      Scale3Steps(real_rot, c, min_exp_const, max_exp_const, two));
+  TT_ASSIGN_OR_RETURN(
+      mlir::MlirOp imag_scaled,
+      Scale3Steps(imag_rot, c, min_exp_const, max_exp_const, two));
+
+  return mlir::MlirOp(mlir::stablehlo::Complex(real_scaled, imag_scaled));
+}
+
+// Build StableHLO for the ldexp operator.
+// ldexp(x, exp) computes x * 2^exp.
+// Since TPU (StableHLO) does not have a native ldexp operation, we implement it
+// by computing x * 2^exp.
+// To avoid intermediate overflow/underflow when computing 2^exp for large
+// exponents, we use a 3-step Static Split Method. In each step, we scale by at
+// most the maximum safe exponent of the datatype (max_exp).
+//
+// Maximum safe exponents:
+// - Float64 (F64): max_exp = 1000.0 (Fits within double exponent range +/-
+// 1023)
+// - Float32 (F32), Bfloat16 (BF16): max_exp = 120.0 (Fits within exponent range
+// +/- 127)
+// - Float16 (F16): max_exp = 14.0 (Fits within exponent range +/- 15)
+//
+// By applying 3 successive steps of scaling, we cover maximum total exponents
+// of:
+// - F64: 3 * 1000 = 3000 (well beyond double limits)
+// - F32, BF16: 3 * 120 = 360 (well beyond float limits)
+// - F16: 3 * 14 = 42 (well beyond half limits)
+// This ensures that any exponent value within standard range can be scaled
+// without causing premature overflow/underflow in intermediate math.
+absl::StatusOr<mlir::MlirOp> BuildLdexpShlo(mlir::MlirOp self_op,
+                                            mlir::MlirOp other_op) {
+  const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self_op);
+  const mlir::RankedTensorType other_type = GetTensorTypeOrDie(other_op);
+  const bool self_is_complex = IsComplexType(self_type);
+  const bool other_is_complex = IsComplexType(other_type);
+
+  if (self_is_complex || other_is_complex) {
+    return BuildLdexpComplexShlo(self_op, other_op, self_type, other_type,
+                                 self_is_complex, other_is_complex);
+  }
+
+  // Real-only path:
+  auto element_type = self_type.getElementType();
+  auto& builder = self_op.getBuilder();
+
+  TT_ASSIGN_OR_RETURN((auto [self_bcst, other_bcst]),
+                      ApplyBroadcastIfNeeded(self_op, other_op));
+
+  double max_exp = 120.0;
+  if (element_type.isF64()) {
+    max_exp = 1000.0;
+  } else if (element_type.isF32() || element_type.isBF16()) {
+    max_exp = 120.0;
+  } else if (element_type.isF16()) {
+    max_exp = 14.0;
+  } else {
+    return TT_ERROR(error::kInvalidArgument)
+           << "unsupported element type for ldexp: " << ToString(element_type);
+  }
+
+  auto min_exp_const = MakeScalarConstant(builder, -max_exp, element_type);
+  auto max_exp_const = MakeScalarConstant(builder, max_exp, element_type);
+  auto two = MakeScalarConstant(builder, 2.0, element_type);
+
+  return Scale3Steps(self_bcst, other_bcst, min_exp_const, max_exp_const, two);
+}
+
 }  // namespace
 
 // NOLINTBEGIN
@@ -889,12 +1125,10 @@ at::Tensor& AtenBitwiseLeftShiftTensorOut(const at::Tensor& self,
                                           const at::Tensor& other,
                                           at::Tensor& out) {
   TT_KERNEL(OpName::kBitwiseLeftShiftTensorOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckBitwiseShiftInputs(self, other));
-    at::Tensor new_self = self.to(out.scalar_type());
-    at::Tensor new_other = other.to(out.scalar_type());
+    // Explicitly pass std::nullopt to avoid redundant override check, since
+    // the active context name is already kBitwiseLeftShiftTensorOut.
     TT_THROW_IF_ERROR(
-        BinaryOpOut(new_self, new_other, out, BuildBitwiseLeftShiftShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        BitwiseLeftShiftTensor(self, other, out, /*op_name=*/std::nullopt));
     return out;
   });
 }
@@ -914,12 +1148,10 @@ at::Tensor& AtenBitwiseRightShiftTensorOut(const at::Tensor& self,
                                            const at::Tensor& other,
                                            at::Tensor& out) {
   TT_KERNEL(OpName::kBitwiseRightShiftTensorOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckBitwiseShiftInputs(self, other));
-    at::Tensor new_self = self.to(out.scalar_type());
-    at::Tensor new_other = other.to(out.scalar_type());
+    // Explicitly pass std::nullopt to avoid redundant override check, since
+    // the active context name is already kBitwiseRightShiftTensorOut.
     TT_THROW_IF_ERROR(
-        BinaryOpOut(new_self, new_other, out, BuildBitwiseRightShiftShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        BitwiseRightShiftTensor(self, other, out, /*op_name=*/std::nullopt));
     return out;
   });
 }
@@ -1091,7 +1323,7 @@ at::Tensor& AtenIlshiftScalar(at::Tensor& self, const at::Scalar& other) {
 
 at::Tensor& AtenIlshiftTensor(at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kIlshiftTensor, _, (self, other), {
-    AtenBitwiseLeftShiftTensorOut(self, other, self);
+    TT_THROW_IF_ERROR(BitwiseLeftShiftTensor(self, other, self));
     return self;
   });
 }
@@ -1107,7 +1339,41 @@ at::Tensor& AtenIrshiftScalar(at::Tensor& self, const at::Scalar& other) {
 
 at::Tensor& AtenIrshiftTensor(at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kIrshiftTensor, _, (self, other), {
-    AtenBitwiseRightShiftTensorOut(self, other, self);
+    TT_THROW_IF_ERROR(BitwiseRightShiftTensor(self, other, self));
+    return self;
+  });
+}
+
+at::Tensor& AtenLdexpOut(const at::Tensor& self, const at::Tensor& other,
+                         at::Tensor& out) {
+  TT_KERNEL(OpName::kLdexpOut, _, (self, other, out), {
+    TT_THROW_IF_ERROR(CheckLdexpOutput(out));
+    TT_THROW_IF_ERROR(
+        BinaryOpOut(self, other, out, BuildLdexpShlo,
+                    {.force_float_inputs = true,
+                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    return out;
+  });
+}
+
+at::Tensor AtenLdexpTensor(const at::Tensor& self, const at::Tensor& other) {
+  TT_KERNEL(OpName::kLdexpTensor, _, (self, other), {
+    TT_ASSIGN_OR_THROW(
+        at::Tensor out,
+        BinaryOp(self, other, BuildLdexpShlo,
+                 {.force_float_inputs = true,
+                  .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    return out;
+  });
+}
+
+at::Tensor& AtenLdexp_(at::Tensor& self, const at::Tensor& other) {
+  TT_KERNEL(OpName::kLdexp_, _, (self, other), {
+    TT_THROW_IF_ERROR(CheckLdexpOutput(self));
+    TT_THROW_IF_ERROR(
+        BinaryOpOut(self, other, self, BuildLdexpShlo,
+                    {.force_float_inputs = true,
+                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return self;
   });
 }
@@ -1151,7 +1417,7 @@ at::Tensor AtenLshiftTensor(const at::Tensor& self, const at::Tensor& other) {
     TT_ASSIGN_OR_THROW(
         at::Tensor out,
         MakeEmptyTensor(self.sizes(), promoted_scalar_type, self.device()));
-    AtenBitwiseLeftShiftTensorOut(self, other, out);
+    TT_THROW_IF_ERROR(BitwiseLeftShiftTensor(self, other, out));
     return out;
   });
 }
@@ -1364,7 +1630,7 @@ at::Tensor AtenRshiftTensor(const at::Tensor& self, const at::Tensor& other) {
     TT_ASSIGN_OR_THROW(
         at::Tensor out,
         MakeEmptyTensor(self.sizes(), promoted_scalar_type, self.device()));
-    AtenBitwiseRightShiftTensorOut(self, other, out);
+    TT_THROW_IF_ERROR(BitwiseRightShiftTensor(self, other, out));
     return out;
   });
 }

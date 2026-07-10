@@ -16,8 +16,7 @@
 
 #include "torch_tpu/ops/dropout/dropout.h"
 
-#include <limits>
-
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/Builders.h"
@@ -27,18 +26,15 @@
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
 
-absl::StatusOr<MlirOpResults<3>> BuildDropoutTrainShlo(
+absl::StatusOr<MlirOpResults<2>> BuildDropoutTrainShlo(
     mlir::MlirOp rng_input_state, mlir::MlirOp input, double p) {
   ABSL_VLOG(1) << "[BuildDropoutTrainShlo] input: "
                << mlir::debugString(input.getValue()) << ", p: " << p;
-  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error is caught in `AtenDropout()`
-                 // function (caller).
-      p > 0 && p < 1.0, error::kInvalidArgument)
+  ABSL_CHECK(p > 0 && p < 1.0)  // CRASH_OK=Caller validates p.
       << "expected p to be in the exclusive range (0, 1), got " << p;
   mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
   const auto rng_input_state_type = GetTensorTypeOrDie(rng_input_state);
@@ -56,7 +52,6 @@ absl::StatusOr<MlirOpResults<3>> BuildDropoutTrainShlo(
       op_builder, input.getValue().getLoc(), rng_input_state_type,
       input_type_uint64, algorithm, rng_input_state.getValue());
 
-  auto rng_output_state = mlir::MlirOp(builder, rng_op.getOutputState());
   mlir::MlirOp rng_output_op = mlir::MlirOp(builder, rng_op.getOutput());
   const mlir::RankedTensorType rng_output_op_type =
       GetTensorTypeOrDie(rng_output_op);
@@ -88,12 +83,12 @@ absl::StatusOr<MlirOpResults<3>> BuildDropoutTrainShlo(
   auto masked_input_op = mlir::stablehlo::Select(mask_op, input, zero_const);
 
   // p is guaranteed to be between 0 and 1 exclusive
-  // but we add 1.e-10 to avoid numerical issues when the denominator is tiny.
-  double scale = 1.0 / (1.0 - p + std::numeric_limits<double>::epsilon());
+  // via early returns in the caller for p == 0 and p >= 1.
+  double scale = 1.0 / (1.0 - p);
   auto scale_const = MakeConstantLike(input, scale);
   auto output = mlir::stablehlo::Mul(masked_input_op, scale_const);
 
-  return {{rng_output_state, output, mask_op}};
+  return {{output, mask_op}};
 }
 
 absl::StatusOr<MlirOpResults<1>> BuildDropoutBackwardShlo(

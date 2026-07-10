@@ -254,35 +254,23 @@ class InternalSyncTest(absltest.TestCase):
     expected_graphviz_string = """Graphviz string: (try pasting in http://graphviz/ to see the graph)
 digraph {
   // Vertices:
-  0 [shape="box", label=" float32[] (materialized)"];
-  1 [label="fill_.Scalar"];
-  2 [shape="box", label=" uint64[2]"];
-  3 [label="set_current_seed"];
-  4 [shape="box", label=" uint64[2]"];
-  5 [label="set_offset"];
-  6 [shape="box", label=" uint64[2]"];
-  7 [label="uniform_"];
-  8 [shape="box", label=" uint64[2]"];
-  9 [shape="box", label="x: float32[2, 3]"];
-  10 [label="sum.IntList_out"];
-  11 [shape="box", label="z: float32[]"];
-  12 [label="pow.out"];
-  13 [shape="box", label="y: float32[2, 3]"];
+  0 [shape="box", label=" uint64[2] (materialized)"];
+  1 [shape="box", label=" float32[] (materialized)"];
+  2 [label="uniform_"];
+  3 [shape="box", label="x: float32[2, 3]"];
+  4 [label="sum.IntList_out"];
+  5 [shape="box", label="z: float32[]"];
+  6 [label="pow.out"];
+  7 [shape="box", label="y: float32[2, 3]"];
 
   // Edges:
-  1 -> 2
+  0 -> 2
   2 -> 3
   3 -> 4
   4 -> 5
-  5 -> 6
+  3 -> 6
+  1 -> 6
   6 -> 7
-  7 -> 8
-  7 -> 9
-  9 -> 10
-  10 -> 11
-  9 -> 12
-  0 -> 12
-  12 -> 13
 }
 """
 
@@ -387,19 +375,22 @@ digraph {
     expected_graphviz_string = """Graphviz string: (try pasting in http://graphviz/ to see the graph)
 digraph {
   // Vertices:
-  0 [label="fill_.Scalar"];
-  1 [shape="box", label=" float32[2, 3]"];
-  2 [label="fill_.Scalar"];
-  3 [shape="box", label=" float32[2, 3]"];
-  4 [label="add.out"];
-  5 [shape="box", label=" float32[2, 3]"];
+  0 [shape="box", label=" float32[] (materialized)"];
+  1 [label="fill_.Scalar"];
+  2 [shape="box", label=" float32[2, 3]"];
+  3 [label="fill_.Scalar"];
+  4 [shape="box", label=" float32[2, 3]"];
+  5 [label="add.out"];
+  6 [shape="box", label=" float32[2, 3]"];
 
   // Edges:
   0 -> 1
-  2 -> 3
+  1 -> 2
+  0 -> 3
   3 -> 4
-  1 -> 4
   4 -> 5
+  2 -> 5
+  5 -> 6
 }
 """
     output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", "")

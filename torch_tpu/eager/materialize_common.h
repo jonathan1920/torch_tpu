@@ -28,6 +28,8 @@
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/traversal.h"
@@ -54,7 +56,7 @@ class ExecutionTask {
   //   * Log the resulting MLIR to support TORCH_TRACE, if enabled.
   static absl::StatusOr<ExecutionTask> FromTraversalWithLogging(
       absl_nonnull std::unique_ptr<Traversal> traversal,
-      mlir::MLIRContext& mlir_context,
+      mlir::MLIRContext& mlir_context, CompilationSpec compilation_spec,
       MaterializationReason reason = MaterializationReason::kUnknown);
 
   // Creates an execution task from a traversal.
@@ -66,7 +68,7 @@ class ExecutionTask {
   //   * Set all outputs to the "pending materialization" state
   static absl::StatusOr<ExecutionTask> FromTraversal(
       absl_nonnull std::unique_ptr<Traversal> traversal,
-      mlir::MLIRContext& mlir_context,
+      mlir::MLIRContext& mlir_context, CompilationSpec compilation_spec,
       MaterializationReason reason = MaterializationReason::kUnknown,
       std::string* absl_nullable out_mlir_text = nullptr);
 
@@ -87,6 +89,9 @@ class ExecutionTask {
   // Any failures will be set as errors on the output buffers.
   absl::Status Run();
 
+  // Sets all output nodes as having a specified error.
+  void SetOutputNodesAsError(absl::Status status);
+
  private:
   explicit ExecutionTask(std::string name,
                          std::vector<DeviceBufferRef> arguments,
@@ -101,9 +106,6 @@ class ExecutionTask {
 
   // Runs the execution task and early-returns if there is any failure.
   absl::Status RunInternal();
-
-  // Sets all output nodes as having a specified error.
-  void SetOutputNodesAsError(absl::Status status);
 
   // Gets cached executables from the compiled kernel.
   // This will always include a static, fixed-shape kernel, and may also include

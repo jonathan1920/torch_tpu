@@ -169,7 +169,7 @@ at::Tensor AtenUnfold(const at::Tensor& self, int64_t dimension, int64_t size,
             << "expected step > 0, got " << step;
 
         TT_CHECK_THROW(dimension >= -dims && dimension < dims,
-                       error::kOutOfRange)
+                       error::kPythonIndexError)
             << "expected dimension to be in range of [" << -dims << ", "
             << dims - 1 << "] for shape " << self.sizes() << ", got "
             << dimension;

@@ -70,7 +70,7 @@ def _(mo):
     gcloud auth login
     gcloud auth application-default login
 
-    # 2. Install torch_tpu, PyTorch 2.10 CPU will install automatically, do not install manually.
+    # 2. Install torch_tpu, PyTorch 2.11 CPU will install automatically, do not install manually.
     pip install --pre --index-url "https://oauth2accesstoken:$(gcloud auth print-access-token)@us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-virtual-registry/simple/" torch_tpu
 
     # 3. Install optional utilities
@@ -168,6 +168,34 @@ def _(mo):
         *Guide to controlling floating-point precision on TPU.*
     *   **[Strict SPMD Synchronization](?file=spmd_synchronization.py)**
         *Why all ranks must execute the same graph*
+    """)
+  return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+  mo.md(r"""
+    <div id="custom_ops"></div>
+
+    ### 🚀 Advanced: Custom Ops and Kernels
+    Extend PyTorch on TPU from basic composition to low-level Pallas kernels. This progressive guide walks through different mechanisms to extend PyTorch functionality, starting with the easiest composition approach and gradually building up towards the most powerful and complex TPU hardware-level vector kernels.
+
+    *   **[Extending Modules via Composition](?file=extending_modules_and_functions_via_composition.py)**
+        *Quantization Aware Training via module composition*
+    *   **[Customizing Autograd via torch.autograd.Function](?file=customizing_autograd_via_torch_autograd_function.py)**
+        *Defining custom backward passes with torch.autograd.Function*
+    *   **[Background on ATen Ops](?file=background_on_aten_ops.py)**
+        *Enabling aot_graphs logging to view intermediate ATen IR*
+    *   **[Background on torch.compile](?file=background_on_torch_compile.py)**
+        *Concept of operator fusion and memory bottlenecks*
+    *   **[Background on torch.compile on TPUs via XLA](?file=background_on_torch_compile_on_tpus_via_xla.py)**
+        *Dumping and inspecting TPU HLO & LLO vector instructions*
+    *   **[Custom Ops via JAX Kernels](?file=quantized_sum.py)**
+        *General custom ops concepts and wrapping JAX popcnt*
+    *   **[Custom Ops via Pallas: Python Baseline](?file=quant.py)**
+        *Quantization and packing unoptimized baseline in Python*
+    *   **[Custom Ops via Pallas: TPU Kernel](?file=custom_ops_via_pallas.py)**
+        *Writing high-performance binarization and packing vector kernels in Pallas*
     """)
   return
 

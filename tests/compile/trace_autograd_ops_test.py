@@ -150,6 +150,8 @@ class TraceAutogradOpsTest(parameterized.TestCase):
   def setUpClass(cls):
     super().setUpClass()
     cls.tpu_device = torch.device('tpu')
+    # Turn on excess precision to match users' optimal setting for performance.
+    torch.backends.tpu.allow_excess_precision = True  # pytype: disable=module-attr
     cls.base_model, cls.inputs = create_model_and_input()
     # Establish a 'Ground Truth' on CPU to compare TPU results against
     cls.cpu_config = RunConfig(
@@ -159,7 +161,7 @@ class TraceAutogradOpsTest(parameterized.TestCase):
         include_bwd=False,
         should_compile=False,
     )
-    cls.cpu_config.loss = execute_training_step(cls.cpu_config)
+    cls.cpu_config.loss = execute_training_step(cls.cpu_config)  # pyrefly: ignore[missing-attribute]
 
   @parameterized.named_parameters(
       dict(
@@ -199,11 +201,11 @@ class TraceAutogradOpsTest(parameterized.TestCase):
     )
 
     with torch._dynamo.config.patch(trace_autograd_ops=trace_autograd_ops):
-      tpu_config.loss = execute_training_step(tpu_config)
+      tpu_config.loss = execute_training_step(tpu_config)  # pyrefly: ignore[missing-attribute]
 
     all_tensors_are_close_to_reference(
-        tpu_config.loss,
-        self.cpu_config.loss,
+        tpu_config.loss,  # pyrefly: ignore[missing-attribute]
+        self.cpu_config.loss,  # pyrefly: ignore[missing-attribute]
     )
 
     for name, cpu_param in self.cpu_config.model.named_parameters():

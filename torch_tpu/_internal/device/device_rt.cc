@@ -16,14 +16,18 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "ATen/core/Generator.h"
+#include "absl/base/nullability.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/time/time.h"
 #include "c10/core/Device.h"
+#include "c10/core/Stream.h"
 #include "c10/core/TensorImpl.h"
 #include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "pybind11/chrono.h"
@@ -37,10 +41,11 @@
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/discovery.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/excess_precision.h"
 #include "torch_tpu/eager/device_gen_impl.h"
+#include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/tpu_hooks.h"
-#include "torch_tpu/experimental/eager/materialize_new.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/pjrt/pjrt_client.h"
 
@@ -49,6 +54,29 @@ namespace torch_tpu {
 namespace py = pybind11;
 
 namespace {
+
+// A wrapper around a TPU event snapshot to be returned to Python.
+// This mostly exists so that the methods can throw errors, rather than return
+// a status.
+class PyTpuEventBase {
+ public:
+  explicit PyTpuEventBase(
+      absl_nonnull std::shared_ptr<EventSnapshot> event_snapshot)
+      : event_snapshot_(std::move(event_snapshot)) {}
+
+  // Wait for the event snapshot to complete.
+  void Wait() { TT_THROW_IF_ERROR(event_snapshot_->Wait()); }
+
+  // Query whether the event snapshot has completed.
+  bool Query() {
+    TT_ASSIGN_OR_THROW(bool is_ready, event_snapshot_->Query());
+    return is_ready;
+  }
+
+ private:
+  // The wrapped event snapshot.
+  absl_nonnull std::shared_ptr<EventSnapshot> event_snapshot_;
+};
 
 void PySynchronize(std::optional<int> device_index) {
   const c10::impl::DeviceGuardImplInterface* impl =
@@ -63,8 +91,8 @@ void PySynchronize(std::optional<int> device_index) {
   impl->synchronizeDevice(index);
 }
 
-int64_t PyRecordEvent(std::optional<int> device_index,
-                      std::optional<int64_t> stream_id) {
+PyTpuEventBase PyRecordEvent(std::optional<int> device_index,
+                             std::optional<int64_t> stream_id) {
   const c10::impl::DeviceGuardImplInterface* impl =
       c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
   TT_CHECK_THROW(impl != nullptr, error::kInternal)
@@ -82,7 +110,7 @@ int64_t PyRecordEvent(std::optional<int> device_index,
         impl->getStream(c10::Device(GetPrivateUse1DeviceType(), index));
     id = current_stream.id();
   }
-  return RecordEventSnapshot(index, id);
+  return PyTpuEventBase(EventSnapshot::Record(index, id));
 }
 
 void InitRuntimeOptions(const std::string& device_type) {
@@ -96,17 +124,6 @@ void InitRuntimeOptions(const std::string& device_type) {
            GetPremappedBufferSizeFromEnvOnce().value_or(0)});
   ABSL_LOG(INFO) << "PjRt runtime initialization deferred for " << device_type;
   CompilationCache::GetInstance().SetOptions({});
-}
-
-void PyWaitEventSnapshot(int64_t event_id) {
-  TT_THROW_IF_ERROR(WaitEventSnapshot(event_id)).SetPrepend()
-      << "failed waiting for event snapshot: ";
-}
-
-bool PyQueryEventSnapshot(int64_t event_id) {
-  TT_ASSIGN_OR_THROW(bool is_ready, QueryEventSnapshot(event_id),
-                     _.SetPrepend() << "failed querying event snapshot: ");
-  return is_ready;
 }
 
 int64_t PyGetCurrentStreamId(std::optional<int> device_index) {
@@ -148,8 +165,9 @@ void PySynchronizeStream(int64_t stream_id, std::optional<int> device_index) {
                                ? static_cast<c10::DeviceIndex>(*device_index)
                                : impl->getDevice().index();
 
+  // TODO(bawilson): don't sync streams other than the requested one.
   TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kYes));
-  PjrtBackend::GetInstance().SynchronizeStream(index, stream_id);
+  SynchronizeStream(index, stream_id);
 }
 
 }  // namespace
@@ -174,7 +192,7 @@ PYBIND11_MODULE(_device_ops_backend, m) {
   m.def(
       "_shutdown_runtime",
       []() {
-        ShutDownNewMaterializationState();
+        ShutDownMaterializationState();
         CompilationCache::ShutDown();
         PjrtBackend::GetInstance().Shutdown();
       },
@@ -198,20 +216,17 @@ PYBIND11_MODULE(_device_ops_backend, m) {
         "Blocks until all async d2h copies and deferred operations on the "
         "specified device have completed.");
 
+  py::class_<PyTpuEventBase, py::smart_holder>(m, "TpuEventBase")
+      .def("wait", &PyTpuEventBase::Wait,
+           py::call_guard<py::gil_scoped_release>(),
+           "Blocks until the recorded event snapshot has completed.")
+      .def("query", &PyTpuEventBase::Query,
+           "Returns whether the recorded event snapshot has completed.");
+
   m.def("_record_event", &PyRecordEvent, py::arg("device_index") = py::none(),
         py::arg("stream_id") = py::none(),
         "Records a fence over async d2h copies already enqueued on the "
         "specified device and stream.");
-
-  m.def("_wait_event", &PyWaitEventSnapshot, py::arg("event_id"),
-        py::call_guard<py::gil_scoped_release>(),
-        "Blocks until the recorded event snapshot has completed.");
-
-  m.def("_query_event", &PyQueryEventSnapshot, py::arg("event_id"),
-        "Returns whether the recorded event snapshot has completed.");
-
-  m.def("_release_event", &ReleaseEventSnapshot, py::arg("event_id"),
-        "Releases the recorded event snapshot.");
 
   m.def(
       "_get_current_device_id",

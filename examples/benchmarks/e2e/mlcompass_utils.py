@@ -17,6 +17,7 @@
 from absl import logging
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import common
 
 from torch_tpu._internal.shims.mlcompass import benchmark_data as benchmark_data_lib
 from torch_tpu._internal.shims.mlcompass import export_lib_borg
@@ -29,7 +30,7 @@ TEAM_NAME = "torch_tpu"
 
 
 def get_mlcompass_test_name(
-    platform: benchmark_utils.Platform,
+    platform: common.Platform,
     test_method_name: str,
     benchmark_name: str,
 ) -> str:
@@ -39,7 +40,7 @@ def get_mlcompass_test_name(
 
 # TODO(b/470090396): Export to MLCompass for quality benchmarking as well.
 def export_to_mlcompass(
-    platform: benchmark_utils.Platform,
+    platform: common.Platform,
     metrics: benchmark_utils.BenchmarkResultInterface | None,
     base_cl: str | None,
     mlcompass_tracking_id: str,

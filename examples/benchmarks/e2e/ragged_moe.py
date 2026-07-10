@@ -81,7 +81,7 @@ class RaggedMoeQwen3(torch.nn.Module):
         / math.sqrt(config.moe_intermediate_size)
     )
 
-    self.ragged_dot_impl = torch.ops.torch_tpu.ragged_dot
+    self.ragged_dot_impl = torch.ops.tpu.ragged_dot
 
   def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     batch_size, sequence_length, hidden_size = hidden_states.shape
@@ -194,7 +194,7 @@ class RaggedExpertsGemma4(torch.nn.Module):
     )
 
     self.act_fn = activations.ACT2FN[config.hidden_activation]
-    self.ragged_dot_impl = torch.ops.torch_tpu.ragged_dot
+    self.ragged_dot_impl = torch.ops.tpu.ragged_dot
 
   def forward(
       self,

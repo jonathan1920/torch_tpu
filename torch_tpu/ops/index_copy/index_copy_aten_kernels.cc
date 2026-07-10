@@ -29,65 +29,31 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/index_copy/index_copy.h"
+#include "torch_tpu/ops/index_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
 namespace {
 
-absl::StatusOr<int64_t> ValidateIndexCopyInputsAndGetDim(
-    const at::Tensor& self, int64_t dim, const at::Tensor& index,
-    const at::Tensor& source) {
-  TT_RET_CHECK(index.dim() == 1, error::kInvalidArgument)
-      << "index must be 1D, got shape " << index.sizes();
-  if (self.dim() == 0) {
-    TT_RET_CHECK(dim == 0, error::kInvalidArgument)
-        << "dim must be 0 for scalar input, got " << dim;
-    TT_RET_CHECK(source.dim() == 0, error::kInvalidArgument)
-        << "source shape must match self shape, excluding the specified "
-           "dimension, got source shape "
-        << source.sizes() << " and self shape " << self.sizes();
-    TT_RET_CHECK(index.size(0) == 1, error::kInvalidArgument)
-        << "index must be 1D of size 1 for scalar input, got shape "
-        << index.sizes();
-    return dim;
-  }
-
-  TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.dim()));
-
-  TT_RET_CHECK(source.dim() == self.dim(), error::kInvalidArgument)
-      << "self and source must have the same number of dimensions, got "
-      << self.dim() << " and " << source.dim();
-  TT_RET_CHECK(source.size(dim) == index.size(0), error::kInvalidArgument)
-      << "source must have the same number of elements as the index along "
-         "dimension "
-      << dim << ", got " << source.size(dim) << " and " << index.size(0);
-  for (int i = 0; i < self.dim(); ++i) {
-    if (i != dim) {
-      TT_RET_CHECK(self.size(i) == source.size(i), error::kInvalidArgument)
-          << "self and source must have the same size along dimension " << i
-          << ", got " << self.size(i) << " and " << source.size(i);
-    }
-  }
-  return dim;
-}
-
 absl::StatusOr<DeviceBufferRef> IndexCopy(const at::Tensor& self, int64_t dim,
                                           const at::Tensor& index,
                                           const at::Tensor& source,
-                                          at::Tensor& out,
                                           OpParamCacheKeys param_keys) {
-  TT_ASSIGN_OR_RETURN(
-      dim, ValidateIndexCopyInputsAndGetDim(self, dim, index, source));
+  TT_ASSIGN_OR_RETURN(dim,
+                      ValidateIndexInputsAndGetDim(self, dim, index, source));
 
   at::ScalarType promoted_scalar_type =
       c10::promoteTypes(self.scalar_type(), source.scalar_type());
@@ -101,8 +67,8 @@ absl::StatusOr<DeviceBufferRef> IndexCopy(const at::Tensor& self, int64_t dim,
       };
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
-                      ConvertTo<mlir::ElementType>(out.scalar_type()));
-  absl::Span<const int64_t> output_dims = out.sizes();
+                      ConvertTo<mlir::ElementType>(self.scalar_type()));
+  Dimensions output_dims = CopyIntVector(self.sizes());
 
   return DispatchOp<3>(std::move(index_copy_op_builder), {self, index, source},
                        {.out_dtype = output_dtype,
@@ -117,9 +83,10 @@ at::Tensor& AtenIndexCopyOut(const at::Tensor& self, int64_t dim,
                              at::Tensor& out) {
   TT_KERNEL(
       OpName::kIndexCopyOut, param_keys, (self, dim, index, source, out), {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
-            IndexCopy(self, dim, index, source, out, std::move(param_keys)));
+            IndexCopy(self, dim, index, source, std::move(param_keys)));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });

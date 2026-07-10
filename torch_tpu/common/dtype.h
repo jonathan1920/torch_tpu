@@ -139,6 +139,13 @@ int64_t TorchEquivalentBitwidth(mlir::ElementType element_type);
 // otherwise returns the input type itself.
 mlir::ElementType RealComponentOf(mlir::ElementType element_type);
 
+// Returns the accumulation type for the given scalar type.
+// We mimic CUDA's accumulation behavior (e.g. promoting Float16/BFloat16 to
+// Float32) instead of CPU's behavior because TPUs, like GPUs, benefit from
+// higher precision accumulation for numerical stability in low-precision
+// training and inference.
+[[nodiscard]] at::ScalarType ToAccumulateType(at::ScalarType type);
+
 namespace internal {
 
 // Fingerprint specialization for `mlir::ElementType`.

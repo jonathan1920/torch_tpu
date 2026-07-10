@@ -24,7 +24,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -42,8 +41,7 @@ absl::StatusOr<DeviceBufferRef> CopyCpuToTpuBuffer(const at::Tensor& src,
   at::Tensor contiguous_src_for_tpu = src.contiguous();
   ABSL_VLOG(1) << "[AtenCopyFrom] CPU -> TPU: Ensured CPU tensor is "
                   "contiguous with dtype "
-               << c10::toString(src.scalar_type())
-               << ". Tensor: " << ToString(src);
+               << ToString(src.scalar_type()) << ". Tensor: " << ToString(src);
 
   TT_ASSIGN_OR_RETURN(
       const auto dtype,
@@ -71,8 +69,8 @@ absl::Status CopyCpuToTpu(const at::Tensor& src, const at::Tensor& dest,
   if (src.scalar_type() != dest.scalar_type()) {
     ABSL_VLOG(1) << "[AtenCopyFrom] CPU -> TPU: Converting CPU tensor "
                     "dtype from "
-                 << c10::toString(src.scalar_type()) << " to "
-                 << c10::toString(dest.scalar_type());
+                 << ToString(src.scalar_type()) << " to "
+                 << ToString(dest.scalar_type());
     // Do the type conversion on the host before transfer.
     src_with_dest_dtype = src.to(dest.scalar_type());
   }

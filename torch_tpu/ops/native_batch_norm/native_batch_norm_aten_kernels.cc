@@ -355,34 +355,36 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeBatchNormLegit(
     const at::Tensor& input, const std::optional<at::Tensor>& weight,
     const std::optional<at::Tensor>& bias, at::Tensor& running_mean,
     at::Tensor& running_variance, bool training, double momentum, double eps) {
-  TT_KERNEL(OpName::kNativeBatchNormLegit, _,
-            (input, IgnoreInCacheKey(weight, "Legacy usage"),
-             IgnoreInCacheKey(bias, "Legacy usage"), running_mean,
-             running_variance, IgnoreInCacheKey(training, "Legacy usage"),
-             IgnoreInCacheKey(momentum, "Legacy usage"),
-             IgnoreInCacheKey(eps, "Legacy usage")),
-            {
-              return AtenNativeBatchNorm(input, weight, bias, running_mean,
-                                         running_variance, training, momentum,
-                                         eps);
-            });
+  TT_KERNEL(
+      OpName::kNativeBatchNormLegit, _,
+      (input, IgnoreInCacheKey(weight, "Delegates to AtenNativeBatchNorm"),
+       IgnoreInCacheKey(bias, "Delegates to AtenNativeBatchNorm"), running_mean,
+       running_variance,
+       IgnoreInCacheKey(training, "Delegates to AtenNativeBatchNorm"),
+       IgnoreInCacheKey(momentum, "Delegates to AtenNativeBatchNorm"),
+       IgnoreInCacheKey(eps, "Delegates to AtenNativeBatchNorm")),
+      {
+        return AtenNativeBatchNorm(input, weight, bias, running_mean,
+                                   running_variance, training, momentum, eps);
+      });
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeBatchNormLegitNoStats(
     const at::Tensor& input, const std::optional<at::Tensor>& weight,
     const std::optional<at::Tensor>& bias, bool training, double momentum,
     double eps) {
-  TT_KERNEL(OpName::kNativeBatchNormLegitNoStats, _,
-            (input, IgnoreInCacheKey(weight, "Legacy usage"),
-             IgnoreInCacheKey(bias, "Legacy usage"),
-             IgnoreInCacheKey(training, "Legacy usage"),
-             IgnoreInCacheKey(momentum, "Legacy usage"),
-             IgnoreInCacheKey(eps, "Legacy usage")),
-            {
-              return AtenNativeBatchNorm(
-                  input, weight, bias, /*running_mean=*/std::nullopt,
-                  /*running_variance=*/std::nullopt, training, momentum, eps);
-            });
+  TT_KERNEL(
+      OpName::kNativeBatchNormLegitNoStats, _,
+      (input, IgnoreInCacheKey(weight, "Delegates to AtenNativeBatchNorm"),
+       IgnoreInCacheKey(bias, "Delegates to AtenNativeBatchNorm"),
+       IgnoreInCacheKey(training, "Delegates to AtenNativeBatchNorm"),
+       IgnoreInCacheKey(momentum, "Delegates to AtenNativeBatchNorm"),
+       IgnoreInCacheKey(eps, "Delegates to AtenNativeBatchNorm")),
+      {
+        return AtenNativeBatchNorm(
+            input, weight, bias, /*running_mean=*/std::nullopt,
+            /*running_variance=*/std::nullopt, training, momentum, eps);
+      });
 }
 
 std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenNativeBatchNormLegitOut(

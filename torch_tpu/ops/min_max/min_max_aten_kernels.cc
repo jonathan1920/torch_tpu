@@ -15,6 +15,7 @@
 #include "torch_tpu/ops/min_max/min_max_aten_kernels.h"
 
 #include <cstdint>
+#include <optional>
 #include <tuple>
 #include <utility>
 
@@ -22,12 +23,9 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Fill.h"
 #include "ATen/native/ReduceOpsUtils.h"
-#include "ATen/native/Resize.h"
-#include "ATen/ops/empty.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "c10/core/ScalarType.h"
 #include "c10/util/DimVector.h"
 #include "c10/util/Optional.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -39,6 +37,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -47,8 +46,31 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/reductions/reductions.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
+
+absl::StatusOr<DeviceBufferRef> DispatchUnaryMinMax(
+    const at::Tensor& self, MinMaxOp op, std::optional<OpName> op_name) {
+  Dimensions out_dims = {};  // Scalar out shape.
+
+  TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype,
+                      ConvertTo<mlir::ElementType>(self.scalar_type()));
+
+  auto op_builder =
+      [op](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<1>> {
+    TT_ASSIGN_OR_RETURN(auto min_max_outputs,
+                        BuildMinMaxShlo(/*dim=*/c10::nullopt, op,
+                                        ReductionMode::kDropDims, input));
+    return {min_max_outputs.values};
+  };
+
+  return DispatchOp<1>(std::move(op_builder), self,
+                       {.op_name = op_name,
+                        .out_dtype = output_dtype,
+                        .out_dims = std::move(out_dims),
+                        .op_param_cache_keys = OpParamCacheKeys::Empty()});
+}
 
 namespace {
 
@@ -104,6 +126,17 @@ absl::Status CheckNotZeroElementTensor(const at::Tensor& tensor) {
   return absl::OkStatus();
 }
 
+absl::Status UnaryMinMax(const at::Tensor& self, MinMaxOp op, at::Tensor& out) {
+  TT_RET_CHECK(IsPrivateUse1Device(out), error::kInvalidArgument)
+      << "expected output tensor to be on " << GetPrivateUse1DeviceDebugName()
+      << ", got " << out.device();
+
+  TT_ASSIGN_OR_RETURN(auto result_buf, DispatchUnaryMinMax(self, op));
+
+  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, {}));
+  return AssignBufferToAtTensor(std::move(result_buf), out);
+}
+
 }  // namespace
 
 absl::Status ArgMinMax(const at::Tensor& self, c10::optional<int64_t> dim,
@@ -116,21 +149,18 @@ absl::Status ArgMinMax(const at::Tensor& self, c10::optional<int64_t> dim,
       << "expected the output dtype to be int64, got "
       << ToString(out.scalar_type());
 
-  at::Tensor
-      input_tensor;  // UNINITIALIZED_TENSOR_OK=initialized in the if-else
-  int64_t wrapped_dim;
+  at::Tensor input_tensor = self;
+  c10::optional<int64_t> wrapped_dim_opt;
+  c10::DimVector out_shape;
   if (dim) {
-    input_tensor = self;
-    TT_ASSIGN_OR_RETURN(wrapped_dim, SafeWrapDim(dim.value(), self.dim()));
-    auto sizes = input_tensor.sizes();
-    if (sizes[wrapped_dim] == 1) {
-      out.fill_(0);
-      return absl::OkStatus();
-    }
+    TT_ASSIGN_OR_RETURN(int64_t wrapped_dim,
+                        SafeWrapDim(dim.value(), self.dim()));
+    out_shape = at::meta::get_reduction_shape(self, {wrapped_dim}, keep_dim);
+    wrapped_dim_opt = wrapped_dim;
   } else {
-    input_tensor = self.flatten();
-    wrapped_dim = 0;
+    out_shape = keep_dim ? c10::DimVector(self.dim(), 1) : c10::DimVector();
   }
+
   // native PyTorch works for complex and bool dtypes only when the input
   // dimension corresponding to the wrapped dimension is 1. All other cases are
   // not supported. Hence, this check is after the above logic to handle the
@@ -140,24 +170,16 @@ absl::Status ArgMinMax(const at::Tensor& self, c10::optional<int64_t> dim,
       << "expected the input dtype to be neither complex nor bool, got "
       << ToString(self.scalar_type());
 
-  // If the input tensor is a scalar, then argmax should just return 0.
-  if (self.dim() == 0) {
-    out.fill_(0);
-    return absl::OkStatus();
-  }
-
-  c10::DimVector out_shape = at::meta::get_reduction_shape(
-      input_tensor, {wrapped_dim}, keep_dim, /*allow_empty_dims=*/false);
   Dimensions out_dims = CopyIntVector(out_shape);
 
   ReductionMode mode =
       keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
 
   auto op_builder =
-      [wrapped_dim, op,
+      [wrapped_dim_opt, op,
        mode](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<1>> {
     TT_ASSIGN_OR_RETURN(auto min_max_outputs,
-                        BuildMinMaxShlo(wrapped_dim, op, mode, input));
+                        BuildMinMaxShlo(wrapped_dim_opt, op, mode, input));
     return {min_max_outputs.indices};
   };
 
@@ -168,61 +190,42 @@ absl::Status ArgMinMax(const at::Tensor& self, c10::optional<int64_t> dim,
                      .out_dims = std::move(out_dims),
                      .op_param_cache_keys = std::move(param_keys)}));
 
-  at::native::resize_output(out, out_shape);
+  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, out_shape));
   return AssignBufferToAtTensor(std::move(result_buf), out);
 }
 
 at::Tensor& AtenArgmaxOut(const at::Tensor& self, c10::optional<int64_t> dim,
                           bool keep_dim, at::Tensor& out) {
-  TT_KERNEL(OpName::kArgMaxOut, _,
-            (self, IgnoreInCacheKey(dim, "Legacy usage"),
-             IgnoreInCacheKey(keep_dim, "Legacy usage"), out),
-            {
-              // keep_dim does not affect the SHLO and therefore does not need
-              // to be included in the cache key.
-              TT_ASSIGN_OR_THROW(
-                  auto param_keys,
-                  *OpParamCacheKeysBuilder().SetParam("dim", dim));
-
-              TT_THROW_IF_ERROR(ArgMinMax(self, dim, keep_dim, MinMaxOp::kMax,
-                                          out, std::move(param_keys)));
-              return out;
-            });
+  TT_KERNEL(OpName::kArgMaxOut, param_keys, (self, dim, keep_dim, out), {
+    TT_THROW_IF_ERROR(ArgMinMax(self, dim, keep_dim, MinMaxOp::kMax, out,
+                                std::move(param_keys)));
+    return out;
+  });
 }
 
 at::Tensor& AtenArgminOut(const at::Tensor& self, c10::optional<int64_t> dim,
                           bool keep_dim, at::Tensor& out) {
-  TT_KERNEL(OpName::kArgMinOut, _,
-            (self, IgnoreInCacheKey(dim, "Legacy usage"),
-             IgnoreInCacheKey(keep_dim, "Legacy usage"), out),
-            {
-              // keep_dim does not affect the SHLO and therefore does not need
-              // to be included in the cache key.
-              TT_ASSIGN_OR_THROW(
-                  auto param_keys,
-                  *OpParamCacheKeysBuilder().SetParam("dim", dim));
-
-              TT_THROW_IF_ERROR(ArgMinMax(self, dim, keep_dim, MinMaxOp::kMin,
-                                          out, std::move(param_keys)));
-              return out;
-            });
+  TT_KERNEL(OpName::kArgMinOut, param_keys, (self, dim, keep_dim, out), {
+    TT_THROW_IF_ERROR(ArgMinMax(self, dim, keep_dim, MinMaxOp::kMin, out,
+                                std::move(param_keys)));
+    return out;
+  });
 }
 
 at::Tensor AtenMax(const at::Tensor& self) {
   TT_KERNEL(OpName::kMax, _, (self), {
     TT_THROW_IF_ERROR(CheckNotZeroElementTensor(self));
-    at::Tensor self_flat = self.reshape(-1);
-    at::Tensor max = at::empty({}, self.options());
-    at::Tensor max_indices = at::empty({}, self.options().dtype(at::kLong));
-    AtenMaxDimMax(self_flat, /*dim=*/0, /*keep_dim=*/false, /*max=*/max,
-                  /*max_indices=*/max_indices);
+    TT_ASSIGN_OR_THROW(at::Tensor max,
+                       MakeEmptyTensor({}, self.scalar_type(), self.device()));
+    TT_THROW_IF_ERROR(UnaryMinMax(self, MinMaxOp::kMax, max));
     return max;
   });
 }
 
 at::Tensor& AtenMaxUnaryOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kMaxUnaryOut, _, (self, out), {
-    out = AtenMax(self);
+    TT_THROW_IF_ERROR(CheckNotZeroElementTensor(self));
+    TT_THROW_IF_ERROR(UnaryMinMax(self, MinMaxOp::kMax, out));
     return out;
   });
 }
@@ -242,18 +245,17 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxDimMax(const at::Tensor& self,
 at::Tensor AtenMin(const at::Tensor& self) {
   TT_KERNEL(OpName::kMin, _, (self), {
     TT_THROW_IF_ERROR(CheckNotZeroElementTensor(self));
-    at::Tensor self_flat = self.reshape(-1);
-    at::Tensor min = at::empty({}, self.options());
-    at::Tensor min_indices = at::empty({}, self.options().dtype(at::kLong));
-    AtenMinDimMin(self_flat, /*dim=*/0, /*keep_dim=*/false, /*min=*/min,
-                  /*min_indices=*/min_indices);
+    TT_ASSIGN_OR_THROW(at::Tensor min,
+                       MakeEmptyTensor({}, self.scalar_type(), self.device()));
+    TT_THROW_IF_ERROR(UnaryMinMax(self, MinMaxOp::kMin, min));
     return min;
   });
 }
 
 at::Tensor& AtenMinUnaryOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kMinUnaryOut, _, (self, out), {
-    out = AtenMin(self);
+    TT_THROW_IF_ERROR(CheckNotZeroElementTensor(self));
+    TT_THROW_IF_ERROR(UnaryMinMax(self, MinMaxOp::kMin, out));
     return out;
   });
 }

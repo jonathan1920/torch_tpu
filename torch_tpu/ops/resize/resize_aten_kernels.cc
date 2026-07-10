@@ -39,7 +39,6 @@
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/as_strided/as_strided_aten_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
-#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/stride/stride_helper.h"
 #include "xla/shape_util.h"
@@ -119,13 +118,13 @@ const at::Tensor& AtenResize_(
     const at::Tensor& self, c10::IntArrayRef size,
     c10::optional<at::MemoryFormat> memory_format_opt) {
   TT_KERNEL(OpName::kResize_, _,
-            (self, IgnoreInCacheKey(size, "Legacy usage"),
-             IgnoreInCacheKey(memory_format_opt, "Legacy usage")),
+            (self, IgnoreInCacheKey(size, "Doesn't affect SHLO"),
+             IgnoreInCacheKey(memory_format_opt, "Doesn't affect SHLO")),
             {
               TT_CHECK_THROW(
                   !memory_format_opt.has_value() ||
                       *memory_format_opt == at::MemoryFormat::Contiguous,
-                  error::kUnimplemented)
+                  error::kPythonNotImplementedError)
                   << "non-contiguous memory formats are not yet supported";
 
               TT_THROW_IF_ERROR(ResizeTensor(self, size));

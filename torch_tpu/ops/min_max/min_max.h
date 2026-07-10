@@ -20,7 +20,9 @@
 #include <cstdint>
 
 #include "absl/status/statusor.h"
+#include "c10/util/Optional.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/ops/reductions/reductions.h"
 
 namespace torch_tpu {
@@ -35,8 +37,12 @@ struct MinMaxOutputs {
   mlir::MlirOp indices;
 };
 
-absl::StatusOr<MinMaxOutputs> BuildMinMaxShlo(int64_t dim, MinMaxOp op,
-                                              ReductionMode mode,
+// Builds a StableHLO reduction for min/max operations, returning both the
+// reduced values and the corresponding indices. If `dim` is `c10::nullopt`,
+// the reduction is performed over all dimensions (i.e., the input tensor is
+// flattened before reduction).
+absl::StatusOr<MinMaxOutputs> BuildMinMaxShlo(c10::optional<int64_t> dim,
+                                              MinMaxOp op, ReductionMode mode,
                                               mlir::MlirOp input_op);
 
 }  // namespace torch_tpu

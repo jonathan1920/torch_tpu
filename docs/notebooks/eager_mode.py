@@ -42,37 +42,41 @@ def _(mo):
   mo.md(r"""
     ## **Execution Modes**
 
-    TorchTPU provides three primary execution modes. By default, it operates in **Strict Eager** mode, which behaves similarly to standard PyTorch on CUDA.
+    TorchTPU provides three execution modes. By default, it operates in **Strict Eager** mode, which behaves similarly to standard PyTorch on CUDA.
 
     | Mode | Constant | Description |
     | :--- | :--- | :--- |
-    | **Strict Eager** | `EagerMode.DEFER_NEVER` | **The default mode.** Operations are dispatched to the hardware immediately. Simplest for debugging and aligns with CUDA behavior. |
-    | **Fused Eager** | `EagerMode.DEFER_AND_FUSE` | **Optimized mode.** Groups multiple operations together, allowing the XLA compiler to optimize across operation boundaries for high performance. |
-    | **Debug Eager** | `EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING` | **Synchronous mode.** Executes operations immediately and waits for completion. Best for pinpointing exactly which line caused a hardware error. |
+    | **Strict Eager** | `EagerMode.DEFER_NEVER` | **The default mode.** Operations are dispatched one at a time and the execution is asynchronous. This aligns with standard PyTorch Eager mode on GPU. |
+    | **Debug Eager** | `EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING` | **Synchronous mode.** Operations are dispatched one at a time but execution is synchronous. This mode can also be enabled with the TPU_LAUNCH_BLOCKING="1" environment variable. This execution mode is similar to the CUDA_LAUNCH_BLOCKING environment variable. |
+    | **Fused Eager** | `EagerMode.DEFER_AND_FUSE` | **Optimized mode.** Groups multiple operations together, allowing the XLA compiler to fuse across operation boundaries for high performance. This mode can also be enabled with the TPU_DEFER_AND_FUSE="1" environment variable.|
+
 
     ### **Switching Modes**
-    You can change the execution mode globally or locally using the `eager_mode` context manager:
+    You can change the execution mode in two ways:
+
+    #### **1. Globally (for the entire session)**
+    Assign the desired mode to the `eager_mode` property:
 
     ```python
     from torch_tpu._internal import execution_mode as em
 
-    # Enable Fused Eager for a specific block of code
-    with em.eager_mode(em.EagerMode.DEFER_AND_FUSE):
+    # Switch to Strict Eager globally
+    em.eager_mode = em.EagerMode.DEFER_NEVER
+    ```
+
+    #### **2. Locally (using a context manager)**
+    Use `set_eager_mode` to temporarily override the mode for a block of code:
+
+    ```python
+    from torch_tpu._internal import execution_mode as em
+
+    # Force every operation to execute immediately for this block
+    with em.set_eager_mode(em.EagerMode.DEFER_NEVER):
+        # Now you can pinpoint the exact line where an error occurs
         output = model(input_data)
     ```
     """)
   return
-
-
-@app.cell
-def init():
-  import torch
-  from torch_tpu import api
-  from torch_tpu._internal import execution_mode as em
-
-  # Standard hardware initialization
-  api.tpu_device()
-  return em, torch
 
 
 @app.cell(hide_code=True)
@@ -80,49 +84,57 @@ def _(mo):
   mo.md(r"""
     ## **Demonstrating the Difference**
 
-    In **Strict Eager** (default), operations happen one by one. In **Fused Eager**, operations are recorded into a graph and only executed when necessary (materialization) or when a large enough block is formed.
+    In **Strict Eager** (default), operations are executed one at a time. In **Fused Eager**, operations are deferred and only executed as larger chunks as necessary.
     """)
   return
 
 
 @app.cell
-def modes_demo(em, torch):
-  from torch_tpu._internal.sync import sync
+def _(torch):
+  import torch
 
-  def check_fusion(mode_name, mode):
-    print(f"--- Mode: {mode_name} ---")
-    with em.eager_mode(mode):
-      # Perform a simple calculation
-      x = torch.ones((2, 2), device="tpu")
-      y = x + 1
-      z = y * 2
+  # Standard hardware initialization
+  device = torch.device("tpu")
+  import time
+  from torch_tpu._internal import execution_mode as em
 
-      # computation_mlir returns the StableHLO graph for the given tensor.
-      # If fused, it will contain 'add' and 'multiply' operations.
-      mlir = sync.computation_mlir(z)
-      has_add = "stablehlo.add" in mlir
-      has_mul = "stablehlo.multiply" in mlir
+  # Use a large tensor to make memory bandwidth the bottleneck
+  size = 5000
+  iterations = 50
+  x = torch.randn(size, size, device="tpu", dtype=torch.bfloat16)
 
-      print(f"  Graph contains 'add' op: {has_add}")
-      print(f"  Graph contains 'multiply' op: {has_mul}")
+  def run_benchmark():
+    y = x
+    for _ in range(iterations):
+      # These operations will be fused in Fused Eager mode
+      y = y + 1.0
+      y = y * 2.0
+      y = y - 1.0
+    # Transferring to CPU triggers the execution of all deferred ops
+    return y.cpu()
 
-      if mode == em.EagerMode.DEFER_AND_FUSE:
-        print(
-            "  Status: Operations are FUSED into a single graph for"
-            " optimization."
-        )
-      else:
-        print(
-            "  Status: Operations were DISPATCHED immediately (standard eager)."
-        )
-    print()
+  # --- Warmup ---
+  # Trigger compilation for Fused Eager before measuring
+  with em.set_eager_mode(em.EagerMode.DEFER_AND_FUSE):
+    _ = run_benchmark()
 
-  # Default Behavior
-  check_fusion("Strict Eager (DEFER_NEVER)", em.EagerMode.DEFER_NEVER)
+  # --- Measure Fused Eager (DEFER_AND_FUSE) ---
+  with em.set_eager_mode(em.EagerMode.DEFER_AND_FUSE):
+    t0 = time.time()
+    _ = run_benchmark()
+    time_fused = time.time() - t0
 
-  # Performance Behavior
-  check_fusion("Fused Eager (DEFER_AND_FUSE)", em.EagerMode.DEFER_AND_FUSE)
+  # --- Measure Strict Eager (DEFER_NEVER) ---
+  with em.set_eager_mode(em.EagerMode.DEFER_NEVER):
+    # Warmup for strict mode (ensures execution path is ready)
+    _ = run_benchmark()
+    t0 = time.time()
+    _ = run_benchmark()
+    time_strict = time.time() - t0
 
+  print(f"Fused Eager (DEFER_AND_FUSE) Time: {time_fused:.4f} seconds")
+  print(f"Strict Eager (DEFER_NEVER) Time: {time_strict:.4f} seconds")
+  print(f"Speedup: {time_strict / time_fused:.1f}x")
   return
 
 

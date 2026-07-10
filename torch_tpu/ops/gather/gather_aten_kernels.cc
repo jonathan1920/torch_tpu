@@ -39,6 +39,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -47,7 +48,7 @@ absl::StatusOr<DeviceBufferRef> Gather(const at::Tensor& self, int64_t dim,
                                        const at::Tensor& index,
                                        bool sparse_grad,
                                        OpParamCacheKeys&& param_keys) {
-  TT_RET_CHECK(sparse_grad == false, error::kUnimplemented)
+  TT_RET_CHECK(sparse_grad == false, error::kPythonNotImplementedError)
       << "sparse_grad is not yet supported";
 
   TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.dim()));
@@ -88,6 +89,7 @@ at::Tensor& AtenGatherOut(const at::Tensor& self, int64_t dim,
                           at::Tensor& out) {
   TT_KERNEL(
       OpName::kGatherOut, param_keys, (self, dim, index, sparse_grad, out), {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, index.sizes()));
         TT_ASSIGN_OR_THROW(auto result, Gather(self, dim, index, sparse_grad,
                                                std::move(param_keys)));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));

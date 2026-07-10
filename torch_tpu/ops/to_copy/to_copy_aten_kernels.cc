@@ -46,18 +46,19 @@ at::Tensor AtenToCopy(const at::Tensor& self,
       // Note: these cache key arguments are ignored for the compiled param keys
       // because this kernel is a special case that is not "dispatched" since
       // it's not compiled.
-      (self, IgnoreInCacheKey(dtype, "Legacy usage"),
-       IgnoreInCacheKey(layout, "Legacy usage"),
-       IgnoreInCacheKey(device, "Legacy usage"),
-       IgnoreInCacheKey(pin_memory, "Legacy usage"),
-       IgnoreInCacheKey(non_blocking, "Legacy usage"),
-       IgnoreInCacheKey(memory_format, "Legacy usage")),
+      (self, IgnoreInCacheKey(dtype, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(layout, "Unused"),
+       IgnoreInCacheKey(device, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(pin_memory, "Unused"),
+       IgnoreInCacheKey(non_blocking, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(memory_format, "Doesn't affect SHLO")),
       {
         at::Device target_device = device.value_or(self.device());
         at::ScalarType target_dtype = dtype.value_or(self.scalar_type());
         at::MemoryFormat resolved_format =
             memory_format.value_or(at::MemoryFormat::Preserve);
-        if (resolved_format == at::MemoryFormat::Preserve) {
+        bool preserve_strides = resolved_format == at::MemoryFormat::Preserve;
+        if (preserve_strides) {
           resolved_format = self.suggest_memory_format();
         }
 
@@ -80,7 +81,8 @@ at::Tensor AtenToCopy(const at::Tensor& self,
         at::TensorOptions options =
             at::TensorOptions().dtype(target_dtype).device(target_device);
         at::Tensor dest;  // UNINITIALIZED_TENSOR_OK=initialized in the if-else
-        if (!self.is_contiguous() && self.is_non_overlapping_and_dense()) {
+        if (preserve_strides && !self.is_contiguous() &&
+            self.is_non_overlapping_and_dense()) {
           dest = at::empty_strided(self.sizes(), self.strides(), options);
         } else {
           dest = at::empty(self.sizes(), options, resolved_format);

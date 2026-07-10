@@ -34,31 +34,35 @@ class TpuBackendConfigTest(parameterized.TestCase):
   def test_allow_excess_precision(self, allow: bool, expected_value: float):
     """Tests global torch.backends.tpu.allow_excess_precision API."""
     # pytype: disable=module-attr
-    # Default value is True.
-    self.assertIs(torch.backends.tpu.allow_excess_precision, True)
+    original_allow = torch.backends.tpu.allow_excess_precision
+    try:
+      # Default value is False.
+      self.assertIs(torch.backends.tpu.allow_excess_precision, False)
 
-    torch.backends.tpu.allow_excess_precision = allow
-    self.assertIs(torch.backends.tpu.allow_excess_precision, allow)
-    # pytype: enable=module-attr
+      torch.backends.tpu.allow_excess_precision = allow
+      self.assertIs(torch.backends.tpu.allow_excess_precision, allow)
 
-    device = torch.device("tpu")
-    eps: float = torch.finfo(torch.bfloat16).eps
-    x_element = 1.0 + eps
-    x = torch.tensor(
-        [[x_element, 0.0], [0.0, x_element]],
-        device=device,
-        dtype=torch.bfloat16,
-    )
+      device = torch.device("tpu")
+      eps: float = torch.finfo(torch.bfloat16).eps
+      x_element = 1.0 + eps
+      x = torch.tensor(
+          [[x_element, 0.0], [0.0, x_element]],
+          device=device,
+          dtype=torch.bfloat16,
+      )
 
-    def run_compute():
-      with em.set_eager_mode(em.EagerMode.DEFER_AND_FUSE):
-        intermediate = torch.mm(x, x)
-        output = intermediate * torch.tensor(
-            [1.0], dtype=torch.float32, device=device
-        )
-      return output[0, 0]
+      def run_compute():
+        with em.set_eager_mode(em.EagerMode.DEFER_AND_FUSE):
+          intermediate = torch.mm(x, x)
+          output = intermediate * torch.tensor(
+              [1.0], dtype=torch.float32, device=device
+          )
+        return output[0, 0]
 
-    self.assertEqual(run_compute().cpu().item(), expected_value)
+      self.assertEqual(run_compute().cpu().item(), expected_value)
+    finally:
+      torch.backends.tpu.allow_excess_precision = original_allow
+      # pytype: enable=module-attr
 
 
 if __name__ == "__main__":

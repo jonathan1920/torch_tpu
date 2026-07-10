@@ -37,6 +37,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/ops/where/where.h"
 #include "xla/xla_data.pb.h"
 
@@ -103,7 +104,7 @@ at::Tensor& AtenWhereSelfOut(const at::Tensor& condition,
         << ToString(self.scalar_type()) << " and "
         << ToString(other.scalar_type()) << "), got "
         << ToString(out.scalar_type());
-    at::native::resize_output(out, output_dims);
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_dims));
 
     // No scalars to cache
 

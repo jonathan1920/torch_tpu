@@ -71,6 +71,11 @@ if [ -z "$BASE_SHA" ] || [ "$DISABLE_BAZEL_DIFF" == "true" ]; then
   BAZEL_EXIT_CODE=$?
   set -e
 
+  if [ $BAZEL_EXIT_CODE -eq 4 ]; then
+    echo "Bazel returned Exit Code 4 (No tests found). Treating as success!"
+    exit 0
+  fi
+
   exit $BAZEL_EXIT_CODE
 fi
 

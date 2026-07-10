@@ -143,9 +143,10 @@ absl::StatusOr<Dimensions> CanonicalizeDims(
   }
 
   if (rank == 0) {
-    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch catches this error first.
-        *dim == Dimensions{0} || *dim == Dimensions{-1}, error::kOutOfRange)
-        << "dim must be 0 or -1 for a scalar, got " << *dim;
+    for (const auto& d : *dim) {
+      TT_RET_CHECK(d == 0 || d == -1, error::kPythonIndexError)
+          << "expected dimension to be in range of [-1, 0], got " << d;
+    }
     return log_and_return({});
   }
 
@@ -156,15 +157,12 @@ absl::StatusOr<Dimensions> CanonicalizeDims(
   const int64_t min_value = -rank;
   const int64_t max_value = rank - 1;
   for (const auto& d : *dim) {
-    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch catches this error first.
-        d <= max_value && d >= min_value, error::kOutOfRange)
-        << "dim must be in range [" << min_value << ", " << max_value
-        << "], got " << d;
+    TT_RET_CHECK(d <= max_value && d >= min_value, error::kPythonIndexError)
+        << "expected dimension to be in range of [" << min_value << ", "
+        << max_value << "], got " << d;
     int64_t pos_dim = d < 0 ? d + rank : d;
-    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch catches this error first.
-        seen_dims.insert(pos_dim).second, error::kInvalidArgument)
-        << "dim must contain unique dimensions, got " << *dim << ", where "
-        << pos_dim << " appears multiple times";
+    TT_RET_CHECK(seen_dims.insert(pos_dim).second, error::kInvalidArgument)
+        << "dim " << pos_dim << " appears multiple times in the list of dims";
     canonical_dims.push_back(pos_dim);
   }
 

@@ -744,8 +744,11 @@ absl::StatusOr<mlir::MlirOp> InverseViewOperationShlo(
     pre_slice_values.push_back(std::move(pre_slice));
   }
 
-  // Run each stage backwards.
-  mlir::MlirOp curr_op = mutated_view;
+  // Run each stage backwards. Bitcast the mutated view to the base's writable
+  // dtype first so the backward inverse and slice merges run in a single dtype.
+  TT_ASSIGN_OR_RETURN(
+      mlir::MlirOp curr_op,
+      ViewSequenceShlo(mutated_view, inverse_view_operation.bitcast_view));
   for (auto i = inverse_view_operation.stages.size() - 1; i >= 0; --i) {
     // Apply the inverse view sequence to the post-slice value.
     TT_ASSIGN_OR_RETURN(curr_op,

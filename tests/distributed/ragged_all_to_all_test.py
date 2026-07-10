@@ -29,34 +29,37 @@ from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multi
 def run_ragged_all_to_all_test() -> None:
   dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
 
-  #  This is a single group of 4.
-  replica_groups = torch.tensor([[0, 1, 2, 3]], dtype=torch.int64).to("tpu")
+  output_offsets = torch.tensor([rank] * world_size, dtype=torch.int32).tpu()
 
-  # Correct output offsets for single group of 4: [rank, rank, rank, rank]
-  output_offsets = torch.tensor([rank, rank, rank, rank], dtype=torch.int32).to(
-      "tpu"
-  )
+  send_sizes = torch.tensor([1] * world_size, dtype=torch.int32).tpu()
+  input_offsets = torch.tensor(range(world_size), dtype=torch.int32).tpu()
+  recv_sizes = torch.tensor([1] * world_size, dtype=torch.int32).tpu()
 
-  send_sizes = torch.tensor([1, 1, 1, 1], dtype=torch.int32).to("tpu")
-  input_offsets = torch.tensor([0, 1, 2, 3], dtype=torch.int32).to("tpu")
-  recv_sizes = torch.tensor([1, 1, 1, 1], dtype=torch.int32).to("tpu")
+  offset = rank * world_size
+  operand = torch.arange(offset, offset + world_size, dtype=torch.int32).tpu()
+  output = torch.zeros(world_size, dtype=torch.int32).tpu()
 
-  operand = torch.full((4, 1, 128), rank, dtype=torch.int32).to("tpu")
-  output = torch.zeros(4, 1, 128, dtype=torch.int32).to("tpu")
-
-  result = torch.ops.torch_tpu.ragged_all_to_all(
+  result = torch.ops.tpu.ragged_all_to_all(
       operand,
       output,
       input_offsets,
       send_sizes,
       output_offsets,
       recv_sizes,
-      replica_groups,
+      dist.group.WORLD.group_name,
   )
 
-  expected = torch.tensor([0, 1, 2, 3], dtype=torch.int32).to("tpu")
-  utils.assert_close(result[:, 0, 0], expected)
+  # Simply a transpose.
+  expected = torch.arange(
+      rank,
+      rank + world_size * world_size,
+      world_size,
+      dtype=torch.int32,
+  )
+
+  utils.assert_close(result.cpu(), expected)
 
   dist.barrier()
   dist.destroy_process_group()
@@ -66,13 +69,14 @@ class RaggedAllToAllTest(absltest.TestCase):
   """Tests the ragged_all_to_all TPU collective operation.
 
   This test initializes a distributed environment and performs a
-  ragged_all_to_all operation on a single group of 4 TPUs. Each TPU sends its
+  ragged_all_to_all operation on a single group of 8 TPUs. Each TPU sends its
   rank to all other TPUs in the group.
   """
 
   def test_ragged_all_to_all(self):
+    world_size = 8
     distributed_utils.dist_run(
-        nproc_per_node=4,
+        nproc_per_node=world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(run_ragged_all_to_all_test),
     )
 

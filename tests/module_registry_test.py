@@ -22,6 +22,7 @@ underlying providers (Torchvision, TIMM, and Transformers). It ensures that:
     successfully with their generated sample inputs.
 """
 
+import tempfile
 from absl.testing import absltest
 from etils import epath
 from PIL import Image
@@ -55,36 +56,60 @@ class ModuleRegistryTest(absltest.TestCase):
 
     self.assertEqual(registry.list_all_modules(), [])
 
-  def test_list_all_modules(self):
-    modules = self.module_registry.list_all_modules()
+  def _create_mock_registry(self, temp_dir):
+    path = epath.Path(temp_dir)
+    (path / "torchvision" / "resnet50").mkdir(parents=True)
+    (path / "timm" / "convnext_small.in12k_ft_in1k").mkdir(parents=True)
+    (path / "timm" / "resnet50d.ra2_in1k").mkdir(parents=True)
+    (path / "timm" / "vgg16.tv_in1k").mkdir(parents=True)
+    (path / "transformers" / "openai" / "gpt-oss-120b").mkdir(parents=True)
+    (path / "transformers" / "meta-llama" / "Llama-3.2-3B").mkdir(parents=True)
+    (path / "transformers" / "google" / "gemma-3-270m").mkdir(parents=True)
+    (path / "diffusers" / "stabilityai" / "stable-diffusion-xl-base-1.0").mkdir(
+        parents=True
+    )
+    return module_registry.ModuleRegistry(base_path=temp_dir)
 
-    self.assertIn("torchvision/resnet50", modules)
-    self.assertIn("timm/convnext_small.in12k_ft_in1k", modules)
-    self.assertIn("timm/resnet50d.ra2_in1k", modules)
-    self.assertIn("timm/vgg16.tv_in1k", modules)
-    self.assertIn("transformers/openai/gpt-oss-120b", modules)
-    self.assertIn("transformers/meta-llama/Llama-3.2-3B", modules)
-    self.assertIn("transformers/google/gemma-3-270m", modules)
-    self.assertIn("diffusers/stabilityai/stable-diffusion-xl-base-1.0", modules)
+  def test_list_all_modules(self):
+    with tempfile.TemporaryDirectory() as temp_dir:
+      registry = self._create_mock_registry(temp_dir)
+      modules = registry.list_all_modules()
+
+      self.assertIn("torchvision/resnet50", modules)
+      self.assertIn("timm/convnext_small.in12k_ft_in1k", modules)
+      self.assertIn("timm/resnet50d.ra2_in1k", modules)
+      self.assertIn("timm/vgg16.tv_in1k", modules)
+      self.assertIn("transformers/openai/gpt-oss-120b", modules)
+      self.assertIn("transformers/meta-llama/Llama-3.2-3B", modules)
+      self.assertIn("transformers/google/gemma-3-270m", modules)
+      self.assertIn(
+          "diffusers/stabilityai/stable-diffusion-xl-base-1.0", modules
+      )
 
   def test_torchvision_list_modules(self):
-    modules = self.module_registry.list_modules("torchvision")
+    with tempfile.TemporaryDirectory() as temp_dir:
+      registry = self._create_mock_registry(temp_dir)
+      modules = registry.list_modules("torchvision")
 
-    self.assertIn("resnet50", modules)
+      self.assertIn("resnet50", modules)
 
   def test_timm_list_modules(self):
-    modules = self.module_registry.list_modules("timm")
+    with tempfile.TemporaryDirectory() as temp_dir:
+      registry = self._create_mock_registry(temp_dir)
+      modules = registry.list_modules("timm")
 
-    self.assertIn("convnext_small.in12k_ft_in1k", modules)
-    self.assertIn("resnet50d.ra2_in1k", modules)
-    self.assertIn("vgg16.tv_in1k", modules)
+      self.assertIn("convnext_small.in12k_ft_in1k", modules)
+      self.assertIn("resnet50d.ra2_in1k", modules)
+      self.assertIn("vgg16.tv_in1k", modules)
 
   def test_transformers_list_modules(self):
-    modules = self.module_registry.list_modules("transformers")
+    with tempfile.TemporaryDirectory() as temp_dir:
+      registry = self._create_mock_registry(temp_dir)
+      modules = registry.list_modules("transformers")
 
-    self.assertIn("openai/gpt-oss-120b", modules)
-    self.assertIn("meta-llama/Llama-3.2-3B", modules)
-    self.assertIn("google/gemma-3-270m", modules)
+      self.assertIn("openai/gpt-oss-120b", modules)
+      self.assertIn("meta-llama/Llama-3.2-3B", modules)
+      self.assertIn("google/gemma-3-270m", modules)
 
   def test_torchvision_get_module_spec(self):
     module_spec = self.module_registry.get_module_spec(
@@ -388,6 +413,100 @@ class ModuleRegistryTest(absltest.TestCase):
     _, kwargs = module_spec.sample_inputs_factory()
     self.assertIn("input_features", kwargs)
     self.assertIn("decoder_input_ids", kwargs)
+
+  def test_transformers_gemma4_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "google/gemma-4-31b"
+    )
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_ids", kwargs)
+    self.assertIn("attention_mask", kwargs)
+    self.assertIn("pixel_values", kwargs)
+    self.assertIn("image_position_ids", kwargs)
+
+  def test_transformers_qwen3_5_moe_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "Qwen/Qwen3.5-397B-A17B"
+    )
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_ids", kwargs)
+    self.assertIn("attention_mask", kwargs)
+    self.assertNotIn("pixel_values", kwargs)
+    self.assertNotIn("image_grid_thw", kwargs)
+    self.assertNotIn("mm_token_type_ids", kwargs)
+
+  def test_transformers_dinov2_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "facebook/dinov2-base"
+    )
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("pixel_values", kwargs)
+    self.assertNotIn("input_ids", kwargs)
+
+  def test_transformers_encoder_decoder_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "Ayham/bert_gpt2_summarization_cnndm"
+    )
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_ids", kwargs)
+    self.assertIn("decoder_input_ids", kwargs)
+
+  def test_transformers_clip_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "openai/clip-vit-base-patch16"
+    )
+    model = module_spec.module_factory()
+    self.assertIsNotNone(model)
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_ids", kwargs)
+    self.assertIn("pixel_values", kwargs)
+
+  def test_transformers_llava_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "liuhaotian/llava-v1.5-7b"
+    )
+    # Skip instantiating 7B model to avoid OOM in tests
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_ids", kwargs)
+    self.assertIn("pixel_values", kwargs)
+
+  def test_transformers_mllama_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers",
+        "meta-llama/Llama-3.2-11B-Vision",
+    )
+    # Skip instantiating 11B model to avoid OOM in tests
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_ids", kwargs)
+    self.assertIn("pixel_values", kwargs)
+    self.assertIn("aspect_ratio_ids", kwargs)
+    self.assertIn("aspect_ratio_mask", kwargs)
+    self.assertLen(kwargs["pixel_values"].shape, 6)
+    self.assertLen(kwargs["aspect_ratio_ids"].shape, 2)
+    self.assertLen(kwargs["aspect_ratio_mask"].shape, 3)
+
+  def test_transformers_segformer_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "nvidia/segformer-b2-finetuned-ade-512-512"
+    )
+    model = module_spec.module_factory()
+    self.assertIsNotNone(model)
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("pixel_values", kwargs)
+    self.assertNotIn("input_ids", kwargs)
+
+  def test_transformers_tapas_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "Anonymous/ReasonBERT-TAPAS"
+    )
+    model = module_spec.module_factory()
+    self.assertIsNotNone(model)
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_ids", kwargs)
+    self.assertIn("attention_mask", kwargs)
+    self.assertIn("token_type_ids", kwargs)
+    self.assertEqual(kwargs["token_type_ids"].shape[-1], 7)
+    self.assertLen(kwargs["token_type_ids"].shape, 3)
 
 
 if __name__ == "__main__":

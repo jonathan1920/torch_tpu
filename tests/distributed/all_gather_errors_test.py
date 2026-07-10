@@ -75,7 +75,7 @@ def run_all_gather_dispatch_failure() -> None:
     dist.all_gather(output_tensors, input_tensor)
 
 
-class AllGatherErrorsTest(et.TpuOnlyErrorTestBase):
+class AllGatherErrorsTest(et.TpuOnlyDistributedErrorTestBase):
   _world_size = 8
 
   def test_invalid_dtype(self):

@@ -38,6 +38,7 @@ import torch
 import torch.utils.benchmark as benchmark
 from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e.performance_utils import _run_mode_context
 from examples.benchmarks.ops.op_input_loader import deserialize_args
@@ -251,9 +252,9 @@ class AtenOpBenchmarkBase(parameterized.TestCase):
       self.skipTest(f"Skipping {op_name} on TorchAX (not supported)")
 
     run_mode = (
-        benchmark_utils.RunMode.COMPILED
+        common.RunMode.COMPILED
         if run_mode_str == "compiled"
-        else benchmark_utils.RunMode.EAGER_DEFAULT
+        else common.RunMode.EAGER_DEFAULT
     )
 
     compile_time_s = 0.0
@@ -330,7 +331,7 @@ class AtenOpBenchmarkBase(parameterized.TestCase):
 
         safe_op_name = op_name.replace(".", "_").replace(":", "_")
         mlcompass_utils.export_to_mlcompass(
-            platform=benchmark_utils.PLATFORM.value,
+            platform=common.PLATFORM.value,
             metrics=result,
             base_cl=benchmark_utils.BASE_CL.value,
             mlcompass_tracking_id=benchmark_utils.MLCOMPASS_TRACKING_ID.value,

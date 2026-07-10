@@ -15,8 +15,10 @@
 #include "torch_tpu/ops/min_max/min_max.h"
 
 #include <cstdint>
+#include <numeric>
 
 #include "absl/status/statusor.h"
+#include "c10/util/Optional.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -26,6 +28,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/reductions/reductions.h"
 
@@ -68,49 +71,104 @@ void BuildReduceBody(MinMaxOp op, mlir::Type value_type, mlir::Type index_type,
   stablehlo::Return(rb, {min_max_value, final_argmax_value});
 }
 
+struct ReductionInput {
+  mlir::MlirOp op;
+  int64_t dim;
+  bool was_flattened;
+};
+
+// Flattens the input tensor to 1D if no reduction dimension is specified,
+// preparing it for global reduction. Otherwise, returns the input as is.
+absl::StatusOr<ReductionInput> PrepareReductionInput(
+    mlir::MlirOp input_op, c10::optional<int64_t> dim) {
+  if (dim.has_value()) {
+    return ReductionInput{
+        .op = input_op, .dim = dim.value(), .was_flattened = false};
+  }
+
+  mlir::MlirOp flattened = Flatten(input_op);
+  return ReductionInput{.op = flattened, .dim = 0, .was_flattened = true};
+}
+
+// Returns the initial value for reduction based on the MinMaxOp type
+// (lowest finite value for Max, highest for Min).
+mlir::MlirOp GetMinMaxInitValue(mlir::MlirBuilder& builder, MinMaxOp op,
+                                mlir::Type element_type) {
+  mlir::Attribute init_attr =
+      op == MinMaxOp::kMax
+          ? GetMinFiniteValueAttr(element_type, builder.getOpBuilder())
+          : GetMaxFiniteValueAttr(element_type, builder.getOpBuilder());
+  mlir::DenseElementsAttr init_elements_attr = mlir::DenseElementsAttr::get(
+      mlir::RankedTensorType::get({}, element_type), init_attr);
+  return stablehlo::Constant(builder, init_elements_attr);
+}
+
+// Restores the reduced dimensions to size 1 when keepdim is True.
+// We use BuildKeepDimsShlo to reshape the output:
+// - For global reduction (flattened), we set all dimensions of the original
+//   shape to 1 (e.g., [A, B, C] -> [1, 1, 1]).
+// - For single-dimension reduction, we only set the reduced dimension to 1
+//   (e.g., [A, B, C] reduced along 1 -> [A, 1, C]).
+absl::StatusOr<MinMaxOutputs> RestoreReducedDims(mlir::MlirOp original_input,
+                                                 MinMaxOutputs outputs,
+                                                 int64_t reduction_dim,
+                                                 bool was_flattened) {
+  const mlir::RankedTensorType original_type =
+      GetTensorTypeOrDie(original_input);
+  llvm::SmallVector<int64_t> dims;
+  if (was_flattened) {
+    dims.resize(original_type.getRank());
+    std::iota(dims.begin(), dims.end(), 0);
+  } else {
+    dims.push_back(reduction_dim);
+  }
+  outputs.values = BuildKeepDimsShlo(original_input, outputs.values, dims);
+  outputs.indices = BuildKeepDimsShlo(original_input, outputs.indices, dims);
+  return outputs;
+}
+
 }  // namespace
 
-absl::StatusOr<MinMaxOutputs> BuildMinMaxShlo(int64_t dim, MinMaxOp op,
-                                              ReductionMode mode,
+absl::StatusOr<MinMaxOutputs> BuildMinMaxShlo(c10::optional<int64_t> dim,
+                                              MinMaxOp op, ReductionMode mode,
                                               mlir::MlirOp input_op) {
-  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input_op);
-  const mlir::Type input_element_type = input_type.getElementType();
   mlir::MlirBuilder& builder = input_op.getBuilder();
+
+  TT_ASSIGN_OR_RETURN(ReductionInput prep,
+                      PrepareReductionInput(input_op, dim));
   mlir::MlirOp indices =
-      stablehlo::IotaLike(input_op, dim, mlir::ElementType::I64);
+      stablehlo::IotaLike(prep.op, prep.dim, mlir::ElementType::I64);
+
+  const mlir::Type input_element_type =
+      GetTensorTypeOrDie(input_op).getElementType();
   const mlir::Type indices_element_type =
       GetTensorTypeOrDie(indices).getElementType();
-
-  // Init stablehlo consts for initial values to the reduction.
-  mlir::MlirOp index_init =
-      MakeScalarConstant(builder, 0, mlir::ElementType::I64);
-
-  mlir::Attribute min_max_init_attr =
-      op == MinMaxOp::kMax
-          ? GetMinFiniteValueAttr(input_element_type, builder.getOpBuilder())
-          : GetMaxFiniteValueAttr(input_element_type, builder.getOpBuilder());
-  mlir::DenseElementsAttr value_init_attr = mlir::DenseElementsAttr::get(
-      mlir::RankedTensorType::get({}, input_element_type), min_max_init_attr);
-  mlir::MlirOp value_init = stablehlo::Constant(builder, value_init_attr);
-
   auto reduce_body = [input_element_type, indices_element_type,
                       op](mlir::RegionBuilder& rb) {
     BuildReduceBody(op, input_element_type, indices_element_type, rb);
   };
-  // Run a reduction over the input elements to get the min/max value and the
-  // corresponding index. If tensor is rank 0, reduction dim must be [].
+  // A rank-0 tensor (scalar) cannot be reduced along any dimension, so the
+  // reduction dims must be empty.
   mlir::SmallVector<int64_t> reduce_dims;
-  if (input_type.getRank() > 0) {
-    reduce_dims.push_back(dim);
+  if (GetTensorTypeOrDie(prep.op).getRank() > 0) {
+    reduce_dims.push_back(prep.dim);
   }
+
+  mlir::MlirOp value_init = GetMinMaxInitValue(builder, op, input_element_type);
+  mlir::MlirOp index_init =
+      MakeScalarConstant(builder, 0, mlir::ElementType::I64);
+
   auto arg_min_max =
-      stablehlo::Reduce(builder, {input_op, indices}, {value_init, index_init},
+      stablehlo::Reduce(builder, {prep.op, indices}, {value_init, index_init},
                         reduce_body, reduce_dims);
+  MinMaxOutputs outputs{.values = arg_min_max[0], .indices = arg_min_max[1]};
+
   if (mode == ReductionMode::kKeepDims) {
-    arg_min_max[0] = BuildKeepDimsShlo(input_op, arg_min_max[0], {dim});
-    arg_min_max[1] = BuildKeepDimsShlo(input_op, arg_min_max[1], {dim});
+    TT_ASSIGN_OR_RETURN(outputs, RestoreReducedDims(input_op, outputs, prep.dim,
+                                                    prep.was_flattened));
   }
-  return MinMaxOutputs{.values = arg_min_max[0], .indices = arg_min_max[1]};
+
+  return outputs;
 }
 
 }  // namespace torch_tpu

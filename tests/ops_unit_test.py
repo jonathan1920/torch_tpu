@@ -20,6 +20,9 @@ import dataclasses
 import functools
 import itertools
 import math
+import os
+import sys
+import tempfile
 import threading
 import time
 from typing import Any
@@ -28,6 +31,8 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from scipy import stats
 import torch
+from torch.testing._internal import common_methods_invocations
+from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import utils
@@ -42,6 +47,7 @@ from tests import ops_test_data
 
 OpInput = op_testing.OpInput
 TorchTpuVsCpuTestBase = op_testing.TorchTpuVsCpuTestBase
+op_db = common_methods_invocations.op_db
 to = op_testing.to
 CheckValueMode = utils.CheckValueMode
 
@@ -79,6 +85,278 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   add it here.
   """
 
+  def _run_addmm_activation_test(
+      self,
+      self_shape,
+      m1_shape,
+      m2_shape,
+      beta,
+      alpha,
+      use_gelu,
+      dtype,
+      rtol,
+      atol,
+  ):
+    def _make_tensor(shape, device, offset=0.0):
+      numel = 1
+      for s in shape:
+        numel *= s
+      return (
+          torch.arange(numel, dtype=dtype, device=device) * 0.15 - offset
+      ).reshape(shape)
+
+    def compute(device):
+      self_val = _make_tensor(self_shape, device, offset=0.5)
+      m1_val = _make_tensor(m1_shape, device, offset=0.2)
+      m2_val = _make_tensor(m2_shape, device, offset=0.8)
+      return torch.ops.aten._addmm_activation(
+          self_val,
+          m1_val,
+          m2_val,
+          beta=beta,
+          alpha=alpha,
+          use_gelu=use_gelu,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute, rtol=rtol, atol=atol)
+
+  def _run_addmm_activation_out_test(
+      self,
+      self_shape,
+      m1_shape,
+      m2_shape,
+      target_out_shape,
+      beta,
+      alpha,
+      use_gelu,
+      dtype,
+      rtol,
+      atol,
+  ):
+    def _make_tensor(shape, device, offset=0.0):
+      numel = 1
+      for s in shape:
+        numel *= s
+      return (
+          torch.arange(numel, dtype=dtype, device=device) * 0.15 - offset
+      ).reshape(shape)
+
+    def compute(device):
+      self_val = _make_tensor(self_shape, device, offset=0.5)
+      m1_val = _make_tensor(m1_shape, device, offset=0.2)
+      m2_val = _make_tensor(m2_shape, device, offset=0.8)
+      out_val = torch.empty(target_out_shape, dtype=dtype, device=device)
+      torch.ops.aten._addmm_activation.out(
+          self_val,
+          m1_val,
+          m2_val,
+          beta=beta,
+          alpha=alpha,
+          use_gelu=use_gelu,
+          out=out_val,
+      )
+      return out_val
+
+    self.assert_close_tpu_vs_cpu(compute, rtol=rtol, atol=atol)
+
+  @parameterized.product(
+      use_gelu=[True, False],
+      dtype=[torch.float32, torch.bfloat16, torch.float16],
+  )
+  def test__addmm_activation(self, use_gelu, dtype):
+    """Tests torch.ops.aten._addmm_activation with deterministic values."""
+    shapes = [
+        ((3, 4), (3, 5), (5, 4)),  # matching 2D
+        ((4,), (3, 5), (5, 4)),  # 1D bias broadcast
+        ((1, 4), (3, 5), (5, 4)),  # 2D bias broadcast col
+        ((3, 1), (3, 5), (5, 4)),  # 2D bias broadcast row
+        ((1,), (3, 5), (5, 4)),  # 1D scalar broadcast
+    ]
+    multipliers = [
+        (0.0, 1.0),
+        (1.0, 1.0),
+        (0.5, 2.0),
+        (2.0, 0.5),
+        (-1.0, 1.5),
+    ]
+    rtol = 1.3e-2 if dtype == torch.float32 else 1.5e-2
+    atol = 1.3e-1 if dtype == torch.float32 else 1.6e-1
+
+    for self_shape, m1_shape, m2_shape in shapes:
+      for beta, alpha in multipliers:
+        self._run_addmm_activation_test(
+            self_shape,
+            m1_shape,
+            m2_shape,
+            beta,
+            alpha,
+            use_gelu,
+            dtype,
+            rtol,
+            atol,
+        )
+
+  @parameterized.product(
+      use_gelu=[True, False],
+      dtype=[torch.float32, torch.bfloat16, torch.float16],
+  )
+  def test__addmm_activation_out(self, use_gelu, dtype):
+    """Tests torch.ops.aten._addmm_activation.out with deterministic values."""
+    shapes = [
+        ((3, 4), (3, 5), (5, 4)),
+        ((4,), (2, 6), (6, 4)),
+        ((1, 3), (2, 5), (5, 3)),
+    ]
+    multipliers = [
+        (0.0, 1.0),
+        (1.0, 2.0),
+        (0.5, 0.5),
+    ]
+    out_shapes = [
+        None,  # Same shape as expected output
+        (1,),  # Smaller 1D shape (must resize up)
+        (10, 10),  # Larger 2D shape (must resize down/differently)
+        (2, 3, 4),  # 3D shape (must change rank and dimensions)
+    ]
+    rtol = 1.3e-2 if dtype == torch.float32 else 1.5e-2
+    atol = 1.3e-1 if dtype == torch.float32 else 1.6e-1
+
+    for self_shape, m1_shape, m2_shape in shapes:
+      expected_shape = (m1_shape[0], m2_shape[1])
+      for beta, alpha in multipliers:
+        for out_shape in out_shapes:
+          target_out_shape = expected_shape if out_shape is None else out_shape
+          self._run_addmm_activation_out_test(
+              self_shape,
+              m1_shape,
+              m2_shape,
+              target_out_shape,
+              beta,
+              alpha,
+              use_gelu,
+              dtype,
+              rtol,
+              atol,
+          )
+
+  def test_ldexp_overflow_float16(self):
+    """Tests that ldexp avoids intermediate overflow for float16."""
+    # 2^16 overflows float16 (max 65504), but 1e-4 * 2^16 = 6.5536 doesn't.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([1e-4], dtype=torch.float16, device=device),
+            torch.tensor([16], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_underflow_float16(self):
+    """Tests that ldexp avoids intermediate underflow for float16."""
+    # 2^-25 underflows float16 to 0, but 1e4 * 2^-25 = 2.98e-4 doesn't.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([10000.0], dtype=torch.float16, device=device),
+            torch.tensor([-25], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_overflow_float32(self):
+    """Tests that ldexp avoids intermediate overflow for float32."""
+    # 2^130 overflows float32, but 1e-10 * 2^130 = 1.36e29 doesn't.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([1e-10], dtype=torch.float32, device=device),
+            torch.tensor([130], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_underflow_float32(self):
+    """Tests that ldexp avoids intermediate underflow for float32."""
+    # 2^-150 underflows float32 to 0, but 1e10 * 2^-150 = 7e-36 doesn't.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([1e10], dtype=torch.float32, device=device),
+            torch.tensor([-150], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_inplace(self):
+    """Tests the inplace ldexp_ variant."""
+
+    def test_inplace(device):
+      x = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
+      exp = torch.tensor([1, 2], dtype=torch.int32, device=device)
+      x.ldexp_(exp)
+      return x
+
+    self.assert_close_tpu_vs_cpu(test_inplace)
+
+  def test_ldexp_out(self):
+    """Tests the out-variant ldexp.out."""
+
+    def test_out(device):
+      x = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
+      exp = torch.tensor([1, 2], dtype=torch.int32, device=device)
+      out = torch.empty_like(x)
+      torch.ldexp(x, exp, out=out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(test_out)
+
+  def test_ldexp_integer_promotion(self):
+    """Tests that ldexp promotes integer base and exponent to float."""
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([1, 2], dtype=torch.int32, device=device),
+            torch.tensor([2, 3], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_extreme_exponents_float16(self):
+    """Tests extreme exponent cases with zero base for float16."""
+    # Float16: exp=50 (exceeds max_exp=14). scale must not overflow to inf.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([0.0], dtype=torch.float16, device=device),
+            torch.tensor([50], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_extreme_exponents_float32(self):
+    """Tests extreme exponent cases with zero base for float32."""
+    # Float32: exp=400 (exceeds max_exp=120). scale must not overflow to inf.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([0.0], dtype=torch.float32, device=device),
+            torch.tensor([400], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_extreme_exponents_float64(self):
+    """Tests extreme exponent cases with zero base for float64."""
+    if torch.tensor([1e100], dtype=torch.float64, device="tpu").isinf().any():
+      self.skipTest("float64 is downcasted to float32 on this device")
+    # Float64: exp=3000 (exceeds max_exp=1000). scale must not overflow to inf.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([0.0], dtype=torch.float64, device=device),
+            torch.tensor([3000], dtype=torch.int32, device=device),
+        )
+    )
+
+  def test_ldexp_large_exponent_float64(self):
+    """Tests large exponent scaling for float64 to ensure it covers up to 3000."""
+    if torch.tensor([1e100], dtype=torch.float64, device="tpu").isinf().any():
+      self.skipTest("float64 is downcasted to float32 on this device")
+    # 2^900 is ~ 8.41e270. 1e-100 * 2^900 is ~ 8.41e170, which is representable.
+    # If scaling limit is 360, it will return 1e-100 * 2^360 = 2.34e8,
+    # which is wrong.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ldexp(
+            torch.tensor([1e-100], dtype=torch.float64, device=device),
+            torch.tensor([900], dtype=torch.int32, device=device),
+        )
+    )
+
   def test_addmm_input_broadcasting(self):
     """Tests torch.addmm input broadcasting rules."""
     mat1 = torch.arange(6, dtype=torch.float32).reshape(2, 3)
@@ -93,6 +371,277 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
               torch.addmm(self_input.to(device), m1.to(device), m2.to(device))
           )
       )
+
+  @parameterized.product(
+      dim=[0, 1],
+      step=[1, 2],
+      slice_spec=[
+          (None, None),
+          (0, 2),
+          (-4, -1),
+          (0, 100),
+          (6, 8),
+      ],
+  )
+  def test_slice_scatter(self, dim, step, slice_spec):
+    """Tests slice_scatter with parameterized dimensions, dtypes, and slice specs."""
+    start, end = slice_spec
+    t = torch.randn(6, 6, dtype=torch.float32)
+    if dim == 0:
+      sliced_t = t[start:end:step]
+    elif dim == 1:
+      sliced_t = t[:, start:end:step]
+    else:
+      raise ValueError(f"Unsupported dim {dim}")
+    src = torch.randn_like(sliced_t, dtype=torch.float32)
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device, t=t, src=src: torch.slice_scatter(
+            t.to(device),
+            src.to(device),
+            dim=dim,
+            start=start,
+            end=end,
+            step=step,
+        )
+    )
+
+  @parameterized.named_parameters(
+      ("step_zero", 0, 0, 2, 0, (2, 6)),
+      ("step_negative", 0, 0, 2, -1, (2, 6)),
+      ("dim_out_of_bounds", 10, 0, 2, 1, (2, 6)),
+      ("dim_neg_out_of_bounds", -10, 0, 2, 1, (2, 6)),
+      ("src_size_mismatch_slice_dim", 0, 0, 2, 1, (3, 6)),
+      ("src_size_mismatch_other_dim", 0, 0, 2, 1, (2, 5)),
+      ("src_rank_mismatch", 0, 0, 2, 1, (2,)),
+      ("scalar_src", 0, 0, 1, 1, ()),
+  )
+  def test_slice_scatter_invalid_inputs(self, dim, start, end, step, src_shape):
+    """Tests slice_scatter with various invalid inputs."""
+    t = torch.ones((6, 6), dtype=torch.float32)
+    src = torch.ones(src_shape, dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device, t=t, src=src: torch.slice_scatter(
+            t.to(device),
+            src.to(device),
+            dim=dim,
+            start=start,
+            end=end,
+            step=step,
+        ),
+        check_exception_type=False,
+        allow_failure=True,
+    )
+
+  @parameterized.product(
+      self_dtype=[torch.float32, torch.bfloat16],
+      src_dtype=[torch.int32, torch.float32, torch.bfloat16],
+  )
+  def test_slice_scatter_dtype_casting(self, self_dtype, src_dtype):
+    """Tests that slice_scatter casts src to self's dtype when dtypes differ."""
+    t = torch.randn(6, 6, dtype=self_dtype)
+    src = torch.ones((2, 6), dtype=src_dtype)
+    self.assert_close_tpu_vs_cpu(
+        lambda device, t=t, src=src: torch.slice_scatter(
+            t.to(device), src.to(device), dim=0, start=0, end=2, step=1
+        )
+    )
+
+  def test_slice_scatter_scalar_tensor(self):
+    """Tests slice_scatter on a 0-dim scalar tensor."""
+    t = torch.tensor(1.0, dtype=torch.float32)
+    src = torch.tensor(1.0, dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device, t=t, src=src: torch.slice_scatter(
+            t.to(device), src.to(device), dim=0, start=0, end=1, step=1
+        ),
+        check_exception_type=False,
+        allow_failure=True,
+    )
+
+  def test_foreach_add_sub_alpha(self):
+    """Tests foreach_add and foreach_sub with different alphas."""
+    tensors1 = [
+        torch.arange(6, dtype=torch.float32).reshape(2, 3) + i for i in range(3)
+    ]
+    tensors2 = [
+        torch.arange(6, dtype=torch.float32).reshape(2, 3) * 2 + i
+        for i in range(3)
+    ]
+    single_tensor = torch.tensor(1.5, dtype=torch.float32)
+
+    # Out-of-place tests (list-list)
+    # Test alpha = 1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=1.0,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=1.0,
+        )
+    )
+
+    # Test alpha = -1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=-1.0,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=-1.0,
+        )
+    )
+
+    # Test alpha = 2.5
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=2.5,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=2.5,
+        )
+    )
+
+    # Out-of-place tests (list-tensor)
+    # Test alpha = 1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=1.0,
+        )
+    )
+    # Test alpha = -1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=-1.0,
+        )
+    )
+    # Test alpha = 2.5
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=2.5,
+        )
+    )
+
+    # Inplace tests (list-list)
+    # Test alpha = 1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=1.0,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=1.0,
+        )
+    )
+
+    # Test alpha = -1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=-1.0,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=-1.0,
+        )
+    )
+
+    # Test alpha = 2.5
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=2.5,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=2.5,
+        )
+    )
+
+    # Inplace tests (list-tensor)
+    # Test alpha = 1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=1.0,
+        )
+    )
+    # Test alpha = -1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=-1.0,
+        )
+    )
+    # Test alpha = 2.5
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=2.5,
+        )
+    )
+
+  def test_assert_close_partial_override(self):
+    """Tests that utils.assert_close works with partial numeric overrides.
+
+    A partial override means specifying only `rtol` or only `atol`, leaving
+    the other as `None` to be resolved to the PyTorch default.
+
+    Verifies it works in LOOSE mode.
+    """
+    t1 = torch.tensor([1.0, 2.0])
+    t2 = torch.tensor([1.0001, 2.0001])  # diff is 1e-4
+
+    # Default float32 tolerance is rtol=1.3e-6, atol=1e-5.
+    # This diff (1e-4) exceeds default atol (1e-5).
+    # If we override only atol to 2e-4, it should pass.
+    # If we didn't support partial overrides, it would crash with ValueError
+    # in LOOSE mode.
+    utils.assert_close(t1, t2, atol=2e-4, check_value=CheckValueMode.LOOSE)
+
+    # Similarly, override only rtol
+    # rel diff is 1e-4 / 1 = 1e-4.
+    # If we override only rtol to 2e-4, it should pass.
+    utils.assert_close(t1, t2, rtol=2e-4, check_value=CheckValueMode.LOOSE)
 
   def test_topk_sorted_false(self):
     """Tests torch.topk with sorted=False."""
@@ -328,7 +877,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     other_tensor_tpu = other_tensor.to(tpu_device)
     op_fn(self_tensor, other_tensor)
     op_fn(self_tensor_tpu, other_tensor_tpu)
-    self.assertEqual(self_tensor, self_tensor_tpu.cpu())
+    self.assert_close(
+        golden_result=self_tensor, torch_tpu_result=self_tensor_tpu.cpu()
+    )
 
   @parameterized.product(
       input_dtype=[torch.uint8, torch.int32, torch.int64],
@@ -344,7 +895,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     x_tpu = x.to(tpu_device)
     out = op_fn(x, 2)
     out_tpu = op_fn(x_tpu, 2)
-    self.assertEqual(out, out_tpu.cpu())
+    self.assert_close(golden_result=out, torch_tpu_result=out_tpu.cpu())
 
   @parameterized.product(
       self_dtype=[torch.uint8, torch.int32, torch.int64],
@@ -363,7 +914,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     other_tensor_tpu = other_tensor.to(tpu_device)
     golden_result = op_fn(self_tensor, other_tensor)
     tpu_result = op_fn(self_tensor_tpu, other_tensor_tpu)
-    self.assertEqual(golden_result, tpu_result.cpu())
+    self.assert_close(
+        golden_result=golden_result, torch_tpu_result=tpu_result.cpu()
+    )
 
   @parameterized.product(
       self_dtype=[torch.int32, torch.float32],
@@ -1329,6 +1882,24 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test)
 
+  def test_conj_transpose_view(self):
+    def test(device):
+      x = torch.tensor([[1 + 1j, 2 - 2j], [3 + 3j, 4 - 4j]], device=device)
+      y = torch.tensor([[2 + 1j, 4 + 3j], [3 - 2j, 5 - 4j]], device=device)
+
+      x1 = x.clone()
+      # Use transpose to make the view non-contiguous to avoid bypassing
+      # compilation via direct buffer pointer swap. Similar below.
+      x1.t().copy_(y)
+
+      x2 = x.clone()
+      x2.conj().t().copy_(y)
+
+      # Ensure writes to conjugate and non-conjugate views both succeed.
+      return x1, x2
+
+    self.assert_close_tpu_vs_cpu(test)
+
   def test_conj_chain(self):
     def test(device):
       x = torch.tensor([[1 + 1j, 2 - 2j], [3 + 3j, 4 - 4j]]).to(device=device)
@@ -1378,47 +1949,125 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test)
 
-  def test_copy(self):
-    """Tests tensor.copy_() and torch.ops.aten.copy()."""
-    # Test copy within the same device
+  def test_copy_within_device(self):
+    """Tests tensor.copy_() within the same device."""
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.empty(3, device=device).copy_(
             torch.tensor([1, 2, 3], dtype=torch.float32, device=device)
         )
     )
 
-    # Test copy with broadcasting
-    self.assert_close_tpu_vs_cpu(
-        lambda device: torch.empty(3, device=device).copy_(
-            torch.tensor(3.14, dtype=torch.float32, device=device)
-        )
-    )
-
+  def test_copy_cpu_to_tpu(self):
+    """Tests CPU -> TPU copy."""
     tpu_device = torch.device("tpu")
-
-    # Test CPU -> TPU copy
     src_cpu = torch.tensor([1, 2, 3], dtype=torch.int32)
     dst_tpu = torch.empty(3, dtype=torch.int32, device=tpu_device)
     dst_tpu.copy_(src_cpu)
     self.assertEqual(dst_tpu.cpu(), src_cpu)
 
-    # Test TPU -> CPU copy
+  def test_copy_tpu_to_cpu(self):
+    """Tests TPU -> CPU copy."""
+    tpu_device = torch.device("tpu")
     src_tpu = torch.tensor([4, 5, 6], dtype=torch.int32, device=tpu_device)
     dst_cpu = torch.empty(3, dtype=torch.int32)
     dst_cpu.copy_(src_tpu)
     self.assertEqual(dst_cpu, src_tpu.cpu())
 
-    # Test casting
+  def test_copy_broadcasting_tpu_to_tpu(self):
+    """Tests TPU -> TPU broadcasting copy."""
+    tpu_device = torch.device("tpu")
+    # Case A: Scalar -> 1D
+    src_tpu = torch.tensor(3.14, dtype=torch.float32, device=tpu_device)
+    dst_tpu = torch.empty(3, dtype=torch.float32, device=tpu_device)
+    dst_tpu.copy_(src_tpu)
+    self.assertEqual(dst_tpu.cpu(), torch.tensor([3.14, 3.14, 3.14]))
+
+    # Case B: 1D -> 2D
+    src_tpu = torch.tensor(
+        [1.0, 2.0, 3.0], dtype=torch.float32, device=tpu_device
+    )
+    dst_tpu = torch.empty(2, 3, dtype=torch.float32, device=tpu_device)
+    dst_tpu.copy_(src_tpu)
+    self.assertEqual(dst_tpu.cpu(), src_tpu.cpu().expand(2, 3))
+
+  def test_copy_broadcasting_cpu_to_tpu(self):
+    """Tests CPU -> TPU broadcasting copy."""
+    tpu_device = torch.device("tpu")
+    # Case A: Scalar -> 1D
+    src_cpu = torch.tensor(3.14, dtype=torch.float32)
+    dst_tpu = torch.empty(3, dtype=torch.float32, device=tpu_device)
+    dst_tpu.copy_(src_cpu)
+    self.assertEqual(dst_tpu.cpu(), torch.tensor([3.14, 3.14, 3.14]))
+
+    # Case B: 1D -> 2D
+    src_cpu = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32)
+    dst_tpu = torch.empty(2, 3, dtype=torch.float32, device=tpu_device)
+    dst_tpu.copy_(src_cpu)
+    self.assertEqual(dst_tpu.cpu(), src_cpu.expand(2, 3))
+
+  def test_copy_broadcasting_tpu_to_cpu(self):
+    """Tests TPU -> CPU broadcasting copy."""
+    tpu_device = torch.device("tpu")
+    # Case A: Scalar -> 1D
+    src_tpu = torch.tensor(3.14, dtype=torch.float32, device=tpu_device)
+    dst_cpu = torch.empty(3, dtype=torch.float32)
+    dst_cpu.copy_(src_tpu)
+    self.assertEqual(dst_cpu, torch.tensor([3.14, 3.14, 3.14]))
+
+    # Case B: 1D -> 2D
+    src_tpu = torch.tensor(
+        [1.0, 2.0, 3.0], dtype=torch.float32, device=tpu_device
+    )
+    dst_cpu = torch.empty(2, 3, dtype=torch.float32)
+    dst_cpu.copy_(src_tpu)
+    self.assertEqual(dst_cpu, src_tpu.cpu().expand(2, 3))
+
+  def test_copy_casting(self):
+    """Tests copy with type casting."""
+    tpu_device = torch.device("tpu")
     src_cpu = torch.tensor([1.5, 2.5], dtype=torch.float32)
     dst_tpu = torch.empty(2, dtype=torch.int32, device=tpu_device)
     dst_tpu.copy_(src_cpu)
     self.assertEqual(dst_tpu.cpu(), src_cpu.int())
 
-    # Test torch.ops.aten.copy
+  def test_copy_aten_op(self):
+    """Tests torch.ops.aten.copy."""
+    tpu_device = torch.device("tpu")
     src_cpu = torch.tensor([1, 2, 3], dtype=torch.int32)
     dst_tpu = torch.empty(3, dtype=torch.int32, device=tpu_device)
     dst_tpu = torch.ops.aten.copy(dst_tpu, src_cpu)
     self.assertEqual(dst_tpu.cpu(), src_cpu)
+
+  def test_copy_gradients(self):
+    """Tests gradient copying behavior."""
+    tpu_device = torch.device("tpu")
+
+    # --- TPU -> TPU Gradient Copy ---
+    src_tpu = torch.tensor([1.0, 2.0], device=tpu_device, requires_grad=True)
+    src_tpu.grad = torch.tensor([0.1, 0.2], device=tpu_device)
+    dst_tpu = torch.tensor([3.0, 4.0], device=tpu_device, requires_grad=True)
+    with torch.no_grad():
+      dst_tpu.copy_(src_tpu)
+    self.assertIsNotNone(dst_tpu.grad)
+    self.assertEqual(dst_tpu.grad.cpu(), torch.tensor([0.1, 0.2]))
+
+    # --- TPU -> CPU Gradient Copy ---
+    src_tpu = torch.tensor([1.0, 2.0], device=tpu_device, requires_grad=True)
+    src_tpu.grad = torch.tensor([0.1, 0.2], device=tpu_device)
+    dst_cpu = torch.tensor([3.0, 4.0], device="cpu", requires_grad=True)
+    with torch.no_grad():
+      dst_cpu.copy_(src_tpu)
+    self.assertIsNotNone(dst_cpu.grad)
+    self.assertEqual(dst_cpu.grad, torch.tensor([0.1, 0.2]))
+
+    # --- CPU -> TPU Gradient Copy ---
+    src_cpu = torch.tensor([1.0, 2.0], device="cpu", requires_grad=True)
+    src_cpu.grad = torch.tensor([0.1, 0.2], device="cpu")
+    dst_tpu = torch.tensor([3.0, 4.0], device=tpu_device, requires_grad=True)
+    with torch.no_grad():
+      dst_tpu.copy_(src_cpu)
+    self.assertIsNotNone(dst_tpu.grad)
+    self.assertEqual(dst_tpu.grad.cpu(), torch.tensor([0.1, 0.2]))
 
   def test_histc_dynamic_bounds(self):
     """Test cases that cause the min and max computation the input data.
@@ -1651,23 +2300,23 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # If not clamped, ceil(src_idx) becomes 4, which is OOB (valid: 0, 1, 2, 3).
 
     tpu_device = torch.device("tpu")
-    N, C = 1, 1
-    H_in, W_in = 4, 4
+    n, c = 1, 1
+    h_in, w_in = 4, 4
     # We use a large output size that triggers the precision issue.
     # We only need one dimension to trigger it, but we'll scale both.
-    H_out, W_out = 22, 22
+    h_out, w_out = 22, 22
 
     # Create input with known values (e.g., indices) to easily check correctness
-    x = torch.arange(H_in * W_in, dtype=torch.float32).reshape(N, C, H_in, W_in)
+    x = torch.arange(h_in * w_in, dtype=torch.float32).reshape(n, c, h_in, w_in)
     x_tpu = x.to(tpu_device)
 
     # We expect the last pixel to be exactly the last pixel of the input
     # because align_corners=True maps corner to corner.
     out_tpu = torch.nn.functional.interpolate(
-        x_tpu, size=(H_out, W_out), mode="bilinear", align_corners=True
+        x_tpu, size=(h_out, w_out), mode="bilinear", align_corners=True
     )
     out_cpu = torch.nn.functional.interpolate(
-        x, size=(H_out, W_out), mode="bilinear", align_corners=True
+        x, size=(h_out, w_out), mode="bilinear", align_corners=True
     )
 
     self.assert_close(golden_result=out_cpu, torch_tpu_result=out_tpu.cpu())
@@ -1685,24 +2334,24 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     #   If -1 wraps to last element (1), we get mixed result.
     #   val[0]=10, val[1]=20.
     #   lambda = -0.25 - (-1) = 0.75.
-    #   res = val[-1]*(1-0.75) + val[0]*0.75 = 20*0.25 + 10*0.75 = 5 + 7.5 = 12.5.
+    #   res = val[-1]*(1-0.75) + val[0]*0.75 = 20*0.25 + 10*0.75 = 12.5.
     # Expected (clamped): val[0] = 10.
 
     tpu_device = torch.device("tpu")
-    N, C = 1, 1
-    H_in, W_in = 1, 2
-    H_out, W_out = 1, 4
+    n, c = 1, 1
+    h_in, w_in = 1, 2
+    h_out, w_out = 1, 4
 
     x = torch.tensor([10.0, 20.0], dtype=torch.float32).reshape(
-        N, C, H_in, W_in
+        n, c, h_in, w_in
     )
     x_tpu = x.to(tpu_device)
 
     out_tpu = torch.nn.functional.interpolate(
-        x_tpu, size=(H_out, W_out), mode="bilinear", align_corners=False
+        x_tpu, size=(h_out, w_out), mode="bilinear", align_corners=False
     )
     out_cpu = torch.nn.functional.interpolate(
-        x, size=(H_out, W_out), mode="bilinear", align_corners=False
+        x, size=(h_out, w_out), mode="bilinear", align_corners=False
     )
 
     self.assert_close(golden_result=out_cpu, torch_tpu_result=out_tpu.cpu())
@@ -2575,6 +3224,29 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             torch.tensor(2, device=device),
         ),
     )
+
+  def test_fill_scalar(self):
+    def test_fn(device):
+      t = torch.tensor([1.0, 2.0, 3.0], device=device)
+      t.fill_(2.5)
+      return t
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+    def test_fn_int(device):
+      t = torch.tensor([1, 2, 3], dtype=torch.int32, device=device)
+      t.fill_(5)
+      return t
+
+    self.assert_close_tpu_vs_cpu(test_fn_int)
+
+  def test_fill_complex128(self):
+    t = torch.empty((2, 2), dtype=torch.complex128, device=torch.device("tpu"))
+    with self.assertRaisesRegex(
+        RuntimeError, "complex128 dtype is not supported"
+    ):
+      t.fill_(1.0)
+      t.cpu()
 
   def test_floor_divide_tensor(self):
     sample_input = (
@@ -4100,6 +4772,29 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(fn)
 
+  def test_embedding_renorm_complex(self):
+    """Tests that embedding renorm works with complex types."""
+
+    def fn(device):
+      vocab_size = 16
+      embedding_size = 32
+      # Initialize with complex values
+      embedding_table = torch.complex(
+          torch.ones(
+              vocab_size, embedding_size, dtype=torch.float32, device=device
+          ),
+          torch.ones(
+              vocab_size, embedding_size, dtype=torch.float32, device=device
+          ),
+      )
+      indices = torch.tensor([0, 1, 2, 3, 10, 11, 15], device=device)
+      torch.embedding_renorm_(
+          embedding_table, indices, max_norm=1.0, norm_type=2
+      )
+      return embedding_table
+
+    self.assert_close_tpu_vs_cpu(fn)
+
   def test_materialize_empty_tensor(self):
     """Tests that materializing an empty tensor works."""
     prev_deterministic_algorithms = torch.are_deterministic_algorithms_enabled()
@@ -5137,6 +5832,27 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  @parameterized.product(mode=[0, 1])
+  def test_embedding_bag_max_indices_sum_mean(self, mode):
+    """Tests that max_indices has shape [batch_size] when mode is sum or mean."""
+    weight = torch.tensor(
+        [[1.0, 5.0], [10.0, 2.0], [10.0, 8.0]], dtype=torch.float32
+    )
+    indices = torch.tensor([0, 1, 2], dtype=torch.long)
+    offsets = torch.tensor([0], dtype=torch.long)
+
+    def test_fn(device):
+      w = weight.clone().detach().to(device).requires_grad_(True)
+      output, _, _, max_indices = torch.ops.aten._embedding_bag(
+          w, indices.to(device), offsets.to(device), mode=mode
+      )
+      expected_shape = (offsets.numel(),)
+      self.assertEqual(max_indices.shape, expected_shape)
+      output.sum().backward()
+      return output, max_indices, w.grad
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
   def test_embedding_bag_empty_bag(self):
     """Tests that empty bags are handled correctly in _embedding_bag."""
     weight = torch.randn(5, 2).to(torch.device("tpu"))
@@ -5204,6 +5920,65 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             v.to(device), g.to(device), 0
         ),
     )
+
+  def test_weight_norm_interface_m(self):
+    """Tests torch.ops.aten._weight_norm_interface with 1D g."""
+    v = torch.randn(2, 3, 4, dtype=torch.float32)
+    g = torch.randn(2, dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten._weight_norm_interface(
+            v.to(device), g.to(device), 0
+        ),
+    )
+
+  def test_weight_norm_interface_all_inputs(self):
+    """Tests torch.ops.aten._weight_norm_interface with all possible inputs."""
+    test_cases = [
+        # Last dim
+        ((2, 3, 4), (4,), 2),
+        # First dim
+        ((2, 3, 4), (2,), 0),
+        # Dimensions match, but g is not 1D (first dim)
+        ((5, 10, 7), (5, 1, 1), 0),
+        # Dimensions match, but g is not 1D (last dim)
+        ((2, 3, 4), (1, 1, 4), 2),
+        # Minimal dimension (Rank 1)
+        ((10,), (10,), 0),
+        # Rank-2 v with same-rank g
+        ((2, 3), (2, 1), 0),
+        ((2, 3), (1, 3), 1),
+    ]
+
+    for v_shape, g_shape, dim in test_cases:
+      with self.subTest(v_shape=v_shape, g_shape=g_shape, dim=dim):
+        v = torch.randn(v_shape, dtype=torch.float32)
+        g = torch.randn(g_shape, dtype=torch.float32)
+        self.assert_close_tpu_vs_cpu(
+            lambda device, v=v, g=g, dim=dim: torch.ops.aten._weight_norm_interface(
+                v.to(device), g.to(device), dim
+            ),
+        )
+
+  def test_weight_norm_interface_norm_shape(self):
+    """Tests that the returned norm has the expected shape (matching g)."""
+    device = torch.device("tpu")
+    v = torch.randn(2, 3, 4, device=device)
+    g = torch.randn(2, device=device)
+
+    _, norm = torch.ops.aten._weight_norm_interface(v, g, 0)
+    self.assertEqual(norm.shape, (2,))
+
+    g_last = torch.randn(4, device=device)
+    _, norm_last = torch.ops.aten._weight_norm_interface(v, g_last, 2)
+    self.assertEqual(norm_last.shape, (4,))
+
+    g_md = torch.randn(2, 1, 1, device=device)
+    _, norm_md = torch.ops.aten._weight_norm_interface(v, g_md, 0)
+    self.assertEqual(norm_md.shape, (2, 1, 1))
+
+    g_md_last = torch.randn(1, 1, 4, device=device)
+    _, norm_md_last = torch.ops.aten._weight_norm_interface(v, g_md_last, 2)
+    self.assertEqual(norm_md_last.shape, (1, 1, 4))
 
   @parameterized.product(
       input_dtype=[
@@ -5461,6 +6236,199 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         atol=1e-2,
     )
 
+  def test_baddbmm_zero_beta_ignores_nan_input(self):
+    """torch.baddbmm() with zero beta should ignore NaN input."""
+    nan_input = torch.full((2, 2, 4), float("nan"), dtype=torch.float32)
+    batch1 = torch.ones(2, 2, 3, dtype=torch.float32)
+    batch2 = torch.ones(2, 3, 4, dtype=torch.float32)
+    beta = 0.0
+    alpha = 1.0
+
+    # Internal check.
+    assert torch.all(torch.isnan(nan_input))
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.baddbmm(
+            nan_input.to(device),
+            batch1.to(device),
+            batch2.to(device),
+            beta=beta,
+            alpha=alpha,
+        )
+    )
+
+  def test_baddbmm_zero_beta_ignores_inf_input(self):
+    """torch.baddbmm() with zero beta should ignore Inf input."""
+    inf_input = torch.full((2, 2, 4), float("inf"), dtype=torch.float32)
+    batch1 = torch.ones(2, 2, 3, dtype=torch.float32)
+    batch2 = torch.ones(2, 3, 4, dtype=torch.float32)
+    beta = 0.0
+    alpha = 1.0
+
+    # Internal check.
+    assert torch.all(torch.isinf(inf_input))
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.baddbmm(
+            inf_input.to(device),
+            batch1.to(device),
+            batch2.to(device),
+            beta=beta,
+            alpha=alpha,
+        )
+    )
+
+  def test_baddbmm_zero_alpha_ignores_nan_mat(self):
+    """torch.baddbmm() with zero alpha should ignore NaN mat input."""
+    self_input = torch.ones(2, 2, 4, dtype=torch.float32)
+    nan_batch1 = torch.full((2, 2, 3), float("nan"), dtype=torch.float32)
+    batch2 = torch.ones(2, 3, 4, dtype=torch.float32)
+    beta = 1.0
+    alpha = 0.0
+
+    # Internal check.
+    assert torch.all(torch.isnan(nan_batch1))
+
+    device = torch.device("tpu")
+    tpu_res = torch.baddbmm(
+        self_input.to(device),
+        nan_batch1.to(device),
+        batch2.to(device),
+        beta=beta,
+        alpha=alpha,
+    )
+    expected = self_input * beta
+    self.assert_close(golden_result=expected, torch_tpu_result=tpu_res.cpu())
+
+  def test_baddbmm_zero_alpha_ignores_inf_mat(self):
+    """torch.baddbmm() with zero alpha should ignore Inf mat input."""
+    self_input = torch.ones(2, 2, 4, dtype=torch.float32)
+    inf_batch1 = torch.full((2, 2, 3), float("inf"), dtype=torch.float32)
+    batch2 = torch.ones(2, 3, 4, dtype=torch.float32)
+    beta = 1.0
+    alpha = 0.0
+
+    # Internal check.
+    assert torch.all(torch.isinf(inf_batch1))
+
+    device = torch.device("tpu")
+    tpu_res = torch.baddbmm(
+        self_input.to(device),
+        inf_batch1.to(device),
+        batch2.to(device),
+        beta=beta,
+        alpha=alpha,
+    )
+    expected = self_input * beta
+    self.assert_close(golden_result=expected, torch_tpu_result=tpu_res.cpu())
+
+  def test_elu_backward_is_result(self):
+    """Tests torch.ops.aten.elu_backward with is_result=True and negative values."""
+    grad_output = torch.tensor([-1.0, 2.0, -3.0], dtype=torch.float32)
+    self_or_result = torch.tensor([-2.0, -1.5, 0.5], dtype=torch.float32)
+
+    def compute(device):
+      return torch.ops.aten.elu_backward(
+          to(grad_output, device),
+          alpha=1.0,
+          scale=1.0,
+          input_scale=1.0,
+          is_result=True,
+          self_or_result=to(self_or_result, device),
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_ceil_integral(self):
+    for dtype in [torch.int32, torch.uint8]:
+      x = torch.tensor([-2, -1, 0, 1, 2], dtype=dtype)
+      self.assert_close_tpu_vs_cpu(lambda device, x=x: torch.ceil(x.to(device)))
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch.ceil_(x.clone().to(device))
+      )
+
+    # For boolean, CPU doesn't support it, so test TPU execution alone.
+    x_bool = torch.tensor([True, False, True], dtype=torch.bool)
+    x_tpu = x_bool.to("tpu")
+    self.assertEqual(torch.ceil(x_tpu).cpu(), x_bool)
+    self.assertEqual(torch.ceil_(x_tpu.clone()).cpu(), x_bool)
+
+  def test_floor_integral(self):
+    for dtype in [torch.int32, torch.uint8]:
+      x = torch.tensor([-2, -1, 0, 1, 2], dtype=dtype)
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch.floor(x.to(device))
+      )
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch.floor_(x.clone().to(device))
+      )
+
+    # For boolean, CPU doesn't support it, so test TPU execution alone.
+    x_bool = torch.tensor([True, False, True], dtype=torch.bool)
+    x_tpu = x_bool.to("tpu")
+    self.assertEqual(torch.floor(x_tpu).cpu(), x_bool)
+    self.assertEqual(torch.floor_(x_tpu.clone()).cpu(), x_bool)
+
+  def test_foreach_ceil_integral(self):
+    for dtype in [torch.int32, torch.uint8]:
+      x = [
+          torch.tensor([-2, -1, 0, 1, 2], dtype=dtype),
+          torch.tensor([10, -5, 3], dtype=dtype),
+      ]
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch._foreach_ceil([t.to(device) for t in x])
+      )
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch._foreach_ceil_(
+              [t.clone().to(device) for t in x]
+          )
+      )
+
+    # For boolean, CPU doesn't support it, so test TPU execution alone.
+    x_bool = [
+        torch.tensor([True, False, True], dtype=torch.bool),
+        torch.tensor([False, True], dtype=torch.bool),
+    ]
+    x_tpu = [t.to("tpu") for t in x_bool]
+    res_tpu = torch._foreach_ceil(x_tpu)
+    for res, expected in zip(res_tpu, x_bool):
+      self.assertEqual(res.cpu(), expected)
+
+  def test_foreach_floor_integral(self):
+    for dtype in [torch.int32, torch.uint8]:
+      x = [
+          torch.tensor([-2, -1, 0, 1, 2], dtype=dtype),
+          torch.tensor([10, -5, 3], dtype=dtype),
+      ]
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch._foreach_floor([t.to(device) for t in x])
+      )
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch._foreach_floor_(
+              [t.clone().to(device) for t in x]
+          )
+      )
+
+    # For boolean, CPU doesn't support it, so test TPU execution alone.
+    x_bool = [
+        torch.tensor([True, False, True], dtype=torch.bool),
+        torch.tensor([False, True], dtype=torch.bool),
+    ]
+    x_tpu = [t.to("tpu") for t in x_bool]
+    res_tpu = torch._foreach_floor(x_tpu)
+    for res, expected in zip(res_tpu, x_bool):
+      self.assertEqual(res.cpu(), expected)
+
+  def test_sort_indices(self):
+    """Tests that torch.sort returns correct indices (dtype and values)."""
+    x = torch.tensor([5.0, 1.0, 3.0, 2.0, 4.0], dtype=torch.float32)
+
+    def run(device):
+      values, indices = torch.sort(x.to(device))
+      return values, indices
+
+    self.assert_close_tpu_vs_cpu(run)
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""
@@ -5474,7 +6442,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         g, k, n
     )
     group_sizes = torch.tensor([1, 4], dtype=torch.int32, device=device)
-    out = torch.ops.torch_tpu.ragged_dot(lhs, rhs, group_sizes)
+    out = torch.ops.tpu.ragged_dot(lhs, rhs, group_sizes)
     expected = torch.asarray(
         [
             [42.0, 48.0, 54.0],
@@ -5499,7 +6467,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         [1, 1, 0, 1, 1], dtype=torch.int32, device=device
     )
     out = torch.zeros(m, n, dtype=torch.float32, device=device)
-    res = torch.ops.torch_tpu.ragged_dot(lhs, rhs, group_sizes, out=out)
+    res = torch.ops.tpu.ragged_dot(lhs, rhs, group_sizes, out=out)
     expected = torch.asarray(
         [
             [10.0, 13.0],
@@ -5512,13 +6480,69 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close(golden_result=expected.cpu(), torch_tpu_result=res.cpu())
     self.assert_close(golden_result=expected.cpu(), torch_tpu_result=out.cpu())
 
+  def test_experimental_op_warning_once(self):
+    """Verifies that experimental ops warn exactly once per operator."""
+
+    @contextlib.contextmanager
+    def capture_c_stderr():
+      sys.stdout.flush()
+      sys.stderr.flush()
+      original_stderr_fd = 2
+      saved_stderr_fd = os.dup(original_stderr_fd)
+      tfile = tempfile.TemporaryFile(mode="w+b")
+      os.dup2(tfile.fileno(), original_stderr_fd)
+      try:
+        yield tfile
+      finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.dup2(saved_stderr_fd, original_stderr_fd)
+        os.close(saved_stderr_fd)
+
+    device = torch.device("tpu")
+    m, k, n, g = 5, 4, 3, 2
+    lhs = torch.arange(m * k, dtype=torch.float32, device=device).reshape(m, k)
+    rhs = torch.arange(g * k * n, dtype=torch.float32, device=device).reshape(
+        g, k, n
+    )
+    group_sizes = torch.tensor([1, 4], dtype=torch.int32, device=device)
+
+    # 1. First call to ragged_dot should warn.
+    with capture_c_stderr() as f:
+      _ = torch.ops.tpu.ragged_dot(lhs, rhs, group_sizes)
+      f.seek(0)
+      output = f.read().decode()
+      self.assertIn("Warning: operator ragged_dot is experimental", output)
+
+    # 2. Second call to ragged_dot should NOT warn.
+    with capture_c_stderr() as f:
+      _ = torch.ops.tpu.ragged_dot(lhs, rhs, group_sizes)
+      f.seek(0)
+      output = f.read().decode()
+      self.assertNotIn("experimental", output)
+
+    # 3. First call to ragged_dot_out (different op) should warn.
+    out = torch.zeros(m, n, dtype=torch.float32, device=device)
+    with capture_c_stderr() as f:
+      _ = torch.ops.tpu.ragged_dot(lhs, rhs, group_sizes, out=out)
+      f.seek(0)
+      output = f.read().decode()
+      self.assertIn("Warning: operator ragged_dot.out is experimental", output)
+
+    # 4. Second call to ragged_dot_out should NOT warn.
+    with capture_c_stderr() as f:
+      _ = torch.ops.tpu.ragged_dot(lhs, rhs, group_sizes, out=out)
+      f.seek(0)
+      output = f.read().decode()
+      self.assertNotIn("experimental", output)
+
   @absltest.skip("b/498564738")
   def test_set_dimension_logical_size_on_tpu(self):
     """Tests the torch_tpu.set_dimension_logical_size custom op on TPU."""
     device = torch.device("tpu")
     x = torch.arange(100, device=device, dtype=torch.int32).reshape(10, 10)
     size = torch.tensor(5, device=device, dtype=torch.int32)
-    out = torch.ops.torch_tpu.set_dimension_logical_size(x, 0, size)
+    out = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
     self.assert_close(golden_result=x[:5].cpu(), torch_tpu_result=out[:5].cpu())
 
   def test_set_dimension_logical_size_with_mlir_on_tpu(self):
@@ -5552,7 +6576,7 @@ module {
     end = torch.tensor(6, device=device, dtype=torch.int32)
     step = torch.tensor(2, device=device, dtype=torch.int32)
     max_length = 5
-    out = torch.ops.torch_tpu.dynamic_arange(
+    out = torch.ops.tpu.dynamic_arange(
         start, end, step, max_length, torch.int32
     )
     expected = torch.arange(1, 6, step=2, dtype=torch.int32)
@@ -5567,7 +6591,7 @@ module {
     end = torch.tensor(2.5, device=device, dtype=torch.float32)
     step = torch.tensor(0.5, device=device, dtype=torch.float32)
     max_length = 6
-    out = torch.ops.torch_tpu.dynamic_arange(
+    out = torch.ops.tpu.dynamic_arange(
         start, end, step, max_length, torch.float32
     )
     expected = torch.arange(0.0, 2.5, step=0.5, dtype=torch.float32)
@@ -5582,11 +6606,301 @@ module {
     end = torch.tensor(2, device=device, dtype=torch.int32)
     step = torch.tensor(1, device=device, dtype=torch.int32)
     max_length = 5
-    out = torch.ops.torch_tpu.dynamic_arange(
+    out = torch.ops.tpu.dynamic_arange(
         start, end, step, max_length, torch.int32
     )
     expected = torch.tensor([], dtype=torch.int32)
     self.assert_close(golden_result=expected, torch_tpu_result=out[:0].cpu())
+
+  def test_dynamic_broadcast_output_matches_static_bound(self):
+    """Tests dynamic_broadcast when runtime output shape matches static bounds."""
+    device = torch.device("tpu")
+    x = torch.tensor([1.0, 2.0], device=device, dtype=torch.float32)
+
+    shape = [
+        torch.tensor(3, device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+
+    out = torch.ops.tpu.dynamic_broadcast(
+        x, shape, broadcast_dims, static_shape, is_dynamic
+    )
+    expected = x.unsqueeze(0).expand(3, 2)
+    self.assert_close(golden_result=expected.cpu(), torch_tpu_result=out.cpu())
+
+  def test_dynamic_broadcast_output_below_static_bound(self):
+    """Tests dynamic_broadcast when runtime output shape is below static bounds."""
+    device = torch.device("tpu")
+    x = torch.tensor([1.0, 2.0], device=device, dtype=torch.float32)
+
+    shape = [
+        torch.tensor(3, device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1]
+    static_shape = [5, 2]
+    is_dynamic = [True, False]
+
+    out = torch.ops.tpu.dynamic_broadcast(
+        x, shape, broadcast_dims, static_shape, is_dynamic
+    )
+    expected = x.unsqueeze(0).expand(3, 2)
+    self.assert_close(
+        golden_result=expected.cpu(),
+        torch_tpu_result=out.cpu().flatten()[:6].reshape(3, 2),
+    )
+
+  def test_dynamic_broadcast_dynamic_input_mapped(self):
+    """Tests dynamic_broadcast when dynamic input dim maps to dynamic output dim."""
+    device = torch.device("tpu")
+    x = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float32)
+    size = torch.tensor(2, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3], logical [2] (dim 0 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
+
+      # Broadcast to physical [3, 4], logical [2, 4]
+      # Input dim 0 (dynamic) maps to output dim 0 (dynamic)
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(4, device=device, dtype=torch.int32),
+      ]
+      broadcast_dims = [0]
+      static_shape = [3, 4]
+      is_dynamic = [True, False]
+
+      out = torch.ops.tpu.dynamic_broadcast(
+          x_dynamic, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [2] expanded to [2, 4]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:2]
+    expected = x_logical_cpu.unsqueeze(1).expand(2, 4)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:8].reshape(2, 4),
+    )
+
+  def test_dynamic_broadcast_dynamic_input_and_new_dim_dynamic(self):
+    """Tests dynamic_broadcast with dynamic input and a new dynamic output dim."""
+    device = torch.device("tpu")
+    x = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float32)
+    size = torch.tensor(2, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3], logical [2] (dim 0 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
+
+      # Broadcast to physical [3, 3], logical [2, 2]
+      # Input dim 0 (dynamic) maps to output dim 1 (dynamic)
+      # Output dim 0 is new dim, dynamic
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(2, device=device, dtype=torch.int32),
+      ]
+      broadcast_dims = [1]
+      static_shape = [3, 3]
+      is_dynamic = [True, True]
+
+      out = torch.ops.tpu.dynamic_broadcast(
+          x_dynamic, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [2] expanded to [2, 2]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:2]
+    expected = x_logical_cpu.unsqueeze(0).expand(2, 2)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:4].reshape(2, 2),
+    )
+
+  def test_dynamic_reshape_flatten(self):
+    """Tests dynamic_reshape flattening a dynamic input."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32).reshape(3, 4)
+    size = torch.tensor(3, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3, 4], logical [3, 3] (dim 1 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 1, size)
+
+      # Target shape: physical [12], logical [9] (dim 0 is dynamic)
+      shape = [torch.tensor(9, device=device, dtype=torch.int32)]
+      static_shape = [12]
+      is_dynamic = [True]
+
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical is [3, 3], flattening it should
+    # give 9 elements.
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:, :3]
+    expected = x_logical_cpu.flatten()
+    self.assert_close(
+        golden_result=expected, torch_tpu_result=out.cpu().flatten()[:9]
+    )
+
+  def test_dynamic_reshape_change_dims(self):
+    """Tests dynamic_reshape changing dimensions of a 2D dynamic input to another 2D dynamic shape."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32).reshape(3, 4)
+    size = torch.tensor(2, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3, 4], logical [3, 2] (dim 1 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 1, size)
+
+      # Target shape: physical [2, 6], logical [2, 3] (dim 1 is dynamic)
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(3, device=device, dtype=torch.int32),
+      ]
+      static_shape = [2, 6]
+      is_dynamic = [False, True]
+
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [3, 2] reshaped to [2, 3]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:, :2]
+    expected = x_logical_cpu.reshape(2, 3)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:6].reshape(2, 3),
+    )
+
+  def test_dynamic_reshape_add_singleton_dims(self):
+    """Tests dynamic_reshape adding singleton dimensions to a dynamic input."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32).reshape(3, 4)
+    size = torch.tensor(2, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3, 4], logical [3, 2] (dim 1 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 1, size)
+
+      # Target shape: physical [1, 3, 1, 4], logical [1, 3, 1, 2]
+      shape = [
+          torch.tensor(1, device=device, dtype=torch.int32),
+          torch.tensor(3, device=device, dtype=torch.int32),
+          torch.tensor(1, device=device, dtype=torch.int32),
+          torch.tensor(2, device=device, dtype=torch.int32),
+      ]
+      static_shape = [1, 3, 1, 4]
+      is_dynamic = [False, False, False, True]
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [3, 2] reshaped to [1, 3, 1, 2]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:, :2]
+    expected = x_logical_cpu.reshape(1, 3, 1, 2)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:6].reshape(1, 3, 1, 2),
+    )
+
+  def test_dynamic_reshape_unflatten(self):
+    """Tests dynamic_reshape unflattening a 1D dynamic input to a 2D dynamic output."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32)
+    size = torch.tensor(8, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [12], logical [8] (dim 0 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
+
+      # Target shape: physical [2, 6], logical [2, 4] (dim 1 is dynamic)
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(4, device=device, dtype=torch.int32),
+      ]
+      static_shape = [2, 6]
+      is_dynamic = [False, True]
+
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    expected = torch.arange(8, dtype=torch.float32).reshape(2, 4)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:8].reshape(2, 4),
+    )
+
+  def test_dynamic_reshape_move_dynamic_dim(self):
+    """Tests dynamic_reshape moving the dynamic property from one dim to another."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32).reshape(3, 4)
+    size = torch.tensor(2, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [3, 4], logical [2, 4] (dim 0 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
+
+      # Target shape: physical [2, 6], logical [2, 4] (dim 1 is dynamic)
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(4, device=device, dtype=torch.int32),
+      ]
+      static_shape = [2, 6]
+      is_dynamic = [False, True]
+
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [2, 4] reshaped to [2, 4]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:2, :]
+    expected = x_logical_cpu.reshape(2, 4)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:8].reshape(2, 4),
+    )
+
+  def test_dynamic_reshape_unflatten_dynamic_dim(self):
+    """Tests dynamic_reshape unflattening (splitting) a dynamic dimension."""
+    device = torch.device("tpu")
+    x = torch.arange(12, device=device, dtype=torch.float32).reshape(2, 6)
+    size = torch.tensor(4, device=device, dtype=torch.int32)
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Make input dynamic: physical [2, 6], logical [2, 4] (dim 1 is dynamic)
+      x_dynamic = torch.ops.tpu.set_dimension_logical_size(x, 1, size)
+
+      # Target shape: physical [2, 2, 3], logical [2, 2, 2] (dim 2 is dynamic)
+      shape = [
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(2, device=device, dtype=torch.int32),
+          torch.tensor(2, device=device, dtype=torch.int32),
+      ]
+      static_shape = [2, 2, 3]
+      is_dynamic = [False, False, True]
+
+      out = torch.ops.tpu.dynamic_reshape(
+          x_dynamic, shape, static_shape, is_dynamic
+      )
+
+    # Expected: x_dynamic logical [2, 4] reshaped to [2, 2, 2]
+    x_cpu = x.cpu()
+    x_logical_cpu = x_cpu[:, :4]
+    expected = x_logical_cpu.reshape(2, 2, 2)
+    self.assert_close(
+        golden_result=expected,
+        torch_tpu_result=out.cpu().flatten()[:8].reshape(2, 2, 2),
+    )
 
   @parameterized.product(
       dtype=[torch.float32, torch.bfloat16],
@@ -7359,6 +8673,178 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
               source=to(source_dtype, device=device),
           ),
       )
+
+  def test_polygamma_n_0(self):
+    # n = 0 is digamma.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.polygamma(
+            0,
+            to(
+                torch.tensor(
+                    [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5], dtype=torch.float32
+                ),
+                device=device,
+            ),
+        ),
+        rtol=5e-5,
+        atol=5e-5,
+    )
+
+    # Test pole at 0 (should return -inf) and negative integer poles (should
+    # return NaN). Since our assert_close has equal_nan=True by default,
+    # we can safely compare NaNs.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.polygamma(
+            0,
+            to(
+                torch.tensor([-2.0, -1.0, 0.0], dtype=torch.float32),
+                device=device,
+            ),
+        )
+    )
+
+    # Test type promotion with float32 input and float64 output.
+    # computation_type is float32, but it must be cast to float64 for output.
+    def test_type_promotion(device):
+      self_tensor = to(
+          torch.tensor([1.0, 2.0], dtype=torch.float32), device=device
+      )
+      out_tensor = to(torch.empty(2, dtype=torch.float64), device=device)
+      torch.polygamma(0, self_tensor, out=out_tensor)
+      return out_tensor
+
+    self.assert_close_tpu_vs_cpu(test_type_promotion, rtol=1.6e-5, atol=6.8e-6)
+
+
+class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
+  """Tests for the op_testing framework itself."""
+
+  def test_accuracy_runs_use_different_seeds(self):
+    if self.golden_device_type != "cpu":
+      self.skipTest(
+          "Only runs in CPU mode where inputs are generated dynamically."
+      )
+
+    abs_op = next(op for op in op_db if op.name == "abs")
+
+    # 1. Verify uniqueness within a single run (loop)
+    # Seed once at the start of the "loop"
+    op_testing._seed_rngs(1234)
+
+    pairs1 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,  # match new loop behavior
+    )
+
+    # Run 2 continues from where Run 1 left off
+    pairs2 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,  # match new loop behavior
+    )
+
+    inputs1 = [p[0].input_value for p in pairs1]
+    inputs2 = [p[0].input_value for p in pairs2]
+
+    all_equal = True
+    for t1, t2 in zip(inputs1, inputs2):
+      if not torch.allclose(t1, t2):
+        all_equal = False
+        break
+    self.assertFalse(all_equal, "Inputs within the loop were identical!")
+
+  def test_accuracy_runs_are_unique_across_runs(self):
+    if self.golden_device_type != "cpu":
+      self.skipTest(
+          "Only runs in CPU mode where inputs are generated dynamically."
+      )
+
+    abs_op = next(op for op in op_db if op.name == "abs")
+
+    # Run with base seed 1234
+    op_testing._seed_rngs(1234)
+    pairs_1234 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,
+    )
+
+    # Run with base seed 5678
+    op_testing._seed_rngs(5678)
+    pairs_5678 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,
+    )
+
+    inputs_1234 = [p[0].input_value for p in pairs_1234]
+    inputs_5678 = [p[0].input_value for p in pairs_5678]
+
+    all_equal = True
+    for t1, t2 in zip(inputs_1234, inputs_5678):
+      if not torch.allclose(t1, t2):
+        all_equal = False
+        break
+    self.assertFalse(
+        all_equal,
+        "Inputs across runs with different base seeds were identical!",
+    )
+
+  def test_accuracy_runs_are_deterministic_with_same_seed(self):
+    if self.golden_device_type != "cpu":
+      self.skipTest(
+          "Only runs in CPU mode where inputs are generated dynamically."
+      )
+
+    abs_op = next(op for op in op_db if op.name == "abs")
+
+    # Run 1 with base seed 1234
+    op_testing._seed_rngs(1234)
+    pairs1 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,
+    )
+
+    # Run 2 with same base seed 1234
+    op_testing._seed_rngs(1234)
+    pairs2 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,
+    )
+
+    inputs1 = [p[0].input_value for p in pairs1]
+    inputs2 = [p[0].input_value for p in pairs2]
+
+    all_equal = True
+    for t1, t2 in zip(inputs1, inputs2):
+      if not torch.allclose(t1, t2):
+        all_equal = False
+        break
+    self.assertTrue(
+        all_equal,
+        "Inputs across runs with same base seeds were different!",
+    )
 
 
 if __name__ == "__main__":

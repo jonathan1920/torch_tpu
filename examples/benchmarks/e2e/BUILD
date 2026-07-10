@@ -14,6 +14,7 @@
 
 load(
     "//build_files:build_defs.bzl",
+    "if_cuda_dep",
     "if_oss",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
@@ -28,9 +29,19 @@ package(
 )
 
 torch_tpu_py_library(
+    name = "common",
+    srcs = ["common.py"],
+    deps = [
+        "//shims/absl_py/flags",
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
     name = "benchmark_utils",
     srcs = ["benchmark_utils.py"],
     deps = [
+        ":common",
         ":device_utils",
         "//examples/benchmarks/ops:op_capture",
         "//examples/benchmarks/quality_utils:quality_benchmark_model",
@@ -50,6 +61,7 @@ torch_tpu_py_library(
     srcs = ["mlcompass_utils.py"],
     deps = [
         ":benchmark_utils",
+        ":common",
         "//shims/absl_py/logging",
         "//torch_tpu/_internal/shims/mlcompass:benchmark_data",
         "//torch_tpu/_internal/shims/mlcompass:export_lib_borg",
@@ -63,6 +75,7 @@ torch_tpu_py_library(
     srcs = ["performance_utils.py"],
     deps = [
         ":benchmark_utils",
+        ":common",
         ":device_utils",
         ":mlcompass_utils",
         ":model_utils",
@@ -84,6 +97,7 @@ torch_tpu_py_library(
     srcs = ["quality_utils.py"],
     deps = [
         ":benchmark_utils",
+        ":common",
         ":mlcompass_utils",
         "//examples/benchmarks/quality_utils:quality_benchmark_model",
         "//examples/benchmarks/quality_utils/metrics:data_loader",
@@ -101,6 +115,7 @@ torch_tpu_py_library(
     srcs = ["test_utils.py"],
     deps = [
         ":benchmark_utils",
+        ":common",
         ":mlcompass_utils",
         ":model_utils",
         ":performance_utils",
@@ -120,6 +135,7 @@ torch_tpu_py_library(
     deps = [
         ":benchmark_function_db",
         ":benchmark_utils",
+        ":common",
         ":model_utils",
         ":performance_utils",
         ":test_utils",
@@ -128,31 +144,6 @@ torch_tpu_py_library(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
-    ],
-)
-
-torch_tpu_py_test(
-    name = "model_performance_benchmarks_smoke_test",
-    timeout = "long",
-    srcs = ["model_performance_benchmarks.py"],
-    args = [
-        "--platform=v5e_1x1",
-        "--smoke_test=true",
-    ],
-    main = "model_performance_benchmarks.py",
-    # TODO: b/519228522 - Re-enable OSS tests after adding data dependencies to wheel tests.
-    notest_oss = "Huggingface configs are part of OSS build targets.",
-    strict = True,
-    tags = [
-        "cpu:4",
-        "requires-accel-hbm",
-        "requires-net:external",
-        "requires-tpu-v5lite",
-    ],
-    deps = [
-        ":model_performance_benchmarks_lib",
-        "//examples/benchmarks/ops:op_capture",
-        "//torch_tpu",
     ],
 )
 
@@ -271,6 +262,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":benchmark_utils",
+        ":common",
         ":device_utils",
         ":mlcompass_utils",
         ":model_utils",
@@ -305,6 +297,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":benchmark_utils",
+        ":common",
         ":quality_utils",
         "//examples/benchmarks/quality_utils:quality_benchmark_model",
         "//examples/benchmarks/quality_utils/metrics:data_loader",
@@ -374,6 +367,7 @@ torch_tpu_py_test(
     deps = [
         ":benchmark_function_db",
         ":benchmark_utils",
+        ":common",
         ":layer_configs",
         ":model_utils",
         ":performance_utils",
@@ -426,6 +420,7 @@ torch_tpu_py_test(
     deps = [
         ":benchmark_function_db",
         ":benchmark_utils",
+        ":common",
         ":layer_configs",
         ":model_utils",
         ":performance_utils",
@@ -460,6 +455,7 @@ torch_tpu_py_test(
     deps = [
         ":benchmark_function_db",
         ":benchmark_utils",
+        ":common",
         ":layer_configs",
         ":model_utils",
         ":performance_utils",
@@ -528,7 +524,10 @@ torch_tpu_py_library(
     name = "benchmark_function_db",
     testonly = 1,
     srcs = ["benchmark_function_db.py"],
-    deps = ["//shims/torch:pytorch"],
+    deps = [
+        ":common",
+        "//shims/torch:pytorch",
+    ],
 )
 
 torch_tpu_py_library(
@@ -545,7 +544,7 @@ torch_tpu_py_library(
         "@pypi//numpy",
         "@pypi//timm",
         "@pypi//transformers",  # buildcleaner: keep
-    ],
+    ] + if_cuda_dep("@pypi//mamba_ssm"),  # buildcleaner: keep
 )
 
 torch_tpu_py_library(
@@ -607,6 +606,7 @@ torch_tpu_py_test(
     deps = [
         ":benchmark_function_db",
         ":benchmark_utils",
+        ":common",
         ":layer_configs",
         ":model_utils",
         ":performance_utils",

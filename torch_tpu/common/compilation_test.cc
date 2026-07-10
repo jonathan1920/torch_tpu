@@ -39,6 +39,10 @@ class MakeCompilerOptionsTest : public testing::Test {
   }
 };
 
+UniqueCompileOptions GetCompileOptions(const CompilationMode mode) {
+  return GetCompilationSpec(mode).xla_compile_options;
+}
+
 TEST_F(MakeCompilerOptionsTest, DefaultToO1ForEagerMode) {
   UniqueCompileOptions options =
       GetCompileOptions(CompilationMode::kFastCompile);

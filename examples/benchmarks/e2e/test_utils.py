@@ -25,6 +25,7 @@ from absl import flags
 from absl import logging
 from absl.testing import parameterized
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
@@ -50,8 +51,8 @@ _DRY_RUN_OUTPUT_FILE = "mlcompass_test_targets.txt"
 # CUDA only has EAGER and COMPILED run modes. Other run modes are applicable to
 # TPU only.
 CUDA_RUN_MODES = (
-    benchmark_utils.RunMode.EAGER_DEFAULT,
-    benchmark_utils.RunMode.COMPILED,
+    common.RunMode.EAGER_DEFAULT,
+    common.RunMode.COMPILED,
 )
 
 
@@ -74,7 +75,7 @@ def _get_output_dir(key: str) -> str:
 
 
 def _dry_run_test(
-    platform: benchmark_utils.Platform,
+    platform: common.Platform,
     base_test_name: str,
     benchmark_name: str,
 ) -> None:
@@ -124,7 +125,7 @@ class BenchmarkTest(parameterized.TestCase):
 
   @classmethod
   def _is_torchax_backend(cls) -> bool:
-    return benchmark_utils.BACKEND.value == benchmark_utils.Backend.TORCHAX
+    return common.BACKEND.value == common.Backend.TORCHAX
 
   @classmethod
   def setUpClass(cls):
@@ -159,7 +160,7 @@ class BenchmarkTest(parameterized.TestCase):
     """
 
     if performance_utils.BOUNDED_DYNAMIC.value:
-      if not benchmark_utils.is_torch_compile(config.run_mode):
+      if not common.is_torch_compile(config.run_mode):
         self.skipTest(
             "Only compiled mode benchmarks with bounded dynamic shapes is"
             " supported."
@@ -173,22 +174,22 @@ class BenchmarkTest(parameterized.TestCase):
         seq_len = config.model_and_input_args.sequence_length
         config.model_and_input_args.sequence_length = (
             model_utils.DynamicDimension(
-                min_value=max(2, seq_len // 2), max_value=seq_len * 2
+                min_value=max(2, seq_len // 2), max_value=seq_len * 2  # pyrefly: ignore[unsupported-operation]
             )
         )
 
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     if platform not in config.supported_platforms:
       self.skipTest(
-          f"Platform {benchmark_utils.PLATFORM.value} not in"
+          f"Platform {common.PLATFORM.value} not in"
           f" {config.supported_platforms}"
       )
     if (
         platform
         in (
-            benchmark_utils.Platform.B200_8,
-            benchmark_utils.Platform.B200_4,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.B200_8,
+            common.Platform.B200_4,
+            common.Platform.B200_1,
         )
         and config.run_mode not in CUDA_RUN_MODES
     ):
@@ -198,14 +199,14 @@ class BenchmarkTest(parameterized.TestCase):
 
     if (
         self._is_torchax_backend()
-        and config.run_mode != benchmark_utils.RunMode.COMPILED
+        and config.run_mode != common.RunMode.COMPILED
     ):
       self.skipTest("TorchAX only supports compiled run mode.")
 
     if self._is_torchax_backend() and platform in (
-        benchmark_utils.Platform.B200_8,
-        benchmark_utils.Platform.B200_4,
-        benchmark_utils.Platform.B200_1,
+        common.Platform.B200_8,
+        common.Platform.B200_4,
+        common.Platform.B200_1,
     ):
       self.skipTest("TorchAX is not supported for GPU benchmarks.")
 
@@ -342,12 +343,12 @@ def generate_run_mode_and_train_configs(
 
 
 def generate_run_mode_configs(
-    run_modes: Sequence[benchmark_utils.RunMode] = (
-        benchmark_utils.RunMode.EAGER_DEFAULT,
-        benchmark_utils.RunMode.EAGER_OPTIMIZED,
-        benchmark_utils.RunMode.COMPILED,
+    run_modes: Sequence[common.RunMode] = (
+        common.RunMode.EAGER_DEFAULT,
+        common.RunMode.EAGER_OPTIMIZED,
+        common.RunMode.COMPILED,
     ),
-    exclude_run_modes: Sequence[benchmark_utils.RunMode] | None = None,
+    exclude_run_modes: Sequence[common.RunMode] | None = None,
 ):
   """Generates test parameters from a list of run modes.
 

@@ -1015,7 +1015,7 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerNearestShlo(
 absl::Status CheckInputAndPaddingMode(const at::Tensor& input,
                                       const int64_t padding_mode) {
   TT_RET_CHECK(padding_mode == 0 || padding_mode == 1 || padding_mode == 2,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "expected the padding mode to be 0 (zeros), 1 (border), or 2 "
          "(reflection), got "
       << padding_mode;
@@ -1033,7 +1033,7 @@ absl::Status Check2DInterpolationMode(
   TT_RET_CHECK(interpolation_mode == InterpolationMode::kBilinear ||
                    interpolation_mode == InterpolationMode::kNearest ||
                    interpolation_mode == InterpolationMode::kBicubic,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "expected the interpolation mode to be 0 (bilinear), 1 (nearest), or "
          "2 (bicubic), got "
       << static_cast<int64_t>(interpolation_mode);
@@ -1046,7 +1046,7 @@ absl::Status Check3DInterpolationMode(
     const InterpolationMode interpolation_mode) {
   TT_RET_CHECK(interpolation_mode == InterpolationMode::kBilinear ||
                    interpolation_mode == InterpolationMode::kNearest,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "expected the interpolation mode to be 0 (bilinear) or 1 (nearest), "
          "got "
       << static_cast<int64_t>(interpolation_mode);
@@ -2164,7 +2164,7 @@ std::tuple<at::Tensor, at::Tensor> AtenGridSampler3dBackward(
                   inputs[0], inputs[1], inputs[2], align_corners, pm,
                   output_mask[0]);
             }
-            return TT_ERROR(error::kUnimplemented)
+            return TT_ERROR(error::kPythonNotImplementedError)
                    << "only nearest and bilinear interpolation modes are "
                       "supported for "
                       "grid_sampler_3d_backward currently, got "

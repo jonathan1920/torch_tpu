@@ -13,6 +13,14 @@
 # limitations under the License.
 
 """Manual bounded dynamism API."""
-from torch_tpu._internal.dynamism._tpu_torch_dynamism import get_dynamism_info, mark_dynamic
 
-__all__ = [mark_dynamic, get_dynamism_info]
+from torch_tpu._internal.dynamism._tpu_torch_dynamism import get_dynamism_info
+from torch_tpu._internal.dynamism._tpu_torch_dynamism import mark_dynamic
+
+# PEP 8 requires this to be a list of strings, not a tuple or a list of objects.
+__all__ = [
+    # go/keep-sorted start
+    "get_dynamism_info",
+    "mark_dynamic",
+    # go/keep-sorted end
+]

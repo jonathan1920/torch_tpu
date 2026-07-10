@@ -60,10 +60,11 @@ at::Tensor AtenGelu(const at::Tensor& self, c10::string_view approximate) {
                    error::kInvalidArgument)
         << "unsupported approximate argument: " << approximate;
     const c10::ScalarType self_dtype = self.scalar_type();
-    TT_CHECK_THROW(!c10::isComplexType(self_dtype), error::kUnimplemented)
+    TT_CHECK_THROW(!c10::isComplexType(self_dtype),
+                   error::kPythonNotImplementedError)
         << "unsupported input dtype: '" << ToString(self_dtype) << "'";
     TT_CHECK_THROW(!c10::isIntegralType(self_dtype, /*includeBool=*/true),
-                   error::kUnimplemented)
+                   error::kPythonNotImplementedError)
         << "unsupported input dtype: '" << ToString(self_dtype) << "'";
     const c10::ScalarType out_type = InferOutputDtype(self);
     TT_ASSIGN_OR_THROW(const auto out_dtype,
@@ -83,14 +84,15 @@ at::Tensor& AtenGeluOut(const at::Tensor& self, c10::string_view approximate,
                    error::kInvalidArgument)
         << "unsupported approximate argument: " << approximate;
     const c10::ScalarType self_dtype = self.scalar_type();
-    TT_CHECK_THROW(!c10::isComplexType(self_dtype), error::kUnimplemented)
+    TT_CHECK_THROW(!c10::isComplexType(self_dtype),
+                   error::kPythonNotImplementedError)
         << "unsupported input dtype: '" << ToString(self_dtype) << "'";
     TT_CHECK_THROW(!c10::isIntegralType(self_dtype, /*includeBool=*/true),
-                   error::kUnimplemented)
+                   error::kPythonNotImplementedError)
         << "unsupported input dtype: '" << ToString(self_dtype) << "'";
     const c10::ScalarType out_tensor_type = out.scalar_type();
     TT_CHECK_THROW(!c10::isIntegralType(out_tensor_type, /*includeBool=*/true),
-                   error::kUnimplemented)
+                   error::kPythonNotImplementedError)
         << "unsupported output dtype: '" << ToString(out_tensor_type) << "'";
     TT_ASSIGN_OR_THROW(const auto out_dtype,
                        ConvertTo<mlir::ElementType>(out_tensor_type));
@@ -112,10 +114,11 @@ at::Tensor& AtenGeluBackwardGradInput(const at::Tensor& grad_output,
                        error::kInvalidArgument)
             << "unsupported approximate argument: " << approximate;
         const c10::ScalarType self_dtype = self.scalar_type();
-        TT_CHECK_THROW(!c10::isComplexType(self_dtype), error::kUnimplemented)
+        TT_CHECK_THROW(!c10::isComplexType(self_dtype),
+                       error::kPythonNotImplementedError)
             << "unsupported input dtype: '" << ToString(self_dtype) << "'";
         TT_CHECK_THROW(!c10::isIntegralType(self_dtype, /*includeBool=*/true),
-                       error::kUnimplemented)
+                       error::kPythonNotImplementedError)
             << "unsupported input dtype: '" << ToString(self_dtype) << "'";
         const c10::ScalarType output_tensor_type = InferOutputDtype(self);
         TT_ASSIGN_OR_THROW(const auto out_dtype,

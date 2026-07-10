@@ -71,6 +71,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "addcmul.out";
     case OpName::kAddmm:
       return "addmm";
+    case OpName::kAddmmActivationOut:
+      return "_addmm_activation.out";
     case OpName::kAddmmDtype:
       return "addmm.dtype";
     case OpName::kAddmmDtypeOut:
@@ -231,6 +233,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "cos.out";
     case OpName::kCoshOut:
       return "cosh.out";
+    case OpName::kCountNonzeroDimIntList:
+      return "count_nonzero.dim_IntList";
     case OpName::kCtcLoss:
       return "_ctc_loss";
     case OpName::kCtcLossBackward:
@@ -299,6 +303,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "dropout";
     case OpName::kDynamicArange:
       return "dynamic_arange";
+    case OpName::kDynamicBroadcast:
+      return "dynamic_broadcast";
+    case OpName::kDynamicReshape:
+      return "dynamic_reshape";
     case OpName::kEfficientZeroTensor:
       return "_efficientzerotensor";
     case OpName::kEluBackwardGradInput:
@@ -685,12 +693,26 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_foreach_trunc_";
     case OpName::kForeachZero_:
       return "_foreach_zero_";
+    case OpName::kFusedAdam:
+      return "_fused_adam_";
+    case OpName::kFusedAdamTensorLr:
+      return "_fused_adam_.tensor_lr";
+    case OpName::kFusedAdamw:
+      return "_fused_adamw_";
+    case OpName::kFusedAdamwTensorLr:
+      return "_fused_adamw_.tensor_lr";
+    case OpName::kFusedDropout:
+      return "_fused_dropout";
     case OpName::kFusedRmsNorm:
       return "_fused_rms_norm";
     case OpName::kFusedRmsNormBackward:
       return "_fused_rms_norm_backward";
     case OpName::kFusedSdpChoice:
       return "_fused_sdp_choice";
+    case OpName::kFusedSgd:
+      return "_fused_sgd_";
+    case OpName::kFusedSgdTensorLr:
+      return "_fused_sgd_.tensor_lr";
     case OpName::kGather:
       return "gather";
     case OpName::kGatherOut:
@@ -809,6 +831,12 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "isposinf.out";
     case OpName::kLayerNorm:
       return "layer_norm";
+    case OpName::kLdexpOut:
+      return "ldexp.out";
+    case OpName::kLdexpTensor:
+      return "ldexp.Tensor";
+    case OpName::kLdexp_:
+      return "ldexp_";
     case OpName::kLe:
       return "le";
     case OpName::kLeOut:
@@ -871,6 +899,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_log_softmax_backward_data.out";
     case OpName::kLogSoftmaxOut:
       return "_log_softmax.out";
+    case OpName::kLogcumsumexp:
+      return "_logcumsumexp";
+    case OpName::kLogcumsumexpOut:
+      return "_logcumsumexp.out";
     case OpName::kLogicalAndOut:
       return "logical_and.out";
     case OpName::kLogicalNotOut:
@@ -987,6 +1019,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "native_layer_norm";
     case OpName::kNativeLayerNormBackward:
       return "native_layer_norm_backward";
+    case OpName::kNativeNorm:
+      return "native_norm";
+    case OpName::kNativeNormScalarOptDimDtype:
+      return "native_norm.ScalarOpt_dim_dtype";
     case OpName::kNe:
       return "ne";
     case OpName::kNeOut:
@@ -1037,6 +1073,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_pdist_forward";
     case OpName::kPolarOut:
       return "polar.out";
+    case OpName::kPolygammaOut:
+      return "polygamma.out";
     case OpName::kPow:
       return "pow";
     case OpName::kPowOut:
@@ -1051,6 +1089,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "prod";
     case OpName::kProdDimOut:
       return "prod.int_out";
+    case OpName::kPut_:
+      return "put_";
     case OpName::kRaggedAllToAll:
       return "ragged_all_to_all";
     case OpName::kRaggedAllToAllOut:
@@ -1157,6 +1197,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "scalar_tensor";
     case OpName::kScaledDotProductEfficientAttention:
       return "_scaled_dot_product_efficient_attention";
+    case OpName::kScaledDotProductEfficientAttentionBackward:
+      return "_scaled_dot_product_efficient_attention_backward";
     case OpName::kScaledDotProductFlashAttention:
       // We use the CPU name as the pytorch logic calls the CPU version for
       // non-CUDA devices, see
@@ -1213,6 +1255,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "sinh.out";
     case OpName::kSlice:
       return "slice";
+    case OpName::kSliceScatter:
+      return "slice_scatter";
     case OpName::kSoftmaxBackwardDataOut:
       return "_softmax_backward_data.out";
     case OpName::kSoftmaxOut:
@@ -1223,6 +1267,14 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "softplus.out";
     case OpName::kSortValuesStable:
       return "sort.values_stable";
+    case OpName::kSparseDenseMatmul:
+      return "sparse_dense_matmul";
+    case OpName::kSparseDenseMatmulGradWithAdagrad:
+      return "sparse_dense_matmul_grad_with_adagrad";
+    case OpName::kSparseDenseMatmulGradWithAdam:
+      return "sparse_dense_matmul_grad_with_adam";
+    case OpName::kSparseDenseMatmulGradWithSgd:
+      return "sparse_dense_matmul_grad_with_sgd";
     case OpName::kSplitWithSizesCopyOut:
       return "split_with_sizes_copy.out";
     case OpName::kSqrtOut:
@@ -1259,6 +1311,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_torchtpu_internal_constant";
     case OpName::kTorchTpuInternalGatherAllSubgroups:
       return "_torchtpu_internal_gather_all_subgroups";
+    case OpName::kTorchTpuInternalZeroSize:
+      return "_torchtpu_internal_zero_size";
     case OpName::kTorchTpuOptimizationBarrier:
       return "optimization_barrier";
     case OpName::kTorchTpuStorageAllocate:
@@ -1289,6 +1343,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "unsqueeze_";
     case OpName::kUntypedStorageResize_:
       return "untyped_storage_resize_";
+    case OpName::kUpsampleBicubic2dBackwardGradInput:
+      return "upsample_bicubic2d_backward.grad_input";
+    case OpName::kUpsampleBicubic2dOut:
+      return "upsample_bicubic2d.out";
     case OpName::kUpsampleBilinear2dBackwardGradInput:
       return "upsample_bilinear2d_backward.grad_input";
     case OpName::kUpsampleBilinear2dOut:
@@ -1323,6 +1381,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "var.correction";
     case OpName::kVarCorrectionOut:
       return "var.correction_out";
+    case OpName::kVarMeanCorrection:
+      return "var_mean.correction";
     case OpName::kVarOut:
       return "var.out";
     case OpName::kVdot:

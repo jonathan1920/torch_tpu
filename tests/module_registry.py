@@ -72,7 +72,6 @@ try:
 except ImportError:
   _HAS_TRANSFORMERS = False
 
-_MULTIMODAL_MODEL_TYPES = ("clip", "llava", "paligemma")
 _AUDIO_MODEL_TYPES = ("whisper", "wav2vec2", "audio", "hubert")
 _VISION_MODEL_TYPES = (
     "vit",
@@ -82,8 +81,12 @@ _VISION_MODEL_TYPES = (
     "clip",
     "siglip",
     "dino",
+    "dinov2",
     "detr",
     "table-transformer",
+    "deit",
+    "beit",
+    "convnext",
 )
 _CAUSAL_LM_MODEL_TYPES = (
     "llama",
@@ -94,8 +97,21 @@ _CAUSAL_LM_MODEL_TYPES = (
     "falcon",
     "gemma",
 )
-_SEQ2SEQ_MODEL_TYPES = ("t5", "whisper", "bart", "marian", "nllb", "m2m")
-
+_SEQ2SEQ_MODEL_TYPES = (
+    "t5",
+    "whisper",
+    "bart",
+    "marian",
+    "nllb",
+    "m2m",
+    "m2m_100",
+    "mbart",
+    "pegasus",
+    "encoder-decoder",
+)
+_VISION_LANGUAGE_MODEL_TYPES = ("clip", "llava", "paligemma", "blip", "mllama")
+# Multimodal is the union of all multimodal subtypes
+_MULTIMODAL_MODEL_TYPES = _VISION_LANGUAGE_MODEL_TYPES
 
 _MAX_SEQ_LEN_HEURISTIC_CAP = 100_000
 
@@ -398,8 +414,8 @@ def _walk_package_resources(
 
 
 # Helper functions for TransformersProvider
-def _sniff_transformers_modality(config: Any) -> Modality:
-  """Sniffs the modality of a Transformers model from its config.
+def _determine_modality(config: Any) -> Modality:
+  """Determines the modality of a Transformers model from its config.
 
   Args:
     config: The Transformers configuration object.
@@ -454,6 +470,138 @@ def _sniff_transformers_modality(config: Any) -> Modality:
     return Modality.TEXT_DEFAULT
 
 
+def _parse_image_size(config: Any, default_size: int = 224) -> int:
+  """Extracts image_size as an integer from config or vision_config."""
+  vision_config = getattr(config, "vision_config", None)
+  val = None
+  if isinstance(vision_config, dict):
+    val = vision_config.get("image_size")
+  elif vision_config is not None:
+    val = getattr(vision_config, "image_size", None)
+  if val is None:
+    val = getattr(config, "image_size", default_size)
+
+  if isinstance(val, (list, tuple)) and val:
+    return val[0]
+  elif isinstance(val, int):
+    return val
+  return default_size
+
+
+def _get_num_channels(config: Any, default_channels: int = 3) -> int:
+  """Extracts num_channels from config or vision_config."""
+  vision_config = getattr(config, "vision_config", None)
+  if isinstance(vision_config, dict):
+    return vision_config.get("num_channels", default_channels)
+  elif vision_config is not None:
+    return getattr(vision_config, "num_channels", default_channels)
+  return getattr(config, "num_channels", default_channels)
+
+
+def _generate_gemma4_inputs(
+    config: Any,
+    batch_size: int,
+    image_size: int,
+    device: str,
+    input_kwargs: dict[str, Any],
+) -> None:
+  """Generates gemma4 specific inputs (patchified image and position ids).
+
+  Unlike standard Vision Transformers that take raw images of shape (B, C, H, W)
+  and perform patchification internally (e.g. via Conv2d), Gemma 4 expects
+  pre-patchified images from the image processor.
+
+  Specifically:
+  - pixel_values: Shape (B, max_patches, patch_pixels) where patch_pixels is
+    C * patch_size * patch_size (e.g., 3 * 16 * 16 = 768). Each patch is
+    flattened.
+  - image_position_ids: Shape (B, max_patches, 2) containing the (x, y) grid
+    coordinates of each patch in the original image. This is needed because
+    the flattened patch sequence loses spatial structure. Padding patches
+    are indicated by (-1, -1).
+
+  It also expects input_ids to contain placeholders (image_token_id) for the
+  pooled image tokens, which will be replaced by the vision features in the
+  model.
+
+  Args:
+    config: The model configuration.
+    batch_size: The batch size.
+    image_size: The size of the input image.
+    device: The device to place the tensors on.
+    input_kwargs: The dictionary to populate with the generated inputs.
+  """
+  vision_config = getattr(config, "vision_config", None)
+  patch_size = getattr(vision_config, "patch_size", 16)
+  pooling_kernel_size = getattr(vision_config, "pooling_kernel_size", 3)
+
+  # Default max_soft_tokens from Gemma4ImageProcessor.
+  # This is the budget of soft tokens for the model.
+  max_soft_tokens = 280
+  max_patches = max_soft_tokens * pooling_kernel_size**2
+
+  # Determine real patches based on image_size.
+  grid_size = image_size // patch_size
+  num_real_patches = grid_size * grid_size
+
+  # If the dummy image size results in more patches than the budget,
+  # we cap it to the budget to simulate the image processor behavior.
+  if num_real_patches > max_patches:
+    num_real_patches = max_patches
+    grid_size = int(num_real_patches**0.5)
+    num_real_patches = grid_size * grid_size
+
+  # Generate pixel_values: (batch_size, max_patches, patch_pixels).
+  # Unlike standard ViT models that take raw images and do patchification
+  # in the model (e.g. via Conv2d), Gemma 4 expects patchified inputs.
+  num_channels = (
+      getattr(config, "num_channels", None)
+      or getattr(vision_config, "num_channels", None)
+      or 3
+  )
+  patch_pixels = num_channels * patch_size * patch_size
+
+  input_kwargs["pixel_values"] = torch.randn(
+      batch_size, max_patches, patch_pixels, device=device
+  )
+
+  # Generate image_position_ids: (batch_size, max_patches, 2).
+  # We initialize with -1 (padding).
+  image_position_ids = torch.full(
+      (batch_size, max_patches, 2), -1, device=device, dtype=torch.long
+  )
+
+  # Fill in real positions (grid coordinates).
+  grid_x, grid_y = torch.meshgrid(
+      torch.arange(grid_size, device=device),
+      torch.arange(grid_size, device=device),
+      indexing="ij",
+  )
+  coords = torch.stack([grid_x, grid_y], dim=-1)  # (grid_size, grid_size, 2)
+  coords = coords.view(-1, 2)  # (grid_size^2, 2)
+
+  # Copy coordinates to the valid part of image_position_ids.
+  image_position_ids[:, :num_real_patches, :] = coords.unsqueeze(0).expand(
+      batch_size, -1, -1
+  )
+
+  input_kwargs["image_position_ids"] = image_position_ids
+
+  # Calculate number of pooled features mathematically.
+  # The model pools patches using avg pooling with kernel size
+  # pooling_kernel_size.
+  # We need to know how many valid features will remain after pooling to
+  # insert the correct number of placeholders in input_ids.
+  pooled_dim = grid_size // pooling_kernel_size
+  num_features = pooled_dim * pooled_dim
+
+  # Overwrite input_ids to have num_features copies of image_token_id.
+  # The model expects to find these placeholders to merge text and image
+  # features.
+  image_token_id = getattr(config, "image_token_id", 258880)
+  input_kwargs["input_ids"][:, :num_features] = image_token_id
+
+
 def _generate_transformers_inputs(
     config: Any,
     modality: Modality,
@@ -493,40 +641,47 @@ def _generate_transformers_inputs(
         actual_shape, device=device, dtype=torch.long
     )
 
-    image_size = 224
-    if hasattr(config, "vision_config") and hasattr(
-        config.vision_config, "image_size"
-    ):
-      val = config.vision_config.image_size
-      if isinstance(val, int):
-        image_size = val
-      elif isinstance(val, (list, tuple)) and len(val) > 0:
-        image_size = val[0]
-    elif hasattr(config, "image_size"):
-      val = getattr(config, "image_size")
-      if isinstance(val, int):
-        image_size = val
-      elif isinstance(val, (list, tuple)) and len(val) > 0:
-        image_size = val[0]
+    if model_type.startswith("gemma4"):
+      image_size = _parse_image_size(config, default_size=288)
+      _generate_gemma4_inputs(
+          config, actual_shape[0], image_size, device, input_kwargs
+      )
+    elif any(k in model_type for k in _VISION_LANGUAGE_MODEL_TYPES):
+      image_size = _parse_image_size(config)
+      num_channels = _get_num_channels(config)
+      batch_size = shape[0] if shape else 1
+      vision_config = getattr(config, "vision_config", None)
 
-    batch_size = actual_shape[0]
-    num_channels = getattr(config, "num_channels", 3)
-    if num_channels is None and hasattr(config, "vision_config"):
-      num_channels = getattr(config.vision_config, "num_channels", 3)
-
-    dummy_img = torch.randn(
-        batch_size, num_channels, image_size, image_size, device=device
-    )
-    input_kwargs["pixel_values"] = dummy_img
+      if "mllama" in model_type:
+        num_images = 1
+        if isinstance(vision_config, dict):
+          num_tiles = vision_config.get("max_num_tiles", 4)
+        else:
+          num_tiles = getattr(vision_config, "max_num_tiles", 4)
+        dummy_img = torch.randn(
+            batch_size,
+            num_images,
+            num_tiles,
+            num_channels,
+            image_size,
+            image_size,
+            device=device,
+        )
+        input_kwargs["pixel_values"] = dummy_img
+        input_kwargs["aspect_ratio_ids"] = torch.ones(
+            (batch_size, num_images), device=device, dtype=torch.long
+        )
+        input_kwargs["aspect_ratio_mask"] = torch.ones(
+            (batch_size, num_images, num_tiles), device=device, dtype=torch.long
+        )
+      else:
+        dummy_img = torch.randn(
+            batch_size, num_channels, image_size, image_size, device=device
+        )
+        input_kwargs["pixel_values"] = dummy_img
 
   elif modality == Modality.VISION:
-    image_size = 224
-    if hasattr(config, "image_size"):
-      val = getattr(config, "image_size")
-      if isinstance(val, int):
-        image_size = val
-      elif isinstance(val, (list, tuple)) and len(val) > 0:
-        image_size = val[0]
+    image_size = _parse_image_size(config)
 
     processor = None
     if model_dir and _HAS_TRANSFORMERS:
@@ -585,12 +740,28 @@ def _generate_transformers_inputs(
         actual_shape, device=device, dtype=torch.long
     )
 
+    if model_type == "tapas":
+      type_vocab_sizes = getattr(
+          config, "type_vocab_sizes", [3, 256, 256, 2, 256, 256, 10]
+      )
+      token_type_ids = []
+      for size in type_vocab_sizes:
+        token_type_ids.append(
+            torch.randint(
+                0, size, actual_shape, device=device, dtype=torch.long
+            )
+        )
+      input_kwargs["token_type_ids"] = torch.stack(token_type_ids, dim=-1)
+
     if modality == Modality.SEQ2SEQ and getattr(
         config, "is_encoder_decoder", False
     ):
       pass  # Handled below for all modalities
 
-  if getattr(config, "is_encoder_decoder", False):
+  if (
+      getattr(config, "is_encoder_decoder", False)
+      and modality != Modality.VISION
+  ):
     vocab_size = getattr(config, "vocab_size", None)
     if vocab_size is None and hasattr(config, "text_config"):
       vocab_size = getattr(config.text_config, "vocab_size", None)
@@ -676,7 +847,7 @@ class TransformersProvider(BaseProvider):
     config = None
 
     if self.has_cache_dir:
-      model_dir_or_repo_id = self._base_path / name
+      model_dir_or_repo_id = self._base_path / name  # pyrefly: ignore[unsupported-operation]
       try:
         if model_dir_or_repo_id.exists():
           config = transformers.AutoConfig.from_pretrained(
@@ -723,7 +894,7 @@ class TransformersProvider(BaseProvider):
     if not load_weights and hasattr(config, "use_pretrained_backbone"):
       config.use_pretrained_backbone = False
 
-    modality = _sniff_transformers_modality(config)
+    modality = _determine_modality(config)
 
     if load_weights:
       if modality == Modality.CAUSAL_LM:
@@ -738,7 +909,7 @@ class TransformersProvider(BaseProvider):
       else:
         model_cls = transformers.AutoModel
 
-      model_fn = lambda: model_cls.from_pretrained(
+      model_fn = lambda: model_cls.from_pretrained(  # pyrefly: ignore[missing-attribute]
           str(model_dir_or_repo_id), **kwargs
       )
 
@@ -854,7 +1025,7 @@ class DiffusersProvider(BaseProvider):
     raw_config = None
 
     if self.has_cache_dir:
-      model_path = self._base_path / name
+      model_path = self._base_path / name  # pyrefly: ignore[unsupported-operation]
       try:
         if model_path.exists():
           raw_config = auto_model.AutoModel.load_config(
@@ -896,7 +1067,7 @@ class DiffusersProvider(BaseProvider):
             "modify_config_hook is not supported when load_weights is True."
         )
       raw_config = modify_config_hook(raw_config)
-    config_dict = dict(raw_config)
+    config_dict = dict(raw_config)  # pyrefly: ignore[no-matching-overload]
 
     def _module_factory():
       if load_weights:

@@ -18,10 +18,6 @@ import pytest
 
 def test_factory_demo():
   import torch
-  from torch_tpu import api
-  import tpu_utils
-
-  device = tpu_utils.safe_init()
 
   # This is fused — no physical TPU compute is used yet
   t1 = torch.ones((10, 10), device="tpu", dtype=torch.bfloat16)
@@ -76,7 +72,7 @@ def test_modes_demo():
 
   def check_fusion(mode_name, mode):
     print(f"--- Mode: {mode_name} ---")
-    with em.eager_mode(mode):
+    with em.set_eager_mode(mode):
       x = torch.ones((2, 2), device="tpu")
       y = x + 1
       z = y * 2
@@ -95,6 +91,6 @@ def test_modes_demo():
         print("  Result: Operations were EXECUTED immediately (not fused).")
     print()
 
-  check_fusion("Fused Eager (OPTIMIZED)", em.EagerMode.OPTIMIZED)
+  check_fusion("Fused Eager (DEFER_AND_FUSE)", em.EagerMode.DEFER_AND_FUSE)
   check_fusion("Strict Eager (DEFER_NEVER)", em.EagerMode.DEFER_NEVER)
   return

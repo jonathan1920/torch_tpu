@@ -37,6 +37,10 @@ from tests import module_registry
 import transformers
 from transformers import activations
 from transformers.models.bert import modeling_bert
+from transformers.models.mamba2 import configuration_mamba2
+from transformers.models.mamba2 import modeling_mamba2
+from transformers.models.nemotron_h import configuration_nemotron_h
+from transformers.models.nemotron_h import modeling_nemotron_h
 from transformers.models.qwen3 import configuration_qwen3
 from transformers.models.qwen3 import modeling_qwen3
 from transformers.models.qwen3_5_moe import modeling_qwen3_5_moe
@@ -314,6 +318,9 @@ def huggingface_llm_model_builder(
   # control-flow tracing errors in masking_utils.py while keeping identical
   # benchmark workload/math.
   example_inputs.pop("attention_mask", None)
+  if model_and_input_args.custom_kwargs.get("disable_vision_inputs", False):
+    example_inputs.pop("pixel_values", None)
+    example_inputs.pop("image_position_ids", None)
 
   if is_training:
     vocab_size = get_vocab_size(model_cpu.config)
@@ -545,7 +552,7 @@ def meta_llama_model_builder(
   # restricted to that host. Since Data Parallelism requires no
   # communication in a forward pass, this means no cross-host communication
   # will occur in such cases.
-  mp_size = math.gcd(world_size, args.n_kv_heads)
+  mp_size = math.gcd(world_size, args.n_kv_heads)  # pyrefly: ignore[bad-argument-type]
 
   # Ensure model parallel is initialized
   if not fairscale_init.model_parallel_is_initialized():
@@ -842,6 +849,39 @@ def ml_layer_model_builder(
                 (bs, seq, hidden_size), dtype=torch.float32, device=device
             ),
         ),
+    )
+
+  elif model_name == "slice_scatter":
+    dim = kwargs["dim"]
+    start = kwargs["start"]
+    end = kwargs["end"]
+    step = kwargs["step"]
+    input_shape = kwargs["input_shape"]
+    src_shape = kwargs["src_shape"]
+
+    class SliceScatterModel(torch.nn.Module):
+
+      def __init__(self, dim, start, end, step):
+        super().__init__()
+        self.dim = dim
+        self.start = start
+        self.end = end
+        self.step = step
+
+      def forward(self, x, src):
+        return torch.slice_scatter(
+            x,
+            src,
+            dim=self.dim,
+            start=self.start,
+            end=self.end,
+            step=self.step,
+        )
+
+    model = SliceScatterModel(dim, start, end, step)
+    example_inputs = (
+        torch.randn(input_shape, dtype=weights_dtype, device=device),
+        torch.randn(src_shape, dtype=weights_dtype, device=device),
     )
 
   elif model_name == "nn.AvgPool2d":
@@ -1401,7 +1441,7 @@ def ml_layer_model_builder(
   elif model_name == "Qwen3RotaryEmbedding":
     config = configuration_qwen3.Qwen3Config(
         max_position_embeddings=kwargs["max_position_embeddings"],
-        rope_theta=kwargs["rope_theta"],
+        rope_theta=kwargs["rope_theta"],  # pyrefly: ignore[unexpected-keyword]
     )
     model = modeling_qwen3.Qwen3RotaryEmbedding(config)
     head_dim = kwargs["head_dim"]
@@ -1560,6 +1600,71 @@ def ml_layer_model_builder(
         (batch_size, kwargs["q_seq_len"], embed_dim),
         dtype=weights_dtype,
         device=device,
+    )
+  elif model_name == "Mamba2Block":
+    config = configuration_mamba2.Mamba2Config(
+        hidden_size=kwargs["hidden_size"],
+        state_size=kwargs["state_size"],
+        conv_kernel=kwargs["conv_kernel"],
+        expand=kwargs["expand"],
+        num_heads=kwargs["num_heads"],
+        head_dim=kwargs["head_dim"],
+        n_groups=kwargs["n_groups"],
+        chunk_size=kwargs["chunk_size"],
+    )
+    model = modeling_mamba2.Mamba2Block(config, layer_idx=0)
+
+    class Mamba2BlockWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, hidden_states):
+        return self.m(hidden_states)
+
+    model = Mamba2BlockWrapper(model).to(dtype=weights_dtype)
+
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            bs, seq, kwargs["hidden_size"], dtype=weights_dtype, device=device
+        ),
+    )
+
+  elif model_name == "NemotronHMamba2Block":
+    config = configuration_nemotron_h.NemotronHConfig(
+        hidden_size=kwargs["hidden_size"],
+        ssm_state_size=kwargs["state_size"],
+        conv_kernel=kwargs["conv_kernel"],
+        expand=kwargs["expand"],
+        mamba_num_heads=kwargs["num_heads"],
+        mamba_head_dim=kwargs["head_dim"],
+        n_groups=kwargs["n_groups"],
+        chunk_size=kwargs["chunk_size"],
+    )
+    config.use_mamba_kernels = False
+    config.layers_block_type = ["mamba"]
+    model = modeling_nemotron_h.NemotronHBlock(config, layer_idx=0)
+
+    class NemotronHMamba2BlockWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, hidden_states):
+        return self.m(hidden_states)
+
+    model = NemotronHMamba2BlockWrapper(model).to(dtype=weights_dtype)
+
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            bs, seq, kwargs["hidden_size"], dtype=weights_dtype, device=device
+        ),
     )
 
   else:
@@ -1783,7 +1888,7 @@ def _apply_tensor_parallel_plan(
       continue
 
     if isinstance(child, torch.nn.Linear):
-      for pattern, tp_type in tp_plan.items():
+      for pattern, tp_type in tp_plan.items():  # pyrefly: ignore[missing-attribute]
         if re.fullmatch(pattern, full_name):
           original_linear = child
           new_linear = None
@@ -1984,4 +2089,7 @@ def gemma_ragged_moe_model_builder(
       (batch_size, sequence_length), str(device)
   )
   example_inputs.pop("attention_mask", None)
+  if model_and_input_args.custom_kwargs.get("disable_vision_inputs", False):
+    example_inputs.pop("pixel_values", None)
+    example_inputs.pop("image_position_ids", None)
   return ModelAndInput(model=model, example_inputs=example_inputs)

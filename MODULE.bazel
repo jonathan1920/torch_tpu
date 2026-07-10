@@ -3,6 +3,13 @@ module(
     version = "0.1.1",
 )
 
+SUPPORTED_PYTHON_VERSIONS = [
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14",
+]
+
 # BCR dependencies
 bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
@@ -106,15 +113,24 @@ use_repo(
 
 # Python extension
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
-python.toolchain(
-    is_default = True,
+python.defaults(
     python_version = "3.12",
+    python_version_env = "HERMETIC_PYTHON_VERSION",
 )
-use_repo(python, "python_3_12")
+
+[python.toolchain(
+    python_version = v,
+) for v in SUPPORTED_PYTHON_VERSIONS]
+
+[use_repo(
+    python,
+    "python_" + v.replace(".", "_"),
+) for v in SUPPORTED_PYTHON_VERSIONS]
 
 # Pip extension
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
-pip.parse(
+
+[pip.parse(
     extra_hub_aliases = {
         "torch": [
             "torch_headers",
@@ -134,20 +150,23 @@ pip.parse(
         "https://download.pytorch.org/whl/cpu",
     ],
     hub_name = "torch_tpu_pypi",
-    python_version = "3.12",
-    requirements_lock = "//requirements:requirements.txt",
+    python_version = python_version,
+    requirements_lock = "//requirements:requirements_{}.txt".format(python_version.replace(".", "_")),
     whl_modifications = {
         "//bazel:torch_wheel.json": "torch",
     },
-)
+) for python_version in SUPPORTED_PYTHON_VERSIONS]
 
 # Expose the pip repositories using the names your BUILD files expect
-use_repo(
+use_repo(pip, pypi = "torch_tpu_pypi")
+
+[use_repo(
     pip,
-    pypi = "torch_tpu_pypi",
-    pypi_libtpu = "torch_tpu_pypi_312_libtpu",
-    pypi_torch = "torch_tpu_pypi_312_torch",
-)
+    **{
+        "pypi_libtpu_" + v.replace(".", ""): "torch_tpu_pypi_" + v.replace(".", "") + "_libtpu",
+        "pypi_torch_" + v.replace(".", ""): "torch_tpu_pypi_" + v.replace(".", "") + "_torch",
+    }
+) for v in SUPPORTED_PYTHON_VERSIONS]
 
 # Custom repository rules
 torch_local_repo = use_repo_rule("//bazel:torch_local_repo.bzl", "torch_local_repo")

@@ -109,6 +109,12 @@ def _should_skip_input_marking(
   # _foreach_exp_ does not support integral dtypes on TPU.
   if op_info.name == "_foreach_exp_" and not dtype.is_floating_point:
     return f"{op_info.name} does not support integral dtypes."
+  # ceil/floor do not support int64 under dynamism (sign-extension bugs).
+  if (
+      op_info.name in ["ceil", "floor", "_foreach_ceil", "_foreach_floor"]
+      and dtype == torch.int64
+  ):
+    return f"{op_info.name} does not support int64 under dynamism."
   # TODO: b/449736443 - Empty tensor handling needs reworking.
   if input_value.numel() == 0:
     return "Empty tensors are currently not supported."
@@ -156,6 +162,7 @@ def verify_op_supports_dynamism(
       "index_select",  # invalid gather
       "isin",  # materialization failure (negative dimension size)
       "kron",  # dynamic triage (invalid result)
+      "ldexp",  # dynamic shape value permutation mismatch
       "linalg.lu_factor_ex",  # materialization failure (negative dim size)
       "logical_and",  # dynamic triage (invalid result)
       "masked_scatter",  # unflatten ambiguous error
@@ -496,7 +503,7 @@ class ForEachDynamicOpInfo(DynamicOpInfo):
         rhs_vals = args[0] if len(args) >= 1 else None
         ehs_vals = args[1] if len(args) >= 2 else None
         TernaryElementwiseDynamicOpInfo(self.op_info).mark_dynamic(
-            seed, value, (rhs_vals[idx], ehs_vals[idx])
+            seed, value, (rhs_vals[idx], ehs_vals[idx])  # pyrefly: ignore[unsupported-operation]
         )
         continue
 

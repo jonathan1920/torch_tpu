@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_library", "torch_tpu_py_test")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 licenses(["notice"])
@@ -28,6 +28,7 @@ torch_tpu_cc_library(
     srcs = ["env.cc"],
     deps = [
         "//shims/pybind11",
+        "//torch_tpu/common:native_scan_support",
         "//torch_tpu/common:utils",
     ],
 )
@@ -41,7 +42,24 @@ pybind_extension(
     wrap_py_init = True,
     deps = [
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:native_scan_support",
         "//torch_tpu/common:utils",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "native_scan",
+    srcs = ["native_scan.py"],
+    visibility = ["//:__subpackages__"],
+)
+
+torch_tpu_py_test(
+    name = "native_scan_test",
+    srcs = ["native_scan_test.py"],
+    deps = [
+        ":native_scan",
+        "//shims/absl_py/testing:absltest",
+        "//torch_tpu",
     ],
 )
 
@@ -55,10 +73,10 @@ torch_tpu_cc_library(
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
+        "//torch_tpu/eager:device_gen_impl",
         "//torch_tpu/eager:events_queue",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/eager:repeated_ops_heuristic",
-        "//torch_tpu/experimental/eager:materialize_new",
     ],
 )
 
@@ -74,10 +92,10 @@ pybind_extension(
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
+        "//torch_tpu/eager:device_gen_impl",
         "//torch_tpu/eager:events_queue",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/eager:repeated_ops_heuristic",
-        "//torch_tpu/experimental/eager:materialize_new",
         "@com_google_absl//absl/flags:flag",
     ],
 )

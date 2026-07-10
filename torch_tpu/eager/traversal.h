@@ -37,6 +37,8 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
+#include "torch_tpu/common/compile_options_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/ops/python_context.h"
@@ -123,12 +125,12 @@ class Traversal {
       absl::Span<const SharedDeviceBufferList> execution_order,
       absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
 
-  // Composes a cache key for the traversal for the specific compilation mode.
-  CompilationCacheKey GetCacheKey(CompilationMode mode) const {
+  // Composes a cache key for the traversal with a specific compilation setting.
+  CompilationCacheKey GetCacheKey(CompileOptionsKey compile_options_key) const {
     if (graph_key_ == std::nullopt) {
       graph_key_ = BuildGraphKey();
     }
-    return CompilationCacheKey(*graph_key_, GetCompileOptionsKey(mode));
+    return CompilationCacheKey(*graph_key_, compile_options_key);
   }
 
   // Validates that the provided arguments are a valid reordering of the
@@ -178,18 +180,20 @@ class Traversal {
 
   // Builds the MLIR module for the Traversal.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> BuildMlirModule(
-      mlir::MLIRContext& mlir_context) const;
+      mlir::MLIRContext& mlir_context, bool use_stablehlo_bounds = false) const;
 
   // Compiles the Traversal into a CompiledKernel. For static graphs, this will
   // be a single executable future. For bounded dynamic graphs, this will
-  // in addition contain futures for dynamic adapters.
+  // in addition contain futures for dynamic adapters (unless
+  // `use_stablehlo_bounds` is true).
   //
   // If `out_mlir_text` is non-null and Compile is a cache miss (i.e. the
   // MLIR module is actually built), it is populated with the textual
   // representation of that module.
   absl::StatusOr<CompiledKernel> Compile(
-      CompilationMode compilation_mode,
-      std::string* absl_nullable out_mlir_text = nullptr) const;
+      CompilationSpec spec, std::string* absl_nullable out_mlir_text = nullptr,
+      bool use_stablehlo_bounds = false,
+      absl::Span<const Indices> argument_layouts = {}) const;
 
   // Returns true if any argument to the traversal has bounded dynamic
   // dimensions marked.

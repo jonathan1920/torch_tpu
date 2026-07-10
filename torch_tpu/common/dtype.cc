@@ -19,6 +19,7 @@
 #include <string>
 #include <string_view>
 
+#include "ATen/AccumulateType.h"
 #include "ATen/core/ATen_fwd.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
@@ -35,6 +36,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/macro_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -166,7 +168,10 @@ absl::StatusOr<mlir::ElementType> ToElementType(
       // Boolean.
     case at::kBool:
       return mlir::ElementType::PRED;
-    // These cases should never happen.
+#if TT_TORCH_VERSION_GE(2, 13)
+    case at::ScalarType::BComplex32:
+#endif
+      // These cases should never happen.
     // go/keep-sorted start
     case at::kBits16:
     case at::kBits1x8:
@@ -203,7 +208,7 @@ absl::StatusOr<mlir::ElementType> ToElementType(
       // switch statement, the C++ compiler will generate a warning (treated as
       // an error), forcing the author to handle the new case.
   }
-  return TT_ERROR(error::kUnimplemented)
+  return TT_ERROR(error::kPythonNotImplementedError)
          << "TorchTPU does not yet support dtype " << ToString(scalar_type);
 }
 
@@ -638,7 +643,8 @@ template <typename Container>
 
 absl::StatusOr<int64_t> ValidateTensorByteSize(at::IntArrayRef size,
                                                mlir::ElementType element_type) {
-  TT_RET_CHECK(IsSupportedBufferType(element_type), error::kUnimplemented)
+  TT_RET_CHECK(IsSupportedBufferType(element_type),
+               error::kPythonNotImplementedError)
       << "element type " << ToShortString(element_type)
       << " is not supported as a tensor element type";
   const auto negative_dims = GetNegativeValuesIn(size);
@@ -726,6 +732,17 @@ mlir::ElementType RealComponentOf(const mlir::ElementType element_type) {
     default:
       return element_type;
   }
+}
+
+// PyTorch uses `at::toAccumulateType` to determine this. We call it with
+// `is_cuda=true` to ensure we get the CUDA-aligned accumulation type.
+// For full details on PyTorch's accumulation type mapping, see:
+// third_party/py/torch/aten/src/ATen/AccumulateType.h
+at::ScalarType ToAccumulateType(at::ScalarType type) {
+  return at::toAccumulateType(  // AT_TO_ACCUMULATE_TYPE_OK=root usage for the
+                                // API.
+      type,
+      /*is_cuda=*/true);
 }
 
 }  // namespace torch_tpu

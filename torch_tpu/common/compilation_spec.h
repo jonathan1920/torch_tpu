@@ -62,6 +62,16 @@ struct CompilationSpec {
   CompilationSpec(CompilationSpec&&) = default;
   CompilationSpec& operator=(CompilationSpec&&) = default;
 
+  // Returns a deep copy of this `CompilationSpec`.
+  //
+  // Use it sparsely when the same specification needs to be fanned out to
+  // multiple compilation threads.
+  [[nodiscard]] CompilationSpec Copy() const {
+    return CompilationSpec(
+        std::make_unique<xla::CompileOptions>(*xla_compile_options),
+        compile_options_key);
+  }
+
   UniqueCompileOptions xla_compile_options;
   CompileOptionsKey compile_options_key;
 };

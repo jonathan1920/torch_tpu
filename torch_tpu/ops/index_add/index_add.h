@@ -19,15 +19,15 @@
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
 
-mlir::MlirOp BuildIndexAddShlo(mlir::MlirOp self, int64_t dim,
-                               mlir::MlirOp index, mlir::MlirOp source,
-                               mlir::MlirOp alpha,
-                               mlir::ElementType computation_xla_type);
+absl::StatusOr<mlir::MlirOp> BuildIndexAddShlo(
+    mlir::MlirOp self, int64_t dim, mlir::MlirOp index, mlir::MlirOp source,
+    mlir::MlirOp alpha, mlir::ElementType computation_xla_type);
 
 }  // namespace torch_tpu
 

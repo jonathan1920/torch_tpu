@@ -45,31 +45,31 @@ namespace torch_tpu {
 namespace {
 
 absl::StatusOr<mlir::MlirOp> BuildEluShlo(mlir::MlirOp input_op,
-                                          const at::Scalar& alpha,
-                                          const at::Scalar& scale,
-                                          const at::Scalar& input_scale) {
-  // Create constants for the scalar parameters.
-  auto alpha_op = MakeConstantLike(input_op, alpha.toDouble());
-  auto scale_op = MakeConstantLike(input_op, scale.toDouble());
-  auto input_scale_op = MakeConstantLike(input_op, input_scale.toDouble());
-  auto zero_op = MakeConstantLike(input_op, 0.0);
-  auto one = MakeConstantLike(input_op, 1.0);
+                                          mlir::MlirOp alpha_op,
+                                          mlir::MlirOp scale_op,
+                                          mlir::MlirOp input_scale_op) {
+  TT_ASSIGN_OR_RETURN(
+      (auto [input_bcast, alpha_bcast, scale_bcast, input_scale_bcast]),
+      ApplyBroadcastIfNeeded(input_op, alpha_op, scale_op, input_scale_op));
+
+  auto zero_op = MakeConstantLike(input_bcast, 0.0);
+  auto one = MakeConstantLike(input_bcast, 1.0);
 
   //  y = self * input_scale
-  auto input_scaled = mlir::stablehlo::Mul(input_op, input_scale_op);
+  auto input_scaled = mlir::stablehlo::Mul(input_bcast, input_scale_bcast);
   auto pred = mlir::stablehlo::Compare(
       input_scaled, zero_op, mlir::stablehlo::ComparisonDirection::GT);
 
   // --- Positive path: scale * input_scaled ---
-  auto positive_val = mlir::stablehlo::Mul(input_scaled, scale_op);
+  auto positive_val = mlir::stablehlo::Mul(input_scaled, scale_bcast);
 
   // --- Negative path: scale * alpha * (exp(input_scaled) - 1) ---
   auto exp_input_scaled = mlir::stablehlo::Exp(input_scaled);
   auto exp_input_scaled_minus_1 =
       mlir::stablehlo::Subtract(exp_input_scaled, one);
   auto exp_alpha_scaled =
-      mlir::stablehlo::Mul(alpha_op, exp_input_scaled_minus_1);
-  auto negative_val = mlir::stablehlo::Mul(exp_alpha_scaled, scale_op);
+      mlir::stablehlo::Mul(alpha_bcast, exp_input_scaled_minus_1);
+  auto negative_val = mlir::stablehlo::Mul(exp_alpha_scaled, scale_bcast);
 
   return mlir::stablehlo::Select(pred, /*on_true=*/positive_val,
                                  /*on_false=*/negative_val);
@@ -77,53 +77,47 @@ absl::StatusOr<mlir::MlirOp> BuildEluShlo(mlir::MlirOp input_op,
 
 absl::StatusOr<mlir::MlirOp> BuildEluBackwardGradInputShlo(
     mlir::MlirOp grad_output_op, mlir::MlirOp self_or_result_op,
-    const at::Scalar& alpha, const at::Scalar& scale,
-    const at::Scalar& input_scale, bool is_result) {
-  auto alpha_op = MakeConstantLike(grad_output_op, alpha.toDouble());
-  auto scale_op = MakeConstantLike(grad_output_op, scale.toDouble());
-  auto input_scale_op =
-      MakeConstantLike(grad_output_op, input_scale.toDouble());
-  auto zero_op = MakeConstantLike(grad_output_op, 0.0);
+    mlir::MlirOp alpha_op, mlir::MlirOp scale_op, mlir::MlirOp input_scale_op,
+    bool is_result) {
+  TT_ASSIGN_OR_RETURN(
+      (auto [grad_output_bcast, self_or_result_bcast, alpha_bcast, scale_bcast,
+             input_scale_bcast]),
+      ApplyBroadcastIfNeeded(grad_output_op, self_or_result_op, alpha_op,
+                             scale_op, input_scale_op));
 
-  auto negcoef = mlir::stablehlo::Mul(alpha_op, scale_op);
-  auto poscoef = scale_op;
-  auto negiptcoef = input_scale_op;
+  auto zero_op = MakeConstantLike(grad_output_bcast, 0.0);
+
+  auto negcoef = mlir::stablehlo::Mul(alpha_bcast, scale_bcast);
+  auto poscoef = scale_bcast;
+  auto negiptcoef = input_scale_bcast;
 
   // --- Positive path: grad_output * poscoef ---
-  auto positive_val = mlir::stablehlo::Mul(grad_output_op, poscoef);
+  auto positive_val = mlir::stablehlo::Mul(grad_output_bcast, poscoef);
 
   // --- Negative path: ---
   mlir::MlirOp negative_val;
   if (is_result) {
     // if is_result: grad_output * negiptcoef * (self_or_result + negcoef)
-    auto term_sum = mlir::stablehlo::Add(self_or_result_op, negcoef);
-    auto term_mul = mlir::stablehlo::Mul(grad_output_op, negiptcoef);
+    auto term_sum = mlir::stablehlo::Add(self_or_result_bcast, negcoef);
+    auto term_mul = mlir::stablehlo::Mul(grad_output_bcast, negiptcoef);
     negative_val = mlir::stablehlo::Mul(term_sum, term_mul);
   } else {
     // else: grad_output * negiptcoef * negcoef *
     // torch.exp(self_or_result * negiptcoef)
-    auto inner = mlir::stablehlo::Mul(self_or_result_op, negiptcoef);
+    auto inner = mlir::stablehlo::Mul(self_or_result_bcast, negiptcoef);
     auto exp_inner = mlir::stablehlo::Exp(inner);
     auto exp_mul = mlir::stablehlo::Mul(exp_inner, negcoef);
     auto term_exp_mul = mlir::stablehlo::Mul(exp_mul, negiptcoef);
-    negative_val = mlir::stablehlo::Mul(grad_output_op, term_exp_mul);
+    negative_val = mlir::stablehlo::Mul(grad_output_bcast, term_exp_mul);
   }
 
   // Comparison condition: self_or_result <= 0
   auto pred = mlir::stablehlo::Compare(
-      self_or_result_op, zero_op, mlir::stablehlo::ComparisonDirection::LE);
+      self_or_result_bcast, zero_op, mlir::stablehlo::ComparisonDirection::LE);
 
   return mlir::stablehlo::Select(pred, /*on_true=*/negative_val,
                                  /*on_false=*/positive_val);
 }
-
-// Returns an MlirUnaryOpBuilder that captures alpha, scale, and input_scale.
-MlirUnaryOpBuilder GetEluFunctional(const at::Scalar& alpha,
-                                    const at::Scalar& scale,
-                                    const at::Scalar& input_scale) {
-  return std::bind(&BuildEluShlo, std::placeholders::_1, alpha, scale,
-                   input_scale);
-};
 
 absl::Status CheckIsFloatingPoint(const at::Tensor& tensor,
                                   const std::string_view name) {
@@ -138,12 +132,40 @@ absl::Status CheckIsFloatingPoint(const at::Tensor& tensor,
 at::Tensor& AtenEluOut(const at::Tensor& input, const at::Scalar& alpha,
                        const at::Scalar& scale, const at::Scalar& input_scale,
                        at::Tensor& out) {
+  auto promoted_alpha = PromoteScalar(alpha);
+  auto promoted_scale = PromoteScalar(scale);
+  auto promoted_input_scale = PromoteScalar(input_scale);
   TT_KERNEL(
-      OpName::kEluOut, param_keys, (input, alpha, scale, input_scale, out), {
+      OpName::kEluOut, param_keys,
+      (input, promoted_alpha, promoted_scale, promoted_input_scale, out), {
         TT_THROW_IF_ERROR(CheckIsFloatingPoint(input, /* name= */ "input"));
-        TT_THROW_IF_ERROR(
-            UnaryOpOut(input, out, GetEluFunctional(alpha, scale, input_scale),
-                       {.op_param_cache_keys = std::move(param_keys)}));
+
+        TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
+                           promoted_alpha.GetTensor(input.scalar_type()));
+        TT_ASSIGN_OR_THROW(const at::Tensor scale_tensor,
+                           promoted_scale.GetTensor(input.scalar_type()));
+        TT_ASSIGN_OR_THROW(const at::Tensor input_scale_tensor,
+                           promoted_input_scale.GetTensor(input.scalar_type()));
+
+        TT_ASSIGN_OR_THROW(const mlir::ElementType out_dtype,
+                           ConvertTo<mlir::ElementType>(out.scalar_type()));
+
+        auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 4> inputs)
+            -> absl::StatusOr<mlir::MlirOp> {
+          auto [input, alpha, scale, input_scale] = inputs;
+          return BuildEluShlo(input, alpha, scale, input_scale);
+        };
+
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            DispatchOp<4>(
+                std::move(op_builder),
+                {input, alpha_tensor, scale_tensor, input_scale_tensor},
+                {.out_dtype = out_dtype,
+                 .out_dims = CopyIntVector(out.sizes()),
+                 .op_param_cache_keys = std::move(param_keys)}));
+
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });
 }
@@ -152,21 +174,32 @@ at::Tensor& AtenEluBackwardGradInput(
     const at::Tensor& grad_output, const at::Scalar& alpha,
     const at::Scalar& scale, const at::Scalar& input_scale, bool is_result,
     const at::Tensor& self_or_result, at::Tensor& grad_input) {
+  auto promoted_alpha = PromoteScalar(alpha);
+  auto promoted_scale = PromoteScalar(scale);
+  auto promoted_input_scale = PromoteScalar(input_scale);
   TT_KERNEL(
       OpName::kEluBackwardGradInput, param_keys,
-      (grad_output, alpha, scale, input_scale, is_result, self_or_result,
-       grad_input),
+      (grad_output, promoted_alpha, promoted_scale, promoted_input_scale,
+       is_result, self_or_result, grad_input),
       {
         TT_THROW_IF_ERROR(
             CheckIsFloatingPoint(grad_output, /* name= */ "grad output"));
 
-        auto op_builder = [alpha, scale, input_scale,
-                           is_result](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+        TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
+                           promoted_alpha.GetTensor(grad_output.scalar_type()));
+        TT_ASSIGN_OR_THROW(const at::Tensor scale_tensor,
+                           promoted_scale.GetTensor(grad_output.scalar_type()));
+        TT_ASSIGN_OR_THROW(
+            const at::Tensor input_scale_tensor,
+            promoted_input_scale.GetTensor(grad_output.scalar_type()));
+
+        auto op_builder = [is_result](FixedSizeSpan<mlir::MlirOp, 5> inputs)
             -> absl::StatusOr<mlir::MlirOp> {
-          auto& [grad_output_op, self_or_result_op] = inputs;
-          return BuildEluBackwardGradInputShlo(grad_output_op,
-                                               self_or_result_op, alpha, scale,
-                                               input_scale, is_result);
+          auto [grad_output_op, self_or_result_op, alpha_op, scale_op,
+                input_scale_op] = inputs;
+          return BuildEluBackwardGradInputShlo(
+              grad_output_op, self_or_result_op, alpha_op, scale_op,
+              input_scale_op, is_result);
         };
 
         TT_ASSIGN_OR_THROW(
@@ -176,7 +209,9 @@ at::Tensor& AtenEluBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto result,
-            DispatchOp<2>(std::move(op_builder), {grad_output, self_or_result},
+            DispatchOp<5>(std::move(op_builder),
+                          {grad_output, self_or_result, alpha_tensor,
+                           scale_tensor, input_scale_tensor},
                           /*options=*/
                           {.out_dtype = output_dtype,
                            .out_dims = output_shape,

@@ -28,6 +28,9 @@ std::tuple<at::Tensor, at::Tensor> AtenDropout(const at::Tensor& input,
                                                double p,
                                                c10::optional<bool> train);
 
+std::tuple<at::Tensor, at::Tensor> AtenFusedDropout(
+    const at::Tensor& self, double p, c10::optional<at::Generator> generator);
+
 at::Tensor AtenNativeDropoutBackward(const at::Tensor& grad_output,
                                      const at::Tensor& mask, double scale);
 

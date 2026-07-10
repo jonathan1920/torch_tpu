@@ -17,7 +17,11 @@
 import contextlib
 import enum
 import functools
+import multiprocessing.connection
 import re
+import sys
+import traceback
+import unittest
 
 from absl import flags
 from absl.testing import absltest
@@ -26,15 +30,19 @@ from torch.distributed.elastic.multiprocessing import errors
 import torch.multiprocessing as mp
 from torch_tpu._internal import testing as tt_testing
 
+from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+
 
 ChildFailedError = errors.ChildFailedError
+
+
 TEST_MODE = flags.DEFINE_string(
     name="test_mode",
     required=True,
     default=None,
     help=(
         "Mode of the test. Valid options are 'tpu' (verify the error messages"
-        " on TPU), 'cpu' (verify the error messages on CPU), and 'cov' (measure"
+        " on TPU), 'gpu' (verify the error messages on GPU), and 'cov' (measure"
         " the error message coverage on TPU). Note that the 'cov' mode does NOT"
         " verify the correctness of the error messages (it only collects and"
         " prints the coverage stats). A cov-mode test only fails when the"
@@ -51,21 +59,26 @@ def device():
 
   if TEST_MODE.value in ("tpu", "cov"):
     return torch.device("tpu")
-  if TEST_MODE.value == "cpu":
-    return torch.device("cpu")
+  if TEST_MODE.value == "gpu":
+    return torch.device("cuda")
   raise ValueError(f"Unsupported test mode: {TEST_MODE.value}")
 
 
-def set_up_module(init_torch_tpu: bool = True):
-  """Called by absltest after flags are parsed and before tests are run.
+def set_up_module() -> None:
+  """Called by absltest after flags are parsed and before tests are run."""
+  pass
 
-  Args:
-    init_torch_tpu: Whether to initialize torch_tpu. This should be set to False
-      for distributed tests, which need to initialize torch_tpu by itself.
-  """
 
-  if TEST_MODE.value in ("tpu", "cov") and init_torch_tpu:
-    torch.device("tpu")  # Initialize torch_tpu.
+@functools.lru_cache(maxsize=1)
+def is_on_tpu() -> bool:
+  """Returns True if the test is running on TPU."""
+  return device().type == "tpu"
+
+
+@functools.lru_cache(maxsize=1)
+def is_on_gpu() -> bool:
+  """Returns True if the test is running on GPU."""
+  return device().type == "cuda"
 
 
 # Matches a source location in the format of "file:line: ...".
@@ -76,10 +89,10 @@ _EXCEPTION_RAISED_RE = re.compile(
     r"Exception raised from .* at ([/\w\.]+:\d+).*"
 )
 
-# Whether to allow `cpu=...` in `assert_raises_message()`.
-# If False, passing `cpu` will raise an error. This prevents accidental
+# Whether to allow `gpu=...` in `assert_raises_message()`.
+# If False, passing `gpu` will raise an error. This prevents accidental
 # misuse of the function in a TPU-only error test.
-_allow_cpu_parameter = True
+_allow_gpu_parameter = True
 
 
 def _parse_error(msg: str):
@@ -139,7 +152,7 @@ def _check_error_message(
       unstable information such as a source line number, which should be
       extremely rare as we strive at not leaking implementation details in the
       error messages.
-    device_type: The device the error message is for (either "tpu" or "cpu").
+    device_type: The device the error message is for (either "tpu" or "gpu").
     match_type: The type of match to perform on the error message.
   """
 
@@ -238,10 +251,10 @@ In either case, just ignore the failure (the test is not currently enforced for 
 @_append_error_test_failure_protocol
 @contextlib.contextmanager
 def assert_raises_message(
-    exception_type,
+    exception_type: type[Exception],
     *,
     tpu: str | re.Pattern[str],
-    cpu: str | re.Pattern[str] | None = None,
+    gpu: str | re.Pattern[str] | None = None,
     message_reviewed_by: str | None = None,
 ):
   """Asserts that a specific exception and message is raised.
@@ -255,27 +268,32 @@ def assert_raises_message(
   Args:
     exception_type: The expected exception type.
     tpu: The expected error message on TPU.
-    cpu: The expected error message on CPU. If not provided, it is assumed to be
-      the same as the TPU error message.
+    gpu: The expected error message on GPU (defaults to `tpu` if omitted).
     message_reviewed_by: The LDAP of the engineer who reviewed the error
       message. This will be used by a future tool to find all error messages not
       reviewed by an engineer.
   """
 
+  # Check that exception_type is a class derived from BaseException.
+  assert issubclass(exception_type, BaseException), (
+      "exception_type must be a class derived from BaseException. "
+      "It cannot be anything else, including a tuple."
+  )
+
   del message_reviewed_by  # Unused for now.
 
-  if not _allow_cpu_parameter and cpu is not None:
-    raise AssertionError("cpu=... is not allowed in TPU-only error tests.")
+  if not _allow_gpu_parameter and gpu is not None:
+    raise AssertionError("gpu=... is not allowed in TPU-only error tests.")
 
-  if cpu is None:
-    cpu = tpu
+  if gpu is None:
+    gpu = tpu
 
   try:
     yield
   except exception_type as e:
     msg = str(e)
-    if TEST_MODE.value == "cpu":
-      _check_error_message(msg, cpu, "cpu")
+    if TEST_MODE.value == "gpu":
+      _check_error_message(msg, gpu, "gpu")
     else:
       _check_error_message(msg, tpu, "tpu")
   except BaseException as e:
@@ -284,8 +302,8 @@ def assert_raises_message(
     ) from e
   else:
     raise AssertionError(
-        f"Expected {exception_type.__name__} to be raised, but no exception"
-        " was raised."
+        f"Expected {exception_type.__name__} to be raised, but no exception was"
+        " raised."
     )
 
 
@@ -365,6 +383,109 @@ def assert_subprocess_raises_message(exception_type, expected_msg: str):
     )
 
 
+# Attribute name to store the @why_tpu_only reason in the test method.
+_WHY_TPU_ONLY_ATTR = "_why_tpu_only"
+
+# Explanation for why we need the @why_tpu_only decorator on a test method
+# in TpuOnlyErrorTestBase.
+_EXPLAIN_WHY_TPU_ONLY = (
+    "TpuOnlyErrorTestBase is for verifying errors that occur on TPU but not on"
+    " GPU, which usually mean a bug in TPU code. If the code under test fails"
+    " on GPU too, the test case should be moved to errors_test.py instead to"
+    " verify that the code fails on both TPU and GPU."
+)
+
+
+def why_tpu_only(reason: str):
+  """Decorates a TPU-only error test method with why it only applies to TPU."""
+  if not reason or not isinstance(reason, str) or not reason.strip():
+    raise ValueError(
+        "why_tpu_only requires a non-empty explanation of why this test case"
+        f" only applies to TPU: {_EXPLAIN_WHY_TPU_ONLY}"
+    )
+
+  def decorator(func):
+    func._why_tpu_only = reason  # pylint: disable=protected-access
+    return func
+
+  return decorator
+
+
+def _get_why_tpu_only_reason(test_case: absltest.TestCase) -> str | None:
+  """Retrieves the @why_tpu_only reason for the active test method.
+
+  When test methods are wrapped by decorators or parameterized test runners
+  (e.g. absl.testing.parameterized), the generated test methods (e.g.
+  test_foo_0) do not directly inherit custom attributes from the underlying
+  function. This function inspects the method and unwraps any standard Python
+  __wrapped__ chains to locate the @why_tpu_only reason.
+
+  Args:
+    test_case: The active test case instance.
+
+  Returns:
+    The explanation string if the active method is decorated with @why_tpu_only,
+    or None otherwise.
+  """
+  method = getattr(
+      test_case, test_case._testMethodName  # pylint: disable=protected-access
+  )
+  reason = getattr(method, _WHY_TPU_ONLY_ATTR, None)
+  if reason is None:
+    # Traverse standard Python __wrapped__ chains (set by functools.wraps) to
+    # find the underlying decorated function. This avoids relying on private
+    # test runner internals (like _test_params_reprs) or fragile test name
+    # prefix matching.
+    curr = method
+    while hasattr(curr, "__wrapped__"):
+      curr = curr.__wrapped__
+      r = getattr(curr, _WHY_TPU_ONLY_ATTR, None)
+      if r is not None:
+        reason = r
+        # Set the attribute in the original method for fast future lookups.
+        setattr(method, _WHY_TPU_ONLY_ATTR, r)
+        break
+  return reason
+
+
+_OUTCOME_SUCCESS = "success"
+_OUTCOME_SKIPPED = "skipped"
+_OUTCOME_FAILURE = "failure"
+_OUTCOME_ERROR = "error"
+
+
+def _subprocess_test_worker(
+    cls: type[absltest.TestCase],
+    method_name: str,
+    conn: multiprocessing.connection.Connection,
+) -> None:
+  """Executes a single TestCase method in an isolated child process.
+
+  Must be called in a child process.
+
+  Args:
+    cls: The test case class.
+    method_name: The name of the test method to run.
+    conn: The connection to send the result to.
+  """
+  try:
+    instance = cls(method_name)
+    res = unittest.TestResult()
+    absltest.TestCase.run(instance, res)
+    if res.failures:
+      conn.send((_OUTCOME_FAILURE, res.failures[0][1]))
+    elif res.errors:
+      conn.send((_OUTCOME_ERROR, res.errors[0][1]))
+    elif res.skipped:
+      conn.send((_OUTCOME_SKIPPED, res.skipped[0][1]))
+    else:
+      conn.send((_OUTCOME_SUCCESS, None))
+  except Exception:  # pylint: disable=broad-exception-caught
+    conn.send((_OUTCOME_ERROR, traceback.format_exc()))
+  finally:
+    conn.close()
+
+
 class ErrorTestBase(absltest.TestCase):
   """Base class for error tests."""
 
@@ -373,7 +494,7 @@ class ErrorTestBase(absltest.TestCase):
 
     self.fail(
         "You must use et.assert_raises_message() instead of assertRaisesRegex()"
-        " to check the error on CPU and TPU. Using the same API guarantees "
+        " to check the error on GPU and TPU. Using the same API guarantees "
         "consistency."
     )
 
@@ -392,27 +513,138 @@ class ErrorTestBase(absltest.TestCase):
     tt_testing.set_op_dispatch_failure("", "")
     super().tearDown()
 
+  def run(self, result=None):
+    """Executes the test case, isolating GPU tests inside clean subprocesses.
 
-class TpuOnlyErrorTestBase(ErrorTestBase):
-  """Base class for error tests that are only relevant for TPU."""
+    Args:
+      result: The TestResult object to populate with test outcome data.
+
+    Returns:
+      The populated TestResult object.
+
+    IPC Protocol:
+      The parent process spawns an isolated child process running
+      `_subprocess_test_worker` and communicates via a one-way pipe (`Pipe`).
+      Before exiting, the child process transmits a single 2-tuple payload
+      `(outcome, detail)` over the pipe:
+      - (_OUTCOME_SUCCESS, None): Test passed.
+      - (_OUTCOME_SKIPPED, reason_str): Test skipped.
+      - (_OUTCOME_FAILURE, traceback_str): Test failed an assertion.
+      - (_OUTCOME_ERROR, traceback_str): Test raised an unexpected exception.
+
+      If the child process terminates abruptly (e.g., CUDA device-side assert
+      or SIGSEGV) without transmitting a payload, the parent detects the
+      non-zero exit code and records a test failure.
+    """
+    if TEST_MODE.value != "gpu":
+      return super().run(result)
+
+    if result is None:
+      result = self.defaultTestResult()
+      start_test_run = getattr(result, "startTestRun", None)
+      if start_test_run is not None:
+        start_test_run()
+
+    # Rationale for choosing `g3_multiprocessing` over `subprocess` or
+    # standard `mp`:
+    # 1. Standard `fork` is banned in Google3 (go/python-tips/018) because
+    #    multithreaded C++ runtimes (Borg logging, gRPC, CUDA) deadlock or
+    #    SIGSEGV when forked.
+    # 2. Standard `spawn` (and `resource_tracker` threads launched by
+    #    `Queue`) fails in self-contained Bazel `.par` zip binaries where
+    #    `sys.executable` evaluates to None.
+    # 3. Standard `subprocess.run` lacks object pickling / IPC exception
+    #    transport needed to execute single parameterized `TestCase` class
+    #    methods mid-flight.
+    ctx = g3_multiprocessing.get_context(g3_multiprocessing.ABSL_FORKSERVER)
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    # Create a subprocess to run the test method.
+    p = ctx.Process(
+        target=_subprocess_test_worker,
+        args=(self.__class__, self._testMethodName, child_conn),
+    )
+    p.start()
+    child_conn.close()
+    p.join()
+
+    if p.exitcode != 0 and not parent_conn.poll():
+      parent_conn.close()
+      try:
+        raise RuntimeError(
+            "CUDA device-side assert triggered or subprocess crashed with exit"
+            f" code {p.exitcode}"
+        )
+      except RuntimeError:
+        result.addFailure(self, sys.exc_info())
+      return
+
+    outcome, detail = parent_conn.recv()
+    parent_conn.close()
+    if outcome == _OUTCOME_SUCCESS:
+      result.addSuccess(self)
+    elif outcome == _OUTCOME_SKIPPED:
+      result.addSkip(self, detail)
+    elif outcome == _OUTCOME_FAILURE:
+      try:
+        raise AssertionError(f"Subprocess test failed:\n{detail}")
+      except AssertionError:
+        result.addFailure(self, sys.exc_info())
+    elif outcome == _OUTCOME_ERROR:
+      try:
+        raise RuntimeError(f"Subprocess test errored:\n{detail}")
+      except RuntimeError:
+        result.addError(self, sys.exc_info())
+
+
+class TpuOnlyErrorTestBaseNoCheckingWhy(ErrorTestBase):
+  """Base class for error tests that are only relevant for TPU.
+
+  This class does not enforce the @why_tpu_only decorator on test methods.
+  """
 
   def setUp(self):
     super().setUp()
 
-    if TEST_MODE.value == "cpu":
+    if TEST_MODE.value == "gpu":
       self.fail(
           "This test is only relevant for TPU. Please run it with only"
           " --test_mode=tpu or --test_mode=cov."
       )
 
-    # Disable CPU error testing for TPU-only error tests.
-    global _allow_cpu_parameter
-    self.old_allow_cpu_parameter = _allow_cpu_parameter
-    _allow_cpu_parameter = False
+    # Disable GPU error testing for TPU-only error tests.
+    global _allow_gpu_parameter
+    self.old_allow_gpu_parameter = _allow_gpu_parameter
+    _allow_gpu_parameter = False
 
   def tearDown(self):
-    # Restore the original value of _allow_cpu_parameter.
-    global _allow_cpu_parameter
-    _allow_cpu_parameter = self.old_allow_cpu_parameter
+    # Restore the original value of _allow_gpu_parameter.
+    global _allow_gpu_parameter
+    _allow_gpu_parameter = self.old_allow_gpu_parameter
 
     super().tearDown()
+
+
+class TpuOnlyErrorTestBase(TpuOnlyErrorTestBaseNoCheckingWhy):
+  """Base class for error tests that are only relevant for TPU.
+
+  This class enforces that each test method has a @why_tpu_only decorator.
+  """
+
+  def setUp(self):
+    super().setUp()
+
+    # Enforce that the test method has a @why_tpu_only decorator.
+    if _get_why_tpu_only_reason(self) is None:
+      self.fail(
+          'This test method must be decorated with @why_tpu_only("reason")'
+          f" to explain why it only applies to TPU: {_EXPLAIN_WHY_TPU_ONLY}"
+      )
+
+
+class TpuOnlyDistributedErrorTestBase(TpuOnlyErrorTestBaseNoCheckingWhy):
+  """Base class for distributed error tests that are only relevant for TPU.
+
+  This class does not enforce the @why_tpu_only decorator on test methods.
+  """
+
+  pass

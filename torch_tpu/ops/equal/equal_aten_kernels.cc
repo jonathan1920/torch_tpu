@@ -36,10 +36,12 @@
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/pjrt/pjrt_utils.h"
 
 namespace torch_tpu {
 namespace {
@@ -103,7 +105,11 @@ bool AtenEqual(const at::Tensor& self, const at::Tensor& other) {
                        .op_param_cache_keys = std::move(param_keys)}));
 
     auto result = MakeTensor(std::move(result_buf));
-    result_scalar = result.item<bool>();
+    TT_ASSIGN_OR_THROW(
+        auto materialized_result_buf,
+        MaterializeAndReturn(result, MaterializationReason::kScalarConversion));
+    TT_THROW_IF_ERROR(
+        TpuMemcpyDtoHDirect(materialized_result_buf, &result_scalar));
   });
 
   return result_scalar;

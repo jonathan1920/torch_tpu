@@ -56,7 +56,7 @@ flags.DEFINE_string(
 def _instantiate_model(
     config: transformers.PretrainedConfig,
 ) -> transformers.PreTrainedModel:
-  for architecture in config.architectures:
+  for architecture in config.architectures:  # pyrefly: ignore[not-iterable]
     if hasattr(transformers, architecture):
       model_cls = getattr(transformers, architecture)
       return model_cls._from_config(config)
@@ -114,11 +114,11 @@ def main(argv: list[str]):
   for model_id, config in configs_to_trace:
     # Trace 1: Constructor, may trigger lazy package loading of transformers
     with utils.OpTracer() as first_tracer:
-      _ = _instantiate_model(config)
+      _ = _instantiate_model(config)  # pyrefly: ignore[bad-argument-type]
 
     # Trace 2: Constructor again, without triggering lazy package loading.
     with utils.OpTracer() as second_tracer:
-      model = _instantiate_model(config)
+      model = _instantiate_model(config)  # pyrefly: ignore[bad-argument-type]
 
     is_text_model = hasattr(model.config, "vocab_size")
     is_image_model = hasattr(model.config, "image_size")

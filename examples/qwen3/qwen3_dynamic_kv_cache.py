@@ -84,6 +84,17 @@ _PRECOMPILE_STEPS = flags.DEFINE_integer(
     0,
     "Number of steps to precompile dynamic adapters for.",
 )
+_MAX_DECODE_STEPS = flags.DEFINE_integer(
+    "max_decode_steps",
+    10,
+    "The maximum number of decoding steps.",
+)
+_MAX_BUFFER_SIZE = flags.DEFINE_integer(
+    "max_buffer_size",
+    None,
+    "The maximum buffer size for KV cache. Used as upper bound for dynamo"
+    " mark_dynamic.",
+)
 
 
 @enum.unique
@@ -116,6 +127,32 @@ class Mode(enum.Enum):
   COMPILED_STATIC = "compiled_static"
 
 
+def _mark_dynamic_cache(
+    cache: transformers.DynamicCache | None, min_val: int, max_val: int
+) -> None:
+  """Marks the key and value tensors within a KV cache as dynamic.
+
+  This function uses `torch._dynamo.mark_dynamic` to inform torch.compile
+  that the second dimension (sequence length) of the key and value tensors
+  in each layer of the `cache` can vary between `min_val` and `max_val`.
+
+  Args:
+    cache: The past_key_values cache object, typically from HuggingFace
+      transformers.
+    min_val: The minimum expected size for the dynamic dimension.
+    max_val: The maximum expected size for the dynamic dimension.
+  """
+  if cache is None:
+    return
+  # pylint: disable=protected-access
+  for layer in cache.layers:
+    if hasattr(layer, "keys") and layer.keys is not None:
+      torch._dynamo.mark_dynamic(layer.keys, 2, min=min_val, max=max_val)
+    if hasattr(layer, "values") and layer.values is not None:
+      torch._dynamo.mark_dynamic(layer.values, 2, min=min_val, max=max_val)
+  # pylint: enable=protected-access
+
+
 def model_generate(
     model: transformers.PreTrainedModel,
     initial_inputs: torch.Tensor,
@@ -123,6 +160,8 @@ def model_generate(
     max_decode_steps: int,
     prefix: str = "",
     use_static_cache: bool = False,
+    mark_dynamic: bool = False,
+    max_buffer_size: int | None = None,
 ) -> tuple[str, Mapping[str, Any]]:
   """Generates text using a model with dynamic KV caching.
 
@@ -134,18 +173,29 @@ def model_generate(
     prefix: A prefix string to prepend to log messages.
     use_static_cache: If True, uses pre-allocated StaticCache to prevent shape
       recompilation.
+    mark_dynamic: If True, uses torch._dynamo.mark_dynamic to specify dynamic
+      shapes for the KV cache.
+    max_buffer_size: The maximum buffer size for KV cache. Required if
+      use_static_cache or mark_dynamic is True.
 
   Returns:
     A tuple of (decoded text, latency metrics dictionary).
+
+  Raises:
+    ValueError: If `max_buffer_size` is None when `use_static_cache` or
+      `mark_dynamic` is True.
   """
   batch_size, seq_len = initial_inputs.shape[:2]
+
+  if (use_static_cache or mark_dynamic) and max_buffer_size is None:
+    raise ValueError("max_buffer_size must be provided for compiled modes")
 
   with torch.inference_mode():
     past_key_values = None
     if use_static_cache:
       past_key_values = transformers.StaticCache(
           config=model.config,
-          max_cache_len=seq_len + max_decode_steps,
+          max_cache_len=max_buffer_size + 1,
       )
       num_heads = getattr(
           model.config, "num_key_value_heads", model.config.num_attention_heads
@@ -192,6 +242,10 @@ def model_generate(
       output_tokens = torch.cat([output_tokens, next_token_cpu], dim=1)
 
       next_token = next_token_cpu.to(model.device)
+      if mark_dynamic and past_key_values is not None:
+        min_val = seq_len
+        max_val = max_buffer_size
+        _mark_dynamic_cache(past_key_values, min_val, max_val)
       with traceme.TraceMe(f"[{prefix}] Decode step {i + 1}"):
         step_start_time = time.time()
         output = model(
@@ -382,6 +436,7 @@ def _run_with_actual_weights(
     *,
     device: Device,
     mode: Mode,
+    max_buffer_size: int | None = None,
 ) -> tuple[str, Mapping[str, Any]]:
   """Runs benchmark for a single mode with actual weights.
 
@@ -392,6 +447,7 @@ def _run_with_actual_weights(
     max_decode_steps: The maximum number of decoding steps.
     device: The device to run on.
     mode: The execution mode.
+    max_buffer_size: The maximum buffer size for KV cache, used when compiling.
 
   Returns:
     A tuple (output_text, metrics), where output_text is the decoded output
@@ -437,6 +493,8 @@ def _run_with_actual_weights(
           max_decode_steps,
           prefix=config.prefix,
           use_static_cache=False,
+          mark_dynamic=True,
+          max_buffer_size=max_buffer_size,
       )
       logging.info(
           "output_%s_compiled=%s", device.value, output_device_compiled
@@ -456,6 +514,7 @@ def _run_with_actual_weights(
           max_decode_steps,
           prefix=config.prefix,
           use_static_cache=True,
+          max_buffer_size=max_buffer_size,
       )
       logging.info(
           "output_%s_compiled_static=%s", device.value, output_device_compiled
@@ -473,6 +532,7 @@ def _run_with_random_weights(
     *,
     device: Device,
     mode: Mode,
+    max_buffer_size: int | None = None,
 ) -> Mapping[str, Any]:
   """Runs benchmark for a single mode with random weights.
 
@@ -483,6 +543,7 @@ def _run_with_random_weights(
     max_decode_steps: The maximum number of decoding steps.
     device: The device to run on.
     mode: The execution mode.
+    max_buffer_size: The maximum buffer size for KV cache, used when compiling.
 
   Returns:
     A dictionary of metrics for the executed mode.
@@ -505,6 +566,8 @@ def _run_with_random_weights(
         max_decode_steps,
         prefix=compiled_config.prefix,
         use_static_cache=False,
+        mark_dynamic=True,
+        max_buffer_size=max_buffer_size,
     )
     return {compiled_config.key: metrics_compiled}
 
@@ -521,6 +584,7 @@ def _run_with_random_weights(
         max_decode_steps,
         prefix=compiled_config.prefix,
         use_static_cache=True,
+        max_buffer_size=max_buffer_size,
     )
     return {compiled_config.key: metrics_compiled}
 
@@ -571,11 +635,6 @@ def main(argv):
         model_path, torch_dtype=torch.bfloat16, attn_implementation="eager"
     )
 
-  logging.info(
-      "Running benchmark for batch_size=%d, prefill_seq_len=%s",
-      batch_size,
-      prefill_seq_len,
-  )
   if prefill_seq_len is not None:
     inputs = torch.randint(
         0,
@@ -594,7 +653,41 @@ def main(argv):
         return_tensors="pt",
     ).input_ids
 
-  max_decode_steps = 10
+  prefill_len = inputs.shape[1]
+  initial_max_decode_steps = _MAX_DECODE_STEPS.value
+  explicit_max_buffer_size = _MAX_BUFFER_SIZE.value
+
+  if explicit_max_buffer_size is not None:
+    if prefill_len > explicit_max_buffer_size:
+      raise ValueError(
+          f"prefill_seq_len ({prefill_len}) exceeds max_buffer_size "
+          f"({explicit_max_buffer_size})"
+      )
+    potential_max_decode_steps = explicit_max_buffer_size - prefill_len + 1
+    if initial_max_decode_steps > potential_max_decode_steps:
+      logging.warning(
+          "Adjusting max_decode_steps to %d because prefill_seq_len (%d) + "
+          "max_decode_steps exceeds max_buffer_size (%d)",
+          potential_max_decode_steps,
+          prefill_len,
+          explicit_max_buffer_size,
+      )
+      max_decode_steps = potential_max_decode_steps
+    else:
+      max_decode_steps = initial_max_decode_steps
+    max_buffer_size = explicit_max_buffer_size
+  else:
+    max_decode_steps = initial_max_decode_steps
+    max_buffer_size = prefill_len + max_decode_steps
+
+  logging.info(
+      "Running benchmark for batch_size=%d, prefill_seq_len=%d,"
+      " max_decode_steps=%d, max_buffer_size=%d",
+      batch_size,
+      inputs.shape[1],
+      max_decode_steps,
+      max_buffer_size,
+  )
   all_metrics = {}
 
   if _USE_RANDOM_WEIGHTS.value:
@@ -611,6 +704,7 @@ def main(argv):
           max_decode_steps,
           device=device,
           mode=mode,
+          max_buffer_size=max_buffer_size,
       )
       all_metrics.update(metrics)
   else:
@@ -633,6 +727,7 @@ def main(argv):
           max_decode_steps,
           device=device,
           mode=Mode.CPU,
+          max_buffer_size=max_buffer_size,
       )
       all_metrics.update(metrics)
 
@@ -646,6 +741,7 @@ def main(argv):
           max_decode_steps,
           device=device,
           mode=mode,
+          max_buffer_size=max_buffer_size,
       )
       if output_cpu is not None:
         assert output_cpu == output, f"{output_cpu=} != {output=}"

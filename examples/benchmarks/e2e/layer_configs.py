@@ -1169,3 +1169,169 @@ FFT_CONFIGS = (
     FftConfig(batch_size=32, seq_len=128, hidden_size=768),
     FftConfig(batch_size=32, seq_len=1024, hidden_size=1024),
 )
+
+
+@dataclasses.dataclass
+class Mamba2BlockConfig:
+  batch_size: int
+  seq_len: int
+  hidden_size: int
+  state_size: int = 128
+  conv_kernel: int = 4
+  expand: int = 2
+  num_heads: int = 128
+  head_dim: int = 64
+  n_groups: int = 1
+  chunk_size: int = 256
+
+
+MAMBA2_BLOCK_CONFIGS = (
+    Mamba2BlockConfig(
+        batch_size=1,
+        seq_len=128,
+        hidden_size=256,
+        num_heads=8,
+    ),
+    Mamba2BlockConfig(
+        batch_size=8,
+        seq_len=1024,
+        hidden_size=2048,
+        num_heads=64,
+        n_groups=8,
+        chunk_size=128,
+    ),
+)
+
+
+@dataclasses.dataclass
+class NemotronHMamba2BlockConfig:
+  batch_size: int
+  seq_len: int
+  hidden_size: int
+  state_size: int = 128
+  conv_kernel: int = 4
+  expand: int = 2
+  num_heads: int = 128
+  head_dim: int = 64
+  n_groups: int = 8
+  chunk_size: int = 128
+
+
+NEMOTRON_H_MAMBA2_BLOCK_CONFIGS = (
+    NemotronHMamba2BlockConfig(
+        batch_size=1,
+        seq_len=128,
+        hidden_size=2688,
+        num_heads=64,
+        head_dim=64,
+    ),
+    NemotronHMamba2BlockConfig(
+        batch_size=8,
+        seq_len=1024,
+        hidden_size=2688,
+        num_heads=64,
+        head_dim=64,
+    ),
+)
+
+
+@dataclasses.dataclass
+class SliceScatterConfig:
+  input_shape: tuple[int, ...]
+  src_shape: tuple[int, ...]
+  dim: int
+  start: int | None
+  end: int | None
+  step: int
+
+
+SLICE_SCATTER_CONFIGS = (
+    SliceScatterConfig(
+        input_shape=(1, 128, 128),
+        src_shape=(1, 10, 128),
+        dim=1,
+        start=10,
+        end=20,
+        step=1,
+    ),
+    SliceScatterConfig(
+        input_shape=(32, 1024, 1024),
+        src_shape=(32, 100, 1024),
+        dim=1,
+        start=100,
+        end=200,
+        step=1,
+    ),
+    SliceScatterConfig(
+        input_shape=(1, 8, 2048, 128),
+        src_shape=(1, 8, 1, 128),
+        dim=2,
+        start=1024,
+        end=1025,
+        step=1,
+    ),
+    SliceScatterConfig(
+        input_shape=(32, 8, 2048, 128),
+        src_shape=(32, 8, 1, 128),
+        dim=2,
+        start=1024,
+        end=1025,
+        step=1,
+    ),
+    SliceScatterConfig(
+        input_shape=(1, 8, 8192, 128),
+        src_shape=(1, 8, 512, 128),
+        dim=2,
+        start=4096,
+        end=4608,
+        step=1,
+    ),
+    SliceScatterConfig(
+        input_shape=(32, 1024, 1024),
+        src_shape=(32, 50, 1024),
+        dim=1,
+        start=100,
+        end=200,
+        step=2,
+    ),
+    SliceScatterConfig(
+        input_shape=(1, 8, 8192, 128),
+        src_shape=(1, 8, 256, 128),
+        dim=2,
+        start=4096,
+        end=4608,
+        step=2,
+    ),
+    SliceScatterConfig(
+        input_shape=(32, 8, 1024, 128),
+        src_shape=(32, 8, 1024, 64),
+        dim=3,
+        start=0,
+        end=64,
+        step=1,
+    ),
+    SliceScatterConfig(
+        input_shape=(32, 8, 1024, 128),
+        src_shape=(16, 8, 1024, 128),
+        dim=0,
+        start=0,
+        end=16,
+        step=1,
+    ),
+    SliceScatterConfig(
+        input_shape=(4096, 4096),
+        src_shape=(1024, 4096),
+        dim=0,
+        start=1024,
+        end=2048,
+        step=1,
+    ),
+    SliceScatterConfig(
+        input_shape=(4096, 4096),
+        src_shape=(256, 4096),
+        dim=0,
+        start=1024,
+        end=2048,
+        step=4,
+    ),
+)

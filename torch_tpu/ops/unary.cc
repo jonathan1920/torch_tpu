@@ -126,6 +126,22 @@ absl::StatusOr<mlir::MlirOp> BuildAbsShlo(mlir::MlirOp input) {
   return res;
 }
 
+absl::StatusOr<mlir::MlirOp> BuildCeilShlo(mlir::MlirOp input_op) {
+  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input_op);
+  if (input_type.getElementType().isInteger()) {
+    return input_op;
+  }
+  return mlir::stablehlo::Ceil(input_op);
+}
+
+absl::StatusOr<mlir::MlirOp> BuildFloorShlo(mlir::MlirOp input_op) {
+  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input_op);
+  if (input_type.getElementType().isInteger()) {
+    return input_op;
+  }
+  return mlir::stablehlo::Floor(input_op);
+}
+
 absl::StatusOr<mlir::MlirOp> BuildConjPhysicalShlo(mlir::MlirOp input_op) {
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input_op);
   TT_ASSIGN_OR_RETURN(c10::ScalarType dtype,

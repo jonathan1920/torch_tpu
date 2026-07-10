@@ -70,11 +70,11 @@ class HandleDynamicInputTensorPass:
           arg2_1: "i64[1, s27, s53]",
       ):
         set_dimension_logical_size_1: "i64[1, s27, s53]" =
-            torch.ops.torch_tpu.set_dimension_logical_size(
+            torch.ops.tpu.set_dimension_logical_size(
                 arg2_1, 1, s27_size)
 
         set_dimension_logical_size_2: "i64[1, s27, s53]" =
-            torch.ops.torch_tpu.set_dimension_logical_size(
+            torch.ops.tpu.set_dimension_logical_size(
                 set_dimension_logical_size_1, 2, s53_size)
 
         add: "f32[1, s27, s53]" = torch.ops.aten.add.Tensor(
@@ -139,7 +139,7 @@ class HandleDynamicInputTensorPass:
     """Inserts a set_dimension_logical_size node after the current tensor node."""
     with graph_module.graph.inserting_after(current_tensor_node):
       set_dim_size_node = graph_module.graph.call_function(
-          torch.ops.torch_tpu.set_dimension_logical_size,
+          torch.ops.tpu.set_dimension_logical_size,
           args=(current_tensor_node, dim, size_tensor_node),
       )
       set_dim_size_node.meta = meta.copy()
@@ -481,7 +481,7 @@ class HandleGenerativeOpsPass:
     # Create dynamic_arange op
     with graph_module.graph.inserting_after(node):
       dynamic_arange_node = graph_module.graph.call_function(
-          torch.ops.torch_tpu.dynamic_arange,
+          torch.ops.tpu.dynamic_arange,
           args=(
               start_tensor,
               end_tensor,
@@ -536,12 +536,53 @@ class HandleGenerativeOpsPass:
     """Inserts a set_dimension_logical_size node after the current node."""
     with graph_module.graph.inserting_after(current_node):
       set_dim_size_node = graph_module.graph.call_function(
-          torch.ops.torch_tpu.set_dimension_logical_size,
+          torch.ops.tpu.set_dimension_logical_size,
           args=(current_node, dim, tensor_size_node),
       )
       set_dim_size_node.meta = original_node.meta.copy()
       set_dim_size_node.name = f"{original_node.name}_bounded_{dim}"
     return set_dim_size_node
+
+
+class HandleSymIntUsagesPass:
+  """Usages of SymInt nodes in tensor operations transformation pass.
+
+  When a SymInt node (e.g., an input symbol representing a dynamic size) is
+  consumed by a standard data computational operator (like `aten.add.Tensor`),
+  we replace that usage with the corresponding runtime size placeholder tensor
+  node (e.g., `s0_size`). This ensures that runtime tensor arithmetic executes
+  with the actual active dynamic runtime value rather than specializing to the
+  static upper bound.
+  """
+
+  def __init__(self, sym_shape_manager: SymShapeManager):
+    self._sym_shape_manager = sym_shape_manager
+
+  def __call__(self, graph_module: torch.fx.GraphModule) -> None:
+    for node in list(graph_module.graph.nodes):
+      if (
+          node.op == "call_function"
+          and isinstance(node.target, torch._ops.OpOverload)
+          and "SymInt" not in str(node.target)
+          and "sym_size" not in str(node.target)
+      ):
+        new_args = []
+        changed = False
+        for arg in node.args:
+          if sym_utils.is_symint_node(arg):
+            tensor_node = self._sym_shape_manager.get_or_create_tensor_node(
+                arg, node
+            )
+            if tensor_node is not None:
+              new_args.append(tensor_node)
+              changed = True
+            else:
+              new_args.append(arg)
+          else:
+            new_args.append(arg)
+
+        if changed:
+          node.args = tuple(new_args)
 
 
 def apply_dynamism_transformations(
@@ -569,6 +610,11 @@ def apply_dynamism_transformations(
   # Updates the generative ops that have dynamic scalar inputs.
   GraphTransformObserver(graph_module, "handle_generative_ops").apply_gm_pass(
       HandleGenerativeOpsPass(sym_shape_manager)
+  )
+
+  # Replaces remaining usages of SymInt nodes in standard tensor operations.
+  GraphTransformObserver(graph_module, "handle_symint_usages").apply_gm_pass(
+      HandleSymIntUsagesPass(sym_shape_manager)
   )
 
   graph_module.recompile()

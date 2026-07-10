@@ -718,9 +718,9 @@ absl::StatusOr<mlir::MlirOp> CastIfNeeded(
       ConvertTo<at::ScalarType>(actual_element_type);
   TT_RET_CHECK(at::canCast(actual_scalar_type, expected_scalar_type),
                error::kInvalidArgument)
-      << "result type " << c10::toString(actual_scalar_type)
+      << "result type " << ToString(actual_scalar_type)
       << " can't be cast to the desired output type "
-      << c10::toString(expected_scalar_type);
+      << ToString(expected_scalar_type);
   if (actual_element_type != expected_output_type) {
     ABSL_VLOG(3) << "[CastIfNeeded]: Casting needed. "
                  << "current element type: " << ToString(actual_element_type)

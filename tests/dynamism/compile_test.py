@@ -174,7 +174,7 @@ class CompileTest(absltest.TestCase):
     test_inputs = [
         (torch.arange(2),),  # static, [2]
         (torch.arange(4),),  # bounded compile, [4 (4<=b<=8)]
-        (torch.arange(8),),  # no compile, [8]
+        (torch.arange(6),),  # no compile, [6]
     ]
     metrics = self.call_and_compare(simple_unsqueeze, test_inputs, None)
     self.assertEqual(metrics["bounded_compile_events"], 1)
@@ -188,7 +188,7 @@ class CompileTest(absltest.TestCase):
         (
             torch.arange(4 * 4).reshape(4, 4),
         ),  # bounded compile, [4(4<=b<=8), 4]
-        (torch.arange(8 * 4).reshape(8, 4),),  # no compile, [8, 4]
+        (torch.arange(6 * 4).reshape(6, 4),),  # no compile, [6, 4]
     ]
     metrics = self.call_and_compare(simple_reshape, test_inputs, None)
     self.assertEqual(metrics["bounded_compile_events"], 1)
@@ -355,6 +355,45 @@ class CompileTest(absltest.TestCase):
     ]
     metrics = self.call_and_compare(arange_func, test_inputs, None)
     self.assertEqual(metrics["bounded_compile_events"], 1)
+
+
+class SymIntArithmeticTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    tt_testing.reset_eager_state()
+
+  def test_arange_plus_symint(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        s0 = x.shape[1]
+        return torch.arange(1, device=x.device) + s0
+
+    tpu_backend = _backend.TpuBackend(dynamism=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.zeros(1, 1024, device="tpu")
+    torch._dynamo.mark_dynamic(x1, 1, min=1, max=2048)
+
+    out1 = compiled(x1)
+    utils.assert_close(out1, torch.tensor([1024], device="tpu"))
+
+  def test_arange_bounds(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        s0 = x.shape[1]
+        return torch.arange(s0, s0 + 1, device=x.device)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.zeros(1, 1024, device="tpu")
+    torch._dynamo.mark_dynamic(x1, 1, min=1, max=2048)
+
+    out1 = compiled(x1)
+    utils.assert_close(out1, torch.tensor([1024], device="tpu"))
 
 
 if __name__ == "__main__":

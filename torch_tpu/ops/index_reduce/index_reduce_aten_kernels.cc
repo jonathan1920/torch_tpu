@@ -36,6 +36,7 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
+#include "torch_tpu/ops/index_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -43,42 +44,6 @@
 
 namespace torch_tpu {
 namespace {
-
-absl::StatusOr<int64_t> ValidateIndexReduceInputsAndGetDim(
-    const at::Tensor& self, int64_t dim, const at::Tensor& index,
-    const at::Tensor& source) {
-  TT_RET_CHECK(index.dim() == 1, error::kInvalidArgument)
-      << "index must be 1D, got shape " << index.sizes();
-  if (self.dim() == 0) {
-    TT_RET_CHECK(dim == 0, error::kInvalidArgument)
-        << "dim must be 0 for scalar input, got " << dim;
-    TT_RET_CHECK(source.dim() == 0, error::kInvalidArgument)
-        << "source shape must match self shape, excluding the specified "
-           "dimension, got source shape "
-        << source.sizes() << " and self shape " << self.sizes();
-    TT_RET_CHECK(index.size(0) == 1, error::kInvalidArgument)
-        << "index must be 1D of size 1 for scalar input, got shape "
-        << index.sizes();
-    return dim;
-  }
-
-  TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.dim()));
-
-  TT_RET_CHECK(source.dim() == self.dim(), error::kInvalidArgument)
-      << "self and source must have the same number of dimensions, got "
-      << self.dim() << " and " << source.dim();
-  TT_RET_CHECK(source.size(dim) == index.size(0), error::kInvalidArgument)
-      << "source must have the same number of elements as the index along "
-         "dimension "
-      << dim << ", got " << source.size(dim) << " and " << index.size(0);
-  for (int i = 0; i < self.dim(); ++i) {
-    TT_RET_CHECK(i == dim || self.size(i) == source.size(i),
-                 error::kInvalidArgument)
-        << "self and source must have the same size along dimension " << i
-        << ", got " << self.size(i) << " and " << source.size(i);
-  }
-  return dim;
-}
 
 absl::StatusOr<ScatterOp> GetReduceOp(const std::string_view reduce) {
   if (reduce == "prod") {
@@ -99,8 +64,8 @@ absl::StatusOr<DeviceBufferRef> IndexReduce(
     const at::Tensor& self, int64_t dim, const at::Tensor& index,
     const at::Tensor& source, const std::string_view reduce, bool include_self,
     const at::ScalarType& out_scalar_type, OpParamCacheKeys param_keys) {
-  TT_ASSIGN_OR_RETURN(
-      dim, ValidateIndexReduceInputsAndGetDim(self, dim, index, source));
+  TT_ASSIGN_OR_RETURN(dim,
+                      ValidateIndexInputsAndGetDim(self, dim, index, source));
   TT_ASSIGN_OR_RETURN(ScatterOp reduce_op, GetReduceOp(reduce));
   ScatterIncludeSelf include_self_enum =
       include_self ? ScatterIncludeSelf::kYes : ScatterIncludeSelf::kNo;

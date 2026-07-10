@@ -14,6 +14,7 @@
 
 """Basic training loop with llama3.2 model distributed by DDP or FSDPv2."""
 
+import contextlib
 from absl import app
 from absl import logging
 from etils import epath
@@ -32,11 +33,12 @@ import transformers
 log_utils.log_to_stderr()
 
 # Configuration Variables
-MODEL_SIZE = "1B"
+MODEL_SIZE = "8B"
 DIST_STRAT = "fsdp"
 MODEL_COMPILE = False
 USE_RANDOM_WEIGHTS = True
-BATCH_SIZE = 16
+BATCH_SIZE = 8
+GRAD_ACCUM_STEPS = 2
 SEQ_LEN = 2056
 NUM_TRAIN_STEPS = 10
 BUCKET_CAP_MB = 25
@@ -157,7 +159,7 @@ def worker_fn(argv=None):
           config, dtype=torch.bfloat16
       )
     model = _shard_and_materialize_model(
-        model, device, model_dir, not USE_RANDOM_WEIGHTS
+        model, device, model_dir, not USE_RANDOM_WEIGHTS  # pyrefly: ignore[bad-argument-type]
     )
   else:
     if USE_RANDOM_WEIGHTS:
@@ -178,6 +180,7 @@ def worker_fn(argv=None):
   model.gradient_checkpointing_enable(
       gradient_checkpointing_kwargs={"use_reentrant": False}
   )
+  model.enable_input_require_grads()
   vocab_size = model.config.vocab_size
 
   # Shard the model using DDP strategy.
@@ -197,7 +200,7 @@ def worker_fn(argv=None):
   torch.manual_seed(rank)
 
   # Generate random input and target tokens.
-  data = torch.randint(0, vocab_size, (batch_size, seq_len + 1), device=device)
+  data = torch.randint(0, vocab_size, (batch_size, seq_len + 1), device=device)  # pyrefly: ignore[no-matching-overload]
   input_tokens = data[:, :seq_len]
   target_tokens = data[:, 1:]
 
@@ -208,13 +211,47 @@ def worker_fn(argv=None):
 
   def model_step_func():
     losses = []
+    #  This is a dummy training loop that runs via gradient accumulation.
     for _ in range(NUM_TRAIN_STEPS):
       optimizer.zero_grad()
-      output = model(input_ids=input_tokens, labels=target_tokens)
-      loss = output.loss
-      losses.append(loss.detach())
-      loss.backward()
+
+      step_loss = 0.0
+      for accum_step in range(GRAD_ACCUM_STEPS):
+        is_last_accum_step = accum_step == GRAD_ACCUM_STEPS - 1
+        if hasattr(model, "set_requires_gradient_sync"):
+          model.set_requires_gradient_sync(is_last_accum_step)
+
+        context = contextlib.nullcontext()
+        if not is_last_accum_step and hasattr(model, "no_sync"):
+          context = model.no_sync()
+
+        with context:
+          output = model(input_ids=input_tokens)
+          logits = output.logits
+
+          ignore_index = -100
+          labels = torch.nn.functional.pad(
+              target_tokens, (0, 1), value=ignore_index
+          )
+          shift_labels = labels[..., 1:].contiguous()
+
+          loss_input = logits.float().view(-1, vocab_size)
+
+          loss = torch.nn.functional.cross_entropy(
+              loss_input,
+              shift_labels.view(-1),
+              ignore_index=ignore_index,
+          )
+
+          loss = loss / GRAD_ACCUM_STEPS
+
+          loss.backward()
+          step_loss += loss.detach() * GRAD_ACCUM_STEPS
+
+      losses.append(step_loss)
+
       optimizer.step()
+
     return losses
 
   # No mode specified. Runs a single step and syncs.
