@@ -163,7 +163,9 @@ _HBM_BYTES_PER_CHIP: Final[Mapping[TpuVersion, int]] = (
 def get_hbm_bytes_per_chip() -> int | None:
   """Physical HBM capacity per chip, in bytes, for the attached TPU.
 
-  Returns None if the generation is unknown / unrecognized.
+  Returns:
+    The physical HBM capacity per chip in bytes, or None if the generation is
+    unknown or unrecognized.
   """
   return _HBM_BYTES_PER_CHIP.get(get_tpu_version())
 
@@ -201,9 +203,12 @@ _BF16_FLOPS_PER_CHIP: Final[Mapping[TpuVersion, int]] = (
 def get_devices_per_chip() -> int | None:
   """Number of separately-addressable devices the attached chip exposes.
 
-  megacore-aware (not the physical TensorCore count): 1 for single-core and
-  megacore-fused generations, 2 for v7. Returns None only if no recognized TPU
-  is attached.
+  This is megacore-aware (not the physical TensorCore count): 1 for single-core
+  and megacore-fused generations, 2 for v7.
+
+  Returns:
+    The number of exposed devices per chip, or None if no recognized TPU is
+    attached.
   """
   version = get_tpu_version()
   if version is TpuVersion.UNKNOWN:
@@ -214,7 +219,9 @@ def get_devices_per_chip() -> int | None:
 def get_bf16_flops_per_chip() -> int | None:
   """Peak dense bf16 compute per chip, in FLOP/s, for the attached TPU.
 
-  Returns None if the generation is unknown / unrecognized.
+  Returns:
+    The peak bf16 FLOP/s per chip, or None if the generation is unknown or
+    unrecognized.
   """
   return _BF16_FLOPS_PER_CHIP.get(get_tpu_version())
 
@@ -225,7 +232,11 @@ def get_hbm_bytes_per_device() -> int | None:
   The per-chip capacity divided by the chip's exposed device count — what one
   device can actually address (e.g. ~96 GB per device on a 192 GB v7 chip).
   The divisor defaults to 1, so this equals the per-chip value except where a
-  generation is known to expose more (v7). Returns None if no recognized TPU.
+  generation is known to expose more (v7).
+
+  Returns:
+    The physical HBM capacity visible to a single device in bytes, or None if no
+    recognized TPU is attached.
   """
   version = get_tpu_version()
   per_chip = _HBM_BYTES_PER_CHIP.get(version)
@@ -240,8 +251,11 @@ def get_bf16_flops_per_device() -> int | None:
   The published per-chip peak divided by the chip's exposed device count. This
   is the correct denominator for per-device MFU (each rank drives one exposed
   device). The divisor defaults to 1, so this equals the per-chip value except
-  where a generation is known to expose more (v7). Returns None if no
-  recognized TPU.
+  where a generation is known to expose more (v7).
+
+  Returns:
+    The peak dense bf16 compute in FLOP/s for a single device, or None if no
+    recognized TPU is attached.
   """
   version = get_tpu_version()
   per_chip = _BF16_FLOPS_PER_CHIP.get(version)

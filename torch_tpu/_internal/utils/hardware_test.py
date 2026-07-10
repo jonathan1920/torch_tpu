@@ -131,7 +131,8 @@ class NvidiaGpuMockTest(parameterized.TestCase):
 class DeviceCapabilityTest(absltest.TestCase):
 
   @mock.patch.object(hardware, "get_tpu_device_name", return_value="TPU v7")
-  def test_v7_name_flops_memory(self, _mock_name):
+  def test_v7_name_flops_memory(self, mock_name):
+    del mock_name  # Unused
     # name -> version mapping
     self.assertEqual(hardware.get_tpu_device_name(), "TPU v7")
     self.assertEqual(hardware.get_tpu_version(), hardware.TpuVersion.V7)

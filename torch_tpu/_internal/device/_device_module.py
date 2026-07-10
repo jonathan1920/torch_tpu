@@ -21,7 +21,7 @@ and runtime.
 import abc
 import atexit
 from collections.abc import Mapping
-from dataclasses import dataclass
+import dataclasses
 from typing import Any, Final, List
 import torch
 from torch_tpu._internal.device import _device_ops_backend
@@ -427,10 +427,9 @@ class _DeviceModule(abc.ABC):
       _device_ops_backend._shutdown_runtime()  # pylint: disable=protected-access
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class _TpuDeviceProperties:
-  """Static TPU device properties, the analog of torch.cuda's
-  _CudaDeviceProperties.
+  """Static TPU device properties, analog of _CudaDeviceProperties.
 
   ``total_memory`` is HBM visible to a single device, in bytes. Peak FLOP/s
   is intentionally absent: it is a dtype-dependent published constant, not a
@@ -442,6 +441,7 @@ class _TpuDeviceProperties:
 
 
 class TpuDeviceModule(_DeviceModule):
+  """Device module implementation for TPU devices."""
   _device_type: Final[str] = "tpu"
 
   @classmethod
@@ -449,6 +449,7 @@ class TpuDeviceModule(_DeviceModule):
       cls, device: int | str | torch.device | None = None
   ) -> str:
     """Human-readable name of the attached TPU, e.g. "TPU v7"."""
+    del device  # Unused
     return hardware.get_tpu_device_name()
 
   @classmethod
@@ -457,9 +458,16 @@ class TpuDeviceModule(_DeviceModule):
   ) -> _TpuDeviceProperties:
     """Static device properties, mirroring torch.cuda.get_device_properties.
 
-    Raises RuntimeError on an unrecognized TPU generation rather than
-    reporting an unusable memory value, matching torch.cuda's behavior of
-    raising when properties cannot be produced.
+    Args:
+      device: Optional device index, string, or torch.device to query properties
+        for.
+
+    Returns:
+      A _TpuDeviceProperties instance for the specified device.
+
+    Raises:
+      RuntimeError: If the TPU generation is unrecognized or memory properties
+        cannot be determined.
     """
     total_memory = hardware.get_hbm_bytes_per_device()
     if total_memory is None:
@@ -474,10 +482,12 @@ class TpuDeviceModule(_DeviceModule):
 
 
 class XlaCudaDeviceModule(_DeviceModule):
+  """Device module implementation for XLA CUDA devices."""
   _device_type: Final[str] = "xla_cuda"
 
 
 class XlaCpuDeviceModule(_DeviceModule):
+  """Device module implementation for XLA CPU devices."""
   _device_type: Final[str] = "xla_cpu"
 
 
