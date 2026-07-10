@@ -559,7 +559,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "ragged_all_to_all_test",
     srcs = ["ragged_all_to_all_test.py"],
-    notap = "Requires 4 tpu v7x chips.",
+    nopresubmit = "Requires 4 tpu v7x chips.",
     tags = [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
