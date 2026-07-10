@@ -322,6 +322,10 @@ def huggingface_llm_model_builder(
     example_inputs.pop("pixel_values", None)
     example_inputs.pop("image_position_ids", None)
 
+  for k, v in example_inputs.items():
+    if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
+      example_inputs[k] = v.to(weights_dtype)
+
   if is_training:
     vocab_size = get_vocab_size(model_cpu.config)
 
