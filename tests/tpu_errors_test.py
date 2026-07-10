@@ -3107,6 +3107,97 @@ module {
           computation_name="test_acc_dim",
       )
 
+  @et.why_tpu_only(
+      "sparse_dense_matmul_grad_with_adam is a TPU specific Custom Op"
+  )
+  def test_sparse_dense_matmul_grad_with_adam_velocity_shape(self):
+    device = "tpu"
+    vocab_size = 10
+    embedding_dim = 8
+
+    row_pointers = torch.zeros(vocab_size + 1, dtype=torch.int32, device=device)
+    col_indices = torch.zeros(10, dtype=torch.int32, device=device)
+    values = torch.ones(10, dtype=torch.float32, device=device)
+    gains = torch.ones(10, dtype=torch.float32, device=device)
+
+    embedding_table = torch.ones(
+        vocab_size, embedding_dim, dtype=torch.float32, device=device
+    )
+    momentum = torch.ones(
+        vocab_size, embedding_dim, dtype=torch.float32, device=device
+    )
+
+    activations_grad = torch.zeros(
+        vocab_size, dtype=torch.float32, device=device
+    )
+    alpha_t = torch.tensor(0.1, dtype=torch.float32, device=device)
+    beta_1 = 0.9
+    beta_2 = 0.999
+    epsilon = 1e-8
+
+    device_batch_size = 1
+    max_ids_per_partition = 1
+    max_unique_ids_per_partition = 1
+    computation_name = "test"
+
+    # 3D velocity - should trigger Line 91
+    velocity_3d = torch.ones(
+        vocab_size, embedding_dim, 2, dtype=torch.float32, device=device
+    )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_dense_matmul_grad_with_adam(): materialization failed with: expected velocity tensor to be 1D or 2D, got rank 3""",
+        message_reviewed_by="songbaie",
+    ):
+      torch.ops.tpu.sparse_dense_matmul_grad_with_adam(
+          row_pointers,
+          col_indices,
+          values,
+          gains,
+          embedding_table,
+          momentum,
+          velocity_3d,
+          activations_grad,
+          alpha_t,
+          beta_1,
+          beta_2,
+          epsilon,
+          device_batch_size,
+          max_ids_per_partition,
+          max_unique_ids_per_partition,
+          computation_name,
+      )
+
+    # 2D velocity with wrong embedding dim - should trigger Line 94
+    velocity_wrong_dim = torch.ones(
+        vocab_size, embedding_dim + 1, dtype=torch.float32, device=device
+    )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_dense_matmul_grad_with_adam(): materialization failed with: expected velocity tensor dimension 1 to be 8, got 9""",
+        message_reviewed_by="songbaie",
+    ):
+      torch.ops.tpu.sparse_dense_matmul_grad_with_adam(
+          row_pointers,
+          col_indices,
+          values,
+          gains,
+          embedding_table,
+          momentum,
+          velocity_wrong_dim,
+          activations_grad,
+          alpha_t,
+          beta_1,
+          beta_2,
+          epsilon,
+          device_batch_size,
+          max_ids_per_partition,
+          max_unique_ids_per_partition,
+          computation_name,
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

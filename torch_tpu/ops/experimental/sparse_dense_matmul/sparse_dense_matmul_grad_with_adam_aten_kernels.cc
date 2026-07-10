@@ -76,35 +76,51 @@ auto SparseDenseMatmulGradWithAdamBuilder(int64_t device_batch_size,
 
     mlir::MlirBuilder& builder = row_pointers.getBuilder();
     mlir::OpBuilder& op_builder = builder.getOpBuilder();
-
-    // Create compile-time constants for hyperparameters beta_1, beta_2,
-    // epsilon.
     auto float_type = op_builder.getF32Type();
+
+    // Hyperparameters passed from PyTorch are scalar on the outside.
     auto scalar_type = mlir::RankedTensorType::get({}, float_type);
-    auto beta_1_const =
-        MakeConstant(builder, static_cast<float>(beta_1), scalar_type);
-    auto beta_2_const =
-        MakeConstant(builder, static_cast<float>(beta_2), scalar_type);
-    auto epsilon_const =
-        MakeConstant(builder, static_cast<float>(epsilon), scalar_type);
 
     auto embedding_table_type = GetTensorTypeOrDie(embedding_table);
     auto momentum_type = GetTensorTypeOrDie(momentum);
     auto velocity_type = GetTensorTypeOrDie(velocity);
     int64_t embedding_dim = embedding_table_type.getShape()[1];
 
-    // Define the optimizer update function.
+    bool is_partial_rowwise = (velocity_type.getShape().size() == 1);
+    if (!is_partial_rowwise) {
+      TT_RET_CHECK(velocity_type.getShape().size() == 2,
+                   error::kInvalidArgument)
+          << "expected velocity tensor to be 1D or 2D, got rank "
+          << velocity_type.getShape().size();
+      TT_RET_CHECK(velocity_type.getShape()[1] == embedding_dim,
+                   error::kInvalidArgument)
+          << "expected velocity tensor dimension 1 to be " << embedding_dim
+          << ", got " << velocity_type.getShape()[1];
+    }
 
-    auto tensor_type = mlir::RankedTensorType::get({1, embedding_dim},
-                                                   op_builder.getF32Type());
+    // Create hyperparameter constants. They are scalars conceptually,
+    // and passed as operands. XLA SparseCore will broadcast them.
+    auto one_minus_beta_1_const =
+        MakeConstant(builder, 1.0f - static_cast<float>(beta_1), scalar_type);
+    auto one_minus_beta_2_const =
+        MakeConstant(builder, 1.0f - static_cast<float>(beta_2), scalar_type);
+    auto epsilon_const =
+        MakeConstant(builder, static_cast<float>(epsilon), scalar_type);
+
+    // Inside the body, all hyperparameters will be broadcasted to tensor_type
+    // which corresponds to `f32[1, embedding_dim]`.
+    auto tensor_type =
+        mlir::RankedTensorType::get({1, embedding_dim}, float_type);
+    auto rowwise_type = mlir::RankedTensorType::get({1}, float_type);
+    auto vel_type = is_partial_rowwise ? rowwise_type : tensor_type;
+
     auto func_type = op_builder.getFunctionType(
-        {tensor_type, tensor_type, tensor_type, tensor_type, tensor_type,
+        {tensor_type, tensor_type, tensor_type, vel_type, tensor_type,
          tensor_type, tensor_type, tensor_type},
         {mlir::TupleType::get(op_builder.getContext(),
-                              {tensor_type, tensor_type, tensor_type})});
+                              {tensor_type, tensor_type, vel_type})});
 
     mlir::ModuleOp module = GetModuleOp(builder);
-    // Save current insertion point
     auto prev_insertion_point = op_builder.saveInsertionPoint();
 
     op_builder.setInsertionPointToEnd(module.getBody());
@@ -115,49 +131,86 @@ auto SparseDenseMatmulGradWithAdamBuilder(int64_t device_batch_size,
     auto* entry_block = func.addEntryBlock();
     op_builder.setInsertionPointToStart(entry_block);
 
-    mlir::MlirOp grad(builder, entry_block->getArgument(0));
-    mlir::MlirOp param(builder, entry_block->getArgument(1));
-    mlir::MlirOp momentum_arg(builder, entry_block->getArgument(2));
-    mlir::MlirOp velocity_arg(builder, entry_block->getArgument(3));
-    mlir::MlirOp alpha_t_arg(builder, entry_block->getArgument(4));
-    mlir::MlirOp beta_1_arg(builder, entry_block->getArgument(5));
-    mlir::MlirOp beta_2_arg(builder, entry_block->getArgument(6));
-    mlir::MlirOp epsilon_arg(builder, entry_block->getArgument(7));
+    mlir::MlirOp grad(builder, entry_block->getArgument(0));   // tensor_type
+    mlir::MlirOp param(builder, entry_block->getArgument(1));  // tensor_type
+    mlir::MlirOp momentum_arg(builder,
+                              entry_block->getArgument(2));  // tensor_type
+    mlir::MlirOp velocity_arg(builder,
+                              entry_block->getArgument(3));  // vel_type
+    mlir::MlirOp alpha_t_arg(builder,
+                             entry_block->getArgument(4));  // tensor_type
+    mlir::MlirOp one_minus_beta_1_arg(
+        builder, entry_block->getArgument(5));  // tensor_type
+    mlir::MlirOp one_minus_beta_2_arg(
+        builder,
+        entry_block->getArgument(6));  // tensor_type
+    mlir::MlirOp epsilon_arg(builder,
+                             entry_block->getArgument(7));  // tensor_type
 
-    // Math:
     // grad_square = grad * grad
-    auto grad_square = mlir::stablehlo::Mul(grad, grad);
+    auto grad_sq = mlir::stablehlo::Mul(grad, grad);
 
-    // Create 1.0f constant tensor of shape {1, embedding_dim}
-    auto one = MakeConstant(builder, 1.0f, tensor_type);
-
-    // 1 - beta_1
-    auto one_minus_beta_1 = mlir::stablehlo::Subtract(one, beta_1_arg);
     // grad - momentum
     auto grad_minus_momentum = mlir::stablehlo::Subtract(grad, momentum_arg);
     // (1 - beta_1) * (grad - momentum)
     auto momentum_delta =
-        mlir::stablehlo::Mul(one_minus_beta_1, grad_minus_momentum);
+        mlir::stablehlo::Mul(one_minus_beta_1_arg, grad_minus_momentum);
     // new_momentum = momentum + (1 - beta_1) * (grad - momentum)
     auto new_momentum = mlir::stablehlo::Add(momentum_arg, momentum_delta);
 
-    // 1 - beta_2
-    auto one_minus_beta_2 = mlir::stablehlo::Subtract(one, beta_2_arg);
+    mlir::MlirOp velocity_bcast = velocity_arg;
+    if (is_partial_rowwise) {
+      TT_ASSIGN_OR_RETURN(velocity_bcast,
+                          BroadcastIfNeeded(velocity_arg, grad_sq));
+    }
+
     // grad^2 - velocity
     auto grad_sq_minus_velocity =
-        mlir::stablehlo::Subtract(grad_square, velocity_arg);
+        mlir::stablehlo::Subtract(grad_sq, velocity_bcast);
     // (1 - beta_2) * (grad^2 - velocity)
     auto velocity_delta =
-        mlir::stablehlo::Mul(one_minus_beta_2, grad_sq_minus_velocity);
-    // new_velocity = velocity + (1 - beta_2) * (grad^2 - velocity)
-    auto new_velocity = mlir::stablehlo::Add(velocity_arg, velocity_delta);
+        mlir::stablehlo::Mul(one_minus_beta_2_arg, grad_sq_minus_velocity);
+    // new_velocity_2d = velocity + (1 - beta_2) * (grad^2 - velocity)
+    auto new_velocity_2d = mlir::stablehlo::Add(velocity_bcast, velocity_delta);
+
+    mlir::MlirOp new_velocity;
+    if (is_partial_rowwise) {
+      auto zero_arg = MakeScalarConstant(builder, 0.0f, mlir::ElementType::F32);
+      auto dtype =
+          torch_tpu::GetTensorTypeOrDie(new_velocity_2d).getElementType();
+      auto reduce_builder = [&](mlir::RegionBuilder& rb) {
+        mlir::stablehlo::buildReduceBody<mlir::stablehlo::AddOp>(
+            dtype, rb.getRegion(), rb.getOpBuilder());
+      };
+
+      mlir::MlirOp dim_size = mlir::stablehlo::GetDimensionSize(grad, 1);
+      mlir::MlirOp dim_size_f32 =
+          mlir::stablehlo::ConvertElementType(dim_size, float_type);
+      TT_ASSIGN_OR_RETURN(mlir::MlirOp dim_bcast,
+                          BroadcastIfNeeded(dim_size_f32, new_velocity_2d));
+      auto new_velocity_2d_div =
+          mlir::stablehlo::Div(new_velocity_2d, dim_bcast);
+
+      new_velocity = mlir::stablehlo::Reduce(builder, new_velocity_2d_div,
+                                             zero_arg, reduce_builder, {1})[0];
+    } else {
+      new_velocity = new_velocity_2d;
+    }
 
     // alpha_t * new_momentum
     auto lr_momentum = mlir::stablehlo::Mul(alpha_t_arg, new_momentum);
+
     // sqrt(new_velocity)
     auto sqrt_velocity = mlir::stablehlo::Sqrt(new_velocity);
+    mlir::MlirOp sqrt_vel_bcast = sqrt_velocity;
+    if (is_partial_rowwise) {
+      // sqrt_velocity is [1], needs to be [1, E] to add with epsilon_arg later
+      TT_ASSIGN_OR_RETURN(sqrt_vel_bcast,
+                          BroadcastIfNeeded(sqrt_velocity, grad));
+    }
+
     // sqrt(new_velocity) + epsilon
-    auto denom = mlir::stablehlo::Add(sqrt_velocity, epsilon_arg);
+    auto denom = mlir::stablehlo::Add(sqrt_vel_bcast, epsilon_arg);
     // update = (alpha_t * new_momentum) / (sqrt(new_velocity) + epsilon)
     auto update = mlir::stablehlo::Div(lr_momentum, denom);
     // updated_param = param - update
@@ -170,10 +223,8 @@ auto SparseDenseMatmulGradWithAdamBuilder(int64_t device_batch_size,
     mlir::func::ReturnOp::create(op_builder, builder.getLoc(),
                                  tuple_op.getOperation()->getResults());
 
-    // Restore insertion point
     op_builder.restoreInsertionPoint(prev_insertion_point);
 
-    // Construct DictionaryAttr for frontend_attributes
     std::vector<mlir::NamedAttribute> frontend_attrs;
     frontend_attrs.reserve(7);
     frontend_attrs.push_back(op_builder.getNamedAttr(
@@ -193,6 +244,9 @@ auto SparseDenseMatmulGradWithAdamBuilder(int64_t device_batch_size,
             std::to_string(max_unique_ids_per_partition))));
     frontend_attrs.push_back(op_builder.getNamedAttr(
         xla::kNumSlotVariables, op_builder.getStringAttr("2")));
+
+    // alpha_t, one_minus_beta_1, one_minus_beta_2, epsilon -> 4
+    // hyperparameters
     frontend_attrs.push_back(op_builder.getNamedAttr(
         xla::kNumHyperparameters, op_builder.getStringAttr("4")));
 
@@ -217,13 +271,18 @@ auto SparseDenseMatmulGradWithAdamBuilder(int64_t device_batch_size,
         op_builder.getArrayAttr({mlir::SymbolRefAttr::get(
             op_builder.getContext(), computation_name)}));
 
-    std::vector<mlir::Value> operands = {
-        row_pointers.getValue(),     embedding_ids.getValue(),
-        sample_ids.getValue(),       gains.getValue(),
-        activations_grad.getValue(), embedding_table.getValue(),
-        momentum.getValue(),         velocity.getValue(),
-        alpha_t.getValue(),          beta_1_const.getValue(),
-        beta_2_const.getValue(),     epsilon_const.getValue()};
+    std::vector<mlir::Value> operands = {row_pointers.getValue(),
+                                         embedding_ids.getValue(),
+                                         sample_ids.getValue(),
+                                         gains.getValue(),
+                                         activations_grad.getValue(),
+                                         embedding_table.getValue(),
+                                         momentum.getValue(),
+                                         velocity.getValue(),
+                                         alpha_t.getValue(),
+                                         one_minus_beta_1_const.getValue(),
+                                         one_minus_beta_2_const.getValue(),
+                                         epsilon_const.getValue()};
 
     auto out_type = mlir::TupleType::get(
         op_builder.getContext(),
@@ -248,7 +307,6 @@ auto SparseDenseMatmulGradWithAdamBuilder(int64_t device_batch_size,
                              mlir::MlirOp(builder, gte_velocity.getResult())});
   };
 }
-
 }  // namespace
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor>
@@ -274,6 +332,7 @@ AtenSparseDenseMatmulGradWithAdam(
 
         Dimensions out_dims(embedding_table.sizes().begin(),
                             embedding_table.sizes().end());
+        Dimensions vel_dims(velocity.sizes().begin(), velocity.sizes().end());
 
         auto builder_fn = SparseDenseMatmulGradWithAdamBuilder(
             device_batch_size, max_ids_per_partition,
@@ -283,12 +342,15 @@ AtenSparseDenseMatmulGradWithAdam(
         TT_ASSIGN_OR_THROW(
             mlir::ElementType out_dtype,
             ConvertTo<mlir::ElementType>(embedding_table.scalar_type()));
+        TT_ASSIGN_OR_THROW(
+            mlir::ElementType vel_dtype,
+            ConvertTo<mlir::ElementType>(velocity.scalar_type()));
 
         TT_ASSIGN_OR_THROW(
             auto results,
             (DispatchOp<9, 3>(builder_fn, inputs,
-                              {.out_dtypes = {out_dtype, out_dtype, out_dtype},
-                               .out_dims_list = {out_dims, out_dims, out_dims},
+                              {.out_dtypes = {out_dtype, out_dtype, vel_dtype},
+                               .out_dims_list = {out_dims, out_dims, vel_dims},
                                .op_param_cache_keys = std::move(param_keys)})));
 
         return std::make_tuple(MakeTensor(std::move(results[0])),

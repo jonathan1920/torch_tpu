@@ -869,6 +869,206 @@ class SparseDenseMatmulTest(
           ),
       )
 
+  @parameterized.parameters(False, True)
+  def test_sparse_dense_matmul_grad_with_rowwise_adam_on_tpu(self, compile_op):
+    device = torch.device("tpu")
+    row_pointers, embedding_ids, sample_ids, gains, embedding_table = (
+        self._get_inputs(device)
+    )
+
+    num_sc_per_device = _get_num_sc_per_device()
+
+    # Shard the table for TPU (MOD sharding)
+    vocab_size = embedding_table.shape[0]
+    embedding_dim = embedding_table.shape[1]
+
+    sharded_tables = []
+    for core_id in range(num_sc_per_device):
+      indices = [
+          i for i in range(vocab_size) if i % num_sc_per_device == core_id
+      ]
+      sharded_tables.append(embedding_table[indices])
+
+    embedding_table_sharded = torch.cat(sharded_tables, dim=0)
+
+    # Initialize momentum (m) and velocity (v)
+    momentum = (
+        torch.ones(
+            vocab_size, embedding_dim, dtype=torch.float32, device=device
+        )
+        * 0.2
+    )
+    velocity = torch.ones(vocab_size, dtype=torch.float32, device=device) * 0.1
+
+    # Shard the slot variables
+    sharded_momentums = []
+    sharded_velocities = []
+    for core_id in range(num_sc_per_device):
+      indices = [
+          i for i in range(vocab_size) if i % num_sc_per_device == core_id
+      ]
+      sharded_momentums.append(momentum[indices])
+      sharded_velocities.append(velocity[indices])
+
+    momentum_sharded = torch.cat(sharded_momentums, dim=0)
+    velocity_sharded = torch.cat(sharded_velocities, dim=0)
+
+    batch_size = 16
+
+    activations_grad = (
+        torch.ones(
+            batch_size, embedding_dim, dtype=torch.float32, device=device
+        )
+        * 0.01
+    )
+    alpha_t = torch.tensor(0.01, dtype=torch.float32, device=device)
+    beta_1 = 0.9
+    beta_2 = 0.999
+    epsilon = 1e-8
+
+    def grad_fn(rp, e_ids, s_ids, g, et, mom, vel, ag, lr, b1, b2, eps):
+      return torch.ops.tpu.sparse_dense_matmul_grad_with_adam(
+          rp,
+          e_ids,
+          s_ids,
+          g,
+          et,
+          mom,
+          vel,
+          ag,
+          lr,
+          b1,
+          b2,
+          eps,
+          device_batch_size=batch_size,
+          max_ids_per_partition=16,
+          max_unique_ids_per_partition=64,
+          computation_name="test_rowwise_adam_table",
+      )
+
+    if compile_op:
+      grad_fn = torch.compile(grad_fn, fullgraph=True)
+
+    updated_table_tpu, updated_mom_tpu, updated_vel_tpu = grad_fn(
+        row_pointers,
+        embedding_ids,
+        sample_ids,
+        gains,
+        embedding_table_sharded,
+        momentum_sharded,
+        velocity_sharded,
+        activations_grad,
+        alpha_t,
+        beta_1,
+        beta_2,
+        epsilon,
+    )
+
+    updated_table_tpu_np = updated_table_tpu.cpu().numpy()
+    initial_table_sharded_np = embedding_table_sharded.cpu().numpy()
+    updated_mom_tpu_np = updated_mom_tpu.cpu().numpy()
+    initial_mom_sharded_np = momentum_sharded.cpu().numpy()
+    updated_vel_tpu_np = updated_vel_tpu.cpu().numpy()
+    initial_vel_sharded_np = velocity_sharded.cpu().numpy()
+
+    updated_rows = [0, 1, 2, 3, 16, 17]
+
+    # Verify that non-updated rows are indeed unchanged
+    for i in range(vocab_size):
+      if i not in updated_rows:
+        self.assertTrue(
+            np.allclose(
+                updated_table_tpu_np[i], initial_table_sharded_np[i], atol=1e-5
+            ),
+            msg=f"Row {i} expected to be unchanged",
+        )
+        self.assertTrue(
+            np.allclose(
+                updated_mom_tpu_np[i], initial_mom_sharded_np[i], atol=1e-5
+            ),
+            msg=f"Momentum row {i} expected to be unchanged",
+        )
+        self.assertTrue(
+            np.allclose(
+                updated_vel_tpu_np[i], initial_vel_sharded_np[i], atol=1e-5
+            ),
+            msg=f"Velocity row {i} expected to be unchanged",
+        )
+
+    # Numerical check using finite differences of forward op
+    def matmul_fn(rp, e_ids, s_ids, g, et):
+      return torch.ops.tpu.sparse_dense_matmul(
+          rp,
+          e_ids,
+          s_ids,
+          g,
+          et,
+          device_batch_size=batch_size,
+          max_ids_per_partition=16,
+          max_unique_ids_per_partition=16,
+      )
+
+    if compile_op:
+      matmul_fn = torch.compile(matmul_fn, fullgraph=True)
+
+    eps = 1e-3
+    grad_approx = torch.zeros_like(embedding_table_sharded)
+
+    for r in updated_rows:
+      table_sharded_plus = embedding_table_sharded.clone()
+      table_sharded_plus[r] += eps
+      table_sharded_minus = embedding_table_sharded.clone()
+      table_sharded_minus[r] -= eps
+
+      out_plus = matmul_fn(
+          row_pointers, embedding_ids, sample_ids, gains, table_sharded_plus
+      )
+      out_minus = matmul_fn(
+          row_pointers, embedding_ids, sample_ids, gains, table_sharded_minus
+      )
+
+      dout = (out_plus - out_minus) / (2 * eps)
+      grad_approx[r] = torch.sum(activations_grad * dout, dim=0)
+
+    # Calculate expected updates
+    grad_approx_np = grad_approx.cpu().numpy()
+    expected_mom_np = initial_mom_sharded_np + (1.0 - beta_1) * (
+        grad_approx_np - initial_mom_sharded_np
+    )
+    expected_vel_np = initial_vel_sharded_np + (1.0 - beta_2) * (
+        np.mean(grad_approx_np * grad_approx_np, axis=1)
+        - initial_vel_sharded_np
+    )
+    expected_update = (
+        alpha_t.cpu().numpy()
+        * expected_mom_np
+        / (np.sqrt(expected_vel_np)[:, np.newaxis] + epsilon)
+    )
+    actual_update = initial_table_sharded_np - updated_table_tpu_np
+
+    for r in updated_rows:
+      self.assertTrue(
+          np.allclose(actual_update[r], expected_update[r], atol=1e-4),
+          msg=(
+              f"Row {r} update mismatch. Actual: {actual_update[r]}, Expected:"
+              f" {expected_update[r]}"
+          ),
+      )
+      self.assertTrue(
+          np.allclose(updated_mom_tpu_np[r], expected_mom_np[r], atol=1e-4),
+          msg=(
+              f"Momentum row {r} mismatch. Actual: {updated_mom_tpu_np[r]},"
+              f" Expected: {expected_mom_np[r]}"
+          ),
+      )
+      self.assertTrue(
+          np.allclose(updated_vel_tpu_np[r], expected_vel_np[r], atol=1e-4),
+          msg=(
+              f"Velocity row {r} mismatch. Actual: {updated_vel_tpu_np[r]},"
+              f" Expected: {expected_vel_np[r]}"
+          ),
+      )
+
 
 class InputPreprocessingKernelsTest(parameterized.TestCase):
 
