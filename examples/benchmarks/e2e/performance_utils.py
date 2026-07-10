@@ -267,6 +267,8 @@ def run_single_process_benchmark(
   world_size = int(os.environ.get("WORLD_SIZE", "1"))
   platform = common.PLATFORM.value
   device = common.get_torch_device(platform)
+  if hasattr(torch.backends, "tpu"):
+    torch.backends.tpu.allow_excess_precision = True
   # Seed random number generators for reproducibility. This should be done after
   # initializing the device.
   if config.is_training:
