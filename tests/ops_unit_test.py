@@ -8759,6 +8759,25 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
         "Inputs across runs with same base seeds were different!",
     )
 
+  def test_searchsorted_scalar_float_in_int(self):
+    def test_fn(device):
+      seq = torch.tensor([1, 2, 3, 4], dtype=torch.int64, device=device)
+      res_left = torch.searchsorted(seq, 2.5, right=False)
+      res_right = torch.searchsorted(seq, 2.5, right=True)
+      return res_left, res_right
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  def test_searchsorted_0d_query_1elem_sorter(self):
+    def test_fn(device):
+      seq = torch.tensor([10], dtype=torch.int64, device=device)
+      sorter = torch.tensor([0], dtype=torch.int64, device=device)
+      query = torch.tensor(10, dtype=torch.int64, device=device)
+      res = torch.searchsorted(seq, query, sorter=sorter)
+      return res
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
 
 if __name__ == "__main__":
   absltest.main()

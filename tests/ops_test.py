@@ -3379,6 +3379,17 @@ class TestOps(TorchTpuTestBase):
   def test_scalar_tensor(self):
     self.do_test_op("scalar_tensor")
 
+  def test_searchsorted(self):
+    self.do_test_op(
+        "searchsorted",
+        exclude_dtypes=COMPLEX_DTYPES  # EXCLUDE_DTYPES_OK= complex
+        # and bool dtypes not supported.
+        + (torch.bool,),
+        # Upstream generates 288 samples per dtype; cap to 10 to prevent test
+        # shard timeouts.
+        max_samples_per_op_dtype=10,
+    )
+
   def test_sigmoid(self):
     self.do_test_op("sigmoid")
 

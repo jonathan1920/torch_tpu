@@ -191,6 +191,7 @@ def verify_op_supports_dynamism(
       "remainder",  # dynamic triage (invalid result)
       "round",  # dynamic triage (invalid result)
       "sgn",  # dynamic triage (invalid result)
+      "searchsorted",  # expected last dim to be static
       "sign",  # dynamic triage (invalid result)
       "sinh",  # dynamic triage (invalid result)
       "slice",  # reshape reassociation not supported

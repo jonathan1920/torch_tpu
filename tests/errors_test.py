@@ -6873,6 +6873,102 @@ Device-side assertion tracking was not enabled by user.""",
           out=out,
       )
 
+  def test_searchsorted_invalid_side(self):
+    a = torch.tensor([1, 2, 3])
+    v = torch.tensor([2])
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""searchsorted(): expected side to be 'left' or 'right', got 'middle'""",
+        gpu="""torch.searchsorted(): side can only be 'left' or 'right' but got middle""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.searchsorted(a.to(et.device()), v.to(et.device()), side="middle")
+
+  def test_searchsorted_dim_mismatch(self):
+    a = torch.tensor([[1, 2], [3, 4]])
+    v = torch.tensor([2])
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""searchsorted(): expected sorted_sequence to be 1-dimensional or have the same number of dimensions as values, got 2 and 1""",
+        gpu="""torch.searchsorted(): boundaries tensor should be 1 dimension or the first N-1 dimensions of boundaries tensor and input value tensor must match, but we got boundaries tensor [2, 2] and input value tensor [1]""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.searchsorted(a.to(et.device()), v.to(et.device()))
+
+  def test_searchsorted_shape_mismatch(self):
+    a = torch.tensor([[1, 2], [3, 4]])
+    v = torch.tensor([[2], [3], [4]])
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""searchsorted(): expected sorted_sequence to have same shape as values except for the last dimension, got [2, 2] and [3, 1]""",
+        gpu="""torch.searchsorted(): boundaries tensor should be 1 dimension or the first N-1 dimensions of boundaries tensor and input value tensor must match, but we got boundaries tensor [2, 2] and input value tensor [3, 1]""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.searchsorted(a.to(et.device()), v.to(et.device()))
+
+  def test_searchsorted_invalid_sorter_shape(self):
+    a = torch.tensor([[1, 2], [3, 4]])
+    v = torch.tensor([[2, 2], [3, 3]])
+    sorter = torch.tensor([[1, 0]])
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""searchsorted(): expected sorter and sorted_sequence to have the same shape, got [1, 2] and [2, 2]""",
+        gpu="""torch.searchsorted(): boundary and sorter must have the same size, but got boundary tensor [2, 2]and got sorter tensor [1, 2]""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.searchsorted(
+          a.to(et.device()), v.to(et.device()), sorter=sorter.to(et.device())
+      )
+
+  def test_searchsorted_invalid_sorter_dtype(self):
+    a = torch.tensor([1, 2, 3])
+    v = torch.tensor([2])
+    sorter = torch.tensor([0, 1, 2], dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""searchsorted(): expected sorter to have Long dtype, got Int""",
+        gpu="""torch.searchsorted(): sorter must be a tensor of long dtype but got dtype Int""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.searchsorted(
+          a.to(et.device()), v.to(et.device()), sorter=sorter.to(et.device())
+      )
+
+  def test_searchsorted_scalar_value_invalid(self):
+    a = torch.tensor([[1, 2], [3, 4]])
+    v = torch.tensor(2)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""searchsorted(): expected values to not be a scalar when sorted_sequence dimension is not 1, got sorted_sequence dim 2 and values dim 0""",
+        gpu="""torch.searchsorted(): input value can be a scalar only when boundaries tensor dimension is 1, but we got boundaries tensor dim(2) and input value's dim(0) numel(1)""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.searchsorted(a.to(et.device()), v.to(et.device()))
+
+  def test_searchsorted_scalar_sequence_invalid(self):
+    a = torch.tensor(1)
+    v = torch.tensor([2])
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""searchsorted(): expected sorted_sequence to have >0 dimension, got 0""",
+        gpu="""torch.searchsorted(): boundaries tensor should have positive dimension, but got 0 dimension""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.searchsorted(a.to(et.device()), v.to(et.device()))
+
+  def test_searchsorted_right_and_side_contradiction(self):
+    a = torch.tensor([1, 2, 3])
+    v = torch.tensor([2])
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""searchsorted(): expected side and right to not be opposites, got side 'left' and right True""",
+        gpu="""torch.searchsorted(): side and right can't be set to opposites, got side of left while right was True""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.searchsorted(
+          a.to(et.device()), v.to(et.device()), right=True, side="left"
+      )
+
 
 if __name__ == "__main__":
   g3_multiprocessing.handle_test_main(absltest.main)

@@ -1227,6 +1227,14 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "scatter.value_out";
     case OpName::kScatterValueReduceOut:
       return "scatter.value_reduce_out";
+    case OpName::kSearchsortedScalar:
+      return "searchsorted.Scalar";
+    case OpName::kSearchsortedScalarOut:
+      return "searchsorted.Scalar_out";
+    case OpName::kSearchsortedTensor:
+      return "searchsorted.Tensor";
+    case OpName::kSearchsortedTensorOut:
+      return "searchsorted.Tensor_out";
     case OpName::kSetDimensionLogicalSize:
       return "set_dimension_logical_size";
     case OpName::kSet_:
