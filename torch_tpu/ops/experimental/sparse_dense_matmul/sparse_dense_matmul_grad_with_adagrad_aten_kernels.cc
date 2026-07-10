@@ -76,16 +76,34 @@ auto SparseDenseMatmulGradWithAdagradBuilder(
 
     auto embedding_table_type = torch_tpu::GetTensorTypeOrDie(embedding_table);
     auto accumulator_type = torch_tpu::GetTensorTypeOrDie(accumulator);
+    auto accumulator_shape = accumulator_type.getShape();
     int64_t embedding_dim = embedding_table_type.getShape()[1];
+
+    bool is_rowwise = (accumulator_shape.size() == 1);
+    if (!is_rowwise) {
+      TT_RET_CHECK(accumulator_shape.size() == 2, error::kInvalidArgument)
+          << "Accumulator must be 1D (row-wise) or 2D (standard)";
+      TT_RET_CHECK(accumulator_shape[1] == embedding_dim,
+                   error::kInvalidArgument)
+          << "Accumulator dimension 1 must match embedding dimension; expected "
+          << embedding_dim << ", got " << accumulator_shape[1];
+    }
 
     // Define the optimizer update function.
 
-    auto tensor_type = mlir::RankedTensorType::get({1, embedding_dim},
-                                                   op_builder.getF32Type());
+    auto param_type = mlir::RankedTensorType::get({1, embedding_dim},
+                                                  op_builder.getF32Type());
+    mlir::RankedTensorType acc_type =
+        is_rowwise ? mlir::RankedTensorType::get({1}, op_builder.getF32Type())
+                   : mlir::RankedTensorType::get({1, embedding_dim},
+                                                 op_builder.getF32Type());
+    auto lr_type = param_type;
+    auto epsilon_type = param_type;
+
     auto func_type = op_builder.getFunctionType(
-        {tensor_type, tensor_type, tensor_type, tensor_type, tensor_type},
+        {param_type, param_type, acc_type, lr_type, epsilon_type},
         {mlir::TupleType::get(op_builder.getContext(),
-                              {tensor_type, tensor_type})});
+                              {param_type, acc_type})});
 
     mlir::ModuleOp module = torch_tpu::GetModuleOp(builder);
     if (!module.lookupSymbol<mlir::func::FuncOp>(computation_name)) {
@@ -107,10 +125,35 @@ auto SparseDenseMatmulGradWithAdagradBuilder(
       mlir::MlirOp epsilon_arg(builder, entry_block->getArgument(4));
 
       auto grad_sq = mlir::stablehlo::Mul(grad, grad);
-      auto new_acc = mlir::stablehlo::Add(acc_arg, grad_sq);
+      mlir::MlirOp new_acc;
+      if (is_rowwise) {
+        auto zero = MakeScalarConstant(builder, 0.0f, mlir::ElementType::F32);
+        auto dtype = torch_tpu::GetTensorTypeOrDie(grad_sq).getElementType();
+        auto reduce_builder = [&](mlir::RegionBuilder& rb) {
+          mlir::stablehlo::buildReduceBody<mlir::stablehlo::AddOp>(
+              dtype, rb.getRegion(), rb.getOpBuilder());
+        };
+        auto dim_size = mlir::stablehlo::GetDimensionSize(grad, 1);
+        auto dim_size_f32 = mlir::stablehlo::ConvertElementType(
+            dim_size, op_builder.getF32Type());
+        TT_ASSIGN_OR_RETURN(auto dim_bcast,
+                            BroadcastIfNeeded(dim_size_f32, grad_sq));
+        auto grad_sq_div = mlir::stablehlo::Div(grad_sq, dim_bcast);
+        auto reduced = mlir::stablehlo::Reduce(builder, grad_sq_div, zero,
+                                               reduce_builder, {1})[0];
+        new_acc = mlir::stablehlo::Add(acc_arg, reduced);
+      } else {
+        new_acc = mlir::stablehlo::Add(acc_arg, grad_sq);
+      }
       auto lr_grad = mlir::stablehlo::Mul(lr, grad);
       auto sqrt_acc = mlir::stablehlo::Sqrt(new_acc);
-      auto sqrt_acc_plus_epsilon = mlir::stablehlo::Add(sqrt_acc, epsilon_arg);
+      mlir::MlirOp sqrt_acc_bcast = sqrt_acc;
+      if (is_rowwise) {
+        TT_ASSIGN_OR_RETURN(sqrt_acc_bcast,
+                            BroadcastIfNeeded(sqrt_acc, epsilon_arg));
+      }
+      auto sqrt_acc_plus_epsilon =
+          mlir::stablehlo::Add(sqrt_acc_bcast, epsilon_arg);
       auto update = mlir::stablehlo::Div(lr_grad, sqrt_acc_plus_epsilon);
       auto updated_param = mlir::stablehlo::Subtract(param, update);
 
@@ -219,6 +262,8 @@ std::tuple<at::Tensor, at::Tensor> AtenSparseDenseMatmulGradWithAdagrad(
 
         torch_tpu::Dimensions out_dims(embedding_table.sizes().begin(),
                                        embedding_table.sizes().end());
+        torch_tpu::Dimensions acc_dims(accumulator.sizes().begin(),
+                                       accumulator.sizes().end());
 
         auto builder_fn = SparseDenseMatmulGradWithAdagradBuilder(
             device_batch_size, max_ids_per_partition,
@@ -227,12 +272,15 @@ std::tuple<at::Tensor, at::Tensor> AtenSparseDenseMatmulGradWithAdagrad(
         TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
                            torch_tpu::ConvertTo<mlir::ElementType>(
                                embedding_table.scalar_type()));
+        TT_ASSIGN_OR_THROW(
+            mlir::ElementType acc_dtype,
+            torch_tpu::ConvertTo<mlir::ElementType>(accumulator.scalar_type()));
 
         TT_ASSIGN_OR_THROW(
             auto results, (torch_tpu::DispatchOp<9, 2>(
                               builder_fn, inputs,
-                              {.out_dtypes = {out_dtype, out_dtype},
-                               .out_dims_list = {out_dims, out_dims},
+                              {.out_dtypes = {out_dtype, acc_dtype},
+                               .out_dims_list = {out_dims, acc_dims},
                                .op_param_cache_keys = std::move(param_keys)})));
 
         return std::make_tuple(torch_tpu::MakeTensor(std::move(results[0])),

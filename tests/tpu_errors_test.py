@@ -2830,6 +2830,64 @@ module {
           is_first_step=False,
       )
 
+  @et.why_tpu_only(
+      "Custom op sparse_dense_matmul_grad_with_adagrad is TPU only."
+  )
+  def test_sparse_dense_matmul_grad_with_adagrad_invalid_accumulator_dim(self):
+    device = et.device()
+    row_pointers = torch.tensor([0, 1], dtype=torch.int32, device=device)
+    embedding_ids = torch.tensor([0], dtype=torch.int32, device=device)
+    sample_ids = torch.tensor([0], dtype=torch.int32, device=device)
+    gains = torch.tensor([1.0], dtype=torch.float32, device=device)
+    embedding_table = torch.ones(10, 8, dtype=torch.float32, device=device)
+    accumulator_3d = torch.ones(10, 8, 1, dtype=torch.float32, device=device)
+    activations_grad = torch.ones(1, 8, dtype=torch.float32, device=device)
+    learning_rate = torch.tensor(0.01, dtype=torch.float32, device=device)
+    epsilon = torch.tensor(1e-10, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_dense_matmul_grad_with_adagrad(): materialization failed with: Accumulator must be 1D (row-wise) or 2D (standard)""",
+    ):
+      torch.ops.tpu.sparse_dense_matmul_grad_with_adagrad(
+          row_pointers,
+          embedding_ids,
+          sample_ids,
+          gains,
+          embedding_table,
+          accumulator_3d,
+          activations_grad,
+          learning_rate,
+          epsilon,
+          device_batch_size=1,
+          max_ids_per_partition=1,
+          max_unique_ids_per_partition=1,
+          computation_name="test_acc_3d",
+      )
+
+    accumulator_wrong_dim = torch.ones(
+        10, 4, dtype=torch.float32, device=device
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_dense_matmul_grad_with_adagrad(): materialization failed with: Accumulator dimension 1 must match embedding dimension; expected 8, got 4""",
+    ):
+      torch.ops.tpu.sparse_dense_matmul_grad_with_adagrad(
+          row_pointers,
+          embedding_ids,
+          sample_ids,
+          gains,
+          embedding_table,
+          accumulator_wrong_dim,
+          activations_grad,
+          learning_rate,
+          epsilon,
+          device_batch_size=1,
+          max_ids_per_partition=1,
+          max_unique_ids_per_partition=1,
+          computation_name="test_acc_dim",
+      )
+
 
 if __name__ == "__main__":
   absltest.main()
