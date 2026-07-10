@@ -204,6 +204,11 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
     """
     self._mlir_text = value
 
+  @property
+  def parameter_layouts(self) -> list[Any]:
+    """Returns the parameter layouts expected by the executable."""
+    return self._executable.get_parameter_layouts()
+
   def _take_tensor_args(
       self, args: tuple[Any, ...]
   ) -> tuple[torch.Tensor, ...]:

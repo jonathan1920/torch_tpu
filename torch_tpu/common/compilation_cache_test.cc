@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/base/log_severity.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
@@ -40,11 +41,13 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/contain.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
@@ -367,6 +370,77 @@ TEST_F(CompilationCacheTest, PeakMemoryReported) {
   EXPECT_GT(*stats.peak_compilation_memory_bytes, 0);
   ABSL_LOG(INFO) << "Peak compilation memory: "
                  << *stats.peak_compilation_memory_bytes;
+
+  CompilationCache::ShutDown();
+}
+
+TEST_F(CompilationCacheTest, DynamicCacheLayoutMismatch) {
+  PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+      {.device_type = "xla_cpu"});
+  ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
+
+  CompilationCache& cache = CompilationCache::GetInstance();
+
+  mlir::MLIRContext context;
+  mlir::Builder builder(&context);
+  auto f32_type_or =
+      torch_tpu::ConvertTo<mlir::ElementType>(builder.getF32Type());
+  ASSERT_TRUE(f32_type_or.ok()) << f32_type_or.status();
+  mlir::ElementType f32_type = *f32_type_or;
+
+  Shape dynamic_shape(
+      {4}, f32_type,
+      absl::InlinedVector<BoundedDynamicDimension, 1>{BoundedDynamicDimension{
+          .dimension = 0, .lower_bound = 1, .upper_bound = 4}});
+
+  std::vector<Shape> input_shapes = {dynamic_shape};
+  std::vector<Shape> output_shapes = {dynamic_shape};
+
+  ShapelessKey shapeless_key(111);
+  ShapeDynamismMetadata dynamism_metadata(input_shapes, output_shapes);
+  DimensionsKey dimensions_key(dynamism_metadata);
+  GraphKey graph_key(shapeless_key, dimensions_key);
+
+  CompilationCacheKey key1(graph_key, CompileOptionsKey(1));
+  CompilationCacheKey key2(graph_key, CompileOptionsKey(2));
+
+  auto make_builder = []() {
+    return [](mlir::MLIRContext& context)
+               -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
+      auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+      mlir::OpBuilder builder(&context);
+      builder.setInsertionPointToEnd(module.getBody());
+
+      auto tensor_type = mlir::RankedTensorType::get({4}, builder.getF32Type());
+      auto func_type = builder.getFunctionType({tensor_type}, {tensor_type});
+      auto func = builder.create<mlir::func::FuncOp>(
+          mlir::UnknownLoc::get(&context), "main", func_type);
+
+      auto* entry_block = func.addEntryBlock();
+      builder.setInsertionPointToStart(entry_block);
+
+      builder.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(&context),
+                                           entry_block->getArgument(0));
+
+      return mlir::OwningOpRef<mlir::ModuleOp>(module);
+    };
+  };
+
+  auto result1 = cache.GetOrCompile(
+      key1, input_shapes, output_shapes, make_builder(),
+      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options);
+  ASSERT_TRUE(result1.ok()) << result1.status();
+  auto exec1_or = result1->fixed_shape_kernel.get();
+  ASSERT_TRUE(exec1_or.ok()) << exec1_or.status();
+
+  auto result2 = cache.GetOrCompile(
+      key2, input_shapes, output_shapes, make_builder(),
+      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options);
+  ASSERT_TRUE(result2.ok()) << result2.status();
+  auto exec2_or = result2->fixed_shape_kernel.get();
+  ASSERT_TRUE(exec2_or.ok()) << exec2_or.status();
+
+  EXPECT_NE(*exec1_or, *exec2_or);
 
   CompilationCache::ShutDown();
 }

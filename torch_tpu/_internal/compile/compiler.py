@@ -69,6 +69,7 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
       compilation_context: CompilationContext | None = None,
       *,
       debug: bool = False,
+      use_stablehlo_bounds: bool = False,
   ):
     """Initializes the Compiler.
 
@@ -78,6 +79,8 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
         constructed.
       debug: Enable debug mode, which may store additional artifacts and log
         more information.
+      use_stablehlo_bounds: Whether to use StableHLO bounds during compilation
+        for dynamic inputs.
     """
     self.compilation_context = (
         compilation_context
@@ -85,6 +88,7 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
         else CompilationContext()
     )
     self._debug = debug
+    self._use_stablehlo_bounds = use_stablehlo_bounds
 
   def execute_pre_grad_passes(
       self,
@@ -173,6 +177,8 @@ class StaticCompiler(Compiler):
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[InputType],
       is_fwd: bool = True,
+      bounds: Sequence[Any] | None = None,
+      argument_layouts: Sequence[Sequence[int]] | None = None,
   ) -> CompiledArtifact:
     """Compiles the FX graph module for static shapes.
 
@@ -193,10 +199,11 @@ class StaticCompiler(Compiler):
 
     Args:
       graph_module: The FX graph module to compile.
-      example_inputs: A sequence of example input tensors used to guide
-        the conversion to MLIR, particularly for determining input
-        specifications.
+      example_inputs: A sequence of example input tensors used to guide the
+        conversion to MLIR, particularly for determining input specifications.
       is_fwd: Indicates whether the forward or backward pass is being compiled.
+      bounds: Optional sequence of TensorBounds for dynamic inputs.
+      argument_layouts: Optional sequence of argument layouts for inputs.
 
     Returns:
       A _TorchTpuCompiledExecutable object, which can be called to execute
@@ -248,18 +255,30 @@ class StaticCompiler(Compiler):
       #     placeholders will error.
       # (2) Act as TPU-compatible FakeTensors, so that tracing does not depend
       #     on tensor data.
-      placeholder_args = [
-          tpu_torch_compile.placeholder_like(arg)
-          if isinstance(arg, torch.Tensor)
-          else arg
-          for arg in example_inputs
-      ]
+      placeholder_args = []
+      for i, arg in enumerate(example_inputs):
+        if isinstance(arg, torch.Tensor):
+          arg_bounds = bounds[i] if bounds is not None else None
+          if arg_bounds is not None:
+            ph = tpu_torch_compile.dynamic_placeholder(
+                arg.shape,
+                arg.dtype,
+                arg_bounds,
+                arg.requires_grad,
+            )
+            placeholder_args.append(ph)
+          else:
+            placeholder_args.append(tpu_torch_compile.placeholder_like(arg))
+        else:
+          placeholder_args.append(arg)
 
       with dynamo_timed("torchtpu_fx_to_mlir"):
         exported_mlir = torch_tpu_export.fx_to_mlir(
             graph_module,
             placeholder_args,
             build_mlir_module=(tracing_enabled or self._debug),
+            use_stablehlo_bounds=self._use_stablehlo_bounds,
+            argument_layouts=argument_layouts,
         )
 
     if exported_mlir.is_noop:

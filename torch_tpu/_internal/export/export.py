@@ -275,7 +275,10 @@ def _reconstruct_fx_outputs(
 
       # Force the contiguous output to have the expected layout.
       # b/514662948: avoid the copy/slice for broadcasted return values
-      if expected_layout.matches_tensor(contiguous_output_tensor):
+      is_dynamic = tpu_torch_compile.is_device_shape_dynamic(
+          contiguous_output_tensor
+      )
+      if is_dynamic or expected_layout.matches_tensor(contiguous_output_tensor):
         reconstructed_flat.append(contiguous_output_tensor)
       else:
         reconstructed_flat.append(
@@ -443,6 +446,8 @@ def fx_to_mlir(
     module: torch.fx.GraphModule,
     args: list[torch.Tensor | Any],
     build_mlir_module: bool = True,
+    use_stablehlo_bounds: bool = False,
+    argument_layouts: list[list[int]] | None = None,
 ) -> ExportedMlir:
   """Converts an FX graph module to MLIR using TorchTPU's defer mode.
 
@@ -458,6 +463,8 @@ def fx_to_mlir(
       through an FX graph interpreter to identify the graph's output tensors.
     build_mlir_module: Whether to build and return the MLIR module in the
       result.
+    use_stablehlo_bounds: Whether to use StableHLO bounds.
+    argument_layouts: A list of forced layouts for input arguments.
 
   Returns:
     An `ExportedMlir` object containing the MLIR representation of the graph and
@@ -465,6 +472,14 @@ def fx_to_mlir(
   """
   # Filter out non-tensor arguments.
   argument_tensors = [a for a in args if isinstance(a, torch.Tensor)]
+  if argument_layouts is not None:
+    assert len(argument_layouts) == len(argument_tensors), (
+        f"argument_layouts size mismatch: expected {len(argument_tensors)}, got"
+        f" {len(argument_layouts)}"
+    )
+    internal_layouts = list(argument_layouts)
+  else:
+    internal_layouts = []
 
   # Run the module through the EagerLikeFxInterpreter with MLIR location
   # tracebacks enabled by default so that the MLIR we generate has file
@@ -490,6 +505,8 @@ def fx_to_mlir(
 
     # Add placeholder to the argument tensors for traversal.
     argument_tensors.append(begin_state_tensor)
+    if internal_layouts:
+      internal_layouts.append([])
 
   try:
     with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
@@ -525,6 +542,8 @@ def fx_to_mlir(
         # outputs since it is not used.
         argument_tensors.pop()
         result_tensors.pop()
+        if internal_layouts:
+          internal_layouts.pop()
       else:
         # No RNG update and nothing to compute: this graph is a no-op.
         return ExportedMlir(
@@ -540,6 +559,8 @@ def fx_to_mlir(
         result_tensors=result_tensors,
         argument_tensors=argument_tensors,
         build_mlir_module=build_mlir_module,
+        use_stablehlo_bounds=use_stablehlo_bounds,
+        argument_layouts=internal_layouts,
     )
   finally:
     # Restore original generator states.

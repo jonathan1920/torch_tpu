@@ -517,7 +517,9 @@ CompilationCache::GetOrCreateCacheEntry(
           : GetBoundedDynamicCacheEntries(key.graph_key().shapeless_key());
   if (dynamic_it.has_value()) {
     for (const auto& entry : (*dynamic_it)->second) {
-      if (entry.shape_dynamism_metadata.IsStaticShapeCompatible(input_shapes)) {
+      if (entry.shape_dynamism_metadata.IsStaticShapeCompatible(input_shapes) &&
+          entry.middle_executable_key.compile_options_key() ==
+              key.compile_options_key()) {
         ABSL_VLOG(2) << "Compilation cache DYNAMIC HIT for key: " << key;
 
         TT_ASSIGN_OR_RETURN(
