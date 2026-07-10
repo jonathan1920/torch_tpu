@@ -31,8 +31,6 @@ def run_ragged_all_to_all_test() -> None:
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
 
-  replica_groups = torch.tensor([range(world_size)], dtype=torch.int64).tpu()
-
   output_offsets = torch.tensor([rank] * world_size, dtype=torch.int32).tpu()
 
   send_sizes = torch.tensor([1] * world_size, dtype=torch.int32).tpu()
@@ -40,7 +38,7 @@ def run_ragged_all_to_all_test() -> None:
   recv_sizes = torch.tensor([1] * world_size, dtype=torch.int32).tpu()
 
   offset = rank * world_size
-  operand = torch.range(offset, offset + world_size, dtype=torch.int32).tpu()
+  operand = torch.arange(offset, offset + world_size, dtype=torch.int32).tpu()
   output = torch.zeros(world_size, dtype=torch.int32).tpu()
 
   result = torch.ops.tpu.ragged_all_to_all(
@@ -50,14 +48,13 @@ def run_ragged_all_to_all_test() -> None:
       send_sizes,
       output_offsets,
       recv_sizes,
-      replica_groups,
       dist.group.WORLD.group_name,
   )
 
   # Simply a transpose.
-  expected = torch.range(
+  expected = torch.arange(
       rank,
-      rank + world_size * (world_size - 1),
+      rank + world_size * world_size,
       world_size,
       dtype=torch.int32,
   )
@@ -72,7 +69,7 @@ class RaggedAllToAllTest(absltest.TestCase):
   """Tests the ragged_all_to_all TPU collective operation.
 
   This test initializes a distributed environment and performs a
-  ragged_all_to_all operation on a single group of 4 TPUs. Each TPU sends its
+  ragged_all_to_all operation on a single group of 8 TPUs. Each TPU sends its
   rank to all other TPUs in the group.
   """
 

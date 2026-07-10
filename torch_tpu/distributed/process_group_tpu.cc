@@ -542,15 +542,8 @@ ProcessGroupTpu::ProcessGroupTpu(c10::intrusive_ptr<c10d::Store> store,
 #define TT_SET_PROCESS_GROUP_ID(param_keys) \
   TT_THROW_IF_ERROR(param_keys.SetParam("pg_id", pg_id_))
 
-absl::StatusOr<int64_t> ProcessGroupTpu::GetDeviceIdFromRank(
-    int64_t rank) const {
-  if (rank < 0 && rank >= rank_to_device_id_.size()) {
-    return TT_ERROR(error::kInvalidArgument)
-           << "invalid rank: " << rank
-           << ", rank_to_device_id size: " << rank_to_device_id_.size();
-  }
-
-  return rank_to_device_id_[rank];
+const DeviceGroupList& ProcessGroupTpu::GetSubgroupDeviceIds() const {
+  return subgroup_device_ids_;
 }
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allreduce(

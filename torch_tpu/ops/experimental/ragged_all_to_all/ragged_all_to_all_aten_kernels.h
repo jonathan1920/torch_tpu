@@ -38,19 +38,20 @@ namespace torch_tpu {
 //
 // Returns:
 //   A tensor containing the gathered data.
-at::Tensor AtenRaggedAllToAll(
-    const at::Tensor& operand, const at::Tensor& output,
-    const at::Tensor& input_offsets, const at::Tensor& send_sizes,
-    const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-    const at::Tensor& replica_groups, std::string_view process_group_name);
+at::Tensor AtenRaggedAllToAll(const at::Tensor& operand,
+                              const at::Tensor& output,
+                              const at::Tensor& input_offsets,
+                              const at::Tensor& send_sizes,
+                              const at::Tensor& output_offsets,
+                              const at::Tensor& recv_sizes,
+                              std::string_view process_group_name);
 
 // RaggedAllToAll collective operation (out variant).
 at::Tensor& AtenRaggedAllToAllOut(
     const at::Tensor& operand, const at::Tensor& output,
     const at::Tensor& input_offsets, const at::Tensor& send_sizes,
     const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-    const at::Tensor& replica_groups, std::string_view process_group_name,
-    at::Tensor& out);
+    std::string_view process_group_name, at::Tensor& out);
 
 }  // namespace torch_tpu
 

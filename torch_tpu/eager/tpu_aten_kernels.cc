@@ -1023,12 +1023,12 @@ TORCH_LIBRARY(tpu, m) {
   m.def(
       "ragged_all_to_all(Tensor operand, Tensor output, Tensor "
       "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
-      "recv_sizes, Tensor replica_groups, str process_group_name) -> "
+      "recv_sizes, str process_group_name) -> "
       "Tensor");
   m.def(
       "ragged_all_to_all.out(Tensor operand, Tensor output, Tensor "
       "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
-      "recv_sizes, Tensor replica_groups, str process_group_name, *, "
+      "recv_sizes, str process_group_name, *, "
       "Tensor(a!) out) "
       "-> Tensor(a!)");
   m.def("optimization_barrier(Tensor[] inputs) -> Tensor[]");
@@ -1226,7 +1226,6 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
       m, +[](const at::Tensor& operand, const at::Tensor& output,
              const at::Tensor& input_offsets, const at::Tensor& send_sizes,
              const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-             const at::Tensor& replica_groups,
              std::string_view process_group_name) {
         return at::empty_like(output);
       });
@@ -1235,8 +1234,7 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
       +[](const at::Tensor& operand, const at::Tensor& output,
           const at::Tensor& input_offsets, const at::Tensor& send_sizes,
           const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-          const at::Tensor& replica_groups, std::string_view process_group_name,
-          at::Tensor& out) -> at::Tensor& {
+          std::string_view process_group_name, at::Tensor& out) -> at::Tensor& {
         at::native::resize_output(out, output.sizes());
         return out;
       });

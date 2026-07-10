@@ -47,6 +47,7 @@
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/distributed/process_group_tpu.h"
+#include "torch_tpu/distributed/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -128,43 +129,26 @@ static absl::StatusOr<DeviceBufferRef> RaggedAllToAllCommon(
     const at::Tensor& operand, const at::Tensor& output,
     const at::Tensor& input_offsets, const at::Tensor& send_sizes,
     const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-    const at::Tensor& replica_groups, std::string_view process_group_name,
-    OpParamCacheKeys& param_keys) {
+    std::string_view process_group_name, OpParamCacheKeys& param_keys) {
   at::ScalarType out_scalar_type = output.scalar_type();
   TT_ASSIGN_OR_RETURN(auto out_dtype,
                       ConvertTo<mlir::ElementType>(out_scalar_type));
 
-  // Hardcode channel_id to 1 as it is always 1.
-  int64_t channel_id = 1;
+  std::string process_group_name_str(process_group_name);
 
-  // Assume replica_groups is a CPU tensor of shape (num_groups, group_size)
-  auto replica_groups_cpu = replica_groups.to(at::kCPU);
-  auto accessor = replica_groups_cpu.accessor<int64_t, 2>();
-  std::vector<int64_t> replica_groups_vec;  // INT_VEC_OK
-  int64_t size0 = accessor.size(0);
-  int64_t size1 = accessor.size(1);
-  replica_groups_vec.reserve(size0 * size1);
-  TT_ASSIGN_OR_RETURN(ProcessGroupTpu * pg,
-                      GetProcessGroupTpu(process_group_name));
-  for (int i = 0; i < size0; ++i) {
-    for (int j = 0; j < size1; ++j) {
-      int64_t rank = accessor[i][j];
-      TT_ASSIGN_OR_RETURN(int64_t device_id, pg->GetDeviceIdFromRank(rank));
-      replica_groups_vec.push_back(device_id);
-    }
-  }
-
-  auto op_builder = [replica_groups_vec, channel_id, size0,
-                     size1](FixedSizeSpan<mlir::MlirOp, 6> inputs)
+  auto op_builder =
+      [process_group_name_str](FixedSizeSpan<mlir::MlirOp, 6> inputs)
       -> absl::StatusOr<mlir::MlirOp> {
     auto& [operand, output, input_offsets, send_sizes, output_offsets,
            recv_sizes] = inputs;
     auto& builder = operand.getBuilder();
-    auto& op_builder = builder.getOpBuilder();
-    auto shaped_type =
-        mlir::RankedTensorType::get({size0, size1}, op_builder.getI64Type());
-    auto replica_groups_attr =
-        mlir::DenseIntElementsAttr::get(shaped_type, replica_groups_vec);
+    TT_ASSIGN_OR_RETURN(ProcessGroupTpu * pg,
+                        GetProcessGroupTpu(process_group_name_str));
+    mlir::DenseIntElementsAttr replica_groups_attr =
+        BuildReplicaGroupsAttr(builder, pg->GetSubgroupDeviceIds());
+
+    // Hardcode channel_id to 1 as it is always 1.
+    int64_t channel_id = 1;
 
     return BuildRaggedAllToAllShlo(operand, output, input_offsets, send_sizes,
                                    output_offsets, recv_sizes,
@@ -181,20 +165,22 @@ static absl::StatusOr<DeviceBufferRef> RaggedAllToAllCommon(
 
 }  // namespace
 
-at::Tensor AtenRaggedAllToAll(
-    const at::Tensor& operand, const at::Tensor& output,
-    const at::Tensor& input_offsets, const at::Tensor& send_sizes,
-    const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-    const at::Tensor& replica_groups, std::string_view process_group_name) {
+at::Tensor AtenRaggedAllToAll(const at::Tensor& operand,
+                              const at::Tensor& output,
+                              const at::Tensor& input_offsets,
+                              const at::Tensor& send_sizes,
+                              const at::Tensor& output_offsets,
+                              const at::Tensor& recv_sizes,
+                              std::string_view process_group_name) {
   TT_KERNEL(OpName::kRaggedAllToAll, param_keys,
             (operand, output, input_offsets, send_sizes, output_offsets,
-             recv_sizes, replica_groups, process_group_name),
+             recv_sizes, process_group_name),
             {
-              TT_ASSIGN_OR_THROW(auto result,
-                                 RaggedAllToAllCommon(
-                                     operand, output, input_offsets, send_sizes,
-                                     output_offsets, recv_sizes, replica_groups,
-                                     process_group_name, param_keys));
+              TT_ASSIGN_OR_THROW(
+                  auto result,
+                  RaggedAllToAllCommon(operand, output, input_offsets,
+                                       send_sizes, output_offsets, recv_sizes,
+                                       process_group_name, param_keys));
               return MakeTensor(std::move(result));
             });
 }
@@ -203,17 +189,16 @@ at::Tensor& AtenRaggedAllToAllOut(
     const at::Tensor& operand, const at::Tensor& output,
     const at::Tensor& input_offsets, const at::Tensor& send_sizes,
     const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-    const at::Tensor& replica_groups, std::string_view process_group_name,
-    at::Tensor& out) {
+    std::string_view process_group_name, at::Tensor& out) {
   TT_KERNEL(OpName::kRaggedAllToAll, param_keys,
             (operand, output, input_offsets, send_sizes, output_offsets,
-             recv_sizes, replica_groups, process_group_name, out),
+             recv_sizes, process_group_name, out),
             {
-              TT_ASSIGN_OR_THROW(auto result,
-                                 RaggedAllToAllCommon(
-                                     operand, output, input_offsets, send_sizes,
-                                     output_offsets, recv_sizes, replica_groups,
-                                     process_group_name, param_keys));
+              TT_ASSIGN_OR_THROW(
+                  auto result,
+                  RaggedAllToAllCommon(operand, output, input_offsets,
+                                       send_sizes, output_offsets, recv_sizes,
+                                       process_group_name, param_keys));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;
             });
