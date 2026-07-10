@@ -1996,27 +1996,65 @@ module {
     ):
       torch.tpu.get_rng_state(1)
 
-  @et.why_tpu_only("TODO: investigate why this is TPU-only.")
-  def test_scaled_mm_invalid_shapes(self):
-    """Tests that scaled_mm fails if matrix sizes are not divisible by 16."""
-    # This constraint is specific to TPU implementation.
-    # CPU supports arbitrary shapes.
-    # TPU and GPU match on this.
+  @et.why_tpu_only(
+      "TPU enforces scale orientation ([M, 1] / [1, N]); CPU has no equivalent"
+      " check (it rejects all non-scalar scales outright)."
+  )
+  def test_scaled_mm_invalid_scale_a_orientation(self):
+    """Tests that scaled_mm rejects a 2-D row-wise scale_a with wrong orientation.
+
+    TPU-only: scale_a must be [M, 1] (per-row); a [1, M] scale is rejected so a
+    transposed scale is a clean error rather than a silent wrong-axis broadcast.
+    There is no comparable CPU error to assert -- CPU has no scale-orientation
+    check; it rejects all non-scalar scales outright (covered by
+    test_scaled_mm_invalid_scale_a_size in errors_test.py).
+    """
     device = et.device()
     # Generate in F32 and cast to FP8 to avoid randn failure on TPU!
-    mat1 = torch.randn(15, 16, dtype=torch.float32, device=device).to(
+    mat1 = torch.randn(16, 16, dtype=torch.float32, device=device).to(
         torch.float8_e4m3fn
     )
     mat2 = torch.randn(16, 32, dtype=torch.float32, device=device).to(
         torch.float8_e4m3fn
     )
-    scale_a = torch.tensor([1.0], dtype=torch.float32, device=device)
+    # scale_a should be [16, 1]; [1, 16] is the wrong orientation.
+    scale_a = torch.ones(1, 16, dtype=torch.float32, device=device)
     scale_b = torch.tensor([1.0], dtype=torch.float32, device=device)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""scaled_mm(): expected matrix sizes to be divisible by 16, got shapes [15, 16] and [16, 32]""",
-        message_reviewed_by="wan",
+        tpu="""scaled_mm(): expected row-wise scale_a to have shape [16, 1], got [1, 16]""",
+    ):
+      torch._scaled_mm(mat1, mat2, scale_a, scale_b)
+
+  @et.why_tpu_only(
+      "TPU enforces scale orientation ([M, 1] / [1, N]); CPU has no equivalent"
+      " check (it rejects all non-scalar scales outright)."
+  )
+  def test_scaled_mm_invalid_scale_b_orientation(self):
+    """Tests that scaled_mm rejects a 2-D per-channel scale_b with wrong orientation.
+
+    TPU-only: scale_b must be [1, N] (per-output-channel); a [N, 1] scale is
+    rejected so a transposed scale is a clean error rather than a silent
+    wrong-axis broadcast. There is no comparable CPU error to assert -- CPU has
+    no scale-orientation check; it rejects all non-scalar scales outright
+    (covered by test_scaled_mm_invalid_scale_b_size in errors_test.py).
+    """
+    device = et.device()
+    # Generate in F32 and cast to FP8 to avoid randn failure on TPU!
+    mat1 = torch.randn(16, 16, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    mat2 = torch.randn(16, 32, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    # scale_b should be [1, 32]; [32, 1] is the wrong orientation.
+    scale_a = torch.tensor([1.0], dtype=torch.float32, device=device)
+    scale_b = torch.ones(32, 1, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""scaled_mm(): expected per-channel scale_b to have shape [1, 32], got [32, 1]""",
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b)
 

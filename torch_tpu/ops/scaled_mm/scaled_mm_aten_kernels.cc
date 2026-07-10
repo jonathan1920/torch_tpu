@@ -103,6 +103,34 @@ absl::StatusOr<mlir::MlirOp> BuildScaledMmShlo(
   TT_ASSIGN_OR_RETURN(mm_result,
                       CastIfNeeded(mm_result, mlir::ElementType::F32));
 
+  // Normalize row-wise / per-channel scales to [M, 1] / [1, N] so they
+  // broadcast along the correct axis of the [M, N] result. Scalar (tensorwise)
+  // scales are left unchanged. See
+  // https://github.com/google-pytorch/torch_tpu/issues/1820.
+  auto mm_type = GetTensorTypeOrDie(mm_result);
+  const int64_t m_dim = mm_type.getShape()[0];
+  const int64_t n_dim = mm_type.getShape()[1];
+  auto reshape_scale =
+      [](mlir::MlirOp scale, int64_t expected_numel,
+         const Dimensions& target) -> absl::StatusOr<mlir::MlirOp> {
+    auto type = GetTensorTypeOrDie(scale);
+    if (expected_numel == 1 || type.getNumElements() != expected_numel) {
+      // Scalar (tensorwise) scale: broadcasts as-is, no reshape needed.
+      // CheckScaledMmInputs constrains numel to 1 or expected_numel, so the
+      // only value reaching the second clause is a scalar (numel 1).
+      return scale;
+    }
+    Dimensions before(type.getShape().begin(), type.getShape().end());
+    if (before == target) {
+      return scale;
+    }
+    return ReshapeFromStaticDimensions(scale, before, target);
+  };
+  TT_ASSIGN_OR_RETURN(scale_a,
+                      reshape_scale(scale_a, m_dim, Dimensions{m_dim, 1}));
+  TT_ASSIGN_OR_RETURN(scale_b,
+                      reshape_scale(scale_b, n_dim, Dimensions{1, n_dim}));
+
   // 2. Apply scales efficiently.
   TT_ASSIGN_OR_RETURN(auto broadcasted_scales,
                       ApplyBroadcastIfNeeded<2>({scale_a, scale_b}));
@@ -177,20 +205,44 @@ absl::Status CheckScaledMmInputs(const at::Tensor& self, const at::Tensor& mat2,
          "matrix, got shapes "
       << ToString(self.sizes()) << " and " << ToString(mat2.sizes());
 
-  // For now, we require dimensions to be divisible by 16. This is likely due to
-  // TPU hardware alignment requirements or StableHLO lowering constraints for
-  // efficient execution.
-  TT_RET_CHECK(self.size(0) % 16 == 0 && self.size(1) % 16 == 0 &&
-                   mat2.size(1) % 16 == 0,
-               error::kInvalidArgument)
-      << "expected matrix sizes to be divisible by 16, got shapes "
-      << ToString(self.sizes()) << " and " << ToString(mat2.sizes());
+  // No dimension-alignment requirement. XLA pads M, K, and N up to the MXU tile
+  // multiple internally, so ragged shapes -- decode M=1, or unaligned K/N --
+  // lower correctly; unaligned dims only cost extra MXU passes, they never
+  // error. Verified empirically. See
+  // https://github.com/google-pytorch/torch_tpu/issues/1823.
 
-  // For now, we only support tensorwise scaling (scales are scalars).
-  TT_RET_CHECK(scale_a.numel() == 1, error::kPythonNotImplementedError)
-      << "expected scale_a to have numel 1, got numel " << scale_a.numel();
-  TT_RET_CHECK(scale_b.numel() == 1, error::kPythonNotImplementedError)
-      << "expected scale_b to have numel 1, got numel " << scale_b.numel();
+  // Support tensorwise (scalar) scales, row-wise scale_a ([M, 1] / [M],
+  // per-token), and per-channel scale_b ([1, N] / [N], per-output-channel).
+  // BuildScaledMmShlo() reshapes them to [M, 1] / [1, N] and broadcasts against
+  // the [M, N] result. See
+  // https://github.com/google-pytorch/torch_tpu/issues/1820.
+  const int64_t m_dim = self.size(0);
+  const int64_t n_dim = mat2.size(1);
+  TT_RET_CHECK(scale_a.numel() == 1 || scale_a.numel() == m_dim,
+               error::kPythonNotImplementedError)
+      << "expected scale_a to have numel 1 (tensorwise) or " << m_dim
+      << " (row-wise), got numel " << scale_a.numel();
+  TT_RET_CHECK(scale_b.numel() == 1 || scale_b.numel() == n_dim,
+               error::kPythonNotImplementedError)
+      << "expected scale_b to have numel 1 (tensorwise) or " << n_dim
+      << " (per-channel), got numel " << scale_b.numel();
+
+  // A 2-D row-wise scale_a must be [M, 1] and a 2-D per-channel scale_b must be
+  // [1, N]. Reject other orientations (e.g. [1, M]) so a transposed scale is a
+  // clean error rather than a silent wrong-axis broadcast. 1-D scales ([M]/[N])
+  // are unambiguous and allowed.
+  if (scale_a.numel() == m_dim && m_dim != 1 && scale_a.dim() == 2) {
+    TT_RET_CHECK(scale_a.size(0) == m_dim && scale_a.size(1) == 1,
+                 error::kInvalidArgument)
+        << "expected row-wise scale_a to have shape [" << m_dim << ", 1], got "
+        << ToString(scale_a.sizes());
+  }
+  if (scale_b.numel() == n_dim && n_dim != 1 && scale_b.dim() == 2) {
+    TT_RET_CHECK(scale_b.size(0) == 1 && scale_b.size(1) == n_dim,
+                 error::kInvalidArgument)
+        << "expected per-channel scale_b to have shape [1, " << n_dim
+        << "], got " << ToString(scale_b.sizes());
+  }
 
   if (scale_result.has_value() && scale_result->defined()) {
     TT_RET_CHECK(scale_result->numel() == 1, error::kPythonNotImplementedError)

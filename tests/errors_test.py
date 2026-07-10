@@ -6706,7 +6706,7 @@ Device-side assertion tracking was not enabled by user.""",
     err_type = NotImplementedError if et.is_on_tpu() else RuntimeError
     with et.assert_raises_message(
         err_type,
-        tpu="""scaled_mm(): expected scale_a to have numel 1, got numel 2""",
+        tpu="""scaled_mm(): expected scale_a to have numel 1 (tensorwise) or 16 (row-wise), got numel 2""",
         gpu="""torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+""",
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b)
@@ -6726,7 +6726,7 @@ Device-side assertion tracking was not enabled by user.""",
     err_type = NotImplementedError if et.is_on_tpu() else RuntimeError
     with et.assert_raises_message(
         err_type,
-        tpu="""scaled_mm(): expected scale_b to have numel 1, got numel 2""",
+        tpu="""scaled_mm(): expected scale_b to have numel 1 (tensorwise) or 16 (per-channel), got numel 2""",
         gpu="""torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+""",
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b)

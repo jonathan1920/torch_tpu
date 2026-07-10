@@ -1594,6 +1594,156 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         atol=0.0,
     )
 
+  @parameterized.product(
+      m=[16, 32],
+      n=[16, 32],
+      k=[16, 32],
+      scale_ndim=[1, 2],
+      dtype=[torch.float8_e4m3fn, torch.float8_e5m2],
+  )
+  def test_scaled_mm_rowwise_channelwise(self, m, n, k, scale_ndim, dtype):
+    """Tests torch._scaled_mm with rowwise scale_a and per-channel scale_b.
+
+    Covers https://github.com/google-pytorch/torch_tpu/issues/1820: scale_a is
+    per-token ([m, 1] or [m])
+    and scale_b is per-output-channel ([1, n] or [n]).
+
+    Output dtype is F32 and compared against an F32 dequant reference with an
+    FP8-appropriate tolerance: the TPU FP8 dot does not bit-match CPU F32 mm.
+
+    Args:
+      m: Number of rows in self tensor.
+      n: Number of columns in mat2 tensor.
+      k: Inner dimension of self and mat2 tensors.
+      scale_ndim: Number of dimensions for the scale tensors (1 or 2).
+      dtype: Input tensor data type.
+    """
+    self_fp8 = torch.randn(m, k, dtype=torch.float32).to(dtype)
+    mat2_fp8 = torch.randn(k, n, dtype=torch.float32).to(dtype)
+
+    if scale_ndim == 2:
+      scale_a = torch.rand(m, 1, dtype=torch.float32) + 0.5
+      scale_b = torch.rand(1, n, dtype=torch.float32) + 0.5
+    else:
+      scale_a = torch.rand(m, dtype=torch.float32) + 0.5
+      scale_b = torch.rand(n, dtype=torch.float32) + 0.5
+
+    def compute(device):
+      if device == "cpu":
+        a_deq = self_fp8.float() * scale_a.reshape(m, 1)
+        b_deq = mat2_fp8.float() * scale_b.reshape(1, n)
+        return torch.mm(a_deq, b_deq)
+      return torch._scaled_mm(
+          self_fp8.to(device),
+          mat2_fp8.to(device),
+          scale_a.to(device),
+          scale_b.to(device),
+          out_dtype=torch.float32,
+      )
+
+    # Loose FP8 tolerance: the TPU FP8 dot does not bit-match the CPU F32
+    # reference, and per-element relative error is large near zero.
+    self.assert_close_tpu_vs_cpu(compute, rtol=5e-1, atol=5e-1)
+
+  @parameterized.product(
+      shape=[
+          (1, 32, 32),  # decode: M=1
+          (5, 32, 32),  # ragged M
+          (17, 32, 32),  # ragged M
+          (32, 17, 48),  # ragged K (contraction)
+          (32, 24, 48),  # ragged K
+          (32, 64, 17),  # ragged N (output)
+          (32, 64, 40),  # ragged N
+          (1, 17, 17),  # all dims ragged
+      ],
+      dtype=[torch.float8_e4m3fn, torch.float8_e5m2],
+  )
+  def test_scaled_mm_ragged_dims(self, shape, dtype):
+    """Tests torch._scaled_mm with M, K, or N not a multiple of 16.
+
+    Covers https://github.com/google-pytorch/torch_tpu/issues/1823: no dimension
+    needs to be aligned; XLA
+    pads M, K, and N to the MXU tile internally (e.g. decode M=1, unaligned
+    K/N).
+
+    Args:
+      shape: Tuple of (m, k, n) dimensions for self and mat2 tensors.
+      dtype: Input tensor data type.
+    """
+    m, k, n = shape
+    self_fp8 = torch.randn(m, k, dtype=torch.float32).to(dtype)
+    mat2_fp8 = torch.randn(k, n, dtype=torch.float32).to(dtype)
+    scale_a = torch.rand(m, 1, dtype=torch.float32) + 0.5
+    scale_b = torch.rand(1, n, dtype=torch.float32) + 0.5
+
+    def compute(device):
+      if device == "cpu":
+        a_deq = self_fp8.float() * scale_a
+        b_deq = mat2_fp8.float() * scale_b
+        return torch.mm(a_deq, b_deq)
+      return torch._scaled_mm(
+          self_fp8.to(device),
+          mat2_fp8.to(device),
+          scale_a.to(device),
+          scale_b.to(device),
+          out_dtype=torch.float32,
+      )
+
+    # Loose FP8 tolerance: the TPU FP8 dot does not bit-match the CPU F32
+    # reference, and per-element relative error is large near zero.
+    self.assert_close_tpu_vs_cpu(compute, rtol=5e-1, atol=5e-1)
+
+  @parameterized.product(
+      scale_kind=["row_x_scalar", "scalar_x_chan", "row_x_chan"],
+      use_bias=[False, True],
+      dtype=[torch.float8_e4m3fn, torch.float8_e5m2],
+  )
+  def test_scaled_mm_mixed_scales_and_bias(self, scale_kind, use_bias, dtype):
+    """Tests torch._scaled_mm with mixed scale shapes and optional bias.
+
+    Covers the rowwise x scalar / scalar x per-channel paths (a scalar scale
+    broadcasts unchanged while the other operand is reshaped) and rowwise +
+    bias, which the rowwise/ragged tests do not exercise.
+
+    Args:
+      scale_kind: String specifying the scaling configuration.
+      use_bias: Boolean indicating whether to include bias.
+      dtype: Input tensor data type.
+    """
+    m, k, n = 32, 64, 48
+    self_fp8 = torch.randn(m, k, dtype=torch.float32).to(dtype)
+    mat2_fp8 = torch.randn(k, n, dtype=torch.float32).to(dtype)
+    scale_a = (
+        torch.rand(m, 1, dtype=torch.float32) + 0.5
+        if scale_kind != "scalar_x_chan"
+        else torch.tensor([1.5], dtype=torch.float32)
+    )
+    scale_b = (
+        torch.rand(1, n, dtype=torch.float32) + 0.5
+        if scale_kind != "row_x_scalar"
+        else torch.tensor([2.0], dtype=torch.float32)
+    )
+    bias = torch.randn(n, dtype=torch.float32) if use_bias else None
+
+    def compute(device):
+      if device == "cpu":
+        sa = scale_a.reshape(m, 1) if scale_a.numel() == m else scale_a
+        sb = scale_b.reshape(1, n) if scale_b.numel() == n else scale_b
+        out = (self_fp8.float() * sa) @ (mat2_fp8.float() * sb)
+        return out + bias if use_bias else out
+      return torch._scaled_mm(
+          self_fp8.to(device),
+          mat2_fp8.to(device),
+          scale_a.to(device),
+          scale_b.to(device),
+          bias=bias.to(device) if use_bias else None,
+          out_dtype=torch.float32,
+      )
+
+    # Loose FP8 tolerance: the TPU FP8 dot does not bit-match the CPU F32
+    # reference, and per-element relative error is large near zero.
+    self.assert_close_tpu_vs_cpu(compute, rtol=5e-1, atol=5e-1)
+
   def test_col2im_fold(self):
     """Tests col2im via torch.nn.Fold.
 
