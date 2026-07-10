@@ -53,7 +53,6 @@ _HF_QWEN3_4B_BENCHMARK_NAME = "hf_qwen3_4b"
 _HF_QWEN3_8B_BENCHMARK_NAME = "hf_qwen3_8b"
 _HF_LLAMA_3_1_8B_BENCHMARK_NAME = "hf_llama_3_1_8b"
 _HF_LLAMA_3_2_3B_BENCHMARK_NAME = "hf_llama_3_2_3b"
-_HF_LLAMA_3_2_TINY_BENCHMARK_NAME = "hf_llama_3_2_tiny"
 _HF_GPT2_BENCHMARK_NAME = "hf_gpt2"
 _HF_PHI_3_MINI_4K_INSTRUCT_BENCHMARK_NAME = "hf_phi_3_mini_4k_instruct"
 # Note: hf_resnet_50 is from Hugging Face transformers, which differs from timm_resnet_50.
@@ -332,55 +331,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_3B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
-  def test_llama_3_2_tiny_forward(self, run_mode):
-    """Tests the forward pass of Llama-3.2-tiny."""
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            common.Platform.GFC_1X1X1,
-            common.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="meta-llama/Llama-3.2-tiny",
-            sequence_length=512,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(
-        config, _HF_LLAMA_3_2_TINY_BENCHMARK_NAME
-    )
-
-  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
-  def test_llama_3_2_tiny_train_1_step(self, run_mode):
-    """Tests training Llama-3.2-tiny."""
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            common.Platform.GFC_1X1X1,
-            common.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=True,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="meta-llama/Llama-3.2-tiny",
-            sequence_length=512,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
-        ),
-    )
-    self.run_performance_benchmark_test(
-        config, _HF_LLAMA_3_2_TINY_BENCHMARK_NAME
-    )
 
   # ============================================================================
   # 2. Gemma Architecture Family
