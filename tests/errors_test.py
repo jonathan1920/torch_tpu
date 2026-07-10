@@ -6969,6 +6969,116 @@ Device-side assertion tracking was not enabled by user.""",
           a.to(et.device()), v.to(et.device()), right=True, side="left"
       )
 
+  def test_fused_adagrad_default_int32_dtype(self):
+    device = et.device()
+    p = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    v = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    s = torch.tensor([1, 2], dtype=torch.int32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adagrad_(): expected the input dtype to be floating-point, got int32""",
+        gpu=re.compile(
+            r""".*"fused_adagrad_kernel_cuda" not implemented for 'Int'.*"""
+        ),
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_adagrad_.default(
+          [p],
+          [g],
+          [v],
+          [s],
+          lr=0.1,
+          lr_decay=0.0,
+          weight_decay=0.01,
+          eps=1e-10,
+          maximize=False,
+      )
+
+  def test_fused_adagrad_default_complex64_dtype(self):
+    device = et.device()
+    p = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=device)
+    g = torch.tensor([0.1 + 0.1j], dtype=torch.complex64, device=device)
+    v = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    s = torch.tensor([1.0 + 0.0j], dtype=torch.complex64, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adagrad_(): expected the input dtype to be floating-point, got complex64""",
+        gpu=re.compile(
+            r""".*"fused_adagrad_kernel_cuda" not implemented for 'ComplexFloat'.*"""
+        ),
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_adagrad_.default(
+          [p],
+          [g],
+          [v],
+          [s],
+          lr=0.1,
+          lr_decay=0.0,
+          weight_decay=0.01,
+          eps=1e-10,
+          maximize=False,
+      )
+
+  def test_fused_adagrad_tensor_lr_int32_dtype(self):
+    device = et.device()
+    p = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    v = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    s = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    lr = torch.tensor(0.1, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adagrad_(): expected the input dtype to be floating-point, got int32""",
+        gpu=re.compile(
+            r""".*"fused_adagrad_kernel_cuda" not implemented for 'Int'.*"""
+        ),
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_adagrad_.tensor_lr(
+          [p],
+          [g],
+          [v],
+          [s],
+          lr=lr,
+          lr_decay=0.0,
+          weight_decay=0.01,
+          eps=1e-10,
+          maximize=False,
+      )
+
+  def test_fused_adagrad_tensor_lr_complex64_dtype(self):
+    device = et.device()
+    p = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=device)
+    g = torch.tensor([0.1 + 0.1j], dtype=torch.complex64, device=device)
+    v = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    s = torch.tensor([1.0 + 0.0j], dtype=torch.complex64, device=device)
+    lr = torch.tensor(0.1, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adagrad_(): expected the input dtype to be floating-point, got complex64""",
+        gpu=re.compile(
+            r""".*"fused_adagrad_kernel_cuda" not implemented for 'ComplexFloat'.*"""
+        ),
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_adagrad_.tensor_lr(
+          [p],
+          [g],
+          [v],
+          [s],
+          lr=lr,
+          lr_decay=0.0,
+          weight_decay=0.01,
+          eps=1e-10,
+          maximize=False,
+      )
+
 
 if __name__ == "__main__":
   g3_multiprocessing.handle_test_main(absltest.main)
