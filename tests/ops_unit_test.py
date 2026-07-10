@@ -1697,6 +1697,13 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     Output dtype is F32 and compared against an F32 dequant reference with an
     FP8-appropriate tolerance: the TPU FP8 dot does not bit-match CPU F32 mm.
+
+    Args:
+      m: Number of rows in self tensor.
+      n: Number of columns in mat2 tensor.
+      k: Inner dimension of self and mat2 tensors.
+      scale_ndim: Number of dimensions for the scale tensors (1 or 2).
+      dtype: Input tensor data type.
     """
     self_fp8 = torch.randn(m, k, dtype=torch.float32).to(dtype)
     mat2_fp8 = torch.randn(k, n, dtype=torch.float32).to(dtype)
@@ -1744,6 +1751,10 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     Covers https://github.com/google-pytorch/torch_tpu/issues/1823: no dimension
     needs to be aligned; XLA
     pads M, K, and N to the MXU tile internally (e.g. decode M=1, unaligned K/N).
+
+    Args:
+      shape: Tuple of (m, k, n) dimensions for self and mat2 tensors.
+      dtype: Input tensor data type.
     """
     m, k, n = shape
     self_fp8 = torch.randn(m, k, dtype=torch.float32).to(dtype)
@@ -1779,6 +1790,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     Covers the rowwise x scalar / scalar x per-channel paths (a scalar scale
     broadcasts unchanged while the other operand is reshaped) and rowwise +
     bias, which the rowwise/ragged tests do not exercise.
+
+    Args:
+      scale_kind: String specifying the scaling configuration.
+      use_bias: Boolean indicating whether to include bias.
+      dtype: Input tensor data type.
     """
     m, k, n = 32, 64, 48
     self_fp8 = torch.randn(m, k, dtype=torch.float32).to(dtype)
