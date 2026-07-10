@@ -144,6 +144,126 @@ def get_tpu_version() -> TpuVersion:
     return TpuVersion.UNKNOWN
 
 
+# Physical HBM capacity per chip, in bytes, keyed by TPU generation. On
+# multi-core chips (v7) this HBM is shared across the chip's TensorCores; it
+# is reported per chip (the published physical capacity), not divided per
+# exposed device.
+# Sources: https://cloud.google.com/tpu/docs/{v4,v5e,v5p,v6e,tpu7x}
+_HBM_BYTES_PER_CHIP: Final[Mapping[TpuVersion, int]] = (
+    immutabledict.immutabledict({
+        TpuVersion.V4: 32 * 1024**3,
+        TpuVersion.V5E: 16 * 1024**3,
+        TpuVersion.V5P: 95 * 1024**3,
+        TpuVersion.V6E: 32 * 1024**3,
+        TpuVersion.V7: 192 * 1024**3,
+    })
+)
+
+
+def get_hbm_bytes_per_chip() -> int | None:
+  """Physical HBM capacity per chip, in bytes, for the attached TPU.
+
+  Returns:
+    The physical HBM capacity per chip in bytes, or None if the generation is
+    unknown or unrecognized.
+  """
+  return _HBM_BYTES_PER_CHIP.get(get_tpu_version())
+
+
+# Exposed devices per chip: how many separately-addressable devices the chip
+# presents to the runtime, used as the divisor that turns a per-chip quantity
+# into what one device sees. This is deliberately NOT the physical TensorCore
+# count. The default is 1, which covers both single-core chips (v5e, v6e) and
+# "megacore" chips (v4, v5p) that fuse their two physical cores into a single
+# addressable device. Only generations that expose MORE than one device are
+# listed here: v7 splits its two cores into two devices (verified — one device
+# reports ~96 GB of the 192 GB chip). The default of 1 for the other
+# generations, and v7 = 2, are to be confirmed against Google before landing.
+_DEVICES_PER_CHIP: Final[Mapping[TpuVersion, int]] = (
+    immutabledict.immutabledict({
+        TpuVersion.V7: 2,
+    })
+)
+
+# Peak dense bf16 compute per chip, in FLOP/s, keyed by TPU generation. Stored
+# as the published *per-chip* figure (easy to check against the docs); the
+# per-device value is derived below via _DEVICES_PER_CHIP.
+# Sources: https://cloud.google.com/tpu/docs/{v4,v5e,v5p,v6e,tpu7x}
+_BF16_FLOPS_PER_CHIP: Final[Mapping[TpuVersion, int]] = (
+    immutabledict.immutabledict({
+        TpuVersion.V4: 275 * 10**12,
+        TpuVersion.V5E: 197 * 10**12,
+        TpuVersion.V5P: 459 * 10**12,
+        TpuVersion.V6E: 918 * 10**12,
+        TpuVersion.V7: 2307 * 10**12,
+    })
+)
+
+
+def get_devices_per_chip() -> int | None:
+  """Number of separately-addressable devices the attached chip exposes.
+
+  This is megacore-aware (not the physical TensorCore count): 1 for single-core
+  and megacore-fused generations, 2 for v7.
+
+  Returns:
+    The number of exposed devices per chip, or None if no recognized TPU is
+    attached.
+  """
+  version = get_tpu_version()
+  if version is TpuVersion.UNKNOWN:
+    return None
+  return _DEVICES_PER_CHIP.get(version, 1)
+
+
+def get_bf16_flops_per_chip() -> int | None:
+  """Peak dense bf16 compute per chip, in FLOP/s, for the attached TPU.
+
+  Returns:
+    The peak bf16 FLOP/s per chip, or None if the generation is unknown or
+    unrecognized.
+  """
+  return _BF16_FLOPS_PER_CHIP.get(get_tpu_version())
+
+
+def get_hbm_bytes_per_device() -> int | None:
+  """Physical HBM capacity, in bytes, visible to a single device.
+
+  The per-chip capacity divided by the chip's exposed device count — what one
+  device can actually address (e.g. ~96 GB per device on a 192 GB v7 chip).
+  The divisor defaults to 1, so this equals the per-chip value except where a
+  generation is known to expose more (v7).
+
+  Returns:
+    The physical HBM capacity visible to a single device in bytes, or None if no
+    recognized TPU is attached.
+  """
+  version = get_tpu_version()
+  per_chip = _HBM_BYTES_PER_CHIP.get(version)
+  if per_chip is None:
+    return None
+  return per_chip // _DEVICES_PER_CHIP.get(version, 1)
+
+
+def get_bf16_flops_per_device() -> int | None:
+  """Peak dense bf16 compute, in FLOP/s, for a single device.
+
+  The published per-chip peak divided by the chip's exposed device count. This
+  is the correct denominator for per-device MFU (each rank drives one exposed
+  device). The divisor defaults to 1, so this equals the per-chip value except
+  where a generation is known to expose more (v7).
+
+  Returns:
+    The peak dense bf16 compute in FLOP/s for a single device, or None if no
+    recognized TPU is attached.
+  """
+  version = get_tpu_version()
+  per_chip = _BF16_FLOPS_PER_CHIP.get(version)
+  if per_chip is None:
+    return None
+  return per_chip // _DEVICES_PER_CHIP.get(version, 1)
+
+
 def _scan_pci_tpus() -> tuple[int, Mapping[int, str] | None]:
   """Scans PCI bus for TPU devices.
 
