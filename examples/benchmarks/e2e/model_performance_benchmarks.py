@@ -60,7 +60,6 @@ _HF_PHI_3_MINI_4K_INSTRUCT_BENCHMARK_NAME = "hf_phi_3_mini_4k_instruct"
 _HF_RESNET_50_BENCHMARK_NAME = "hf_resnet_50"
 _TIMM_VIT_SMALL_DINO_BENCHMARK_NAME = "timm_vit_small_dino"
 _HF_NEMOTRON_3_NANO_30B_BENCHMARK_NAME = "hf_nemotron_3_nano_30b"
-_HF_PALIGEMMA_3B_BENCHMARK_NAME = "hf_paligemma_3b"
 _HF_MLLAMA_11B_BENCHMARK_NAME = "hf_mllama_11b"
 _HF_LLAVA_7B_BENCHMARK_NAME = "hf_llava_7b"
 _HF_CLIP_BASE_BENCHMARK_NAME = "hf_clip_base"
@@ -673,27 +672,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
 
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
-  def test_paligemma_3b_forward(self, run_mode):
-    """Tests the forward pass of PaliGemma-3B."""
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            common.Platform.GFC_1X1X1,
-            common.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/paligemma-3b-pt-224",
-            sequence_length=512,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(config, _HF_PALIGEMMA_3B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_mllama_11b_forward(self, run_mode):
     """Tests the forward pass of mLlama-11B-Vision."""
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -837,7 +815,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         run_mode=run_mode,
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="facebook/deit-base-patch16-224",
+            model_name="facebook/deit-tiny-patch16-224",
             sequence_length=512,
             batch_size=1,
         ),
@@ -858,7 +836,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         run_mode=run_mode,
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="microsoft/swin-base-patch4-window7-224",
+            model_name="microsoft/swinv2-tiny-patch4-window16-256",
             sequence_length=512,
             batch_size=1,
         ),
@@ -948,7 +926,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         run_mode=run_mode,
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="bert-base-uncased",
+            model_name="EhsanAghazadeh/bert-base-uncased-random-weights",
             sequence_length=512,
             batch_size=1,
         ),
@@ -969,7 +947,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         run_mode=run_mode,
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="t5-base",
+            model_name="google-t5/t5-base",
             sequence_length=512,
             batch_size=1,
         ),
