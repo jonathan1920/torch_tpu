@@ -75,6 +75,9 @@ class ProcessGroupTpu : public c10d::Backend {
 
   const std::string getBackendName() const override { return "tpu_dist"; }
 
+  // Returns the device ids of all TPUs split into subgroups.
+  const DeviceGroupList& GetSubgroupDeviceIds() const;
+
   c10::intrusive_ptr<c10d::Work> allreduce(
       std::vector<at::Tensor>& tensors,
       const c10d::AllreduceOptions& opts) override;

@@ -195,7 +195,7 @@ absl::Status CheckScaledMmInputs(const at::Tensor& self, const at::Tensor& mat2,
                                  const std::optional<at::Tensor>& bias,
                                  const std::optional<at::Tensor>& scale_result,
                                  bool use_fast_accum) {
-  TT_RET_CHECK(!use_fast_accum, error::kUnimplemented)
+  TT_RET_CHECK(!use_fast_accum, error::kPythonNotImplementedError)
       << "use_fast_accum=true is not supported yet on TPU";
 
   TT_RETURN_IF_ERROR(CheckIsMatrix(self, "self"));
@@ -245,7 +245,7 @@ absl::Status CheckScaledMmInputs(const at::Tensor& self, const at::Tensor& mat2,
   }
 
   if (scale_result.has_value() && scale_result->defined()) {
-    TT_RET_CHECK(scale_result->numel() == 1, error::kUnimplemented)
+    TT_RET_CHECK(scale_result->numel() == 1, error::kPythonNotImplementedError)
         << "expected scale_result to have numel 1, got numel "
         << scale_result->numel();
   }

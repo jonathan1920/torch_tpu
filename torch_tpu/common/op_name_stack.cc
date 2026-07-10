@@ -62,13 +62,8 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kBaddbmmOut,
           OpName::kBernoulli_Float,
           OpName::kBinCount,
-          OpName::kBitwiseLeftShiftTensorOut,
-          OpName::kBitwiseRightShiftTensorOut,
           OpName::kCatOut,
           OpName::kComplexOut,
-          OpName::kCopyFrom,
-          OpName::kCopyFromAndResize,
-          OpName::kCopy_,
           OpName::kCtcLoss,
           OpName::kCtcLossBackward,
           OpName::kCtcLossBackwardTensor,
@@ -87,7 +82,6 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kEmbeddingBagForwardOnly,
           OpName::kEmbeddingRenorm_,
           OpName::kEmptyStrided,
-          OpName::kEqual,
           OpName::kExponential_,
           OpName::kEyeMOut,
           OpName::kEyeOut,
@@ -156,10 +150,8 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kGridSampler3dBackward,
           OpName::kHistc,
           OpName::kHistcOut,
-          OpName::kIlshiftTensor,
           OpName::kIndexPutImpl_,
           OpName::kIndexTensorOut,
-          OpName::kIrshiftTensor,
           OpName::kLayerNorm,
           OpName::kLerpScalarOut,
           OpName::kLinalgInvExInverse,
@@ -169,7 +161,6 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kLinalgSolveExOut,
           OpName::kLinalgVectorNormOut,
           OpName::kLocalScalarDense,
-          OpName::kLshiftTensor,
           OpName::kLuUnpackOut,
           OpName::kMaskedScatter_,
           OpName::kMaskedSelect,
@@ -186,21 +177,8 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kNllLoss2dForward,
           OpName::kNonzero,
           OpName::kNonzeroOut,
-          OpName::kNormalFloatTensor,
-          OpName::kNormalFloatTensorOut,
-          OpName::kNormalTensorFloat,
-          OpName::kNormalTensorFloatOut,
-          OpName::kNormalTensorTensor,
-          OpName::kNormalTensorTensorOut,
-          OpName::kNormal_,
-          OpName::kPolarOut,
-          OpName::kProd,
-          OpName::kProdDimOut,
           OpName::kRaggedAllToAll,
           OpName::kRaggedAllToAllOut,
-          OpName::kRandom_,
-          OpName::kRandom_From,
-          OpName::kRandom_To,
           OpName::kRandpermGeneratorOut,
           OpName::kReflectionPad2d,
           OpName::kReflectionPad2dBackward,
@@ -208,7 +186,6 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kReplicationPad2dBackward,
           OpName::kReplicationPad3dBackward,
           OpName::kReshapeAlias,
-          OpName::kRshiftTensor,
           OpName::kRsub,
           OpName::kScaledDotProductEfficientAttention,
           OpName::kScaledDotProductFlashAttention,
@@ -232,7 +209,6 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kVar,
           OpName::kVarOut,
           OpName::kView,
-          OpName::kZero_,
           // go/keep-sorted end
           // DO NOT ADD NEW ENTRIES TO THE ABOVE LIST! Our goal is to shrink the
           // list and eventually remove it.
@@ -240,7 +216,7 @@ void OpNameStack::Push(OpName op_name) {
   // Only check known_composite_ops size once as it's a run-time constant.
   static const bool check_once = [] {
     ABSL_CHECK_EQ(  // CRASH_OK
-        known_composite_ops->size(), 183 /* DO NOT increase this! */)
+        known_composite_ops->size(), 159 /* DO NOT increase this! */)
         << "The size of known_composite_ops MUST NOT go up. "
            "If you are removing entries from known_composite_ops, please LOWER "
            "the expected size in the comparison to match the new size and "

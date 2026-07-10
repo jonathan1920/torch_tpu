@@ -32,7 +32,7 @@ def warn_deprecation_with_skip(message: str, skip_dir: pathlib.Path):
   """
   kwargs = {"category": DeprecationWarning}
   if sys.version_info >= (3, 12):
-    kwargs["skip_file_prefixes"] = (str(skip_dir),)
+    kwargs["skip_file_prefixes"] = (str(skip_dir),)  # pyrefly: ignore[bad-assignment]
   else:
     kwargs["stacklevel"] = 3
 

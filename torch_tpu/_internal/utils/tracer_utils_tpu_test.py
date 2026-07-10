@@ -52,7 +52,7 @@ class TpuTest(absltest.TestCase):
 
     # Assert
     original = log[0]["output"]
-    replayed = replayed_log[0]["output"]
+    replayed = replayed_log[0]["output"]  # pyrefly: ignore[bad-index]
     utils.assert_close(replayed, original.cpu())
     utils.assert_close(replayed.to(self.device), original)
 

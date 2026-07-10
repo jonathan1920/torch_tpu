@@ -25,7 +25,6 @@ that determines which ops need a C++ registration.
 
 UNREGISTERED_OPS = frozenset([
     # go/keep-sorted start
-    '_addmm_activation.out',
     '_aminmax',
     '_aminmax.dim',
     '_amp_foreach_non_finite_check_and_unscale_',
@@ -70,15 +69,8 @@ UNREGISTERED_OPS = frozenset([
     '_functional_assert_async.msg',
     '_fused_adagrad_',
     '_fused_adagrad_.tensor_lr',
-    '_fused_adam_',
-    '_fused_adam_.tensor_lr',
-    '_fused_adamw_',
-    '_fused_adamw_.tensor_lr',
-    '_fused_dropout',
     '_fused_moving_avg_obs_fq_helper',
     '_fused_sdp_choice',
-    '_fused_sgd_',
-    '_fused_sgd_.tensor_lr',
     '_histogramdd_bin_edges',
     '_histogramdd_from_bin_cts',
     '_histogramdd_from_bin_tensors',
@@ -91,8 +83,6 @@ UNREGISTERED_OPS = frozenset([
     '_linalg_eigvals',
     '_linalg_slogdet.sign',
     '_linalg_svd.U',
-    '_logcumsumexp',
-    '_logcumsumexp.out',
     '_lstm_mps',
     '_make_dep_token',
     '_make_per_channel_quantized_tensor',
@@ -139,13 +129,11 @@ UNREGISTERED_OPS = frozenset([
     '_resize_output_',
     '_sample_dirichlet',
     '_scaled_dot_product_attention_math_for_mps',
-    '_scaled_dot_product_efficient_attention_backward',
     '_scaled_dot_product_flash_attention',
     '_scaled_dot_product_flash_attention.quantized',
     '_scaled_dot_product_flash_attention_backward',
     '_scaled_grouped_mm',
     '_scaled_grouped_mm_v2',
-    '_scaled_mm_v2',
     '_scaled_mm_v2.out',
     '_segment_reduce_backward',
     '_slow_conv2d_backward.grad_input',
@@ -233,8 +221,6 @@ UNREGISTERED_OPS = frozenset([
     'binomial',
     'cauchy_',
     'channel_shuffle',
-    'cholesky',
-    'cholesky.out',
     'cholesky_inverse',
     'cholesky_inverse.out',
     'conv_depthwise3d',
@@ -290,6 +276,8 @@ UNREGISTERED_OPS = frozenset([
     'linalg_ldl_solve.out',
     'linalg_lstsq.out',
     'linalg_matrix_exp',
+    'linalg_matrix_sqrth',
+    'linalg_polar.out',
     'linear_backward',
     'log_normal_',
     'logaddexp.out',
@@ -353,8 +341,6 @@ UNREGISTERED_OPS = frozenset([
     'nansum',
     'nansum.out',
     'narrow_copy.out',
-    'native_norm',
-    'native_norm.ScalarOpt_dim_dtype',
     'nextafter.out',
     'nonzero_static',
     'nonzero_static.out',
@@ -363,7 +349,6 @@ UNREGISTERED_OPS = frozenset([
     'ormqr',
     'ormqr.out',
     'poisson',
-    'polygamma.out',
     'q_per_channel_axis',
     'q_per_channel_scales',
     'q_per_channel_zero_points',
@@ -455,13 +440,10 @@ UNREGISTERED_OPS = frozenset([
     'unique_consecutive',
     'unique_dim',
     'unique_dim_consecutive',
-    'upsample_bicubic2d.out',
-    'upsample_bicubic2d_backward.grad_input',
     'upsample_linear1d.out',
     'upsample_linear1d_backward.grad_input',
     'upsample_trilinear3d.out',
     'upsample_trilinear3d_backward.grad_input',
-    'var_mean.correction',
     # go/keep-sorted end
 ])
 
@@ -503,10 +485,18 @@ REGISTRATION_OVERRIDES = frozenset([
     # Gelu is registered to handle type promotion for integer and boolean
     # inputs to match PyTorch GPU behavior for functional calls.
     'gelu',
+    # TODO(b/525550199): Remove ldexp overrides once we upgrade to PyTorch
+    # v2.13.
+    'ldexp.Tensor',
+    'ldexp.out',
+    'ldexp_',
     'native_layer_norm',  # pending removal
     # repeat_interleave.self_Tensor is registered to provide an optimized TPU
     # implementation, overriding the default decomposition.
     'repeat_interleave.self_Tensor',
+    # slice_scatter is registered to provide an optimized SHLO lowering,
+    # overriding the default decomposition.
+    'slice_scatter',
     # split_with_sizes_copy.out is used by PyTorch's FSDP2 wrapper. The default
     # decomposition performs 2-d reshapes that are inefficient on TPU.
     'split_with_sizes_copy.out',

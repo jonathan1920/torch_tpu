@@ -260,7 +260,8 @@ class CompilationCache {
       CompilationCacheKey key, const std::vector<Shape>& input_shapes,
       const std::vector<Shape>& output_shapes,
       MlirComputationBuilder computation_builder,
-      UniqueCompileOptions compile_options) ABSL_LOCKS_EXCLUDED(cache_mutex_);
+      UniqueCompileOptions compile_options, bool use_dynamic_adapters = true)
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Schedules compilation of the given module associated to the key.
   //
@@ -324,6 +325,12 @@ class CompilationCache {
     bool needs_compilation = false;
     bool dump_on_cache_miss = false;
   };
+
+  // Returns a pointer to the cache entry for `key` if found, otherwise returns
+  // nullptr.
+  [[nodiscard]] const CacheEntry* FindStaticCacheEntryOrNull(
+      CompilationCacheKey key) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(cache_mutex_);
 
   // Retrieves a cache entry from the static cache. If the key is not found in
   // the static cache, returns nullopt.

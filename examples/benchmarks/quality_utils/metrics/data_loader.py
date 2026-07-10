@@ -106,7 +106,7 @@ def load_limited_wikitext(num_prompts: int):
   # Iterate over the dataset and append the text to encode.
   for i in range(_get_num_prompts(num_prompts, n)):
     # Get text from the dataset. Skip empty samples.
-    raw_text = ds[i]["text"]
+    raw_text = ds[i]["text"]  # pyrefly: ignore[unsupported-operation]
     text_to_encode = (
         raw_text.decode("utf-8")
         if isinstance(raw_text, bytes)

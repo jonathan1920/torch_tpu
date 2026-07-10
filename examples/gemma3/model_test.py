@@ -96,7 +96,7 @@ class TestModel(absltest.TestCase):
 
     utils.assert_close(hf_output, custom_output)
 
-  @absltest.skip("Skipping test due to tolerance issues.")
+  # @absltest.skip("Skipping test due to tolerance issues.")
   def test_equivalence_hf_and_custom_modules(self):
     """Tests equivalence of hf and custom model."""
     # Arrange

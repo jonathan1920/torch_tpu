@@ -100,7 +100,7 @@ def worker_fn() -> None:
       ),
   }
 
-  mymodel_tp = parallel.parallelize_module(mymodel_tp, device_mesh_obj, tp_plan)
+  mymodel_tp = parallel.parallelize_module(mymodel_tp, device_mesh_obj, tp_plan)  # pyrefly: ignore[bad-argument-type]
 
   with torch.no_grad():
     data = fake_dataloader_read().to(device="tpu")

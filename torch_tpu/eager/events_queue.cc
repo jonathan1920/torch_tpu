@@ -334,14 +334,23 @@ void ProcessDeferredOpEvent(
                materialized_empty_ops.insert(input.device_buffer_list().get())
                    .second) {
       // The first time an empty tensor is read by a later op, we insert
-      // it into the execution order and mark it as used.
-      ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Empty buffer "
-                   << input.device_buffer_list().get() << " is read by "
-                   << device_buffer_list.get() << "("
-                   << ToString(deferred_op.op_name())
-                   << ").\nInserting into execution order.";
+      // it into the execution order, as an output if it is live.
+      if (input.device_buffer_list()->is_stale()) {
+        ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Stale empty buffer "
+                     << input.device_buffer_list().get() << " is read by "
+                     << device_buffer_list.get() << "("
+                     << ToString(deferred_op.op_name())
+                     << ").\nInserting into execution order.";
+        defined_node_map[input.device_buffer_list().get()] = OpUsage::kUsed;
+      } else {
+        ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Live empty buffer "
+                     << input.device_buffer_list().get() << " is read by "
+                     << device_buffer_list.get() << "("
+                     << ToString(deferred_op.op_name())
+                     << ").\nInserting as output.";
+        defined_node_map[input.device_buffer_list().get()] = OpUsage::kOutput;
+      }
       execution_order.push_back(input.device_buffer_list());
-      defined_node_map[input.device_buffer_list().get()] = OpUsage::kUsed;
     }
   }
 
@@ -369,11 +378,27 @@ void ProcessDeferredOpEvent(
         << device_buffer_list.get() << " as output";
     defined_node_map[device_buffer_list.get()] = OpUsage::kOutput;
   } else {
-    // Non-output nodes need to be used by at least one output to ensure
-    // they get executed.
-    ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Adding non-output buffer "
-                 << device_buffer_list.get() << " to execution order";
-    defined_node_map[device_buffer_list.get()] = OpUsage::kUnused;
+    bool has_dynamic_dimensions = false;
+    for (int i = 0; i < device_buffer_list->size(); ++i) {
+      if (!device_buffer_list->dynamic_dimensions(i).empty()) {
+        has_dynamic_dimensions = true;
+        break;
+      }
+    }
+    if (has_dynamic_dimensions) {
+      // Nodes with dynamic dimensions must be materialized to resolve them
+      // to static shapes.
+      ABSL_VLOG(3)
+          << "[ProcessDeferredOpEvent] Adding dynamic-dimension buffer "
+          << device_buffer_list.get() << " as output";
+      defined_node_map[device_buffer_list.get()] = OpUsage::kOutput;
+    } else {
+      // Non-output nodes need to be used by at least one output to ensure
+      // they get executed.
+      ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Adding non-output buffer "
+                   << device_buffer_list.get() << " to execution order";
+      defined_node_map[device_buffer_list.get()] = OpUsage::kUnused;
+    }
   }
 
   execution_order.push_back(std::move(device_buffer_list));

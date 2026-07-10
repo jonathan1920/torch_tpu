@@ -22,6 +22,7 @@
 #include <future>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -158,12 +159,10 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> Compile(
     xla::PjRtClient& client, LoadedExecutableBuilder executable_builder,
     UniqueCompileOptions compile_options);
 
-// Returns Python thread-local compile options for the given compilation mode.
-[[nodiscard]] UniqueCompileOptions GetCompileOptions(CompilationMode mode);
-
-// Returns Python thread-local compile options fingerprint for the given
-// compilation mode.
-[[nodiscard]] CompileOptionsKey GetCompileOptionsKey(CompilationMode mode);
+// Returns resolved compilation settings for the given compilation mode.
+// The returned spec includes XLA compile options (with thread-local context
+// overrides applied) and its fingerprint.
+[[nodiscard]] CompilationSpec GetCompilationSpec(CompilationMode mode);
 
 // Pushes the compile option overrides for the current thread on to the
 // custom compiler option stack. Thread-safe.
@@ -178,11 +177,9 @@ absl::Status PushCompilerOptionOverrides(CompilerOptionOverrides overrides);
 // non-empty.
 void PopCompilerOptionOverrides();
 
-// Sets whether XLA is allowed to use excess precision for all compilations.
-void SetAllowExcessPrecision(bool allow);
-
-// Returns whether XLA is allowed to use excess precision for all compilations.
-[[nodiscard]] bool GetAllowExcessPrecision();
+// Returns the compile options key for the given compile options.
+[[nodiscard]] CompileOptionsKey MakeCompileOptionsKey(
+    std::string_view xla_flags, const xla::CompileOptions& options);
 
 }  // namespace torch_tpu
 

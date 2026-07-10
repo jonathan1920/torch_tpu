@@ -22,12 +22,39 @@ import collections.abc
 import copy
 from typing import Any
 
+from absl import flags
 from absl.testing import absltest
 import torch
 from torch.nn import attention
 from torch_tpu._internal.utils import utils
 from tests import dynamism_test_utils
 from tests import op_testing
+
+_TEST_CATEGORIES = flags.DEFINE_list(
+    "test_categories",
+    [],
+    (
+        "List of test categories to include or exclude (prefixed with '-')."
+        " By default, all test categories are included. The order of entries"
+        " does not matter, and duplicates are ignored. If any category is"
+        " excluded (e.g., '-foreach'), any test in that category is skipped."
+        " If any categories are included, a test must belong to at least one"
+        " included category to run. Exclusions take precedence over"
+        " inclusions. E.g., --test_categories=foreach or"
+        " --test_categories=-foreach"
+    ),
+)
+
+
+def category(*names):
+  """Decorator to associate categories with test methods."""
+
+  def decorator(func):
+    func.categories = set(names)
+    return func
+
+  return decorator
+
 
 # In this file, we use the following naming convention for variables:
 # - golden_*: a value for the device used for computing the golden results
@@ -377,6 +404,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.int8: {"rtol": 3.7e-6, "atol": 2.4e-3},
         torch.uint8: {"rtol": 3.7e-6, "atol": 2.4e-3},
     },
+    "ldexp": {
+        torch.float32: {"rtol": 3e-6, "atol": 1.5e-3},
+        torch.complex64: {"rtol": 4e-6, "atol": 1.5e-2},
+    },
     "lgamma": {
         torch.float16: {"rtol": 1.2e-3, "atol": 2.5e-4},
         torch.float32: {"rtol": 8.2e-4, "atol": 1.8e-4},
@@ -396,6 +427,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float64: {"rtol": 3.5e-6, "atol": 1.2e-6},
     },
     "linalg.vector_norm": {
+        torch.bfloat16: {"rtol": 2e-2, "atol": 9.2e-5},
         torch.complex64: {"rtol": 2.5e-6, "atol": 3.5e-5},
         torch.float32: {"rtol": 4e-6, "atol": 3e-5},
     },
@@ -440,15 +472,17 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 5e-1, "atol": 9.8e-4},
         torch.float32: {"rtol": 2.7e-4, "atol": 6.9e-5},
     },
+    # exp/log accumulation plus the associative scan reordering diverge from the
+    # sequential CPU reference more than a plain cumulative reduction does.
+    "logcumsumexp": {
+        torch.float16: {"rtol": 8e-3, "atol": 1.5e-3},
+        torch.float32: {"rtol": 3e-4, "atol": 1e-4},
+    },
     "matmul": {
         torch.bfloat16: {"rtol": 3.9e-1, "atol": 2.9e-1},
         torch.complex64: {"rtol": 4e-1, "atol": 1.9},
         torch.float16: {"rtol": 1e-3, "atol": 8e-1},
         torch.float32: {"rtol": 4.5, "atol": 8.5e-1},
-    },
-    "mean": {
-        torch.bfloat16: {"rtol": 1.4e-1, "atol": 4e-3},
-        torch.float16: {"rtol": 3.8e-3, "atol": 2e-3},
     },
     "mm": {
         torch.complex64: {"rtol": 1.4e-2, "atol": 1.5},
@@ -524,6 +558,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     "nn.functional.hardswish": {
         torch.bfloat16: {"rtol": 3e-2, "atol": 3.2e-2},
     },
+    "nn.functional.interpolate": {
+        torch.bfloat16: {"rtol": 5e-2, "atol": 2e-2},
+        torch.float16: {"rtol": 2e-2, "atol": 5e-3},
+    },
     "nn.functional.logsigmoid": {
         torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
         torch.float16: {"rtol": 1e-3, "atol": 1e-3},
@@ -560,6 +598,14 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     },
     "nn.functional.softplus": {
         torch.bfloat16: {"rtol": 2e-2, "atol": 9.2e-5},
+    },
+    "norm": {
+        torch.bfloat16: {"rtol": 2e-2, "atol": 9.2e-5},
+        torch.complex64: {"rtol": 1e-5, "atol": 5e-5},
+        torch.float32: {"rtol": 1e-5, "atol": 5e-5},
+    },
+    "polygamma": {
+        torch.float32: {"rtol": 2.7e-5, "atol": 1.7e-3},
     },
     "pow": {
         torch.complex64: {"rtol": 6e-4, "atol": 1e-5},
@@ -877,6 +923,12 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.int8: {"atol": 1.2e-3},
         torch.uint8: {"atol": 1.2e-3},
     },
+    # bf16/f16 cumsum accumulation rounds differently from the GPU
+    # reference, which is itself not bit-exact (mirrors the vs-CPU tol).
+    "cumsum": {
+        torch.bfloat16: {"rtol": 1.1e-1, "atol": 1.6e-2},
+        torch.float16: {"rtol": 1.5e-2, "atol": 4.9e-3},
+    },
     "digamma": {
         torch.float32: {"atol": 6.7e-5},
         torch.int16: {"atol": 4.9e-5},
@@ -935,6 +987,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float64: {"atol": 9.1e-7},
     },
     "linalg.vector_norm": {
+        torch.bfloat16: {"atol": 1e-2},
         torch.complex64: {"atol": 1.3e-4},
         torch.float32: {"atol": 2.9e-4},
     },
@@ -985,6 +1038,11 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"atol": 5.9e-3},
         torch.float16: {"atol": 8.9e-4},
         torch.float32: {"atol": 6.9e-5},
+    },
+    "logcumsumexp": {
+        torch.bfloat16: {"rtol": 0.98, "atol": 4e-3},
+        torch.float16: {"rtol": 1.2, "atol": 4e-3},
+        torch.float32: {"rtol": 0.039, "atol": 6.9e-5},
     },
     "matmul": {
         torch.bfloat16: {"atol": 3.8e-1},
@@ -1059,6 +1117,13 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"atol": 5.4e-5},
         torch.float16: {"atol": 6.2e-5},
         torch.float32: {"atol": 6e-5},
+    },
+    "norm": {
+        torch.complex64: {"rtol": 1e-5, "atol": 5e-5},
+        torch.float32: {"rtol": 1e-5, "atol": 5e-5},
+    },
+    "polygamma": {
+        torch.float32: {"rtol": 1.6e-4, "atol": 22},
     },
     "pow": {
         torch.complex64: {"rtol": 5.8e-4, "atol": 1e-5},
@@ -1223,6 +1288,12 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     "cosh": {
         torch.complex64: {"atol": 5.9e-4},
     },
+    # bf16/f16 cumsum accumulation rounds differently from the GPU
+    # reference, which is itself not bit-exact (mirrors the vs-CPU tol).
+    "cumsum": {
+        torch.bfloat16: {"rtol": 1.1e-1, "atol": 1.6e-2},
+        torch.float16: {"rtol": 1.5e-2, "atol": 4.9e-3},
+    },
     "erfinv": {
         torch.float32: {"atol": 1.6e-5},
     },
@@ -1275,6 +1346,11 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     "log2": {
         torch.complex64: {"atol": 1e-4},
     },
+    "logcumsumexp": {
+        torch.bfloat16: {"rtol": 0.15, "atol": 2.9e-5},
+        torch.float16: {"rtol": 0.058, "atol": 1.9e-5},
+        torch.float32: {"rtol": 0.039, "atol": 6.9e-5},
+    },
     "matmul": {
         torch.complex64: {"atol": 1.2},
     },
@@ -1314,6 +1390,9 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     "nn.functional.nll_loss": {
         torch.bfloat16: {"rtol": 5e-2, "atol": 0},
         torch.float16: {"atol": 4.7e-2},
+    },
+    "polygamma": {
+        torch.float32: {"rtol": 1.6e-4, "atol": 22},
     },
     "pow": {
         torch.complex64: {"rtol": 5.8e-4, "atol": 1e-5},
@@ -1428,11 +1507,20 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             "linalg.solve_triangular": {
                 torch.float32: {"rtol": 4.8e-3, "atol": 4.5e-3},
             },
+            "linalg.vector_norm": {
+                torch.bfloat16: {"rtol": 2.2e-2, "atol": 1.6e-2},
+                torch.float16: {"rtol": 2.1e-3, "atol": 3.7e-4},
+            },
             "log10": {
                 torch.float16: {"rtol": 2e-3, "atol": 2e-4},
             },
             "log2": {
                 torch.float16: {"rtol": 1.3e-3, "atol": 2.5e-4},
+            },
+            # The logcumsumexp backward is a reverse cumulative softmax (exp and
+            # division), so bf16 gradients diverge more than the forward pass.
+            "logcumsumexp": {
+                torch.bfloat16: {"rtol": 8e-2, "atol": 2e-1},
             },
             "matmul": {
                 torch.float16: {"rtol": 1e-1, "atol": 1e-1},
@@ -1476,6 +1564,9 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             "nn.functional.softplus": {
                 torch.float16: {"rtol": 2.3e-3, "atol": 3.1e-5},
                 torch.float32: {"rtol": 2.1e-4, "atol": 1.4e-5},
+            },
+            "polygamma": {
+                torch.float32: {"rtol": 3.1e-5, "atol": 1.7e-3},
             },
             "rsqrt": {
                 torch.bfloat16: {"rtol": 2e-2, "atol": 1e-3},
@@ -1594,6 +1685,23 @@ class TestOps(TorchTpuTestBase):
   def setUp(self):
     super().setUp()
 
+    if _TEST_CATEGORIES.value:
+      exclusions = {c[1:] for c in _TEST_CATEGORIES.value if c.startswith("-")}
+      inclusions = {c for c in _TEST_CATEGORIES.value if not c.startswith("-")}
+
+      method = getattr(self, self._testMethodName, None)
+      test_categories = getattr(method, "categories", set())
+
+      if any(cat in exclusions for cat in test_categories):
+        self.skipTest(
+            f"Skipping test because category is excluded: {test_categories}"
+        )
+
+      if inclusions and not any(cat in inclusions for cat in test_categories):
+        self.skipTest(
+            f"Skipping test because category is not included: {test_categories}"
+        )
+
     self.set_accuracy_overrides(
         tpu_cpu_overrides=ACCURACY_OVERRIDES_VS_CPU,
         tpu_gpu_overrides=ACCURACY_OVERRIDES_VS_GPU_COMPILED
@@ -1622,19 +1730,13 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_acos(self):
-    self.do_test_op(
-        "acos",
-    )
+    self.do_test_op("acos")
 
   def test_acosh(self):
-    self.do_test_op(
-        "acosh",
-    )
+    self.do_test_op("acosh")
 
   def test_adaptive_avg_pool2d(self):
-    self.do_test_op(
-        "nn.functional.adaptive_avg_pool2d",
-    )
+    self.do_test_op("nn.functional.adaptive_avg_pool2d")
 
   def test_adaptive_avg_pool3d(self):
     self.do_test_op(
@@ -1645,19 +1747,13 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_add(self):
-    self.do_test_op(
-        "add",
-    )
+    self.do_test_op("add")
 
   def test_addcdiv(self):
-    self.do_test_op(
-        "addcdiv",
-    )
+    self.do_test_op("addcdiv")
 
   def test_addcmul(self):
-    self.do_test_op(
-        "addcmul",
-    )
+    self.do_test_op("addcmul")
 
   def test_addmm(self):
     self.do_test_op(
@@ -1736,27 +1832,19 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("as_strided")
 
   def test_asin(self):
-    self.do_test_op(
-        "asin",
-    )
+    self.do_test_op("asin")
 
   def test_asinh(self):
-    self.do_test_op(
-        "asinh",
-    )
+    self.do_test_op("asinh")
 
   def test_atan(self):
-    self.do_test_op(
-        "atan",
-    )
+    self.do_test_op("atan")
 
   def test_atan2(self):
     self.do_test_op("atan2")
 
   def test_atanh(self):
-    self.do_test_op(
-        "atanh",
-    )
+    self.do_test_op("atanh")
 
   def test_avg_pool2d(self):
     self.do_test_op(
@@ -1786,9 +1874,11 @@ class TestOps(TorchTpuTestBase):
         # TODO(b/495524286): Failed to generate integral golden results on GPU
         # GPU (CUDA) does not support integral dtypes for baddbmm.
         exclude_dtypes={
+            "cpu": (torch.bool,),
             "gpu": INTEGRAL_DTYPES,
         },
         exclude_inplace_dtypes={
+            "cpu": (torch.bool,),
             "gpu": INTEGRAL_DTYPES,
         },
     )
@@ -1860,10 +1950,10 @@ class TestOps(TorchTpuTestBase):
   def test_ceil(self):
     self.do_test_op(
         "ceil",
-        # TODO: fix ceil() failing with integral dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES,
-        # TODO: fix ceil_() failing with integral dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+        exclude_dtypes=[torch.bool],  # EXCLUDE_DTYPES_OK=bool not on CPU ceil
+        exclude_inplace_dtypes=[  # EXCLUDE_DTYPES_OK=bool not on CPU ceil_
+            torch.bool
+        ],
     )
 
   def test_clamp(self):
@@ -1918,19 +2008,13 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_constant_pad_nd(self):
-    self.do_test_op(
-        "constant_pad_nd",
-    )
+    self.do_test_op("constant_pad_nd")
 
   def test_cos(self):
-    self.do_test_op(
-        "cos",
-    )
+    self.do_test_op("cos")
 
   def test_cosh(self):
-    self.do_test_op(
-        "cosh",
-    )
+    self.do_test_op("cosh")
 
   def test_count_nonzero(self):
     self.do_test_op("count_nonzero")
@@ -1956,39 +2040,27 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_cumprod(self):
-    self.do_test_op(
-        "cumprod",
-    )
+    self.do_test_op("cumprod")
 
-  def test_cummax(self):
-    self.do_test_op(
-        "cummax",
-    )
+  # TODO(b/529376045): Scan HLO lowering failing on GitHub
+  # def test_cummax(self):
+  #   self.do_test_op("cummax")
 
   def test_cumsum(self):
-    self.do_test_op(
-        "cumsum",
-    )
+    self.do_test_op("cumsum")
 
-  def test_cummin(self):
-    self.do_test_op(
-        "cummin",
-    )
+  # TODO(bawilson): Scan HLO lowering failing on GitHub
+  # def test_cummin(self):
+  #   self.do_test_op("cummin")
 
   def test_diagonal(self):
     self.do_test_op("diagonal")
 
   def test_digamma(self):
-    self.do_test_op(
-        "digamma",
-        # TODO: fix the error that polygamma.out is unimplemented.
-        check_grad=False,
-    )
+    self.do_test_op("digamma")
 
   def test_div(self):
-    self.do_test_op(
-        "div",
-    )
+    self.do_test_op("div")
 
   def test_dot(self):
     self.do_test_op(
@@ -2024,15 +2096,16 @@ class TestOps(TorchTpuTestBase):
         ),
     )
 
-  def test_embedding_bag(self):
-    self.do_test_op(
-        "nn.functional.embedding_bag",
-        # TODO: add support for sparse embeddings.
-        skip_if=lambda device, variant, op_input: (
-            op_input.kwargs.get("sparse", False)
-            or op_input.kwargs.get("scale_grad_by_freq", False)
-        ),
-    )
+  # TODO(b/529376045): Scan HLO lowering failing on GitHub
+  # def test_embedding_bag(self):
+  #   self.do_test_op(
+  #       "nn.functional.embedding_bag",
+  #       # TODO: add support for sparse embeddings.
+  #       skip_if=lambda device, variant, op_input: (
+  #           op_input.kwargs.get("sparse", False)
+  #           or op_input.kwargs.get("scale_grad_by_freq", False)
+  #       ),
+  #   )
 
   def test_empty(self):
     self.do_test_op(
@@ -2057,27 +2130,19 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("equal")
 
   def test_erf(self):
-    self.do_test_op(
-        "erf",
-    )
+    self.do_test_op("erf")
 
   def test_erfinv(self):
-    self.do_test_op(
-        "erfinv",
-    )
+    self.do_test_op("erfinv")
 
   def test_exp(self):
-    self.do_test_op(
-        "exp",
-    )
+    self.do_test_op("exp")
 
   def test_exp2(self):
     self.do_test_op("exp2")
 
   def test_expm1(self):
-    self.do_test_op(
-        "expm1",
-    )
+    self.do_test_op("expm1")
 
   def test_expand(self):
     self.do_test_op("expand")
@@ -2147,10 +2212,10 @@ class TestOps(TorchTpuTestBase):
   def test_floor(self):
     self.do_test_op(
         "floor",
-        # TODO: fix floor() failing with integral dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES,
-        # TODO: fix floor_() failing with integral dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+        exclude_dtypes=[torch.bool],  # EXCLUDE_DTYPES_OK=bool not on CPU floor
+        exclude_inplace_dtypes=[  # EXCLUDE_DTYPES_OK=bool not on CPU floor_
+            torch.bool
+        ],
     )
 
   def test_floor_divide(self):
@@ -2165,9 +2230,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("flip")
 
   def test_fmax(self):
-    self.do_test_op(
-        "fmax",
-    )
+    self.do_test_op("fmax")
 
   def test_fmin(self):
     self.do_test_op("fmin")
@@ -2175,6 +2238,7 @@ class TestOps(TorchTpuTestBase):
   def test_fmod(self):
     self.do_test_op("fmod")
 
+  @category("foreach")
   def test_foreach_abs(self):
     self.do_test_op(
         "_foreach_abs",
@@ -2183,11 +2247,11 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes={"gpu": (torch.bool,)},
     )
 
+  @category("foreach")
   def test_foreach_acos(self):
-    self.do_test_op(
-        "_foreach_acos",
-    )
+    self.do_test_op("_foreach_acos")
 
+  @category("foreach")
   def test_foreach_add(self):
     self.do_test_op(
         "_foreach_add",
@@ -2197,6 +2261,7 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_addcdiv(self):
     self.do_test_op(
         "_foreach_addcdiv",
@@ -2208,6 +2273,7 @@ class TestOps(TorchTpuTestBase):
         check_dynamism=False,  # TODO(b/488338235): dynamism is flaky
     )
 
+  @category("foreach")
   def test_foreach_addcmul(self):
     # TODO(b/494218929): Fix the high tolerance of 1e-2.
     self.do_test_op(
@@ -2217,25 +2283,25 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_asin(self):
-    self.do_test_op(
-        "_foreach_asin",
-    )
+    self.do_test_op("_foreach_asin")
 
+  @category("foreach")
   def test_foreach_atan(self):
-    self.do_test_op(
-        "_foreach_atan",
-    )
+    self.do_test_op("_foreach_atan")
 
+  @category("foreach")
   def test_foreach_ceil(self):
     self.do_test_op(
         "_foreach_ceil",
-        # TODO: fix ceil() failing with integral dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES,
-        # TODO: fix ceil_() failing with integral dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+        exclude_dtypes=[torch.bool],  # EXCLUDE_DTYPES_OK=bool not on CPU ceil
+        exclude_inplace_dtypes=[  # EXCLUDE_DTYPES_OK=bool not on CPU ceil_
+            torch.bool
+        ],
     )
 
+  @category("foreach")
   def test_foreach_clamp_max(self):
     self.do_test_op(
         "_foreach_clamp_max",
@@ -2246,6 +2312,7 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_clamp_min(self):
     self.do_test_op(
         "_foreach_clamp_min",
@@ -2256,19 +2323,19 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_copy(self):
     self.do_test_op("_foreach_copy")
 
+  @category("foreach")
   def test_foreach_cos(self):
-    self.do_test_op(
-        "_foreach_cos",
-    )
+    self.do_test_op("_foreach_cos")
 
+  @category("foreach")
   def test_foreach_cosh(self):
-    self.do_test_op(
-        "_foreach_cosh",
-    )
+    self.do_test_op("_foreach_cosh")
 
+  @category("foreach")
   def test_foreach_div(self):
     self.do_test_op(
         "_foreach_div",
@@ -2281,34 +2348,37 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_erf(self):
-    self.do_test_op(
-        "_foreach_erf",
-    )
+    self.do_test_op("_foreach_erf")
 
+  @category("foreach")
   def test_foreach_erfc(self):
     self.do_test_op("_foreach_erfc")
 
+  @category("foreach")
   def test_foreach_exp(self):
-    self.do_test_op(
-        "_foreach_exp",
-    )
+    self.do_test_op("_foreach_exp")
 
+  @category("foreach")
   def test_foreach_expm1(self):
     self.do_test_op("_foreach_expm1", check_value=CheckValueMode.LOOSE)
 
+  @category("foreach")
   def test_foreach_floor(self):
     self.do_test_op(
         "_foreach_floor",
-        # TODO: fix floor() failing with integral dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES,
-        # TODO: fix floor_() failing with integral dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+        exclude_dtypes=[torch.bool],  # EXCLUDE_DTYPES_OK=bool not on CPU floor
+        exclude_inplace_dtypes=[  # EXCLUDE_DTYPES_OK=bool not on CPU floor_
+            torch.bool
+        ],
     )
 
+  @category("foreach")
   def test_foreach_frac(self):
     self.do_test_op("_foreach_frac", check_value=CheckValueMode.LOOSE)
 
+  @category("foreach")
   def test_foreach_lerp(self):
     self.do_test_op(
         "_foreach_lerp",
@@ -2316,40 +2386,37 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.complex64,),
     )
 
+  @category("foreach")
   def test_foreach_lgamma(self):
     self.do_test_op(
         "_foreach_lgamma",
         # Too slow for float64.
         exclude_dtypes=(torch.float64,),
         exclude_inplace_dtypes=(torch.float64,),
-        # TODO: fix the error that digamma.out is unimplemented.
-        check_grad=False,
     )
 
+  @category("foreach")
   def test_foreach_log(self):
-    self.do_test_op(
-        "_foreach_log",
-    )
+    self.do_test_op("_foreach_log")
 
+  @category("foreach")
   def test_foreach_log10(self):
-    self.do_test_op(
-        "_foreach_log10",
-    )
+    self.do_test_op("_foreach_log10")
 
+  @category("foreach")
   def test_foreach_log1p(self):
-    self.do_test_op(
-        "_foreach_log1p",
-    )
+    self.do_test_op("_foreach_log1p")
 
+  @category("foreach")
   def test_foreach_log2(self):
-    self.do_test_op(
-        "_foreach_log2",
-    )
+    self.do_test_op("_foreach_log2")
 
+  @category("foreach")
   def test_foreach_max(self):
     # TODO(b/485291373): fix _foreach_max() failing with complex dtypes.
     self.do_test_op("_foreach_max", exclude_dtypes=COMPLEX_DTYPES)
 
+  @category("foreach")
   def test_foreach_maximum(self):
     self.do_test_op(
         "_foreach_maximum",
@@ -2363,6 +2430,7 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_minimum(self):
     self.do_test_op(
         "_foreach_minimum",
@@ -2376,6 +2444,7 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_mul(self):
     self.do_test_op(
         "_foreach_mul",
@@ -2391,9 +2460,11 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_neg(self):
     self.do_test_op("_foreach_neg")
 
+  @category("foreach")
   def test_foreach_norm(self):
 
     def skip_if(device_type, variant, op_input):
@@ -2423,6 +2494,7 @@ class TestOps(TorchTpuTestBase):
         skip_if=skip_if,
     )
 
+  @category("foreach")
   def test_foreach_pow(self):
     self.do_test_op(
         "_foreach_pow",
@@ -2431,38 +2503,39 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool, torch.int64, torch.complex64),
     )
 
+  @category("foreach")
   def test_foreach_reciprocal(self):
     self.do_test_op("_foreach_reciprocal")
 
+  @category("foreach")
   def test_foreach_round(self):
     self.do_test_op("_foreach_round")
 
+  @category("foreach")
   def test_foreach_rsqrt(self):
-    self.do_test_op(
-        "_foreach_rsqrt",
-    )
+    self.do_test_op("_foreach_rsqrt")
 
+  @category("foreach")
   def test_foreach_sigmoid(self):
-    self.do_test_op(
-        "_foreach_sigmoid",
-    )
+    self.do_test_op("_foreach_sigmoid")
 
+  @category("foreach")
   def test_foreach_sign(self):
     self.do_test_op("_foreach_sign")
 
+  @category("foreach")
   def test_foreach_sin(self):
-    self.do_test_op(
-        "_foreach_sin",
-    )
+    self.do_test_op("_foreach_sin")
 
+  @category("foreach")
   def test_foreach_sinh(self):
-    self.do_test_op(
-        "_foreach_sinh",
-    )
+    self.do_test_op("_foreach_sinh")
 
+  @category("foreach")
   def test_foreach_sqrt(self):
     self.do_test_op("_foreach_sqrt")
 
+  @category("foreach")
   def test_foreach_sub(self):
     self.do_test_op(
         "_foreach_sub",
@@ -2472,31 +2545,27 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=COMPLEX_DTYPES,
     )
 
+  @category("foreach")
   def test_foreach_tan(self):
-    self.do_test_op(
-        "_foreach_tan",
-    )
+    self.do_test_op("_foreach_tan")
 
+  @category("foreach")
   def test_foreach_tanh(self):
-    self.do_test_op(
-        "_foreach_tanh",
-    )
+    self.do_test_op("_foreach_tanh")
 
+  @category("foreach")
   def test_foreach_trunc(self):
     self.do_test_op("_foreach_trunc")
 
+  @category("foreach")
   def test_foreach_zero(self):
     self.do_test_op("_foreach_zero")
 
   def test_full(self):
-    self.do_test_op(
-        "full",
-    )
+    self.do_test_op("full")
 
   def test_full_like(self):
-    self.do_test_op(
-        "full_like",
-    )
+    self.do_test_op("full_like")
 
   def test_gather(self):
     self.do_test_op("gather")
@@ -2590,14 +2659,10 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("isnan")
 
   def test_isneginf(self):
-    self.do_test_op(
-        "isneginf",
-    )
+    self.do_test_op("isneginf")
 
   def test_isposinf(self):
-    self.do_test_op(
-        "isposinf",
-    )
+    self.do_test_op("isposinf")
 
   def test_kron(self):
     self.do_test_op(
@@ -2606,13 +2671,14 @@ class TestOps(TorchTpuTestBase):
         check_out_variant=False,
     )
 
+  def test_ldexp(self):
+    self.do_test_op("ldexp")
+
   def test_le(self):
     self.do_test_op("le")
 
   def test_leaky_relu(self):
-    self.do_test_op(
-        "nn.functional.leaky_relu",
-    )
+    self.do_test_op("nn.functional.leaky_relu")
 
   def test_lerp(self):
     self.do_test_op(
@@ -2624,8 +2690,6 @@ class TestOps(TorchTpuTestBase):
   def test_lgamma(self):
     self.do_test_op(
         "lgamma",
-        # TODO: fix the error that digamma.out is unimplemented.
-        check_grad=False,
         # TODO: fix lgamma() failing for complex.
         exclude_dtypes=(torch.complex64,),
         exclude_inplace_dtypes=(torch.complex64,),
@@ -2701,12 +2765,11 @@ class TestOps(TorchTpuTestBase):
         ),
     )
 
+  def test_norm(self):
+    self.do_test_op("norm")
+
   def test_linalg_vector_norm_other_dtypes(self):
-    self.do_test_op(
-        "linalg.vector_norm",
-        # TODO: fix the error that CPU result is None.
-        check_grad=False,
-    )
+    self.do_test_op("linalg.vector_norm")
 
   def test_linspace(self):
     self.do_test_op(
@@ -2722,32 +2785,22 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("lt")
 
   def test_log(self):
-    self.do_test_op(
-        "log",
-    )
+    self.do_test_op("log")
 
   def test_log1p(self):
-    self.do_test_op(
-        "log1p",
-    )
+    self.do_test_op("log1p")
 
   def test_log10(self):
-    self.do_test_op(
-        "log10",
-    )
+    self.do_test_op("log10")
 
   def test_log2(self):
-    self.do_test_op(
-        "log2",
-    )
+    self.do_test_op("log2")
 
   def test_log_sigmoid(self):
     self.do_test_op("nn.functional.logsigmoid")
 
   def test_log_softmax(self):
-    self.do_test_op(
-        "log_softmax",
-    )
+    self.do_test_op("log_softmax")
 
   def test_log_softmax_backward_data(self):
     self.do_test_op(
@@ -2756,6 +2809,18 @@ class TestOps(TorchTpuTestBase):
         # sample generation process calls log_softmax() which is not supported
         # for these dtypes.
         exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  def test_logcumsumexp(self):
+    self.do_test_op(
+        "logcumsumexp",
+        # logcumsumexp is a floating-point op: integer/bool inputs are
+        # unsupported (the reference sample generator itself overflows for
+        # them), and the max-based logaddexp combiner has no defined extension
+        # to complex.
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=float-only op
+            COMPLEX_DTYPES + INTEGRAL_DTYPES
+        ),
     )
 
   def test_logical_and(self):
@@ -2770,8 +2835,9 @@ class TestOps(TorchTpuTestBase):
   def test_logical_not(self):
     self.do_test_op("logical_not")
 
-  def test_masked_scatter(self):
-    self.do_test_op("masked_scatter")
+  # TODO(b/529376045): Scan HLO lowering failing on GitHub
+  # def test_masked_scatter(self):
+  #   self.do_test_op("masked_scatter")
 
   def test_masked_select(self):
     self.do_test_op("masked_select")
@@ -2870,9 +2936,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_mean(self):
-    self.do_test_op(
-        "mean",
-    )
+    self.do_test_op("mean")
 
   def test_min(self):
     self.do_test_op("min")
@@ -2984,10 +3048,9 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("neg")
 
   def test_nll_loss(self):
-    self.do_test_op(
-        "nn.functional.nll_loss",
-    )
+    self.do_test_op("nn.functional.nll_loss")
 
+  @category("nonzero")
   def test_nonzero(self):
     self.do_test_op("nonzero")
 
@@ -3010,9 +3073,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("permute")
 
   def test_pow(self):
-    self.do_test_op(
-        "pow",
-    )
+    self.do_test_op("pow")
 
   def test_nn_functional_conv1d(self):
     self.do_test_op(
@@ -3129,7 +3190,6 @@ class TestOps(TorchTpuTestBase):
           exclude_dtypes=(torch.int64,),
       )
 
-  @absltest.skip("EFFICIENT_ATTENTION is not supported on TPU.")
   # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
   # and dtype only causes comparison of outputs of different tests.
   @op_testing.skip_if_torch_tpu_vs_gpu_mode
@@ -3163,34 +3223,22 @@ class TestOps(TorchTpuTestBase):
       )
 
   def test_nn_functional_batch_norm(self):
-    self.do_test_op(
-        "nn.functional.batch_norm",
-    )
+    self.do_test_op("nn.functional.batch_norm")
 
   def test_nn_functional_elu(self):
-    self.do_test_op(
-        "nn.functional.elu",
-    )
+    self.do_test_op("nn.functional.elu")
 
   def test_nn_functional_gelu(self):
-    self.do_test_op(
-        "nn.functional.gelu",
-    )
+    self.do_test_op("nn.functional.gelu")
 
   def test_nn_functional_glu(self):
-    self.do_test_op(
-        "nn.functional.glu",
-    )
+    self.do_test_op("nn.functional.glu")
 
   def test_nn_functional_hardsigmoid(self):
-    self.do_test_op(
-        "nn.functional.hardsigmoid",
-    )
+    self.do_test_op("nn.functional.hardsigmoid")
 
   def test_nn_functional_hardswish(self):
-    self.do_test_op(
-        "nn.functional.hardswish",
-    )
+    self.do_test_op("nn.functional.hardswish")
 
   def test_nn_functional_hardtanh(self):
     self.do_test_op("nn.functional.hardtanh")
@@ -3209,23 +3257,17 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_nn_functional_softplus(self):
-    self.do_test_op(
-        "nn.functional.softplus",
-    )
+    self.do_test_op("nn.functional.softplus")
 
   def test_nn_functional_mse_loss(self):
     self.do_test_op("nn.functional.mse_loss")
 
   def test_pdist_forward(self):
-    self.do_test_op(
-        "nn.functional.pdist",
-    )
+    self.do_test_op("nn.functional.pdist")
 
   def test_polar(self):
     self.do_test_op(
         "polar",
-        # TODO: fix polar(out=...) failing.
-        check_out_variant=False,
         # TODO: fix polar() succeeding with these dtypes (it
         # should fail).
         exclude_dtypes=INTEGRAL_DTYPES
@@ -3233,10 +3275,15 @@ class TestOps(TorchTpuTestBase):
         + (torch.float64, torch.float16, torch.bfloat16),
     )
 
+  # TODO(b/529449058): Re-enable once the bug is fixed.
+  # def test_polygamma(self):
+  #   self.do_test_op(
+  #       "polygamma",
+  #       exclude_dtypes=(torch.float64,),  # EXCLUDE_DTYPES_OK=b/529449058
+  #   )
+
   def test_prod(self):
-    self.do_test_op(
-        "prod",
-    )
+    self.do_test_op("prod")
 
   def test_put(self):
     self.do_test_op("put")
@@ -3306,19 +3353,13 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("round")
 
   def test_rsqrt(self):
-    self.do_test_op(
-        "rsqrt",
-    )
+    self.do_test_op("rsqrt")
 
   def test_rsub(self):
-    self.do_test_op(
-        "rsub",
-    )
+    self.do_test_op("rsub")
 
   def test_scatter(self):
-    self.do_test_op(
-        "scatter",
-    )
+    self.do_test_op("scatter")
 
   def test_scatter_add(self):
     self.do_test_op("scatter_add")
@@ -3332,18 +3373,17 @@ class TestOps(TorchTpuTestBase):
   def test_select_scatter(self):
     self.do_test_op("select_scatter")
 
+  def test_slice_scatter(self):
+    self.do_test_op("slice_scatter")
+
   def test_safe_softmax(self):
-    self.do_test_op(
-        "torch.ops.aten._safe_softmax.default",
-    )
+    self.do_test_op("torch.ops.aten._safe_softmax.default")
 
   def test_scalar_tensor(self):
     self.do_test_op("scalar_tensor")
 
   def test_sigmoid(self):
-    self.do_test_op(
-        "sigmoid",
-    )
+    self.do_test_op("sigmoid")
 
   def test_sgn(self):
     self.do_test_op("sgn")
@@ -3355,22 +3395,16 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("signbit")
 
   def test_sin(self):
-    self.do_test_op(
-        "sin",
-    )
+    self.do_test_op("sin")
 
   def test_sinh(self):
-    self.do_test_op(
-        "sinh",
-    )
+    self.do_test_op("sinh")
 
   def test_slice(self):
     self.do_test_op("slice")
 
   def test_softmax(self):
-    self.do_test_op(
-        "softmax",
-    )
+    self.do_test_op("softmax")
 
   def test_softmax_backward_data(self):
     self.do_test_op(
@@ -3412,14 +3446,10 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_sub(self):
-    self.do_test_op(
-        "sub",
-    )
+    self.do_test_op("sub")
 
   def test_sum(self):
-    self.do_test_op(
-        "sum",
-    )
+    self.do_test_op("sum")
 
   def test_stack(self):
     self.do_test_op("stack")
@@ -3428,21 +3458,13 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("t")
 
   def test_take(self):
-    self.do_test_op(
-        "take",
-        # TODO: fix the error put_ is unimplemented.
-        check_grad=False,
-    )
+    self.do_test_op("take")
 
   def test_tan(self):
-    self.do_test_op(
-        "tan",
-    )
+    self.do_test_op("tan")
 
   def test_tanh(self):
-    self.do_test_op(
-        "tanh",
-    )
+    self.do_test_op("tanh")
 
   def test_threshold(self):
     self.do_test_op("nn.functional.threshold")
@@ -3516,6 +3538,15 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
     )
 
+  def test_upsample_bicubic2d(self):
+    self.do_test_op(
+        "nn.functional.interpolate",
+        variant_test_name="bicubic",
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=CPU interpolate unsupported dtypes
+            COMPLEX_DTYPES + INTEGRAL_DTYPES
+        ),
+    )
+
   def test_upsample_bilinear(self):
     # TODO: The CPU side fails for complex dtypes and integers.
     self.do_test_op(
@@ -3533,16 +3564,10 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_var(self):
-    # TODO: TorchTPU's AtenVar kernel incorrectly returns a 0-D scalar on
-    # 0-element tensors instead of preserving unreduced dimensions, and
-    # MakeBuffer crashes when caching NaN scalar buffers.
-    self.do_test_op(
-        "var",
-        skip_if=lambda _, _1, op_input: isinstance(
-            op_input.input_value, torch.Tensor
-        )
-        and op_input.input_value.numel() == 0,
-    )
+    self.do_test_op("var")
+
+  def test_var_mean(self):
+    self.do_test_op("var_mean")
 
   def test_vdot(self):
     self.do_test_op(
@@ -3617,11 +3642,11 @@ def setUpModule() -> None:
   op_testing.set_up_test_module()
 
   if (
-      op_testing._torch_tpu_vs_gpu_mode() and not op_testing.is_compiled_mode()
-  ) or op_testing._torch_tpu_vs_cpu_mode():
-    assert not torch.backends.tpu.allow_excess_precision  # pytype: disable=module-attr
-  else:
+      op_testing._torch_tpu_vs_gpu_mode() or op_testing._gen_gpu_golden_mode()
+  ) and op_testing.is_compiled_mode():
     assert torch.backends.tpu.allow_excess_precision  # pytype: disable=module-attr
+  else:
+    assert not torch.backends.tpu.allow_excess_precision  # pytype: disable=module-attr
 
 
 def tearDownModule() -> None:

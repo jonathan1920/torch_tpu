@@ -26,6 +26,7 @@ from jax.experimental import pallas as pl
 import jax.export
 from packaging import version
 import torch
+import torch._library.custom_ops as torch_custom_ops
 from torch_tpu._internal import compile  # pylint: disable=redefined-builtin
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import pallas
@@ -507,6 +508,27 @@ class TestPallasKernels(absltest.TestCase):
     utils.assert_close(actual_add, add_expected)
     utils.assert_close(actual_sub, sub_expected)
 
+  def test_jax_kernel_retains_unused_operands(self):
+    """jax_op retains operands the traced function does not use.
+
+    A JAX function that does not reference one of its tensor arguments would
+    normally have that argument dead-code-eliminated by jax.jit, leaving the
+    exported kernel with fewer operands than the torch wrapper passes (which
+    then fails to specialize). jax_op always builds the kernel with
+    keep_unused so the operand is retained.
+    """
+
+    def ignore_second(x: jax.Array, y: jax.Array) -> jax.Array:  # pylint: disable=unused-argument
+      # y is intentionally unused; it must not be pruned from the kernel.
+      return jax.numpy.multiply(x, 2.0)
+
+    op = pallas.jax_op("keep_unused_test::ignore_second", ignore_second)
+    x = torch.ones((16, 8), dtype=torch.float32, device=self.device)
+    y = torch.ones((16, 8), dtype=torch.float32, device=self.device)
+    expected = (x * 2).to("cpu")
+    actual = op(x, y).to("cpu")
+    utils.assert_close(actual, expected)
+
   def test_jax_kernel_with_static_argnums(self):
     """Test custom_jax_kernel with static_argnums."""
     kernel = pallas.jax_op(
@@ -958,6 +980,188 @@ class TestPallasKernels(absltest.TestCase):
       x = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32, device=self.device)
       y = custom_call_op(x)
       y.cpu()
+
+  def test_wrapper_tensor_support(self):
+
+    class MockWrapperTensor(torch.Tensor):
+
+      @staticmethod
+      def __new__(cls, elem, env):
+        return torch.Tensor._make_wrapper_subclass(
+            cls,
+            elem.shape,
+            dtype=torch.float32,
+            device="meta",
+        )
+
+      def __init__(self, elem, env):
+        super().__init__()
+        self._elem = elem
+        self._env = env
+
+      @classmethod
+      def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
+        func_name = func.name()
+        if "::" in func_name:
+          qualname = func_name
+        else:
+          qualname = f"{func.namespace}::{func_name}"
+
+        if "." in qualname:
+          qualname = qualname.split(".")[0]
+
+        if qualname in torch_custom_ops.OPDEFS:
+          custom_op_def = torch_custom_ops.OPDEFS[qualname]
+          impl_fn = custom_op_def._init_fn
+          return impl_fn(*args, **kwargs)
+
+        return NotImplemented
+
+    x_elem = jax.device_put(
+        jax.numpy.array([1.0, 2.0, 3.0], dtype=jax.numpy.float32)
+    )
+    y_elem = jax.device_put(
+        jax.numpy.array([4.0, 5.0, 6.0], dtype=jax.numpy.float32)
+    )
+    x = MockWrapperTensor(x_elem, "mock_env")
+    y = MockWrapperTensor(y_elem, "mock_env")
+
+    res = add_vectors(x, y)
+    self.assertIsInstance(res, MockWrapperTensor)
+    self.assertEqual(res._env, "mock_env")
+    self.assertTrue(
+        jax.numpy.allclose(
+            res._elem,
+            jax.numpy.array([5.0, 7.0, 9.0], dtype=jax.numpy.float32),
+        )
+    )
+
+  def test_wrapper_tensor_support_kwargs(self):
+
+    class MockWrapperTensor(torch.Tensor):
+
+      @staticmethod
+      def __new__(cls, elem, env):
+        return torch.Tensor._make_wrapper_subclass(
+            cls,
+            elem.shape,
+            dtype=torch.float32,
+            device="meta",
+        )
+
+      def __init__(self, elem, env):
+        super().__init__()
+        self._elem = elem
+        self._env = env
+
+      @classmethod
+      def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
+        func_name = func.name()
+        if "::" in func_name:
+          qualname = func_name
+        else:
+          qualname = f"{func.namespace}::{func_name}"
+
+        if "." in qualname:
+          qualname = qualname.split(".")[0]
+
+        if qualname in torch_custom_ops.OPDEFS:
+          custom_op_def = torch_custom_ops.OPDEFS[qualname]
+          impl_fn = custom_op_def._init_fn
+          return impl_fn(*args, **kwargs)
+
+        return NotImplemented
+
+    @pallas.jax_op("pallas::wrapper_tensor_kwargs")
+    def kwarg_add(x: jax.Array, y: jax.Array) -> jax.Array:
+      return x + y
+
+    x_elem = jax.device_put(
+        jax.numpy.array([1.0, 2.0, 3.0], dtype=jax.numpy.float32)
+    )
+    y_elem = jax.device_put(
+        jax.numpy.array([4.0, 5.0, 6.0], dtype=jax.numpy.float32)
+    )
+    x = MockWrapperTensor(x_elem, "mock_env")
+    y = MockWrapperTensor(y_elem, "mock_env")
+
+    res = kwarg_add(x, y=y)
+    self.assertIsInstance(res, MockWrapperTensor)
+    self.assertEqual(res._env, "mock_env")
+    self.assertTrue(
+        jax.numpy.allclose(
+            res._elem,
+            jax.numpy.array([5.0, 7.0, 9.0], dtype=jax.numpy.float32),
+        )
+    )
+
+  def test_wrapper_tensor_support_pytree(self):
+
+    class MockWrapperTensor(torch.Tensor):
+
+      @staticmethod
+      def __new__(cls, elem, env):
+        return torch.Tensor._make_wrapper_subclass(
+            cls,
+            elem.shape,
+            dtype=torch.float32,
+            device="meta",
+        )
+
+      def __init__(self, elem, env):
+        super().__init__()
+        self._elem = elem
+        self._env = env
+
+      @classmethod
+      def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
+        func_name = func.name()
+        if "::" in func_name:
+          qualname = func_name
+        else:
+          qualname = f"{func.namespace}::{func_name}"
+
+        if "." in qualname:
+          qualname = qualname.split(".")[0]
+
+        if qualname in torch_custom_ops.OPDEFS:
+          custom_op_def = torch_custom_ops.OPDEFS[qualname]
+          impl_fn = custom_op_def._init_fn
+          return impl_fn(*args, **kwargs)
+
+        return NotImplemented
+
+    @pallas.jax_op("pallas::wrapper_tensor_pytree")
+    def pytree_fn(x: jax.Array, y: jax.Array) -> list[jax.Array]:
+      return [x + y, x - y]
+
+    x_elem = jax.device_put(
+        jax.numpy.array([1.0, 2.0, 3.0], dtype=jax.numpy.float32)
+    )
+    y_elem = jax.device_put(
+        jax.numpy.array([4.0, 5.0, 6.0], dtype=jax.numpy.float32)
+    )
+    x = MockWrapperTensor(x_elem, "mock_env")
+    y = MockWrapperTensor(y_elem, "mock_env")
+
+    res = pytree_fn(x, y)
+    self.assertIsInstance(res, list)
+    self.assertIsInstance(res[0], MockWrapperTensor)
+    self.assertEqual(res[0]._env, "mock_env")
+    self.assertTrue(
+        jax.numpy.allclose(
+            res[0]._elem,
+            jax.numpy.array([5.0, 7.0, 9.0], dtype=jax.numpy.float32),
+        )
+    )
+    self.assertIsInstance(res[1], MockWrapperTensor)
+    self.assertEqual(res[1]._env, "mock_env")
+    self.assertTrue(
+        jax.numpy.allclose(
+            res[1]._elem,
+            jax.numpy.array([-3.0, -3.0, -3.0], dtype=jax.numpy.float32),
+        )
+    )
 
 
 class TestPallasCompat(absltest.TestCase):

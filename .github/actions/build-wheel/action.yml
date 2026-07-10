@@ -1,0 +1,55 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: "Build and Upload Wheel"
+
+description: "Builds a torch_tpu wheel, runs twine checks, and uploads to GCS"
+inputs:
+  python_version:
+    description: "Python version to build for"
+    required: true
+outputs:
+  gcs_wheel_path:
+    description: "The GCS path to the built wheel file"
+    value: ${{ steps.upload.outputs.gcs_wheel_path }}
+  gcs_wheel_dir:
+    description: "The GCS directory containing the built wheel"
+    value: ${{ steps.upload.outputs.gcs_wheel_dir }}
+runs:
+  using: "composite"
+  steps:
+    - name: Build wheel
+      shell: bash
+      run: |
+        WHEEL_DIR=dist
+        WHEEL_VERSION_EXTRAS=".dev$(date +%Y%m%d%H%M%S)"
+        bazel build -c opt //ci/wheel:torch_tpu_wheel --config=wheel_common --repo_env=WHEEL_VERSION_EXTRAS=$WHEEL_VERSION_EXTRAS --repo_env=HERMETIC_PYTHON_VERSION=${{ inputs.python_version }} --define PYTHON_VERSION=${{ inputs.python_version }}
+        mkdir -p $WHEEL_DIR
+        cp bazel-bin/ci/wheel/*.whl $WHEEL_DIR
+    - name: Check wheel metadata
+      shell: bash
+      run: |
+        WHEEL_DIR=dist
+        uv run --isolated --with twine twine check $WHEEL_DIR/*.whl
+    - name: Upload wheel to GCS
+      id: upload
+      shell: bash
+      run: |
+        WHEEL_DIR=dist
+        WHEEL_PATH=$(ls $WHEEL_DIR/*.whl | head -n 1)
+        WHEEL_FILENAME=$(basename "$WHEEL_PATH")
+        GCS_PATH="gs://torch-tpu-ci-transient/artifacts/${{ github.workflow }}/${{ github.run_number }}/${{ github.run_attempt }}/$WHEEL_FILENAME"
+        gcloud storage cp "$WHEEL_PATH" "$GCS_PATH"
+        echo "gcs_wheel_path=$GCS_PATH" >> $GITHUB_OUTPUT
+        echo "gcs_wheel_dir=gs://torch-tpu-ci-transient/artifacts/${{ github.workflow }}/${{ github.run_number }}/${{ github.run_attempt }}/" >> $GITHUB_OUTPUT

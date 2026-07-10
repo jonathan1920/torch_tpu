@@ -318,6 +318,9 @@ def huggingface_llm_model_builder(
   # control-flow tracing errors in masking_utils.py while keeping identical
   # benchmark workload/math.
   example_inputs.pop("attention_mask", None)
+  if model_and_input_args.custom_kwargs.get("disable_vision_inputs", False):
+    example_inputs.pop("pixel_values", None)
+    example_inputs.pop("image_position_ids", None)
 
   if is_training:
     vocab_size = get_vocab_size(model_cpu.config)
@@ -549,7 +552,7 @@ def meta_llama_model_builder(
   # restricted to that host. Since Data Parallelism requires no
   # communication in a forward pass, this means no cross-host communication
   # will occur in such cases.
-  mp_size = math.gcd(world_size, args.n_kv_heads)
+  mp_size = math.gcd(world_size, args.n_kv_heads)  # pyrefly: ignore[bad-argument-type]
 
   # Ensure model parallel is initialized
   if not fairscale_init.model_parallel_is_initialized():
@@ -846,6 +849,39 @@ def ml_layer_model_builder(
                 (bs, seq, hidden_size), dtype=torch.float32, device=device
             ),
         ),
+    )
+
+  elif model_name == "slice_scatter":
+    dim = kwargs["dim"]
+    start = kwargs["start"]
+    end = kwargs["end"]
+    step = kwargs["step"]
+    input_shape = kwargs["input_shape"]
+    src_shape = kwargs["src_shape"]
+
+    class SliceScatterModel(torch.nn.Module):
+
+      def __init__(self, dim, start, end, step):
+        super().__init__()
+        self.dim = dim
+        self.start = start
+        self.end = end
+        self.step = step
+
+      def forward(self, x, src):
+        return torch.slice_scatter(
+            x,
+            src,
+            dim=self.dim,
+            start=self.start,
+            end=self.end,
+            step=self.step,
+        )
+
+    model = SliceScatterModel(dim, start, end, step)
+    example_inputs = (
+        torch.randn(input_shape, dtype=weights_dtype, device=device),
+        torch.randn(src_shape, dtype=weights_dtype, device=device),
     )
 
   elif model_name == "nn.AvgPool2d":
@@ -1405,7 +1441,7 @@ def ml_layer_model_builder(
   elif model_name == "Qwen3RotaryEmbedding":
     config = configuration_qwen3.Qwen3Config(
         max_position_embeddings=kwargs["max_position_embeddings"],
-        rope_theta=kwargs["rope_theta"],
+        rope_theta=kwargs["rope_theta"],  # pyrefly: ignore[unexpected-keyword]
     )
     model = modeling_qwen3.Qwen3RotaryEmbedding(config)
     head_dim = kwargs["head_dim"]
@@ -1852,7 +1888,7 @@ def _apply_tensor_parallel_plan(
       continue
 
     if isinstance(child, torch.nn.Linear):
-      for pattern, tp_type in tp_plan.items():
+      for pattern, tp_type in tp_plan.items():  # pyrefly: ignore[missing-attribute]
         if re.fullmatch(pattern, full_name):
           original_linear = child
           new_linear = None
@@ -2053,4 +2089,7 @@ def gemma_ragged_moe_model_builder(
       (batch_size, sequence_length), str(device)
   )
   example_inputs.pop("attention_mask", None)
+  if model_and_input_args.custom_kwargs.get("disable_vision_inputs", False):
+    example_inputs.pop("pixel_values", None)
+    example_inputs.pop("image_position_ids", None)
   return ModelAndInput(model=model, example_inputs=example_inputs)

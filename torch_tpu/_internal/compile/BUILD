@@ -59,6 +59,7 @@ torch_tpu_py_library(
         "//learning/agents/tern/torch_agent:__subpackages__",
     ],
     deps = [
+        ":scan",
         ":tpu_backend",
         ":tpu_torch_compile",
         "//shims/absl_py/logging",
@@ -81,6 +82,16 @@ torch_tpu_py_library(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile/dynamic:compiler",
         "//torch_tpu/_internal/utils",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "scan",
+    srcs = ["scan.py"],
+    deps = [
+        ":tpu_torch_compile",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/export",
     ],
 )
 
@@ -112,7 +123,6 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:structured_log_buffer",
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/eager:traversal",
-        "//torch_tpu/experimental/eager:materialize_new",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
@@ -149,6 +159,7 @@ torch_tpu_cc_library(
     srcs = ["tpu_torch_compile.cc"],
     deps = [
         ":compiled_mode",
+        ":dispatch_scan",
         "//shims/pybind11",
         "//shims/torch",
         "//shims/torch:aten",
@@ -175,6 +186,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
+        "//torch_tpu/ops:scan_builder",
         "//torch_tpu/ops/view_decomposition:contiguous_to_view",
         "//torch_tpu/ops/view_decomposition:decomposition",
         "//torch_tpu/ops/view_decomposition:strided_layout",
@@ -183,15 +195,18 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
         "@stablehlo//:attr_type_builder_util",
         "@xla//xla:shape_util",
+        "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@xla//xla/mlir/utils:error_util",
         "@xla//xla/pjrt:maybe_owning_mlir_module",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
+        "@xla//xla/pjrt:pjrt_layout",
     ],
 )
 
@@ -207,6 +222,7 @@ pybind_extension(
     wrap_py_init = True,
     deps = [
         ":compiled_mode",
+        ":dispatch_scan",
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:aten_headers",
@@ -233,24 +249,32 @@ pybind_extension(
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
+        "//torch_tpu/ops:scan_builder",
         "//torch_tpu/ops/view_decomposition:contiguous_to_view",
         "//torch_tpu/ops/view_decomposition:decomposition",
         "//torch_tpu/ops/view_decomposition:strided_layout",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
         "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_ops",
         "@xla//xla:shape_util",
         "@xla//xla/hlo/translate:register",
+        "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@xla//xla/mlir/utils:error_util",
         "@xla//xla/pjrt:maybe_owning_mlir_module",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
+        "@xla//xla/pjrt:pjrt_layout",
     ],
 )
 

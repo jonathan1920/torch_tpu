@@ -305,14 +305,11 @@ common:ci_tpu_base --config=ci
 common:ci_tpu_base --build_tag_filters=-nobuild,requires-tpu-v5lite,requires-tpu-v5lite:8,requires-tpu-v5p,requires-tpu-v5p:4,requires-tpu-v6e,requires-tpu-v7x,requires-tpu-v7x:4,
 common:ci_tpu_base --spawn_strategy=standalone,local
 
-# Settings for presubmit and postsubmit on TPU v5.
-common:ci_tpu --config=ci_tpu_base
-common:ci_tpu --test_tag_filters=requires-tpu,-notest,-nobuild,-nopresubmit,-fails-on-tpu-v5
-
 # Settings for nightly runs on TPU.
 common:ci_tpu_nightly --config=ci_tpu_base
 common:ci_tpu_nightly --test_tag_filters=requires-tpu,-notest,-nobuild,-nonightly
 common:ci_tpu_nightly --test_timeout=-1,-1,-1,4800
+common:ci_tpu_nightly --local_test_jobs=8
 
 # Settings for hardware-specific CI runs on TPU v5, v6, v7.
 common:ci_tpu_v5 --config=ci_tpu_base
@@ -374,21 +371,16 @@ build --flag_alias=test_wheel=//:test_wheel
 build:wheel_common --config=remote_caching_readonly
 build:wheel_common --config=remote_execution_readonly
 
-
 # Common config for testing the wheel
 test:wheel_common_test --config=wheel_common
 test:wheel_common_test --test_output=errors
 test:wheel_common_test --test_wheel=true
 test:wheel_common_test --test_lang_filters=py  # Only run python tests
 
-# Config for testing CPU wheel test.
+# Config for CPU wheel test.
 test:wheel_test_cpu --config=ci_cpu
 test:wheel_test_cpu --config=wheel_common_test
-
-# Config for testing TPU wheel test.
-test:wheel_test_tpu --config=ci_tpu
-test:wheel_test_tpu --config=wheel_common_test
-test:wheel_test_tpu --spawn_strategy=local
+test:wheel_test_cpu --test_tag_filters=-nobuild,-notest,-nopresubmit,-requires-gpu,-requires-tpu,-wheel_test_excluded
 
 # Split wheel test configurations for presubmits
 test:wheel_test_tpu_v5 --config=wheel_common_test
@@ -403,21 +395,10 @@ test:wheel_test_tpu_v7 --config=wheel_common_test
 test:wheel_test_tpu_v7 --config=ci_tpu_v7
 test:wheel_test_tpu_v7 --spawn_strategy=local
 
-test:wheel_test_cpu --test_tag_filters=-nobuild,-notest,-nopresubmit,-requires-gpu,-requires-tpu,-wheel_test_excluded
-
-test:wheel_test_tpu --test_tag_filters=requires-tpu,-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v5,-presubmit-v6,-presubmit-v7
-
-# Settings for wheel test on TPU v6.
-test:wheel_test_tpu_on_v6 --config=wheel_test_tpu
-test:wheel_test_tpu_on_v6 --test_tag_filters=requires-tpu,-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v6
-
-# Settings for wheel test on TPU v7.
-test:wheel_test_tpu_on_v7 --config=wheel_test_tpu
-test:wheel_test_tpu_on_v7 --test_tag_filters=requires-tpu,-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v7
-test:wheel_test_tpu_on_v7 --local_test_jobs=1
-test:wheel_test_tpu_on_v7 --test_env=ALLOW_MULTIPLE_LIBTPU_LOAD=true
-
 # Tag filters for split wheel test runs
-test:wheel_test_tpu_v5 --test_tag_filters=requires-tpu,-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v5,-presubmit-v6,-presubmit-v7
-test:wheel_test_tpu_v6 --test_tag_filters=requires-tpu,-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v6,presubmit-v6
-test:wheel_test_tpu_v7 --test_tag_filters=requires-tpu,-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v7,presubmit-v7
+# Tests are assigned exactly one mutually exclusive presubmit-v{N} tag.
+# presubmit-v{N} must be the ONLY positive filter used here to prevent tests
+# from running on the wrong hardware.
+test:wheel_test_tpu_v5 --test_tag_filters=-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v5,presubmit-v5
+test:wheel_test_tpu_v6 --test_tag_filters=-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v6,presubmit-v6
+test:wheel_test_tpu_v7 --test_tag_filters=-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v7,presubmit-v7

@@ -36,6 +36,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/macro_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -167,7 +168,10 @@ absl::StatusOr<mlir::ElementType> ToElementType(
       // Boolean.
     case at::kBool:
       return mlir::ElementType::PRED;
-    // These cases should never happen.
+#if TT_TORCH_VERSION_GE(2, 13)
+    case at::ScalarType::BComplex32:
+#endif
+      // These cases should never happen.
     // go/keep-sorted start
     case at::kBits16:
     case at::kBits1x8:
@@ -204,7 +208,7 @@ absl::StatusOr<mlir::ElementType> ToElementType(
       // switch statement, the C++ compiler will generate a warning (treated as
       // an error), forcing the author to handle the new case.
   }
-  return TT_ERROR(error::kUnimplemented)
+  return TT_ERROR(error::kPythonNotImplementedError)
          << "TorchTPU does not yet support dtype " << ToString(scalar_type);
 }
 
@@ -639,7 +643,8 @@ template <typename Container>
 
 absl::StatusOr<int64_t> ValidateTensorByteSize(at::IntArrayRef size,
                                                mlir::ElementType element_type) {
-  TT_RET_CHECK(IsSupportedBufferType(element_type), error::kUnimplemented)
+  TT_RET_CHECK(IsSupportedBufferType(element_type),
+               error::kPythonNotImplementedError)
       << "element type " << ToShortString(element_type)
       << " is not supported as a tensor element type";
   const auto negative_dims = GetNegativeValuesIn(size);

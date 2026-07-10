@@ -85,38 +85,21 @@ jobs:
             },
           ]
         python_version: ${{ fromJSON(needs.setup.outputs.cpu_versions) }}
-    # Use self-hosted runners. For a Linux runner, a corresponding container image used for the
-    # workflow is required.
-    # See go/ml-github-actions/getting_started/using_runners.md#supported-runner-scale-set.
     runs-on: ${{ matrix.job_info.runner }}
     container:
       image: ${{ matrix.job_info.container }}
-    env:
-      WHEEL_DIR: dist
     outputs:
-      # Directory containing wheels on GCS
-      gcs-wheel-dir: ${{ steps.upload.outputs.gcs_wheel_dir }}
+      gcs_wheel_path: ${{ steps.build.outputs.gcs_wheel_path }}
+      gcs_wheel_dir: ${{ steps.build.outputs.gcs_wheel_dir }}
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v5
-      - name: Build wheel
-        run: |
-          WHEEL_VERSION_EXTRAS=".dev$(date +%Y%m%d%H%M%S)"
-          bazel build -c opt //ci/wheel:torch_tpu_wheel --config=wheel_common --repo_env=WHEEL_VERSION_EXTRAS=$WHEEL_VERSION_EXTRAS --repo_env=HERMETIC_PYTHON_VERSION=${{ matrix.python_version }} --define PYTHON_VERSION=${{ matrix.python_version }}
-          mkdir $WHEEL_DIR
-          cp bazel-bin/ci/wheel/*.whl $WHEEL_DIR
-      - name: Check wheel metadata
-        run: uv run --isolated --with twine twine check $WHEEL_DIR/*.whl
-      - name: Upload wheel to GCS for wheel testing
-        id: upload
-        run: |
-          WHEEL_PATH=$(ls $WHEEL_DIR/*.whl | head -n 1)
-          WHEEL_FILENAME=$(basename "$WHEEL_PATH")
-          GCS_PATH="gs://torch-tpu-ci-transient/artifacts/${{ github.workflow }}/${{ github.run_number }}/${{ github.run_attempt }}/$WHEEL_FILENAME"
-          gcloud storage cp "$WHEEL_PATH" "$GCS_PATH"
-          # Pass the directory path to the next job
-          echo "gcs_wheel_dir=gs://torch-tpu-ci-transient/artifacts/${{ github.workflow }}/${{ github.run_number }}/${{ github.run_attempt }}/" >> $GITHUB_OUTPUT
+      - name: Build and upload wheel
+        id: build
+        uses: ./.github/actions/build-wheel
+        with:
+          python_version: ${{ matrix.python_version }}
 
   test_wheels_cpu:
     name: "Test wheel on ${{ matrix.custom_name || 'CPU' }} (Python ${{ matrix.python_version }})"
@@ -168,7 +151,7 @@ jobs:
         run: |
           mkdir dist
           PYTHON_VER_CLEAN=$(echo "${{ matrix.python_version }}" | tr -d '.')
-          gcloud storage cp "${{ needs.build_wheels.outputs.gcs-wheel-dir }}*cp${PYTHON_VER_CLEAN}*.whl" dist/
+          gcloud storage cp "${{ needs.build_wheels.outputs.gcs_wheel_dir }}*cp${PYTHON_VER_CLEAN}*.whl" dist/
       - name: Download a specific CUDA-enabled torch wheel to verify the override mechanism
         if: matrix.wheel_version == 'cuda'
         run: |
@@ -246,7 +229,7 @@ jobs:
         run: |
           mkdir dist
           PYTHON_VER_CLEAN=$(echo "${{ matrix.python_version }}" | tr -d '.')
-          gcloud storage cp "${{ needs.build_wheels.outputs.gcs-wheel-dir }}*cp${PYTHON_VER_CLEAN}*.whl" dist/
+          gcloud storage cp "${{ needs.build_wheels.outputs.gcs_wheel_dir }}*cp${PYTHON_VER_CLEAN}*.whl" dist/
       - name: Download PyTorch Nightly Wheel to verify the override mechanism
         if: matrix.wheel_version == 'nightly'
         run: |
@@ -264,6 +247,6 @@ jobs:
         with:
           base_sha: ${{ inputs.override_base_sha || github.event.pull_request.base.sha }}
           current_sha: ${{ inputs.override_current_sha || github.sha }}
-          bazel_config: ${{ matrix.config || 'wheel_test_tpu' }}
+          bazel_config: ${{ matrix.config }}
           extra_bazel_flags: ${{ matrix.extra_flags || '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"' }} --repo_env=HERMETIC_PYTHON_VERSION=${{ matrix.python_version }} --define PYTHON_VERSION=${{ matrix.python_version }}
           disable_bazel_diff: ${{ matrix.allowed_to_fail || contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}

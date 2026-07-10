@@ -146,6 +146,10 @@ class PrecompilationTest(absltest.TestCase):
     torch.set_grad_enabled(self.prev_grad_status)
     super().tearDown()
 
+  @absltest.skip(
+      "This test is not needed as precompilation is not needed after removing"
+      " padding/slicing jit."
+  )
   def test_precompilation_comparison(self):
     model = ToyModel().to(self.device)
     model.eval()

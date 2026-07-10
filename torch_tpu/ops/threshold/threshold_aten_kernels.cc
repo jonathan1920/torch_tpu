@@ -62,9 +62,9 @@ absl::StatusOr<mlir::MlirOp> BuildThresholdBackwardShlo(
 }
 
 absl::Status CheckThresholdInputs(const at::Tensor& self) {
-  TT_RET_CHECK(!IsBool(self), error::kUnimplemented)
+  TT_RET_CHECK(!IsBool(self), error::kPythonNotImplementedError)
       << "threshold is not implemented for bool type";
-  TT_RET_CHECK(!IsComplex(self), error::kUnimplemented)
+  TT_RET_CHECK(!IsComplex(self), error::kPythonNotImplementedError)
       << "threshold is not implemented for complex types";
   return absl::OkStatus();
 }

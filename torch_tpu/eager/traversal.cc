@@ -42,6 +42,8 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -49,6 +51,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -59,6 +62,7 @@
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
@@ -69,6 +73,9 @@
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "xla/layout_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -370,8 +377,37 @@ absl::StatusOr<mlir::MlirOp> Traversal::GetMlirOpForProcessedBuffer(
 
 namespace {
 
-mlir::MlirOp CreateArgumentOp(mlir::func::FunctionBuilder& fb,
-                              const DeviceBufferRef& argument) {
+mlir::MlirOp CreateNativeDynamicArgumentOp(mlir::func::FunctionBuilder& fb,
+                                           const DeviceBufferRef& argument) {
+  Dimensions mlir_dims;
+  mlir_dims.reserve(argument.dimensions().size());
+
+  Dimensions bounds;
+  bounds.reserve(argument.dimensions().size());
+
+  for (int64_t dim_size : argument.dimensions()) {
+    mlir_dims.push_back(dim_size);
+    bounds.push_back(mlir::ShapedType::kDynamic);
+  }
+
+  for (const auto& dynamic_dim : argument.dynamic_dimensions()) {
+    mlir_dims[dynamic_dim.dimension] = mlir::ShapedType::kDynamic;
+    bounds[dynamic_dim.dimension] = dynamic_dim.upper_bound;
+  }
+
+  auto bounds_attr =
+      mlir::stablehlo::TypeExtensionsAttr::get(&fb.getContext(), bounds);
+
+  auto element_type =
+      mlir::getElementType(fb.getContext(), argument.element_type());
+
+  auto type = mlir::RankedTensorType::get(mlir_dims, element_type, bounds_attr);
+
+  return mlir::func::Argument(fb, type);
+}
+
+mlir::MlirOp CreatePaddedDynamicArgumentOp(mlir::func::FunctionBuilder& fb,
+                                           const DeviceBufferRef& argument) {
   Dimensions dimensions = CopyIntVector(argument.dimensions());
   // If argument has bounded dynamic dimensions, we assume we will receive an
   // input padded to the upper bound, along with the dimension sizes.
@@ -393,6 +429,27 @@ mlir::MlirOp CreateArgumentOp(mlir::func::FunctionBuilder& fb,
   return result;
 }
 
+mlir::MlirOp CreateDynamicArgumentOp(mlir::func::FunctionBuilder& fb,
+                                     const DeviceBufferRef& argument,
+                                     bool use_stablehlo_bounds) {
+  if (use_stablehlo_bounds) {
+    return CreateNativeDynamicArgumentOp(fb, argument);
+  }
+  return CreatePaddedDynamicArgumentOp(fb, argument);
+}
+
+mlir::MlirOp CreateArgumentOp(mlir::func::FunctionBuilder& fb,
+                              const DeviceBufferRef& argument,
+                              bool use_stablehlo_bounds) {
+  if (argument.dynamic_dimensions().empty()) {
+    Dimensions dimensions = CopyIntVector(argument.dimensions());
+    auto type =
+        makeTensorType(fb.getContext(), dimensions, argument.element_type());
+    return mlir::func::Argument(fb, type);
+  }
+  return CreateDynamicArgumentOp(fb, argument, use_stablehlo_bounds);
+}
+
 }  // namespace
 
 const PythonContext* absl_nullable Traversal::GetPythonContext() const {
@@ -406,7 +463,7 @@ const PythonContext* absl_nullable Traversal::GetPythonContext() const {
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
-    mlir::MLIRContext& mlir_context) const {
+    mlir::MLIRContext& mlir_context, bool use_stablehlo_bounds) const {
   // Read the traversal's values.
   absl::Span<const DeviceBufferRef> arguments = this->arguments();
   absl::Span<const SharedDeviceBufferList> execution_order =
@@ -425,7 +482,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   ABSL_VLOG(2) << "[Traversal::BuildMlirModule] building MLIR ops for "
                << arguments.size() << " arguments";
   for (const DeviceBufferRef& argument : arguments) {
-    ref_to_op_map[argument] = CreateArgumentOp(fb, argument);
+    ref_to_op_map[argument] =
+        CreateArgumentOp(fb, argument, use_stablehlo_bounds);
   }
 
   // Identify which arguments are donated.
@@ -531,6 +589,25 @@ std::vector<Shape> GetShapes(absl::Span<const DeviceBufferRef> buffers) {
   return shapes;
 }
 
+std::vector<xla::Shape> GetXlaShapes(absl::Span<const DeviceBufferRef> buffers,
+                                     bool use_stablehlo_bounds) {
+  std::vector<xla::Shape> shapes;
+  shapes.reserve(buffers.size());
+  for (const auto& buffer : buffers) {
+    xla::PrimitiveType primitive_type =
+        ConvertTo<xla::PrimitiveType>(buffer.element_type());
+    xla::Shape shape =
+        xla::ShapeUtil::MakeShape(primitive_type, buffer.dimensions());
+    if (use_stablehlo_bounds) {
+      for (const auto& dynamic_dim : buffer.dynamic_dimensions()) {
+        shape.set_dynamic_dimension(dynamic_dim.dimension, true);
+      }
+    }
+    shapes.push_back(std::move(shape));
+  }
+  return shapes;
+}
+
 std::string MlirModuleToString(mlir::ModuleOp module) {
   mlir::OpPrintingFlags flags;
   flags.elideLargeElementsAttrs(100);
@@ -542,14 +619,18 @@ std::string MlirModuleToString(mlir::ModuleOp module) {
 }  // namespace
 
 absl::StatusOr<CompiledKernel> Traversal::Compile(
-    CompilationSpec spec, std::string* absl_nullable out_mlir_text) const {
+    CompilationSpec spec, std::string* absl_nullable out_mlir_text,
+    bool use_stablehlo_bounds,
+    absl::Span<const Indices> argument_layouts) const {
   // Prepare a computation builder closure to be called on a cache miss.  Okay
   // to capture this here since CompilationCache::GetOrCompile() will call this
   // builder before the function returns and in the same thread it is invoked.
   MlirComputationBuilder final_op_builder =
-      [this, out_mlir_text](mlir::MLIRContext& mlir_context)
+      [this, use_stablehlo_bounds,
+       out_mlir_text](mlir::MLIRContext& mlir_context)
       -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
-    TT_ASSIGN_OR_RETURN(auto module, BuildMlirModule(mlir_context));
+    TT_ASSIGN_OR_RETURN(auto module,
+                        BuildMlirModule(mlir_context, use_stablehlo_bounds));
     if (out_mlir_text != nullptr) {
       *out_mlir_text = MlirModuleToString(*module);
     }
@@ -558,13 +639,35 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   std::vector<Shape> argument_shapes = GetShapes(arguments_);
   std::vector<Shape> output_shapes = GetShapes(outputs_);
 
+  if (!argument_layouts.empty()) {
+    std::vector<xla::Shape> xla_argument_shapes =
+        GetXlaShapes(arguments_, use_stablehlo_bounds);
+    TT_RET_CHECK(xla_argument_shapes.size() == argument_layouts.size(),
+                 error::kInvalidArgument)
+        << "argument layouts size must match, got "
+        << xla_argument_shapes.size() << " layouts and "
+        << argument_layouts.size() << " arguments";
+    for (size_t i = 0; i < xla_argument_shapes.size(); ++i) {
+      const auto& layout_indices = argument_layouts[i];
+      if (!layout_indices.empty()) {
+        xla_argument_shapes[i].clear_layout();
+        *xla_argument_shapes[i].mutable_layout() =
+            xla::LayoutUtil::MakeLayout(layout_indices);
+      }
+    }
+    spec.xla_compile_options->argument_layouts = std::move(xla_argument_shapes);
+    spec.compile_options_key = MakeCompileOptionsKey(
+        GetEnvOnce<kXlaFlagsEnvVar>().value_or(""), *spec.xla_compile_options);
+  }
+
   CompilationCacheKey compilation_cache_key =
       GetCacheKey(spec.compile_options_key);
   ABSL_VLOG(1) << "[Compile] compilation cache key: " << compilation_cache_key;
 
   return CompilationCache::GetInstance().GetOrCompile(
       std::move(compilation_cache_key), argument_shapes, output_shapes,
-      std::move(final_op_builder), std::move(spec.xla_compile_options));
+      std::move(final_op_builder), std::move(spec.xla_compile_options),
+      /*use_dynamic_adapters=*/!use_stablehlo_bounds);
 }
 
 bool IsSimpleNodeTraversal(const Traversal& traversal) {

@@ -22,6 +22,7 @@
 
 #include "absl/strings/str_split.h"    // IWYU pragma: keep for macro
 #include "absl/strings/string_view.h"  // IWYU pragma: keep for macro
+#include "torch/headeronly/version.h"  // IWYU pragma: keep for macro
 
 // Preprocessor utilities for making macro implementations more readable.
 
@@ -83,6 +84,11 @@
 #else
 #define TT_IF_DEBUG(...) __VA_ARGS__
 #endif  // NDEBUG
+
+// True in an #if when built against PyTorch >= major.minor.
+#define TT_TORCH_VERSION_GE(major, minor) \
+  (TORCH_VERSION_MAJOR > (major) ||       \
+   (TORCH_VERSION_MAJOR == (major) && TORCH_VERSION_MINOR >= (minor)))
 
 namespace torch_tpu {
 namespace internal {

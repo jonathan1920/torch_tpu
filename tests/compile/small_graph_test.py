@@ -26,6 +26,7 @@ from torch_tpu._internal import compile as compile_lib
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile import compiler
+from torch_tpu._internal.compile.torch_tpu_compiled_executable import NoOpCompiledArtifact
 from torch_tpu._internal.utils import utils
 
 
@@ -1066,6 +1067,55 @@ class ModuleTest(absltest.TestCase):
       with self.subTest(shape=shape):
         inputs = [torch.randn(shape)]
         self._run_and_compare(GeqrfModule, inputs)
+
+
+def _reconstruct_none_tuple(inputs, outputs):
+  """Module-level (picklable) reconstruct fn returning the (None,) structure."""
+  del inputs, outputs
+  return (None,)
+
+
+class NoOutputGraphTest(absltest.TestCase):
+  """A torch.compile graph with no output tensors runs as a no-op, not an abort.
+
+  ``def f(x): x.sum(); return None`` traces to a graph with a real input but no
+  computed output tensors (FX output ``()``). traverse_and_compile requires >=1
+  result tensor and used to abort the process ("no result tensors provided");
+  the backend now returns a NoOpCompiledArtifact that runs nothing and
+  reconstructs the (all-None) output. The same all-None segments arise from
+  torch.compile(fullgraph=False) partitioning on TP>1 models, where collectives
+  force graph breaks.
+  """
+
+  def setUp(self):
+    super().setUp()
+    tt_testing.reset_eager_state()
+
+  def test_no_output_graph_runs_as_noop(self):
+    def f(x):
+      x.sum()  # computed but discarded: graph has an input, no output tensor
+      return None
+
+    compiled = torch.compile(f, backend="tpu", fullgraph=True, dynamic=False)
+    x = torch.randn(4).to("tpu")
+    # Before the fix this aborted the process inside traverse_and_compile.
+    self.assertIsNone(compiled(x))
+
+
+class NoOpCompiledArtifactTest(absltest.TestCase):
+  """The do-nothing callable the backend returns for a no-output graph."""
+
+  def test_call_reconstructs_output(self):
+    artifact = NoOpCompiledArtifact(_reconstruct_none_tuple)
+    self.assertEqual(artifact([torch.randn(4)]), (None,))
+
+  def test_picklable_for_dynamo_cache(self):
+    # CompiledArtifact must pickle for the Dynamo/AOT caching layers; the
+    # torch.compile path above cannot observe this directly.
+    artifact = NoOpCompiledArtifact(_reconstruct_none_tuple)
+    restored = pickle.loads(pickle.dumps(artifact))
+    self.assertIsInstance(restored, NoOpCompiledArtifact)
+    self.assertEqual(restored([]), (None,))
 
 
 if __name__ == "__main__":

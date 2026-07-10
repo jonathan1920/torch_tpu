@@ -318,7 +318,7 @@ class TpuBackend:
     if enable_serialization:
       fw_compiler = SerializableAOTDispatchCompiler(
           output_code_ty=compiler.CompiledArtifact,
-          compiler_fn=functools.partial(
+          compiler_fn=functools.partial(  # pyrefly: ignore[bad-specialization]
               self._compile_graph_module, compiler_instance, True
           ),
       )
@@ -336,11 +336,13 @@ class TpuBackend:
           fw_compiler=fw_compiler,
           bw_compiler=bw_compiler,
           keep_inference_input_mutations=False,
-      )(graph_module, example_inputs)
+      )(
+          graph_module, example_inputs
+      )  # pytype: disable=wrong-arg-types
 
       if captured_entry is not None and captured_entry[0] is not None:
         entry = captured_entry[0]
-        result.serialize = lambda: entry
+        result.serialize = lambda: entry  # pyrefly: ignore[missing-attribute]
 
       return result
 

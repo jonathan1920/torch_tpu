@@ -213,7 +213,7 @@ class AllTest(absltest.TestCase):
       replayed_log = tracer_utils.replay_log(log, "cpu")
 
       # Assert
-      utils.assert_close(replayed_log[0]["output"], log[0]["output"])
+      utils.assert_close(replayed_log[0]["output"], log[0]["output"])  # pyrefly: ignore[bad-index]
 
   def test_replay_on_linear_with_change_returns_different_value(self):
     """Tests replay on a simple module with a changed weight."""
@@ -234,7 +234,7 @@ class AllTest(absltest.TestCase):
 
       # Assert
       utils.assert_close(log[0]["output"], torch.tensor([6.0]))
-      utils.assert_close(replayed_log[0]["output"], torch.tensor([15.0]))
+      utils.assert_close(replayed_log[0]["output"], torch.tensor([15.0]))  # pyrefly: ignore[bad-index]
 
     with self.subTest("pformat"):
       text = tracer_utils.pformat_replay(log, _, replayed_log)
@@ -259,7 +259,7 @@ class AllTest(absltest.TestCase):
 
     # Assert.
     for event, replayed_event in zip(log, replayed_log):
-      utils.assert_close(event["output"], replayed_event["output"])
+      utils.assert_close(event["output"], replayed_event["output"])  # pyrefly: ignore[bad-index]
 
   def test_replay_on_complex_module_with_change(self):
     """Tests replay_log on a complex module with one spot change."""
@@ -283,7 +283,7 @@ class AllTest(absltest.TestCase):
 
     # Assert.
     event, replayed_event = log[-2], replayed_log[-2]  # Linear3.
-    self.assertNotEqual(event["output"].sum(), replayed_event["output"].sum())
+    self.assertNotEqual(event["output"].sum(), replayed_event["output"].sum())  # pyrefly: ignore[bad-index]
 
   def test_replay_log_includes_exception(self):
     """Tests replay_log includes an exception when one occurs during replay."""

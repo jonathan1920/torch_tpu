@@ -317,6 +317,7 @@ def subtest_layernorm_precision(
       results_tpu_copied_to_cpu["rstd"] = rstd_tpu.cpu()
       y_output_from_tpu_on_cpu_for_chaining = results_tpu_copied_to_cpu["y"]
       print(
+          # pyrefly: ignore[missing-attribute]
           f"    PT TPU Y: {results_tpu_copied_to_cpu['y'].shape}, Mean:"
           f" {results_tpu_copied_to_cpu['mean'].shape}, Rstd:"
           f" {results_tpu_copied_to_cpu['rstd'].shape}"
@@ -979,7 +980,7 @@ def main(argv):
 
   torch.utils.rename_privateuse1_backend(tpu_backend_name)
   print(f"PT backend renamed to '{tpu_backend_name}'.")
-  torch._register_device_module(tpu_backend_name, _device_module._DeviceModule)
+  torch._register_device_module(tpu_backend_name, _device_module._DeviceModule)  # pyrefly: ignore[bad-argument-type]
   print(f"Registered Python module for '{tpu_backend_name}'.")
   try:
     getattr(torch, tpu_backend_name)._init_runtime_options()  # pylint: disable=protected-access
@@ -1046,7 +1047,7 @@ def main(argv):
     ) = subtest_layernorm_precision(
         x_pt_cpu_input.clone(),
         ln_1_cpu_module,
-        ln_1_tpu_module,
+        ln_1_tpu_module,  # pyrefly: ignore[bad-argument-type]
         pt_tpu_device_global,
         "Focused_LN1_Precision",
     )
@@ -1220,7 +1221,7 @@ def main(argv):
   ):
     test_causal_self_attention_stepwise(
         model_pt_cpu.attn,
-        model_pt_tpu.attn if model_pt_tpu else None,
+        model_pt_tpu.attn if model_pt_tpu else None,  # pyrefly: ignore[bad-argument-type]
         ln_cpu_ref_outputs_dict["y"].clone(),
         y_ln_from_tpu_on_cpu_for_chaining.clone(),
         pt_tpu_device_global,
@@ -1241,7 +1242,7 @@ def main(argv):
   ):
     test_causal_self_attention_stepwise(
         model_pt_cpu.attn,
-        model_pt_tpu.attn if model_pt_tpu else None,
+        model_pt_tpu.attn if model_pt_tpu else None,  # pyrefly: ignore[bad-argument-type]
         ln_cpu_ref_outputs_dict["y"].clone(),
         y_ln_from_tpu_on_cpu_for_chaining.clone(),
         pt_tpu_device_global,
@@ -1262,7 +1263,7 @@ def main(argv):
   ):
     test_causal_self_attention_stepwise(
         model_pt_cpu.attn,
-        model_pt_tpu.attn if model_pt_tpu else None,
+        model_pt_tpu.attn if model_pt_tpu else None,  # pyrefly: ignore[bad-argument-type]
         ln_cpu_ref_outputs_dict["y"].clone(),
         y_ln_from_tpu_on_cpu_for_chaining.clone(),
         pt_tpu_device_global,

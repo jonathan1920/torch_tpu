@@ -42,6 +42,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/precision_context.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -215,6 +216,8 @@ at::Tensor& AtenAddmvOut(const at::Tensor& self, const at::Tensor& mat,
         TT_ASSIGN_OR_THROW(auto result_buf,
                            Addmv(self, mat, vec, std::move(promoted_beta),
                                  alpha_tensor, out, param_keys));
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });

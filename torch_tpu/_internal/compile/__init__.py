@@ -20,7 +20,7 @@ from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile._backend import TpuBackend
 
 # Register "tpu" backend
-registry.register_backend(compiler_fn=TpuBackend(), name="tpu")
+registry.register_backend(compiler_fn=TpuBackend(), name="tpu")  # pyrefly: ignore[bad-argument-type]
 
 
 def _initialize_graphsafe_rng():
@@ -94,6 +94,14 @@ _disallow_collective_ops_in_graph()
 if hasattr(torch._dynamo.config, "trace_autograd_ops"):
   torch._dynamo.config.trace_autograd_ops = True
 # pylint: enable=protected-access
+
+
+def _register_scan_operator() -> None:
+  """Registers the custom scan operator implementation for TPU."""
+  from torch_tpu._internal.compile import scan as _  # pylint: disable=g-import-not-at-top
+
+
+_register_scan_operator()
 
 # PEP 8 requires this to be a list of strings, not a tuple or a list of objects.
 __all__ = [

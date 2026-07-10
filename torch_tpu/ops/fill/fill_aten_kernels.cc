@@ -26,7 +26,6 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -38,6 +37,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/unary_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -47,7 +47,7 @@ absl::Status FillTensorHelper(at::Tensor& self, const at::Tensor& fill_value,
                               OpParamCacheKeys param_keys) {
   auto out_aten_type = self.scalar_type();
   TT_RET_CHECK(out_aten_type != at::ScalarType::ComplexDouble,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << ToString(at::ScalarType::ComplexDouble) << " dtype is not supported";
   TT_ASSIGN_OR_RETURN(mlir::ElementType out_mlir_element_type,
                       ConvertTo<mlir::ElementType>(out_aten_type));
@@ -81,8 +81,15 @@ absl::Status FillTensorHelper(at::Tensor& self, const at::Tensor& fill_value,
 }  // namespace
 
 at::Tensor& AtenZero_(at::Tensor& self) {
-  TT_KERNEL(OpName::kZero_, _, (self),
-            { return AtenFillScalar_(self, at::Scalar(0)); });
+  TT_KERNEL(OpName::kZero_, _, (self), {
+    auto op_builder = [](mlir::MlirOp self_op) -> absl::StatusOr<mlir::MlirOp> {
+      return MakeConstantLike(self_op, 0.0);
+    };
+    TT_THROW_IF_ERROR(
+        UnaryOpInPlace(self, std::move(op_builder),
+                       {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    return self;
+  });
 }
 
 at::Tensor& AtenFillTensor_(at::Tensor& self, const at::Tensor& fill_value) {

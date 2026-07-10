@@ -174,7 +174,7 @@ class BenchmarkTest(parameterized.TestCase):
         seq_len = config.model_and_input_args.sequence_length
         config.model_and_input_args.sequence_length = (
             model_utils.DynamicDimension(
-                min_value=max(2, seq_len // 2), max_value=seq_len * 2
+                min_value=max(2, seq_len // 2), max_value=seq_len * 2  # pyrefly: ignore[unsupported-operation]
             )
         )
 

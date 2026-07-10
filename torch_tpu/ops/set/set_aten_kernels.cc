@@ -55,7 +55,7 @@ at::Tensor& AtenSet_(at::Tensor& self) {
 
 at::Tensor& AtenSet_SourceStorage(at::Tensor& self, c10::Storage src) {
   TT_KERNEL(OpName::kSet_SourceStorage, _,
-            (self, IgnoreInCacheKey(src, "Legacy usage")), {
+            (self, IgnoreInCacheKey(src, "Doesn't affect SHLO")), {
               c10::TensorImpl* impl = self.unsafeGetTensorImpl();
               const int64_t element_size = self.element_size();
               const int64_t numel =
@@ -84,10 +84,10 @@ at::Tensor& AtenSet_SourceStorageOffset(at::Tensor& self, c10::Storage src,
   }
   TT_KERNEL(
       OpName::kSet_SourceStorageOffset, _,
-      (self, IgnoreInCacheKey(src, "Legacy usage"),
-       IgnoreInCacheKey(concrete_storage_offset, "Legacy usage"),
-       IgnoreInCacheKey(size_vec, "Legacy usage"),
-       IgnoreInCacheKey(stride_vec, "Legacy usage")),
+      (self, IgnoreInCacheKey(src, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(concrete_storage_offset, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(size_vec, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(stride_vec, "Doesn't affect SHLO")),
       {
         c10::TensorImpl* impl = self.unsafeGetTensorImpl();
         TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBaseBuffer(src));

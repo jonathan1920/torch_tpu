@@ -57,7 +57,7 @@ tok_path = (
     base_path / "weights/huggingface/meta-llama/Meta-Llama-3-8B-Instruct/"
 )
 tokenizer = transformers.AutoTokenizer.from_pretrained(tok_path)
-tokenizer.pad_token = tokenizer.eos_token
+tokenizer.pad_token = tokenizer.eos_token  # pyrefly: ignore[missing-attribute]
 # %% [markdown]
 # ## Try to chat with a pretrained model.
 #
@@ -67,7 +67,7 @@ tokenizer.pad_token = tokenizer.eos_token
 pipe = transformers.pipeline(
     "text-generation", model=model, tokenizer=tokenizer, do_sample=False
 )
-streamer = transformers.TextIteratorStreamer(tokenizer)
+streamer = transformers.TextIteratorStreamer(tokenizer)  # pyrefly: ignore[bad-argument-type]
 
 t = Thread(
     target=pipe,
@@ -98,8 +98,8 @@ def format(example):
       {"role": "user", "content": example["instruction"]},
       {"role": "assistant", "content": example["output"]},
   ]
-  text = tokenizer.apply_chat_template(chat, tokenize=False)
-  inputs = tokenizer(
+  text = tokenizer.apply_chat_template(chat, tokenize=False)  # pyrefly: ignore[missing-attribute]
+  inputs = tokenizer(  # pyrefly: ignore[not-callable]
       text,
       padding="max_length",
       max_length=256,
@@ -108,11 +108,11 @@ def format(example):
   return inputs
 
 
-dataset = raw_dataset.map(
+dataset = raw_dataset.map(  # pyrefly: ignore[missing-attribute]
     format,
     load_from_cache_file=False,
     cache_file_name="/tmp/cache.arrow",  # Workaround
-    remove_columns=raw_dataset.column_names
+    remove_columns=raw_dataset.column_names  # pyrefly: ignore[missing-attribute]
 )
 # %% [markdown]
 # # Instruct SFT
@@ -125,7 +125,7 @@ BATCH_SIZE = 4
 train_dataloader = torch.utils.data.DataLoader(
     dataset.select(range(100 * BATCH_SIZE)),
     collate_fn=transformers.DataCollatorForLanguageModeling(
-        tokenizer=tokenizer, mlm=False
+        tokenizer=tokenizer, mlm=False  # pyrefly: ignore[bad-argument-type]
     ),
     batch_size=BATCH_SIZE,
 )
@@ -133,7 +133,7 @@ train_dataloader = torch.utils.data.DataLoader(
 val_dataloader = torch.utils.data.DataLoader(
     dataset.select(range(100 * BATCH_SIZE, 101 * BATCH_SIZE)),
     collate_fn=transformers.DataCollatorForLanguageModeling(
-        tokenizer=tokenizer, mlm=False
+        tokenizer=tokenizer, mlm=False  # pyrefly: ignore[bad-argument-type]
     ),
     batch_size=BATCH_SIZE,
 )
@@ -165,7 +165,7 @@ for epoch in range(1, EPOCHS + 1):
 pipe = transformers.pipeline(
     "text-generation", model=model, tokenizer=tokenizer, do_sample=False
 )
-streamer = transformers.TextIteratorStreamer(tokenizer)
+streamer = transformers.TextIteratorStreamer(tokenizer)  # pyrefly: ignore[bad-argument-type]
 
 t = Thread(
     target=pipe,

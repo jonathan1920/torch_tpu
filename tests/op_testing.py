@@ -130,6 +130,12 @@ _USE_COMPILED: Final[flags.FlagHolder[bool]] = flags.DEFINE_bool(
     "Use compiled torch_tpu backend.",
 )
 
+_IGNORE_ACCURACY_OVERRIDES: Final[flags.FlagHolder[bool]] = flags.DEFINE_bool(
+    "ignore_accuracy_overrides",
+    False,
+    "If set, accuracy overrides will be ignored, forcing strict checks.",
+)
+
 _CHECK_DYNAMISM_USING_SEED: Final[flags.FlagHolder[int]] = flags.DEFINE_integer(
     "check_dynamism_using_seed",
     0,
@@ -192,11 +198,11 @@ op_perf.py -- --num_runs_per_subtest=20
 # creating the perf_dir directory paths in op_perf.py.
 
 # Run the comparison analysis.
-blaze test -c opt --test_arg=--base_perf_dir=/path/to/first/perf_dir  \
+blaze test -c opt torch_tpu/tests:ops_test_perf                       \
+                  --test_arg=--base_perf_dir=/path/to/first/perf_dir  \
                   --test_arg=--perf_dir=/path/to/second/perf_dir      \
                   --test_arg=--analyze                                \
-                  --test_arg=--opt_level=""                           \
-                  torch_tpu/tests:ops_test_perf
+                  --test_arg=--opt_level=""
 """
 
 _BASE_PERF_DIR: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
@@ -211,7 +217,40 @@ _BASE_PERF_DIR: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
 _NUM_RUNS_PER_SUBTEST: Final[flags.FlagHolder[int]] = flags.DEFINE_integer(
     "num_runs_per_subtest",
     1,
-    "Number of times to run each sub-test. Useful for performance testing.",
+    "Number of times to run each sub-test with the same input. Useful for "
+    "performance testing or checking flakiness on the same input. Does not "
+    "generate new inputs.",
+)
+
+
+_NUM_ACCURACY_TEST_RUNS: Final[flags.FlagHolder[int]] = flags.DEFINE_integer(
+    "num_accuracy_test_runs",
+    1,
+    "Number of times to run accuracy tests to explore random inputs. "
+    "Unlike --num_runs_per_subtest, this runs the test with different "
+    "dynamically generated random inputs (in TORCH_TPU_VS_CPU mode) by "
+    "allowing the RNG to advance naturally across iterations. "
+    "The input sequence is deterministic and reproducible in fastbuild mode, "
+    "but randomized and unique on every run in optimized build mode. "
+    "Not supported in TORCH_TPU_VS_GPU mode (will raise an error).",
+)
+
+
+def _validate_accuracy_runs(flags_dict):
+  return not (
+      flags_dict["test_mode"] == TestMode.TORCH_TPU_VS_GPU
+      and flags_dict["num_accuracy_test_runs"] > 1
+  )
+
+
+flags.register_multi_flags_validator(
+    ["test_mode", "num_accuracy_test_runs"],
+    _validate_accuracy_runs,
+    message=(
+        "--num_accuracy_test_runs > 1 is not supported in torch_tpu_vs_gpu"
+        " mode because inputs are loaded from static golden files and cannot be"
+        " randomized."
+    ),
 )
 
 
@@ -221,6 +260,31 @@ class OpVariant(enum.Enum):
   BASE = "base"  # op(...)
   INPLACE = "inplace"  # op_(...)
   OUT = "out"  # op(..., out=...)
+
+
+class OutVariantType(enum.Enum):
+  """Type of out argument to test."""
+
+  CORRECT = "correct"
+  INCORRECT_SHAPE = "incorrect_shape"
+  # TODO: cover more ways to specify the out arguments (e.g. correct
+  # dimensions but incorrect dtype, both dtype and dimensions incorrect).
+
+
+# Ops that are known to fail the incorrect shape out-variant test due to
+# missing shape resizing in their TorchTPU C++ implementations, compiler
+# crashes, or incorrect decomposition.
+# TODO: fix these ops and remove them from this list.
+_OPS_WITHOUT_OUT_SHAPE_RESIZING: Final[set[str]] = {
+    "addcdiv",
+    "addcmul",
+    "bernoulli",
+    "bucketize",
+    "clamp_max",
+    "clamp_min",
+    "lerp",
+    "lgamma",
+}
 
 
 # Ops not included in the list of tested ops for pytorch.
@@ -393,7 +457,7 @@ class PerfResult:
   def __repr__(self) -> str:
     return self.__str__()
 
-  def __eq__(self, other: "PerfResult") -> bool:
+  def __eq__(self, other: "PerfResult") -> bool:  # pyrefly: ignore[bad-override]
     return (
         self.op_name == other.op_name
         and self.dtype == other.dtype
@@ -616,48 +680,44 @@ P99: {sorted_durations_ms[99*num//100]:.2f}ms""",
       print(r, flush=True)
     print(flush=True)
 
-    multiple_runs = False
     durations_by_subtest = collections.defaultdict(list)
     for r in results:
       durations_by_subtest[r.subtest_name].append(r.duration_sec * 1000)
-      if len(durations_by_subtest[r.subtest_name]) > 1:
-        multiple_runs = True
 
     base_durations_by_subtest = collections.defaultdict(list)
     if base_results:
       for r in base_results:
         base_durations_by_subtest[r.subtest_name].append(r.duration_sec * 1000)
 
-    if multiple_runs:
-      print(f"Stats for each test (dtype {dtype}):", flush=True)
-      factors = []
-      for subtest_name in sorted(durations_by_subtest.keys()):
-        durations_ms = durations_by_subtest[subtest_name]
-        n = len(durations_ms)
-        mean = statistics.mean(durations_ms)
-        median = statistics.median(durations_ms)
-        stdev = statistics.stdev(durations_ms) if n > 1 else 0.0
+    factors = []
+    for subtest_name in sorted(durations_by_subtest.keys()):
+      durations_ms = durations_by_subtest[subtest_name]
+      n = len(durations_ms)
+      mean = statistics.mean(durations_ms)
+      median = statistics.median(durations_ms)
+      if n > 1:
+        stdev = statistics.stdev(durations_ms)
         print(
             f" Subtest: {subtest_name}, Count: {n}\n  Mean: {mean:.2f}ms, Min:"
             f" {min(durations_ms):.2f}ms, Max: {max(durations_ms):.2f}ms,"
             f" Median: {median:.2f}ms, Stddev: {stdev:.2f}ms",
             flush=True,
         )
-        if (
-            base_durations_by_subtest
-            and subtest_name in base_durations_by_subtest
-        ):
-          base_mean = statistics.mean(base_durations_by_subtest[subtest_name])
-          if base_mean > 0:
-            factors.append(mean / base_mean)
-      if factors:
-        geomean_factor = statistics.geometric_mean(factors)
-        print("")
-        print(
-            f"Current mean duration is {geomean_factor:.4f}x of the baseline"
-            " (geomean over all tests).",
-            flush=True,
-        )
+      if (
+          base_durations_by_subtest
+          and subtest_name in base_durations_by_subtest
+      ):
+        base_mean = statistics.mean(base_durations_by_subtest[subtest_name])
+        if base_mean > 0:
+          factors.append(mean / base_mean)
+    if factors:
+      geomean_factor = statistics.geometric_mean(factors)
+      print("")
+      print(
+          f"Current mean duration is {geomean_factor:.4f}x of the baseline"
+          " (geomean over all tests).",
+          flush=True,
+      )
 
   for dtype in NUMERIC_DTYPES:
     _analyze(dtype)
@@ -786,6 +846,22 @@ def _make_tensors_empty(x: _pytree.PyTree) -> _pytree.PyTree:
   def transform_leaf(obj: Any) -> Any:
     if isinstance(obj, torch.Tensor):
       return torch.empty_like(obj)
+    return obj
+
+  return _tensor_tree_map(transform_leaf, x)
+
+
+def _make_tensors_incorrect_shape(x: _pytree.PyTree) -> _pytree.PyTree:
+  """Makes all torch.Tensors in x have incorrect shape."""
+
+  def transform_leaf(obj: Any) -> Any:
+    if isinstance(obj, torch.Tensor):
+      if obj.ndim == 0:
+        return torch.empty((1,), dtype=obj.dtype, device=obj.device)
+      else:
+        new_shape = list(obj.shape)
+        new_shape[0] += 1
+        return torch.empty(new_shape, dtype=obj.dtype, device=obj.device)
     return obj
 
   return _tensor_tree_map(transform_leaf, x)
@@ -1182,6 +1258,16 @@ def _should_skip_dtype(
   )
 
 
+def _find_first_valid_dtype(
+    dtypes: Sequence[torch.dtype], *, exclude_dtypes: Sequence[torch.dtype]
+) -> torch.dtype | None:
+  """Returns the first dtype in the sequence that should not be skipped."""
+  for dtype in dtypes:
+    if not _should_skip_dtype(dtype, exclude_dtypes=exclude_dtypes):
+      return dtype
+  return None
+
+
 def _dummy_grad(device: torch.device) -> torch.Tensor:
   """Returns a dummy gradient for use in tests."""
   return torch.tensor([], dtype=torch.float32, device=device)
@@ -1525,6 +1611,9 @@ class TorchTpuTestBase(TestCase):
       max_samples: int | None,
       compute_grad: bool = False,
       use_compiled: bool = False,
+      verbose: bool = True,
+      set_seed: bool = True,
+      out_variant_type: OutVariantType = OutVariantType.CORRECT,
   ) -> Sequence[tuple[OpInput, OpOutput]]:
     """Returns a list of (input, output) pairs for the op.
 
@@ -1545,21 +1634,34 @@ class TorchTpuTestBase(TestCase):
       compute_grad: If True, compute the gradient of the op with respect to the
         input instead of the op outputs.
       use_compiled: If True, use torch.compile to compile the op before running.
+      verbose: If True, print a log message when starting to fetch golden
+        results.
+      set_seed: If True, reset the RNG seed before generating samples. Set to
+        False to allow RNG to advance across multiple calls.
+      out_variant_type: The type of out argument to test.
     """
 
     op_name = _op_name_for_logging(op, variant)
-    print(
-        f">>> Getting golden results for {op_name}() with dtype {dtype} ...",
-        flush=True,
-    )
+    if verbose:
+      print(
+          f">>> Getting golden results for {op_name}() with dtype {dtype} ...",
+          flush=True,
+      )
 
     if _torch_tpu_vs_gpu_mode():
+      if out_variant_type != OutVariantType.CORRECT:
+        return []
       return _GOLDEN_GPU_DATA.get(op_name, {}).get(dtype, [])
 
     # Generate sample inputs on the golden device.
     try:
       golden_samples = list(
-          op.sample_inputs(self.golden_device, dtype, requires_grad=False)
+          op.sample_inputs(
+              self.golden_device,
+              dtype,
+              requires_grad=False,
+              set_seed=set_seed,
+          )
       )
     except Exception as e:  # pylint: disable=broad-except
       if _gen_gpu_golden_mode():
@@ -1607,6 +1709,7 @@ class TorchTpuTestBase(TestCase):
           check_device=False,
           # No need to mark inputs as dynamic when computing golden results.
           check_dynamism=False,
+          out_variant_type=out_variant_type,
       )
       golden_output = OpOutput(golden_result)
       pairs.append((golden_input, golden_output))
@@ -1626,6 +1729,7 @@ class TorchTpuTestBase(TestCase):
       check_device: bool,
       check_dynamism: bool,
       out: Any = None,
+      out_variant_type: OutVariantType = OutVariantType.CORRECT,
       compute_grad: bool = False,
       use_compiled: bool = False,
       measure_perf: bool = True,
@@ -1651,6 +1755,7 @@ class TorchTpuTestBase(TestCase):
       out: If variant is OUT, this can be either the out argument to be used
         when running the op or None if this function should create the out
         argument itself. Otherwise this must be None.
+      out_variant_type: The type of out argument to generate if out is None.
       compute_grad: If True, compute the gradient of the op with respect to the
         input instead of the op outputs.
       use_compiled: If True, use torch.compile to compile the op before running.
@@ -1693,11 +1798,11 @@ class TorchTpuTestBase(TestCase):
       if isinstance(base_result, Exception):
         # The base variant failed, so we cannot generate the out tensor.
         return base_result
-      # Next, create the out argument with the correct dtype and size.
-      # Some ops expect the out argument to be a tuple as opposed to a
-      # single tensor (e.g. sort()), so we need _make_tensors_empty()
-      # instead of torch.empty_like() here.
-      out = to(_make_tensors_empty(base_result), device)
+      # Next, create the out argument based on out_variant_type.
+      if out_variant_type == OutVariantType.CORRECT:
+        out = to(_make_tensors_empty(base_result), device)
+      elif out_variant_type == OutVariantType.INCORRECT_SHAPE:
+        out = to(_make_tensors_incorrect_shape(base_result), device)
 
     op_func = op.inplace_variant if variant == OpVariant.INPLACE else op
 
@@ -1903,7 +2008,15 @@ class TorchTpuTestBase(TestCase):
   def _assert_structure_consistency(
       self, *, golden_result: Any, torch_tpu_result: Any
   ) -> None:
-    """Asserts that golden_result and torch_tpu_result are both tensors or both tuples of the same size."""
+    """Asserts that golden_result and torch_tpu_result are both None, tensors, or tuples of the same size."""
+    if golden_result is None:
+      self.assertIsNone(
+          torch_tpu_result,
+          f"{self.golden_device_name()} result is None, but TorchTPU result is"
+          f" a {type(torch_tpu_result)}",
+      )
+      return
+
     if isinstance(golden_result, torch.Tensor):
       self.assertIsInstance(
           torch_tpu_result,
@@ -1979,10 +2092,10 @@ class TorchTpuTestBase(TestCase):
       self.assert_close(
           golden_result=golden_result_i,
           torch_tpu_result=torch_tpu_result_tuple[i],
-          check_value=check_value[i],
+          check_value=check_value[i],  # pyrefly: ignore[bad-index]
           check_dtype=check_dtype,
           preamble=preamble,
-          **accuracy_override,
+          **accuracy_override,  # pyrefly: ignore[bad-argument-type]
       )
 
   def _sub_test(
@@ -2001,10 +2114,13 @@ class TorchTpuTestBase(TestCase):
       skip_output_indices: Sequence[int],
       compute_grad: bool,
       use_compiled: bool,
+      out_variant_type: OutVariantType = OutVariantType.CORRECT,
   ) -> None:
     op_name = _op_name_for_logging(op, variant)
     print(f">>>> Testing {subtest_name} ...", flush=True)
-    if compute_grad:
+    if _IGNORE_ACCURACY_OVERRIDES.value:
+      accuracy_overrides = {}
+    elif compute_grad:
       accuracy_overrides = self.grad_accuracy_overrides
     elif _torch_tpu_vs_cpu_mode():
       accuracy_overrides = self.tpu_cpu_accuracy_overrides
@@ -2044,6 +2160,7 @@ class TorchTpuTestBase(TestCase):
           subtest_name=subtest_name,
           check_device=check_device,
           check_dynamism=check_dynamism,
+          out_variant_type=out_variant_type,
       )
     golden_thrown = isinstance(golden_result, Exception)
     torch_tpu_thrown = isinstance(torch_tpu_result, Exception)
@@ -2051,7 +2168,9 @@ class TorchTpuTestBase(TestCase):
     self._assert_failure_consistency(
         golden_result=golden_result,
         torch_tpu_result=torch_tpu_result,
-        op_description=f"{op_name}() with dtype {dtype}",
+        op_description=(
+            f"{op_name}() with dtype {dtype} (variant={out_variant_type.value})"
+        ),
         torch_tpu_printable_input=torch_tpu_printable_input,
     )
 
@@ -2086,6 +2205,7 @@ class TorchTpuTestBase(TestCase):
       skip_output_indices: Sequence[int],
       skip_if: Callable[[str, OpVariant, OpInput], bool] | None,
       max_samples_per_op_dtype: int | None,
+      out_variant_type: OutVariantType = OutVariantType.CORRECT,
   ) -> None:
     """Tests that the op produces similar results on TorchTPU and the golden device.
 
@@ -2114,6 +2234,7 @@ class TorchTpuTestBase(TestCase):
       max_samples_per_op_dtype: The maximum number of samples to test for each
         (op variant, dtype) combination. If None, the number is determined by
         the --max_samples_per_op_dtype flag.
+      out_variant_type: The type of out argument to test.
     """
 
     if dtype not in _dtypes_to_test():
@@ -2128,67 +2249,95 @@ class TorchTpuTestBase(TestCase):
       return
 
     op_name = _op_name_for_logging(op, variant)
-    print(f">>> Testing {op_name}() with dtype {dtype} ...", flush=True)
 
-    golden_pairs = self._get_golden_input_output_pairs(
-        op=op,
-        dtype=dtype,
-        variant=variant,
-        compute_grad=compute_grad,
-        use_compiled=use_compiled,
-        max_samples=max_samples_per_op_dtype,
+    print(
+        f">>> Testing {op_name}() (variant={out_variant_type.value}) with dtype"
+        f" {dtype} ...",
+        flush=True,
     )
-    for i, [golden_input, golden_output] in enumerate(golden_pairs):
-      golden_result = golden_output.output_value
-      golden_thrown = isinstance(golden_result, Exception)
-      if golden_thrown and not check_op_failures:
+
+    use_random_exploration = _NUM_ACCURACY_TEST_RUNS.value > 1
+    if use_random_exploration:
+      # Seed once before the loop to establish the starting point (which may be
+      # random in opt mode).
+      _seed_rngs(_RANDOM_SEED)
+
+    for acc_run_idx in range(_NUM_ACCURACY_TEST_RUNS.value):
+      if _NUM_ACCURACY_TEST_RUNS.value > 1 and acc_run_idx % 10 == 0:
         print(
-            f"Skipping test for {op_name}() with dtype {dtype} on TorchTPU as"
-            " it failed on"
-            f" {self.golden_device_name()}.\n{golden_input}\n"
-            f"Error: {golden_result}\n",
+            f"  Accuracy run {acc_run_idx}/{_NUM_ACCURACY_TEST_RUNS.value}...",
             flush=True,
         )
-        continue
 
-      if _gen_gpu_golden_mode():
-        continue
-
-      if skip_if and skip_if(self.golden_device_type, variant, golden_input):
-        print(
-            f"Skipping test sample for {op_name}() with dtype {dtype} on"
-            " TorchTPU as filtered by the skip_if function.\n"
-            f"{golden_input}",
-            flush=True,
-        )
-        continue
-
-      # Test each run of each sample in a subTest s.t. one sample's failure
-      # doesn't prevent other runs.
-      # Construct a meaningful and unique subtest name.
-      subtest_name = f"{op_name}_{_dtype_str(dtype)}_"
-      subtest_name += golden_input.name if golden_input.name else f"subtest{i}"
-
-      for run_index in range(_NUM_RUNS_PER_SUBTEST.value):
-        with self.subTest(subtest_name=subtest_name, run_index=run_index):
-          _run_and_print_exception(
-              functools.partial(
-                  self._sub_test,
-                  subtest_name,
-                  op,
-                  variant,
-                  dtype,
-                  golden_input=golden_input,
-                  golden_result=golden_result,
-                  check_device=check_device,
-                  check_dynamism=check_dynamism,
-                  check_value=check_value,
-                  check_dtype=check_dtype,
-                  skip_output_indices=skip_output_indices,
-                  compute_grad=compute_grad,
-                  use_compiled=use_compiled,
-              )
+      golden_pairs = self._get_golden_input_output_pairs(
+          op=op,
+          dtype=dtype,
+          variant=variant,
+          compute_grad=compute_grad,
+          use_compiled=use_compiled,
+          max_samples=max_samples_per_op_dtype,
+          verbose=(acc_run_idx == 0),
+          # If we are in exploration mode, we never reset seed during the loop.
+          set_seed=not use_random_exploration,
+          out_variant_type=out_variant_type,
+      )
+      for i, [golden_input, golden_output] in enumerate(golden_pairs):
+        golden_result = golden_output.output_value
+        golden_thrown = isinstance(golden_result, Exception)
+        if golden_thrown and not check_op_failures:
+          print(
+              f"Skipping test sample for {op_name}() with dtype {dtype} on"
+              " TorchTPU as it failed on"
+              f" {self.golden_device_name()}.\n{golden_input}\n"
+              f"Error: {golden_result}\n",
+              flush=True,
           )
+          continue
+
+        if _gen_gpu_golden_mode():
+          continue
+
+        if skip_if and skip_if(self.golden_device_type, variant, golden_input):
+          print(
+              f"Skipping test sample for {op_name}() with dtype {dtype} on"
+              " TorchTPU as filtered by the skip_if function.\n"
+              f"{golden_input}",
+              flush=True,
+          )
+          continue
+
+        # Test each run of each sample in a subTest s.t. one sample's failure
+        # doesn't prevent other runs.
+        # Construct a meaningful and unique subtest name.
+        subtest_name = f"{op_name}_{_dtype_str(dtype)}_"
+        if out_variant_type != OutVariantType.CORRECT:
+          subtest_name += f"{out_variant_type.value}_"
+        subtest_name += (
+            golden_input.name if golden_input.name else f"subtest{i}"
+        )
+
+        for perf_run_idx in range(_NUM_RUNS_PER_SUBTEST.value):
+          run_index = acc_run_idx * _NUM_RUNS_PER_SUBTEST.value + perf_run_idx
+          with self.subTest(subtest_name=subtest_name, run_index=run_index):
+            _run_and_print_exception(
+                functools.partial(
+                    self._sub_test,
+                    subtest_name,
+                    op,
+                    variant,
+                    dtype,
+                    golden_input=golden_input,
+                    golden_result=golden_result,
+                    check_device=check_device,
+                    check_dynamism=check_dynamism,
+                    check_value=check_value,
+                    check_dtype=check_dtype,
+                    skip_output_indices=skip_output_indices,
+                    compute_grad=compute_grad,
+                    use_compiled=use_compiled,
+                    out_variant_type=out_variant_type,
+                )
+            )
 
   def _resolve_exclude_dtypes(
       self,
@@ -2230,6 +2379,7 @@ class TorchTpuTestBase(TestCase):
           Iterable[torch.dtype] | Mapping[str, Iterable[torch.dtype]] | None
       ) = None,
       check_out_variant: bool = True,
+      exclude_out_variant_types: Iterable[OutVariantType] | None = None,
       check_grad: bool = True,
       check_device: bool = True,
       check_dynamism: bool = True,
@@ -2258,6 +2408,8 @@ class TorchTpuTestBase(TestCase):
       exclude_inplace_dtypes: Similar to exclude_dtypes, but for the inplace
         variant of the op.
       check_out_variant: Whether to check the out variant of the op.
+      exclude_out_variant_types: A list of OutVariantType values to exclude from
+        testing.
       check_grad: Whether to check the gradient of the op.
       check_device: Whether to check that the op's result is on the correct
         device.
@@ -2289,6 +2441,16 @@ class TorchTpuTestBase(TestCase):
         available. If None, the base variant set, filtering only on the op_name,
         will be tested.
     """
+
+    if exclude_out_variant_types is None:
+      exclude_out_variant_types = set()
+    else:
+      exclude_out_variant_types = set(exclude_out_variant_types)
+
+    # TODO: Remove this check and the _OPS_WITHOUT_OUT_SHAPE_RESIZING constant
+    # once all ops are fixed to support out shape resizing natively.
+    if op_name in _OPS_WITHOUT_OUT_SHAPE_RESIZING:
+      exclude_out_variant_types.add(OutVariantType.INCORRECT_SHAPE)
 
     exclude_dtypes = self._resolve_exclude_dtypes(exclude_dtypes)
     exclude_inplace_dtypes = self._resolve_exclude_dtypes(
@@ -2337,13 +2499,18 @@ class TorchTpuTestBase(TestCase):
 
       if check_out_variant:
         print(f"Testing {op_name}(out=...).", flush=True)
+
+        # Find the first valid dtype for the incorrect shape test
+        allowed_dtypes = [d for d in dtypes_to_test if d in _dtypes_to_test()]
+        first_valid_dtype = _find_first_valid_dtype(
+            allowed_dtypes, exclude_dtypes=exclude_dtypes
+        )
+
         for dtype in dtypes_to_test:
           if _should_skip_dtype(dtype, exclude_dtypes=exclude_dtypes):
             continue
-          # TODO: cover more ways to specify the out arguments (e.g. correct
-          # dtype but incorrect dimensions, correct dimensions but incorrect
-          # dtype, both dtype and dimensions incorrect, incorrect structure
-          # (e.g. tuple vs tensor for vice versa)).
+
+          # Test the correct shape out variant
           self._test_torch_tpu_vs_golden(
               op,
               dtype,
@@ -2358,7 +2525,32 @@ class TorchTpuTestBase(TestCase):
               skip_output_indices=skip_output_indices,
               skip_if=skip_if,
               max_samples_per_op_dtype=max_samples_per_op_dtype,
+              out_variant_type=OutVariantType.CORRECT,
           )
+
+          # Test the incorrect shape out variant (only once per op on the first
+          # valid dtype)
+          if (
+              dtype == first_valid_dtype
+              and OutVariantType.INCORRECT_SHAPE
+              not in exclude_out_variant_types
+          ):
+            self._test_torch_tpu_vs_golden(
+                op,
+                dtype,
+                OpVariant.OUT,
+                compute_grad=compute_grad,
+                use_compiled=use_compiled,
+                check_value=check_value,
+                check_dtype=check_dtype,
+                check_device=check_device,
+                check_dynamism=check_dynamism,
+                check_op_failures=check_op_failures,
+                skip_output_indices=skip_output_indices,
+                skip_if=skip_if,
+                max_samples_per_op_dtype=1,
+                out_variant_type=OutVariantType.INCORRECT_SHAPE,
+            )
 
       if not op.inplace_variant:
         return
@@ -2595,32 +2787,27 @@ def set_up_test_module() -> None:
   #
   # The very first invocation of `CompilationCache::GetOrCompile` will determine
   # the globally shared default compilation context.
-  if _torch_tpu_vs_gpu_mode():
-    # TODO: b/502610173 - When the default value is changed to False for excess
-    # precision, keep configuring the value as True for compile mode to compare
-    # with the GPU inductor backend.
-    if not is_compiled_mode():
-      torch.backends.tpu.allow_excess_precision = False  # pytype: disable=module-attr
-  elif _torch_tpu_vs_cpu_mode():
-    torch.backends.tpu.allow_excess_precision = False  # pytype: disable=module-attr
+  if _torch_tpu_vs_gpu_mode() or _gen_gpu_golden_mode():
+    if is_compiled_mode():
+      torch.backends.tpu.allow_excess_precision = True  # pytype: disable=module-attr
 
   # Pick a random seed for the test.
   global _RANDOM_SEED
   if absltest.FLAGS["test_random_seed"].present:
     # The user explicitly passed --test_random_seed=N, so we use that value.
-    _RANDOM_SEED = absltest.FLAGS.test_random_seed
+    _RANDOM_SEED = absltest.FLAGS.test_random_seed  # pyrefly: ignore[bad-assignment]
   elif (
       _torch_tpu_vs_cpu_mode()
       and _device_ops_backend._is_optimized_build()  # pylint: disable=protected-access
   ):
     # In postsubmit (optimized build), we keep the random time-based seed
     # to continuously explore different inputs and maintain test coverage.
-    _RANDOM_SEED = time.time_ns() % 100000
+    _RANDOM_SEED = time.time_ns() % 100000  # pyrefly: ignore[bad-assignment]
   else:
     # The user did not pass --test_random_seed and we are in presubmit
     # (fastbuild) or other modes, so we pick a fixed seed to prevent flaky
     # tests.
-    _RANDOM_SEED = 1234
+    _RANDOM_SEED = 1234  # pyrefly: ignore[bad-assignment]
 
   # Set the random seed for Python and Torch.
   _seed_rngs(_RANDOM_SEED)

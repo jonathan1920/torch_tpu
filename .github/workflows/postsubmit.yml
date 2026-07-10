@@ -110,8 +110,27 @@ jobs:
           path: bazel-testlogs/
           retention-days: 7
 
+  build_wheels:
+    runs-on: linux-x86-n4-16
+    container:
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+    outputs:
+      gcs_wheel_path: ${{ steps.build.outputs.gcs_wheel_path }}
+      gcs_wheel_dir: ${{ steps.build.outputs.gcs_wheel_dir }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and upload wheel
+        id: build
+        uses: ./.github/actions/build-wheel
+        with:
+          python_version: "3.12"
+
+
   vllm_perf_eval:
     name: "vLLM Perf Eval"
+    needs: [build_wheels]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: linux-x86-tpu7x-224-4tpu
     container:
@@ -153,20 +172,11 @@ jobs:
           echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> "$GITHUB_ENV"
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
-      - name: Download wheel from GCS for current commit
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download wheel from GCS
         shell: bash
         run: |
-          COMMIT_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
-
           mkdir dist
-          if ! GCS_WHEEL_PATH=$(python3 ci/find_successful_run.py "$COMMIT_SHA" --wait); then
-            echo "ERROR: Failed to find successful build_wheel run or it timed out."
-            exit 1
-          fi
-
-          gcloud storage cp "$GCS_WHEEL_PATH" dist/
+          gcloud storage cp "${{ needs.build_wheels.outputs.gcs_wheel_path }}" dist/
 
       - name: Install torchtpu-vllm with local wheel override
         run: |
@@ -200,16 +210,16 @@ jobs:
 
   notify_failure:
     name: Notify Failed Runs
-    needs: [run_tests, vllm_perf_eval]
+    needs: [run_tests, build_wheels, vllm_perf_eval]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Get current date
         id: date
-        if: contains(needs.run_tests.result, 'failure') && github.event_name != 'pull_request'
+        if: (contains(needs.run_tests.result, 'failure') || contains(needs.build_wheels.result, 'failure') || contains(needs.vllm_perf_eval.result, 'failure')) && github.event_name != 'pull_request'
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       - name: Check whether one of the jobs failed
-        if: (contains(needs.run_tests.result, 'failure') || contains(needs.vllm_perf_eval.result, 'failure')) && github.event_name != 'pull_request'
+        if: (contains(needs.run_tests.result, 'failure') || contains(needs.build_wheels.result, 'failure') || contains(needs.vllm_perf_eval.result, 'failure')) && github.event_name != 'pull_request'
         uses: jayqi/failed-build-issue-action@1a893bbf43ef1c2a8705e2b115cd4f0fe3c5649b  # v1.2.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

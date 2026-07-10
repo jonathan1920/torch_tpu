@@ -71,8 +71,8 @@ class TestFixturesTest(absltest.TestCase):
 
     # Assert weights and biases are integers.
     linear1, _, linear2 = model.layers
-    self._assert_linear_has_int_weights(linear1)
-    self._assert_linear_has_int_weights(linear2)
+    self._assert_linear_has_int_weights(linear1)  # pyrefly: ignore[bad-argument-type]
+    self._assert_linear_has_int_weights(linear2)  # pyrefly: ignore[bad-argument-type]
 
   def test_unusual_sequence_not_sequence(self):
     """Tests that UnusualSequence is not a collections.abc.Sequence."""

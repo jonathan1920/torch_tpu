@@ -14,12 +14,16 @@
 
 """Directly test the PyBind11 API for compiled mode, without using Dynamo."""
 
+import re
 import textwrap
 from typing import TypeAlias
 from absl.testing import absltest
 import torch
+from torch.fx.experimental.proxy_tensor import make_fx
 from torch_tpu._internal import execution_mode
+from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.device_utils import annotations
 from torch_tpu._internal.utils import utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
@@ -52,6 +56,131 @@ def eager_mode_defer_all():
 # TODO: add more test coverage for the direct compile API.
 class CompileApiTest(absltest.TestCase):
 
+  def test_traverse_and_compile_with_forced_layout(self):
+    # Case 1: Force default layout [1, 0]. Execution should PASS.
+    with eager_mode_defer_all():
+      x1 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z1 = x1 + x1
+
+    compile_result_pass = tpu_torch_compile.traverse_and_compile(
+        [z1], [x1], argument_layouts=[[1, 0]]
+    )
+    self.assertIsNotNone(compile_result_pass.executable)
+
+    input_tensor = torch.ones(2, 3, device=torch.device('tpu'))
+    input_tensor.cpu()  # Force materialization
+
+    input_layout = tpu_torch_compile.get_device_layout_if_materialized(
+        input_tensor
+    )
+    self.assertIsNotNone(input_layout)
+    self.assertEqual(input_layout[0], [1, 0])
+
+    results_pass = tpu_torch_compile.execute(
+        compile_result_pass.executable, [input_tensor]
+    )
+    self.assertLen(results_pass, 1)
+    results_pass[0].cpu()  # Verify it passes
+
+    # Case 2: Force non-default layout [0, 1]. Execution should FAIL with
+    # default input.
+    with eager_mode_defer_all():
+      x2 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z2 = x2 + x2
+
+    compile_result_fail = tpu_torch_compile.traverse_and_compile(
+        [z2], [x2], argument_layouts=[[0, 1]]
+    )
+    self.assertIsNotNone(compile_result_fail.executable)
+
+    results_fail = tpu_torch_compile.execute(
+        compile_result_fail.executable, [input_tensor]
+    )
+    self.assertLen(results_fail, 1)
+
+    with self.assertRaises(RuntimeError) as err:
+      results_fail[0].cpu()
+
+    self.assertIn('layout', str(err.exception).lower())
+
+  def test_compilation_cache_with_forced_layouts(self):
+    # Enable cache (should be enabled by default, but let's be sure)
+    torch.tpu._set_allow_cache(True)
+    torch.tpu._clear_cache()
+
+    initial_hits = torch.tpu._get_cache_hits()
+    initial_misses = torch.tpu._get_cache_misses()
+
+    # Compile Model 1 with forced layout [1, 0]
+    with eager_mode_defer_all():
+      x1 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z1 = x1 + x1
+
+    # First compilation: should be a MISS
+    compile_result1 = tpu_torch_compile.traverse_and_compile(
+        [z1], [x1], argument_layouts=[[1, 0]]
+    )
+    self.assertIsNotNone(compile_result1.executable)
+
+    self.assertEqual(torch.tpu._get_cache_hits(), initial_hits)
+    self.assertEqual(torch.tpu._get_cache_misses(), initial_misses + 1)
+
+    # Compile Model 2 with same forced layout [1, 0] (same graph structure)
+    with eager_mode_defer_all():
+      x2 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z2 = x2 + x2
+
+    # Second compilation with same layout: should be a HIT
+    compile_result2 = tpu_torch_compile.traverse_and_compile(
+        [z2], [x2], argument_layouts=[[1, 0]]
+    )
+    self.assertIsNotNone(compile_result2.executable)
+
+    self.assertEqual(torch.tpu._get_cache_hits(), initial_hits + 1)
+    self.assertEqual(torch.tpu._get_cache_misses(), initial_misses + 1)
+
+    # Compile Model 3 with DIFFERENT forced layout [0, 1]
+    with eager_mode_defer_all():
+      x3 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z3 = x3 + x3
+
+    # Third compilation with different layout: should be a MISS
+    compile_result3 = tpu_torch_compile.traverse_and_compile(
+        [z3], [x3], argument_layouts=[[0, 1]]
+    )
+    self.assertIsNotNone(compile_result3.executable)
+
+    self.assertEqual(torch.tpu._get_cache_hits(), initial_hits + 1)
+    self.assertEqual(torch.tpu._get_cache_misses(), initial_misses + 2)
+
+  def test_traverse_and_compile_skip_middle_layout(self):
+    with eager_mode_defer_all():
+      x = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      y = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      out = (x + y) * z
+
+    # 3 arguments: x, y, z. Skip y (middle one).
+    compile_result = tpu_torch_compile.traverse_and_compile(
+        [out], [x, y, z], argument_layouts=[[0, 1], [], [0, 1]]
+    )
+    self.assertIsNotNone(compile_result.executable)
+
+    # Verify execution with matching layouts passes
+    layout = annotations.TpuLayout(minor_to_major=[0, 1])
+    with annotations.LayoutContext(layout):
+      input_x = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      input_z = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+
+    # y keeps default layout (usually [1, 0] for 2x3)
+    input_y = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+
+    results = tpu_torch_compile.execute(
+        compile_result.executable, [input_x, input_y, input_z]
+    )
+    self.assertLen(results, 1)
+    results[0].cpu()  # Verify it passes
+
   def test_build_mlir(self):
     with eager_mode_defer_all():
       x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
@@ -79,20 +208,6 @@ class CompileApiTest(absltest.TestCase):
     mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
     self.assertIn('func @main', mlir_text)
     self.assertIn('%arg2', mlir_text)
-
-  def test_missing_input_to_build_mlir(self):
-    with eager_mode_defer_all():
-      x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
-      y = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
-      z = x + y
-    result_tensors = [z]
-    argument_tensors = [x]
-    with self.assertRaises(RuntimeError) as err:
-      tpu_torch_compile.build_mlir(result_tensors, argument_tensors)
-    self.assertIn(
-        'identified an argument that was not provided',
-        str(err.exception),
-    )
 
   def test_compile_backend_defaults_to_tpu(self):
     with get_mock_lookup_backend() as mock_lookup_backend:
@@ -189,6 +304,8 @@ class CompileApiTest(absltest.TestCase):
       padded_tensor = result[0]
       self.assertEqual(padded_tensor.shape, (1, 8))
       self.assertEqual(padded_tensor.dtype, torch.int64)
+      expected = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], dtype=torch.int64)
+      utils.assert_close(padded_tensor.cpu(), expected)
 
   def test_get_or_compile_slice_module(self):
     target_shapes = [[1, 4]]
@@ -590,6 +707,209 @@ class CompileApiTest(absltest.TestCase):
     # Assert: the tensor values are unchanged
     actual = y.cpu()
     utils.assert_close(actual=actual, expected=expected)
+
+  def test_optimization_barrier_on_non_contiguous_tensor(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.t()
+
+    model = Model()
+    x = torch.ones((2, 2), device=torch.device('tpu'))
+    self.assertEqual(x.shape, (2, 2))
+
+    gm = make_fx(model)(x)
+
+    # Mark the transpose node for recompute
+    for node in gm.graph.nodes:
+      if 'aten.t' in str(node.target):
+        node.meta['recompute'] = (
+            torch.utils.checkpoint.CheckpointPolicy.MUST_RECOMPUTE
+        )
+
+    # Compile with StaticCompiler.
+    compiler_instance = compiler.StaticCompiler()
+    x = torch.ones((2, 2), device=torch.device('tpu'))
+    # is_fwd=False triggers backward pass compilation which invokes marking of
+    # activation checkpoints.
+    executable = compiler_instance(gm, [x], is_fwd=False)
+
+    res = executable([x])
+
+    # Assert: the output should preserve the transposed strides (1, 2)
+    # instead of being contiguous (2, 1)
+    self.assertEqual(res.shape, (2, 2))
+    self.assertEqual(res.stride(), (1, 2))
+
+  def test_dynamic_placeholder(self):
+    max_dynamic_dim = 22
+    static_dim_1 = 128
+    static_dim_2 = 64
+    logical_dynamic_dim = 5
+
+    with eager_mode_defer_all():
+      sizes = [max_dynamic_dim, static_dim_1]
+      dtype = torch.bfloat16
+      bounds = ([0], [max_dynamic_dim])
+      dynamic_placeholder = tpu_torch_compile.dynamic_placeholder(
+          sizes, dtype, bounds
+      )
+      static_placeholder = torch.ones(
+          static_dim_1,
+          static_dim_2,
+          dtype=torch.bfloat16,
+          device='cpu',
+      ).to(device=torch.device('tpu'))
+      res = torch.matmul(dynamic_placeholder, static_placeholder)
+
+    result_tensors = [res]
+    argument_tensors = [dynamic_placeholder, static_placeholder]
+    mlir = tpu_torch_compile.build_mlir(
+        result_tensors, argument_tensors, use_stablehlo_bounds=True
+    )
+    mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
+
+    # Compare complete MLIR (ignoring dynamic module name)
+    normalized_mlir_text = re.sub(
+        r'module @tt_jit_[a-zA-Z0-9_]+ {',
+        'module @tt_jit_compile_api_test_test_dynamic_placeholder_mm {',
+        mlir_text,
+    )
+    expected_mlir = textwrap.dedent("""\
+        module @tt_jit_compile_api_test_test_dynamic_placeholder_mm {
+          func.func @main(%arg0: tensor<?x128xbf16, #stablehlo.bounds<22, ?>>, %arg1: tensor<128x64xbf16>) -> tensor<?x64xbf16, #stablehlo.bounds<22, ?>> {
+            %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<?x128xbf16, #stablehlo.bounds<22, ?>>, tensor<128x64xbf16>) -> tensor<?x64xbf16, #stablehlo.bounds<22, ?>>
+            return %0 : tensor<?x64xbf16, #stablehlo.bounds<22, ?>>
+          }
+        }""")
+
+    self.assertEqual(normalized_mlir_text.strip(), expected_mlir.strip())
+
+    # Compile and execute to verify the result
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    physical_dynamic_input = torch.randn(
+        max_dynamic_dim,
+        static_dim_1,
+        dtype=torch.bfloat16,
+        device=torch.device('tpu'),
+    )
+    logical_size = torch.tensor(
+        logical_dynamic_dim, dtype=torch.int32, device=torch.device('tpu')
+    )
+    dynamic_input = torch.ops.tpu.set_dimension_logical_size(
+        physical_dynamic_input, 0, logical_size
+    )
+
+    static_input = torch.randn(
+        static_dim_1,
+        static_dim_2,
+        dtype=torch.bfloat16,
+        device=torch.device('tpu'),
+    )
+
+    results = tpu_torch_compile.execute(
+        executable, [dynamic_input, static_input]
+    )
+    self.assertLen(results, 1)
+    self.assertEqual(results[0].shape, (max_dynamic_dim, static_dim_2))
+
+    # Copy to CPU first (might fail if ToLiteral checks shapes, but let's see)
+    res_cpu = results[0].cpu()
+    actual_res = res_cpu[:logical_dynamic_dim, :]
+    self.assertEqual(actual_res.shape, (logical_dynamic_dim, static_dim_2))
+
+    expected_dynamic_input = physical_dynamic_input[
+        :logical_dynamic_dim, :
+    ].cpu()
+    expected_static_input = static_input.cpu()
+    expected_res = torch.matmul(expected_dynamic_input, expected_static_input)
+
+    utils.assert_close(actual_res, expected_res, rtol=1e-2, atol=1e-2)
+
+  def test_get_default_layout(self):
+    layout = tpu_torch_compile.get_default_layout(torch.float32, [2, 3])
+    self.assertIsInstance(layout, tuple)
+    self.assertLen(layout, 3)
+    minor_to_major, tiles, element_size_in_bits = layout
+    self.assertIsInstance(minor_to_major, list)
+    self.assertIsInstance(tiles, list)
+    self.assertIsInstance(element_size_in_bits, int)
+    self.assertEqual(minor_to_major, [1, 0])
+
+  def test_is_device_shape_dynamic(self):
+    x_static = torch.ones(2, 3, device='tpu')
+    self.assertFalse(tpu_torch_compile.is_device_shape_dynamic(x_static))
+
+    max_dynamic_dim = 22
+    static_dim_1 = 128
+    logical_dynamic_dim = 5
+
+    physical_dynamic_input = torch.randn(
+        max_dynamic_dim,
+        static_dim_1,
+        device=torch.device('tpu'),
+    )
+    logical_size = torch.tensor(
+        logical_dynamic_dim, dtype=torch.int32, device=torch.device('tpu')
+    )
+    dynamic_input = torch.ops.tpu.set_dimension_logical_size(
+        physical_dynamic_input, 0, logical_size
+    )
+    self.assertTrue(tpu_torch_compile.is_device_shape_dynamic(dynamic_input))
+
+  def test_get_dynamic_pad_module(self):
+    tensor_info = [([1, 4], torch.int64)]
+    bounds_list = [([1], [8])]
+
+    compile_result = tpu_torch_compile.get_dynamic_pad_module(
+        tensor_info, bounds_list
+    )
+    self.assertIsNotNone(compile_result.executable)
+    self.assertIsNotNone(compile_result.module)
+
+    mlir_text = tpu_torch_compile.serialize_mlir_text(compile_result.module)
+    self.assertIn('stablehlo.set_dimension_size', mlir_text)
+    self.assertIn('stablehlo.get_dimension_size', mlir_text)
+
+    input_tensor = torch.ones(1, 4, dtype=torch.int64, device='tpu')
+    result = tpu_torch_compile.execute(
+        compile_result.executable, [input_tensor]
+    )
+    self.assertLen(result, 1)
+    padded_tensor = result[0]
+    self.assertEqual(padded_tensor.shape, (1, 8))
+    self.assertTrue(tpu_torch_compile.is_device_shape_dynamic(padded_tensor))
+
+    expected = torch.tensor([[1, 1, 1, 1]], dtype=torch.int64)
+    utils.assert_close(padded_tensor.cpu()[:, :4], expected)
+
+  def test_executable_layouts(self):
+    with eager_mode_defer_all():
+      x = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      y = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
+      z = x + y
+
+    mlir = tpu_torch_compile.build_mlir([z], [x, y])
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    param_layouts = executable.get_parameter_layouts()
+    output_layouts = executable.get_output_layouts()
+
+    self.assertIsInstance(param_layouts, list)
+    self.assertLen(param_layouts, 2)
+    self.assertIsInstance(output_layouts, list)
+    self.assertLen(output_layouts, 1)
+
+    for layout in param_layouts + output_layouts:
+      if layout is not None:
+        self.assertIsInstance(layout, tuple)
+        self.assertLen(layout, 3)
+        minor_to_major, tiles, element_size_in_bits = layout
+        self.assertIsInstance(minor_to_major, list)
+        self.assertIsInstance(tiles, list)
+        self.assertIsInstance(element_size_in_bits, int)
+        self.assertEqual(minor_to_major, [1, 0])
 
 
 if __name__ == '__main__':

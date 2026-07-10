@@ -58,7 +58,7 @@ absl::Status CheckInputs(const at::Tensor& self, int64_t num_samples,
   TT_RET_CHECK(num_samples > 0, error::kInvalidArgument)
       << "expected the number of samples to be > 0, got " << num_samples;
 
-  TT_RET_CHECK(!generator.has_value(), error::kUnimplemented)
+  TT_RET_CHECK(!generator.has_value(), error::kPythonNotImplementedError)
       << "generator is not yet supported";
 
   TT_RET_CHECK(replacement || num_samples <= self.size(-1),

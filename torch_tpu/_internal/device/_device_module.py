@@ -427,15 +427,15 @@ class _DeviceModule(abc.ABC):
 
 
 class TpuDeviceModule(_DeviceModule):
-  _device_type: Final[str] = "tpu"
+  _device_type: Final[str] = "tpu"  # pyrefly: ignore[bad-override]
 
 
 class XlaCudaDeviceModule(_DeviceModule):
-  _device_type: Final[str] = "xla_cuda"
+  _device_type: Final[str] = "xla_cuda"  # pyrefly: ignore[bad-override]
 
 
 class XlaCpuDeviceModule(_DeviceModule):
-  _device_type: Final[str] = "xla_cpu"
+  _device_type: Final[str] = "xla_cpu"  # pyrefly: ignore[bad-override]
 
 
 _DEVICE_MODULE_MAPPING: Final[Mapping[str, type[_DeviceModule]]] = {

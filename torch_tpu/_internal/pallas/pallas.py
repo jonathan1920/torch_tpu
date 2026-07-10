@@ -137,7 +137,7 @@ def jax_placeholder(
     return jax.ShapeDtypeStruct(
         get_global_shape(tensor.shape, mesh, partition_spec),
         jax_dtype,
-        sharding=jax.sharding.NamedSharding(mesh, partition_spec),
+        sharding=jax.sharding.NamedSharding(mesh, partition_spec),  # pyrefly: ignore[bad-argument-type]
     )
   else:
     return jax.ShapeDtypeStruct(tensor.shape, jax_dtype)
@@ -154,7 +154,7 @@ def jax_placeholders(
   if mesh is not None:
     return [
         jax_placeholder(tensor, mesh, partition_spec)
-        for tensor, partition_spec in zip(tensors, partition_specs)
+        for tensor, partition_spec in zip(tensors, partition_specs)  # pyrefly: ignore[bad-argument-type]
     ]
   else:
     return [jax_placeholder(tensor) for tensor in tensors]
@@ -308,9 +308,17 @@ def _verify_signature(signature: inspect.Signature):
       )
 
   def is_valid_result(result: Any):
-    if typing.get_origin(result) is tuple:
-      return all(_is_valid_base_type(arg) for arg in typing.get_args(result))
-    return _is_valid_base_type(result)
+    if result is None or result is types.NoneType:
+      return True
+    if result in (dict, list, tuple, set):
+      return True
+    origin = typing.get_origin(result)
+    if origin is None:
+      return _is_valid_base_type(result)
+    args = typing.get_args(result)
+    if origin in (tuple, list, set, dict, Union, types.UnionType):
+      return all(is_valid_result(arg) for arg in args)
+    return False
 
   invalid_arg_indices = [
       idx
@@ -372,9 +380,10 @@ def _get_torch_signature(signature: inspect.Signature):
       return torch.Tensor
     if (underling := _get_underlying_type_from_optional(typ)) is not None:
       return _map_jax_to_torch(underling) | types.NoneType
-    if (origin := typing.get_origin(typ)) is tuple:
+    origin = typing.get_origin(typ)
+    if origin is not None:
       mapped_args = (_map_jax_to_torch(arg) for arg in typing.get_args(typ))
-      return origin[*mapped_args]
+      return origin[*mapped_args]  # pyrefly: ignore[not-a-type]
 
     return typ
 
@@ -400,6 +409,17 @@ class JaxCallable:
 
   Supports static_argnums to allow passing non-tensor arguments directly.
   """
+  name: str
+  trace_key: str
+  jit_fn: Any
+  mesh: Any
+  input_partition_specs: Any
+  static_argnums: tuple[int, ...]
+  donate_argnums: list[int]
+  input_output_aliases: dict[int, int]
+  exported: Any
+  __signature__: Any
+  __globals__: Any
 
   def __init__(
       self,
@@ -441,6 +461,7 @@ class JaxCallable:
 
     self.name = name
     self.trace_key = trace_key
+    self.jit_fn = jit_fn
     self.output_shapes = {}  # cache output shapes per kernel specialization
     self.mesh = mesh
     self.input_partition_specs = input_partition_specs
@@ -503,6 +524,49 @@ class JaxCallable:
 
   def __call__(self, *args, **kwargs) -> _KernelResultT:
     self._validate_args(*args)
+
+    # Check if we are running with wrapper tensors
+    wrapper_arg = None
+    for arg in args:
+      if hasattr(arg, "_elem") and hasattr(arg, "_env"):
+        wrapper_arg = arg
+        break
+    if wrapper_arg is None:
+      for arg in kwargs.values():
+        if hasattr(arg, "_elem") and hasattr(arg, "_env"):
+          wrapper_arg = arg
+          break
+
+    if wrapper_arg is not None:
+      env = wrapper_arg._env
+      tensor_cls = type(wrapper_arg)
+
+      jax_args = []
+      for i, arg in enumerate(args):
+        if i in self.static_argnums:
+          jax_args.append(arg)
+        elif arg is None:
+          jax_args.append(None)
+        elif hasattr(arg, "_elem"):
+          jax_args.append(arg._elem)
+        else:
+          jax_args.append(arg)
+
+      jax_kwargs = {}
+      for k, v in kwargs.items():
+        if hasattr(v, "_elem"):
+          jax_kwargs[k] = v._elem
+        else:
+          jax_kwargs[k] = v
+
+      jax_results = self.jit_fn(*jax_args, **jax_kwargs)
+
+      def wrap(x):
+        if isinstance(x, jax.Array):
+          return tensor_cls(x, env)
+        return x
+
+      return jax.tree_util.tree_map(wrap, jax_results)
 
     kernel_key = _get_kernel_invocation_key(
         self.trace_key, args, kwargs, self.static_argnums
@@ -658,6 +722,7 @@ def custom_jax_kernel(
         jax_fn,
         static_argnums=static_argnums,
         donate_argnums=donate_argnums,
+        keep_unused=True,
     )
     return JaxCallable(
         name=name,

@@ -211,7 +211,7 @@ at::Tensor& AtenSigmoidBackwardGradInput(const at::Tensor& grad_output,
                          // pass. It is guaranteed to be floating point or
                          // complex in the backward pass.
             output.is_floating_point() || output.is_complex(),
-            error::kUnimplemented)
+            error::kPythonNotImplementedError)
             << "not implemented for input type "
             << ToString(output.scalar_type());
         TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=all dtypes are supported.

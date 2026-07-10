@@ -90,6 +90,7 @@ cc_library(name = "torch")
         rctx.symlink(torch_path, "_torch_internal_archive.zip")
         rctx.execute(["mkdir", "-p", "site-packages"])
         rctx.extract("_torch_internal_archive.zip", output = "site-packages")
+
     else:
         _create_shadow_tree(rctx, torch_path)
 

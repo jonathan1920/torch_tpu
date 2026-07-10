@@ -37,12 +37,14 @@ SortShloOutputs BuildSortShlo(mlir::MlirOp input_op, bool stable, int64_t dim,
                               bool descending) {
   const mlir::RankedTensorType inputType = GetTensorTypeOrDie(input_op);
   mlir::MlirBuilder& builder = input_op.getBuilder();
-  auto mlir_element_type = mlir::ElementType::I32;
-  mlir::MlirOp indices =
-      stablehlo::Iota(builder,
-                      makeTensorType(builder.getContext(), inputType.getShape(),
-                                     mlir_element_type),
-                      dim);
+  mlir::MlirOp indices = stablehlo::Iota(
+      builder,
+      makeTensorType(
+          builder.getContext(), inputType.getShape(),
+          // Per https://pytorch.org/docs/stable/generated/torch.sort.html, the
+          // output indices are of type LongTensor, i.e. 64-bit integer tensor.
+          mlir::ElementType::I64),
+      dim);
   auto comparator = [inputType, descending](mlir::RegionBuilder& rb) {
     mlir::OpBuilder& op_builder = rb.getOpBuilder();
     std::optional<llvm::StringRef> compare_type = std::nullopt;
@@ -50,7 +52,7 @@ SortShloOutputs BuildSortShlo(mlir::MlirOp input_op, bool stable, int64_t dim,
       compare_type = "TOTALORDER";
     }
     stablehlo::buildSortComparisonBody(
-        {inputType.getElementType(), op_builder.getI32Type()},
+        {inputType.getElementType(), op_builder.getI64Type()},
         descending ? stablehlo::ComparisonDirection::GT
                    : stablehlo::ComparisonDirection::LT,
         compare_type, &rb.getRegion(), &op_builder);

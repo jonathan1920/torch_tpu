@@ -445,6 +445,135 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.ops.tpu.dynamic_arange(start, end, step, 5, torch.int32)
 
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_shape_size_mismatch(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [torch.tensor(3, device=device, dtype=torch.int32)]
+    broadcast_dims = [1]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): shape list size must match static_shape size, got shape list size 1 and static_shape size 2""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_is_dynamic_size_mismatch(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [
+        torch.tensor(3, device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1]
+    static_shape = [3, 2]
+    is_dynamic = [True]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): is_dynamic size must match static_shape size, got is_dynamic size 1 and static_shape size 2""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_shape_not_0d(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [
+        torch.tensor([3], device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): shape tensor at index 0 must be a 0-D (scalar) tensor, got 1-D tensor""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_shape_not_int32(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [
+        torch.tensor(3.0, device=device, dtype=torch.float32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): shape must be a list of int32 tensors, got float32 tensor at index 0""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_broadcast_dims_size_mismatch(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [
+        torch.tensor(3, device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [1, 0]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): broadcast_dims size must match input rank, got broadcast_dims size 2 and input rank 1""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
+  @et.why_tpu_only(
+      "The op dynamic_broadcast is TPU only for internal use in"
+      " torch.compile()."
+  )
+  def test_dynamic_broadcast_broadcast_dims_out_of_range(self):
+    device = et.device()
+    x = torch.tensor([1.0, 2.0], device=device)
+    shape = [
+        torch.tensor(3, device=device, dtype=torch.int32),
+        torch.tensor(2, device=device, dtype=torch.int32),
+    ]
+    broadcast_dims = [2]
+    static_shape = [3, 2]
+    is_dynamic = [True, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_broadcast(): broadcast_dims must be in range [0, 2), got 2 for broadcast dim at index 0""",
+    ):
+      torch.ops.tpu.dynamic_broadcast(
+          x, shape, broadcast_dims, static_shape, is_dynamic
+      )
+
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_is_nonzero_with_more_than_one_value(self):
     with et.assert_raises_message(
@@ -481,7 +610,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     out = torch.ones(5, device="cpu", dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""masked_select(): the out tensor is expected to be on tpu, got cpu""",
+        tpu="""masked_select(): expected out tensor to be on tpu, got cpu""",
     ):
       torch.masked_select(t, mask, out=out)
 
@@ -608,6 +737,21 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       t = torch.ones(2, 2, device="tpu", dtype=torch.complex64)
       torch.cummin(t, dim=1)
+
+  @et.why_tpu_only("logcumsumexp dtype validation lives in the TPU kernel.")
+  def test_logcumsumexp_with_unsupported_integer_dtype(self):
+    """Tests logcumsumexp rejects non-floating-point inputs.
+
+    Only the functional path is exercised. The out= path decomposes through the
+    functional _logcumsumexp under functionalization, so AtenLogcumsumexpOut's
+    identical check is unreachable (marked ERROR_COV_INFEASIBLE in the kernel).
+    """
+    t = torch.ones(2, 2, device="tpu", dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""logcumsumexp(): expected the input dtype to be floating point, got int32""",
+    ):
+      torch.logcumsumexp(t, dim=1)
 
   @et.why_tpu_only("The behavior is undefined on CPU.")
   def test_index_add_with_assign_buffer_to_at_tensor_failure(self):
@@ -816,53 +960,6 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       op(tensor, out=out)
 
-  @et.why_tpu_only(
-      "TODO: make the behavior consistent between TPU and CPU - the latter"
-      " doesn't check pivots rank."
-  )
-  def test_lu_unpack_pivots_invalid_rank(self):
-    data = torch.ones(2, 4, 4, device=et.device())
-
-    # TODO: b/485613841 remove this test when the divergence is resolved.
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""lu_unpack(): lu_pivots must have at least 1 dimension, got 0""",
-    ):
-      pivots = torch.tensor(1, device=et.device(), dtype=torch.int32)
-      torch.lu_unpack(data, pivots)
-
-    # TODO: b/483972819 remove this test when the divergence is resolved.
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""lu_unpack(): expected the first output tensor to be a 3D tensor (pivots dimension + 1), got 1D of shape [4]""",
-    ):
-      pivots = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
-      out = _make_lu_unpack_outputs(p=(4,), l=(2, 4, 4), u=(2, 4, 4))
-      torch.lu_unpack(data, pivots, out=out)
-
-  @et.why_tpu_only(
-      "TODO: make the behavior consistent between TPU and CPU - the latter"
-      " doesn't check pivots dimensions."
-  )
-  def test_lu_unpack_pivots_invalid_dimension(self):
-    data = torch.ones(2, 4, 4, device=et.device())
-
-    # TODO: b/485613841 remove this test when the divergence is resolved.
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""lu_unpack(): pivots size must be less than or equal to the size of the matrix, got 5 and 4""",
-    ):
-      pivots = torch.ones(2, 5, device=et.device(), dtype=torch.int32)
-      torch.lu_unpack(data, pivots)
-
-    # TODO: b/485613841 remove this test when the divergence is resolved.
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""lu_unpack(): pivots and tensor must have the same batch dimensions, got [2] and [3]""",
-    ):
-      pivots = torch.ones(3, 4, device=et.device(), dtype=torch.int32)
-      torch.lu_unpack(data, pivots)
-
   # CPU kernel raises an `IndexError`, instead of a `RuntimeError`, because it
   # tries to get `pivots.size(-1)` of a 0-dim tensor.
   @et.why_tpu_only("TODO: make the behavior consistent between TPU and CPU.")
@@ -881,6 +978,24 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         tpu="""linalg_lu_solve(): pivots must have at least 1 dimension, got 0""",
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
+
+  # CPU kernel raises an `IndexError`, instead of a `RuntimeError`, because it
+  # tries to get `pivots.size(-1)` of a 0-dim tensor.
+  @et.why_tpu_only("TODO: make the behavior consistent between TPU and CPU.")
+  def test_lu_unpack_pivots_rank_too_low(self):
+    lu_data = torch.ones(4, 4, device=et.device())
+    lu_pivots = torch.tensor(0, device=et.device(), dtype=torch.int32)
+
+    # Call the out overload of lu_unpack() op.
+    out = _make_lu_unpack_outputs(p=(4, 4), l=(4, 4), u=(4, 4))
+
+    # TODO: b/485613841 also test CPU when the TPU kernel is fixed, raising an
+    # `IndexError`, instead of an `RuntimeError`.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""lu_unpack(): lu_pivots must have at least 1 dimension, got 0""",
+    ):
+      torch.lu_unpack(lu_data, lu_pivots, out=out)
 
   # CPU kernel runs successfully, broadcasting the inputs.
   @et.why_tpu_only("TODO: make the behavior consistent between TPU and CPU.")
@@ -924,27 +1039,6 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         message_reviewed_by="wan",
     ):
       torch.ops.aten.index(inp, indices)
-
-  # TorchTPU behaves differently from CPU/GPU kernels. Instead of resizing the
-  # given output, TorchTPU raises an error.
-  @et.why_tpu_only(
-      "TODO: b/487653209 - make the behavior consistent between TPU and CPU."
-  )
-  def test_linalg_inv_ex_output_rank_mismatch(self):
-    a = torch.ones(4, 4, device=et.device())
-
-    # Call the out overload of linalg.inv_ex() op.
-    out = (
-        torch.ones(4, 4, 4, device=et.device()),
-        torch.ones(4, 4, 4, device=et.device()),
-    )
-
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""linalg_inv_ex(): expected the inverse output shape to match the input tensor of shape [4, 4], got [4, 4, 4]""",
-        message_reviewed_by="wan",
-    ):
-      torch.linalg.inv_ex(a, out=out)
 
   @et.why_tpu_only("TODO: support sparse_grad in gather() on TPU.")
   def test_gather_with_sparse_grad(self):
@@ -1320,6 +1414,71 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.ops.tpu.set_dimension_logical_size(inp, 0, size)
 
+  @et.why_tpu_only(
+      "The op dynamic_reshape is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_reshape_shape_size_mismatch(self):
+    inp = torch.ones(2, 2, device=et.device())
+    shape = [torch.tensor(2, device=et.device(), dtype=torch.int32)]
+    static_shape = [2, 2]
+    is_dynamic = [False, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_reshape(): shape list size must match static_shape size, got shape list size 1 and static_shape size 2""",
+    ):
+      torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
+
+  @et.why_tpu_only(
+      "The op dynamic_reshape is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_reshape_is_dynamic_size_mismatch(self):
+    inp = torch.ones(2, 2, device=et.device())
+    shape = [
+        torch.tensor(2, device=et.device(), dtype=torch.int32),
+        torch.tensor(2, device=et.device(), dtype=torch.int32),
+    ]
+    static_shape = [2, 2]
+    is_dynamic = [False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_reshape(): is_dynamic size must match static_shape size, got is_dynamic size 1 and static_shape size 2""",
+    ):
+      torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
+
+  @et.why_tpu_only(
+      "The op dynamic_reshape is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_reshape_shape_not_0d(self):
+    inp = torch.ones(2, 2, device=et.device())
+    shape = [
+        torch.tensor([2], device=et.device(), dtype=torch.int32),
+        torch.tensor(2, device=et.device(), dtype=torch.int32),
+    ]
+    static_shape = [2, 2]
+    is_dynamic = [False, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_reshape(): shape tensor at index 0 must be a 0-D (scalar) tensor, got 1-D tensor""",
+    ):
+      torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
+
+  @et.why_tpu_only(
+      "The op dynamic_reshape is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_reshape_shape_not_int32(self):
+    inp = torch.ones(2, 2, device=et.device())
+    shape = [
+        torch.tensor(2.0, device=et.device(), dtype=torch.float32),
+        torch.tensor(2, device=et.device(), dtype=torch.int32),
+    ]
+    static_shape = [2, 2]
+    is_dynamic = [False, False]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_reshape(): shape must be a list of int32 tensors, got float32 tensor at index 0""",
+    ):
+      torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
+
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_leaky_relu_backward_negative_slope_with_self_is_result(self):
     grad_output = torch.ones(2, device=et.device())
@@ -1386,6 +1545,15 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           tensor_info,
           bounds_list,
       )
+
+  @et.why_tpu_only("Dynamic compilation is TPU-only.")
+  def test_get_dynamic_pad_module_empty_shapes(self):
+    expected = re.compile(r".*DynamicPadModule requires at least one shape\..*")
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=expected,
+    ):
+      tpu_torch_compile.get_dynamic_pad_module([], [])
 
   @parameterized.named_parameters(
       dict(
@@ -1504,6 +1672,144 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       tpu_torch_compile.execute(executable, [x, y], [[15]])
 
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_traverse_and_compile_invalid_layout_size(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(2, 3, device="cpu").to(device=et.device())
+      z = x + x
+
+    # 1 argument, but 2 layouts provided. Should fail.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""number of argument_layouts must match with the number of argument_tensors, got number of argument_layouts 2 and number of argument_tensors 1""",
+    ):
+      tpu_torch_compile.traverse_and_compile(
+          [z], [x], argument_layouts=[[1, 0], [0, 1]]
+      )
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_traverse_and_compile_invalid_layout_values(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(2, 3, device="cpu").to(device=et.device())
+      z = x + x
+
+    # Rank mismatch: shape [2, 3] (rank 2), layout [0] (rank 1)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""invalid layout for argument 0, got layout [0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.traverse_and_compile([z], [x], argument_layouts=[[0]])
+
+    # Out of bounds index: shape [2, 3], layout [2, 0]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""invalid layout for argument 0, got layout [2, 0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.traverse_and_compile(
+          [z], [x], argument_layouts=[[2, 0]]
+      )
+
+    # Duplicate index: shape [2, 3], layout [0, 0]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""invalid layout for argument 0, got layout [0, 0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.traverse_and_compile(
+          [z], [x], argument_layouts=[[0, 0]]
+      )
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_missing_input_to_build_mlir(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(10, device="cpu").to(device=et.device())
+      y = torch.ones(10, device="cpu").to(device=et.device())
+      z = x + y
+    result_tensors = [z]
+    argument_tensors = [x]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=re.compile(
+            r"compile_mlir\(\): failed to validate and reorder inputs: "
+            r"identified an argument that was not provided:"
+            r" DeviceBufferRef:[\s\S]*"
+        ),
+    ):
+      tpu_torch_compile.build_mlir(result_tensors, argument_tensors)
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_compile_mlir_invalid_layout_size(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(2, 3, device="cpu").to(device=et.device())
+      z = x + x
+    mlir = tpu_torch_compile.build_mlir([z], [x])
+
+    # 1 argument, but 2 layouts provided. Should fail.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): number of argument layouts (2) does not match number of arguments in MLIR main function (1)""",
+    ):
+      tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[1, 0], [0, 1]])
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_compile_mlir_invalid_layout_values(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(2, 3, device="cpu").to(device=et.device())
+      z = x + x
+    mlir = tpu_torch_compile.build_mlir([z], [x])
+
+    # Rank mismatch: shape [2, 3] (rank 2), layout [0] (rank 1)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): invalid layout for argument 0, got layout [0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[0]])
+
+    # Out of bounds index: shape [2, 3], layout [2, 0]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): invalid layout for argument 0, got layout [2, 0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[2, 0]])
+
+    # Duplicate index: shape [2, 3], layout [0, 0]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): invalid layout for argument 0, got layout [0, 0] for shape [2, 3]""",
+    ):
+      tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[0, 0]])
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_compile_mlir_missing_main(self):
+    mlir_text = """
+module {
+  func.func @not_main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+    return %arg0 : tensor<2x3xf32>
+  }
+}
+"""
+    module = tpu_torch_compile.parse_mlir_text(mlir_text)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): could not find 'main' function in MLIR module""",
+    ):
+      tpu_torch_compile.compile_mlir(module, argument_layouts=[[1, 0]])
+
+  @et.why_tpu_only("For testing TPU compile API validation.")
+  def test_compile_mlir_invalid_argument_type(self):
+    mlir_text = """
+module {
+  func.func @main(%arg0: tensor<2x3xi17>) {
+    return
+  }
+}
+"""
+    module = tpu_torch_compile.parse_mlir_text(mlir_text)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""compile_mlir(): failed to convert MLIR type to XLA shape""",
+    ):
+      tpu_torch_compile.compile_mlir(module, argument_layouts=[[1, 0]])
+
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_mm_dtype_outdtype_mismatch(self):
     lhs = torch.ones(3, 4, device=et.device(), dtype=torch.int32)
@@ -1517,29 +1823,68 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.ops.aten.mm.dtype_out(lhs, rhs, out_dtype=torch.int32, out=out)
 
-  # PyTorch CPU does not raise an error when g size does not match the size of
-  # weight in dim 0.
-  @et.why_tpu_only("TODO: make the behavior consistent with CPU.")
+  # PyTorch CPU does not raise an error when 1D g size does not match the size
+  # of weight in the normalization dimension. TPU validates this strictly to
+  # avoid division shape mismatches during StableHLO compilation.
+  @et.why_tpu_only(
+      "TPU enforces strict shape validation to avoid StableHLO compilation"
+      " failures, whereas CPU/CUDA behavior is unsafe or undefined."
+  )
   def test_weight_norm_interface_g_size_mismatch(self):
     v = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     g = torch.ones(3, device=et.device(), dtype=torch.float32)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""weight_norm_interface(): expected the size of the weight magnitude (g) to be 2, which is the size of the weight at dimension 0, got 3""",
+        tpu="""weight_norm_interface(): expected weight magnitude (g) size 0 to match weight size 2 at dimension 0, got 3""",
         message_reviewed_by="wan",
     ):
       torch._weight_norm(v, g, 0)
 
-  # PyTorch CPU does not raise an error when g has more than 1 dimension.
-  @et.why_tpu_only("TODO: make the behavior consistent with CPU.")
-  def test_weight_norm_interface_g_rank_too_large(self):
+  # PyTorch CPU does not raise an error when g has invalid shape for same rank
+  # (the CPU fused kernel silently ignores extra elements). However, TPU must
+  # validate this strictly because incompatible shapes will cause division and
+  # broadcasting failures during StableHLO compilation.
+  @et.why_tpu_only(
+      "TPU enforces strict shape validation to avoid StableHLO compilation"
+      " failures, whereas CPU/CUDA behavior is unsafe or undefined."
+  )
+  def test_weight_norm_interface_g_shape_mismatch_same_rank(self):
     v = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     g = torch.ones(3, 3, device=et.device(), dtype=torch.float32)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""weight_norm_interface(): expected the weight magnitude (g) to be a scalar or a 1D tensor, got a tensor of shape [3, 3]""",
+        tpu="""weight_norm_interface(): expected the size of the weight magnitude (g) at dimension 0 to be 1, got 3""",
+        message_reviewed_by="wan",
+    ):
+      torch._weight_norm(v, g, 1)
+
+  @et.why_tpu_only(
+      "TPU enforces strict shape validation to avoid StableHLO compilation"
+      " failures, whereas CPU/CUDA behavior is unsafe or undefined."
+  )
+  def test_weight_norm_interface_g_rank_mismatch(self):
+    v = torch.ones(2, 3, 4, device=et.device(), dtype=torch.float32)
+    g = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""weight_norm_interface(): expected the weight magnitude (g) to be a scalar, a 1D tensor, or have the same rank as v, got a tensor of shape [2, 3]""",
+        message_reviewed_by="wan",
+    ):
+      torch._weight_norm(v, g, 0)
+
+  @et.why_tpu_only(
+      "TPU enforces strict shape validation to avoid StableHLO compilation"
+      " failures, whereas CPU/CUDA behavior is unsafe or undefined."
+  )
+  def test_weight_norm_interface_g_shape_mismatch_norm_dim(self):
+    v = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    g = torch.ones(1, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""weight_norm_interface(): expected the size of the weight magnitude (g) at dimension 1 to be 3, got 2""",
         message_reviewed_by="wan",
     ):
       torch._weight_norm(v, g, 1)
@@ -1746,6 +2091,840 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         tpu="""pdist_backward(): expected the p value to be >= 0, got -1""",
     ):
       torch.ops.aten._pdist_backward(grad, self_tensor, -1.0, pdist)
+
+  @et.why_tpu_only("Testing TPU device generator initialization failure.")
+  def test_default_generator_init_failure(self):
+    tt_testing.reset_default_device_generators()
+    tt_testing.set_init_default_generator_failure("Simulated init failure")
+    try:
+      # The first call to default_generators[] should fail.
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu="""Simulated init failure""",
+      ):
+        _ = torch.tpu.default_generators[0]
+      # Subsequent calls to default_generators[] should fail too.
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu="""Simulated init failure""",
+      ):
+        _ = torch.tpu.default_generators[0]
+    finally:
+      tt_testing.set_init_default_generator_failure("")
+      tt_testing.reset_default_device_generators()
+
+  @et.why_tpu_only("Can only test device mismatch in a TPU test.")
+  def test_prod_mixed_device_error(self):
+    """Tests prod() with a TPU input and CPU out tensor."""
+    t = torch.tensor([1.0, 2.0, 3.0], device=et.device())
+    out = torch.empty(1, device="cpu")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""prod(): expected the output tensor to be on 'tpu', got 'cpu'""",
+    ):
+      torch.prod(t, dim=0, out=out)
+
+  @et.why_tpu_only(
+      "GPU AdamW error handling differences for unsupported dtypes."
+  )
+  def test_fused_adamw_default_int32_dtype(self):
+    device = et.device()
+    p_int = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g_int = torch.tensor([1, 1], dtype=torch.int32, device=device)
+    ea_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    eas_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adamw_(): expected the input dtype to be floating-point, got int32""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adamw_.default(
+          [p_int],
+          [g_int],
+          [ea_int],
+          [eas_int],
+          [],
+          [step],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU AdamW error handling differences for unsupported dtypes."
+  )
+  def test_fused_adamw_default_complex64_dtype(self):
+    device = et.device()
+    p_cplx = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=device)
+    g_cplx = torch.tensor([0.1 + 0.1j], dtype=torch.complex64, device=device)
+    ea_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    eas_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adamw_(): expected the input dtype to be floating-point, got complex64""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adamw_.default(
+          [p_cplx],
+          [g_cplx],
+          [ea_cplx],
+          [eas_cplx],
+          [],
+          [step],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU AdamW error handling differences for unsupported dtypes."
+  )
+  def test_fused_adamw_tensor_lr_int32_dtype(self):
+    device = et.device()
+    p_int = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g_int = torch.tensor([1, 1], dtype=torch.int32, device=device)
+    ea_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    eas_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+    lr_tensor = torch.tensor(0.001, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adamw_(): expected the input dtype to be floating-point, got int32""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adamw_.tensor_lr(
+          [p_int],
+          [g_int],
+          [ea_int],
+          [eas_int],
+          [],
+          [step],
+          lr=lr_tensor,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU AdamW error handling differences for unsupported dtypes."
+  )
+  def test_fused_adamw_tensor_lr_complex64_dtype(self):
+    device = et.device()
+    p_cplx = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=device)
+    g_cplx = torch.tensor([0.1 + 0.1j], dtype=torch.complex64, device=device)
+    ea_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    eas_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+    lr_tensor = torch.tensor(0.001, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adamw_(): expected the input dtype to be floating-point, got complex64""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adamw_.tensor_lr(
+          [p_cplx],
+          [g_cplx],
+          [ea_cplx],
+          [eas_cplx],
+          [],
+          [step],
+          lr=lr_tensor,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU AdamW error handling differences for mismatched list sizes."
+  )
+  def test_fused_adamw_mismatched_grads_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adamw_(): expected grads to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adamw_.default(
+          [p1, p2],
+          [g1],
+          [ea1, ea1],
+          [eas1, eas1],
+          [],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU AdamW error handling differences for mismatched list sizes."
+  )
+  def test_fused_adamw_mismatched_exp_avgs_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adamw_(): expected exp_avgs to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adamw_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1],
+          [eas1, eas1],
+          [],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU AdamW error handling differences for mismatched list sizes."
+  )
+  def test_fused_adamw_mismatched_exp_avg_sqs_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adamw_(): expected exp_avg_sqs to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adamw_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1, ea1],
+          [eas1],
+          [],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU AdamW error handling differences for mismatched list sizes."
+  )
+  def test_fused_adamw_mismatched_state_steps_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adamw_(): expected state_steps to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adamw_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1, ea1],
+          [eas1, eas1],
+          [],
+          [step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU AdamW error handling differences for mismatched list sizes."
+  )
+  def test_fused_adamw_mismatched_max_exp_avg_sqs_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adamw_(): expected max_exp_avg_sqs to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adamw_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1, ea1],
+          [eas1, eas1],
+          [eas1],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=True,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for unsupported dtypes."
+  )
+  def test_fused_adam_default_int32_dtype(self):
+    device = et.device()
+    p_int = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g_int = torch.tensor([1, 1], dtype=torch.int32, device=device)
+    ea_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    eas_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adam_(): expected the input dtype to be floating-point, got int32""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p_int],
+          [g_int],
+          [ea_int],
+          [eas_int],
+          [],
+          [step],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for unsupported dtypes."
+  )
+  def test_fused_adam_default_complex64_dtype(self):
+    device = et.device()
+    p_cplx = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=device)
+    g_cplx = torch.tensor([0.1 + 0.1j], dtype=torch.complex64, device=device)
+    ea_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    eas_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adam_(): expected the input dtype to be floating-point, got complex64""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p_cplx],
+          [g_cplx],
+          [ea_cplx],
+          [eas_cplx],
+          [],
+          [step],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for unsupported dtypes."
+  )
+  def test_fused_adam_tensor_lr_int32_dtype(self):
+    device = et.device()
+    p_int = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g_int = torch.tensor([1, 1], dtype=torch.int32, device=device)
+    ea_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    eas_int = torch.tensor([0, 0], dtype=torch.int32, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+    lr_tensor = torch.tensor(0.001, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adam_(): expected the input dtype to be floating-point, got int32""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.tensor_lr(
+          [p_int],
+          [g_int],
+          [ea_int],
+          [eas_int],
+          [],
+          [step],
+          lr=lr_tensor,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for unsupported dtypes."
+  )
+  def test_fused_adam_tensor_lr_complex64_dtype(self):
+    device = et.device()
+    p_cplx = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=device)
+    g_cplx = torch.tensor([0.1 + 0.1j], dtype=torch.complex64, device=device)
+    ea_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    eas_cplx = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+    step = torch.tensor(1.0, dtype=torch.float32, device=device)
+    lr_tensor = torch.tensor(0.001, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_adam_(): expected the input dtype to be floating-point, got complex64""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.tensor_lr(
+          [p_cplx],
+          [g_cplx],
+          [ea_cplx],
+          [eas_cplx],
+          [],
+          [step],
+          lr=lr_tensor,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for mismatched list sizes."
+  )
+  def test_fused_adam_mismatched_grads_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adam_(): expected grads to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p1, p2],
+          [g1],
+          [ea1, ea1],
+          [eas1, eas1],
+          [],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for mismatched list sizes."
+  )
+  def test_fused_adam_mismatched_exp_avgs_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adam_(): expected exp_avgs to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1],
+          [eas1, eas1],
+          [],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for mismatched list sizes."
+  )
+  def test_fused_adam_mismatched_exp_avg_sqs_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adam_(): expected exp_avg_sqs to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1, ea1],
+          [eas1],
+          [],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for mismatched list sizes."
+  )
+  def test_fused_adam_mismatched_state_steps_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adam_(): expected state_steps to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1, ea1],
+          [eas1, eas1],
+          [],
+          [step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "GPU Adam error handling differences for mismatched list sizes."
+  )
+  def test_fused_adam_mismatched_max_exp_avg_sqs_size(self):
+    device = et.device()
+    p1 = torch.tensor([1.0], dtype=torch.float32, device=device)
+    p2 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    g1 = torch.tensor([0.1], dtype=torch.float32, device=device)
+    ea1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    eas1 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    step1 = torch.tensor(1.0, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_adam_(): expected max_exp_avg_sqs to have the same number of tensors as self, got 1""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_adam_.default(
+          [p1, p2],
+          [g1, g1],
+          [ea1, ea1],
+          [eas1, eas1],
+          [eas1],
+          [step1, step1],
+          lr=0.001,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=True,
+          maximize=False,
+      )
+
+  @et.why_tpu_only(
+      "Verifying TPU-specific error formatting and type validation for"
+      " fused_sgd"
+  )
+  def test_fused_sgd_default_int32_dtype(self):
+    device = "tpu"
+    p = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    mb = torch.tensor([1, 2], dtype=torch.int32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_sgd_(): expected the input dtype to be floating-point, got int32""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_sgd_.default(
+          [p],
+          [g],
+          [mb],
+          weight_decay=0.01,
+          momentum=0.9,
+          lr=0.1,
+          dampening=0.0,
+          nesterov=False,
+          maximize=False,
+          is_first_step=False,
+      )
+
+  @et.why_tpu_only(
+      "Verifying TPU-specific error formatting and type validation for"
+      " fused_sgd"
+  )
+  def test_fused_sgd_default_complex64_dtype(self):
+    device = "tpu"
+    p = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=device)
+    g = torch.tensor([0.1 + 0.1j], dtype=torch.complex64, device=device)
+    mb = torch.tensor([0.0 + 0.0j], dtype=torch.complex64, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_sgd_(): expected the input dtype to be floating-point, got complex64""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_sgd_.default(
+          [p],
+          [g],
+          [mb],
+          weight_decay=0.01,
+          momentum=0.9,
+          lr=0.1,
+          dampening=0.0,
+          nesterov=False,
+          maximize=False,
+          is_first_step=False,
+      )
+
+  @et.why_tpu_only(
+      "Verifying TPU-specific error formatting and type validation for"
+      " fused_sgd"
+  )
+  def test_fused_sgd_tensor_lr_int32_dtype(self):
+    device = "tpu"
+    p = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    g = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    mb = torch.tensor([1, 2], dtype=torch.int32, device=device)
+    lr = torch.tensor(0.1, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fused_sgd_(): expected the input dtype to be floating-point, got int32""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_sgd_.tensor_lr(
+          [p],
+          [g],
+          [mb],
+          weight_decay=0.01,
+          momentum=0.9,
+          lr=lr,
+          dampening=0.0,
+          nesterov=False,
+          maximize=False,
+          is_first_step=False,
+      )
+
+  @et.why_tpu_only(
+      "Verifying TPU-specific error formatting and list size validation for"
+      " fused_sgd"
+  )
+  def test_fused_sgd_mismatched_grads_size(self):
+    device = "tpu"
+    p = [
+        torch.tensor([1.0], dtype=torch.float32, device=device),
+        torch.tensor([2.0], dtype=torch.float32, device=device),
+    ]
+    g = [torch.tensor([0.1], dtype=torch.float32, device=device)]
+    mb = [
+        torch.tensor([0.0], dtype=torch.float32, device=device),
+        torch.tensor([0.0], dtype=torch.float32, device=device),
+    ]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_sgd_(): expected grads to have the same number of tensors as self, got 1""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_sgd_.default(
+          p,
+          g,
+          mb,
+          weight_decay=0.01,
+          momentum=0.9,
+          lr=0.1,
+          dampening=0.0,
+          nesterov=False,
+          maximize=False,
+          is_first_step=False,
+      )
+
+  @et.why_tpu_only(
+      "Verifying TPU-specific error formatting and list size validation for"
+      " fused_sgd"
+  )
+  def test_fused_sgd_mismatched_momentum_buffer_size(self):
+    device = "tpu"
+    p = [
+        torch.tensor([1.0], dtype=torch.float32, device=device),
+        torch.tensor([2.0], dtype=torch.float32, device=device),
+    ]
+    g = [
+        torch.tensor([0.1], dtype=torch.float32, device=device),
+        torch.tensor([0.2], dtype=torch.float32, device=device),
+    ]
+    mb = [torch.tensor([0.0], dtype=torch.float32, device=device)]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_sgd_(): expected momentum_buffer_list to have the same number of tensors as self, got 1""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.ops.aten._fused_sgd_.default(
+          p,
+          g,
+          mb,
+          weight_decay=0.01,
+          momentum=0.9,
+          lr=0.1,
+          dampening=0.0,
+          nesterov=False,
+          maximize=False,
+          is_first_step=False,
+      )
+
+  @et.why_tpu_only(
+      "Custom op sparse_dense_matmul_grad_with_adagrad is TPU only."
+  )
+  def test_sparse_dense_matmul_grad_with_adagrad_invalid_accumulator_dim(self):
+    device = et.device()
+    row_pointers = torch.tensor([0, 1], dtype=torch.int32, device=device)
+    embedding_ids = torch.tensor([0], dtype=torch.int32, device=device)
+    sample_ids = torch.tensor([0], dtype=torch.int32, device=device)
+    gains = torch.tensor([1.0], dtype=torch.float32, device=device)
+    embedding_table = torch.ones(10, 8, dtype=torch.float32, device=device)
+    accumulator_3d = torch.ones(10, 8, 1, dtype=torch.float32, device=device)
+    activations_grad = torch.ones(1, 8, dtype=torch.float32, device=device)
+    learning_rate = torch.tensor(0.01, dtype=torch.float32, device=device)
+    epsilon = torch.tensor(1e-10, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_dense_matmul_grad_with_adagrad(): materialization failed with: Accumulator must be 1D (row-wise) or 2D (standard)""",
+    ):
+      torch.ops.tpu.sparse_dense_matmul_grad_with_adagrad(
+          row_pointers,
+          embedding_ids,
+          sample_ids,
+          gains,
+          embedding_table,
+          accumulator_3d,
+          activations_grad,
+          learning_rate,
+          epsilon,
+          device_batch_size=1,
+          max_ids_per_partition=1,
+          max_unique_ids_per_partition=1,
+          computation_name="test_acc_3d",
+      )
+
+    accumulator_wrong_dim = torch.ones(
+        10, 4, dtype=torch.float32, device=device
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_dense_matmul_grad_with_adagrad(): materialization failed with: Accumulator dimension 1 must match embedding dimension; expected 8, got 4""",
+    ):
+      torch.ops.tpu.sparse_dense_matmul_grad_with_adagrad(
+          row_pointers,
+          embedding_ids,
+          sample_ids,
+          gains,
+          embedding_table,
+          accumulator_wrong_dim,
+          activations_grad,
+          learning_rate,
+          epsilon,
+          device_batch_size=1,
+          max_ids_per_partition=1,
+          max_unique_ids_per_partition=1,
+          computation_name="test_acc_dim",
+      )
 
 
 if __name__ == "__main__":

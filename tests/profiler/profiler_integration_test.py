@@ -125,7 +125,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
         record_shapes=True,
@@ -169,6 +169,86 @@ class ProfilerIntegrationTest(parameterized.TestCase):
           f"XPlane missing! contents: {xplane_contents}",
       )
 
+  def test_kineto_key_averages_eager(self):
+    device = torch.device("tpu")
+
+    a = torch.ones((16, 16)).to(device)
+    b = torch.ones((16, 16)).to(device)
+    # Warmup
+    c = a @ b
+    tpu_sync.synchronize(c)
+
+    _cleanup_profile_dir()
+
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
+        ],
+        record_shapes=True,
+    ) as prof:
+      c = a @ b
+      tpu_sync.synchronize(c)
+      prof.step()
+
+    key_averages = prof.key_averages()
+    table_str = key_averages.table()
+    print(table_str, flush=True)
+
+    # Verify that the table output includes TPU time columns
+    self.assertIn("TPU time", table_str)
+
+    # Verify there are events with non-zero tpu time
+    has_tpu_time = any(
+        getattr(evt, "device_time_total", 0) > 0 for evt in key_averages
+    )
+    self.assertTrue(
+        has_tpu_time,
+        "Expected non-zero TPU time in key_averages for eager mode",
+    )
+
+  def test_kineto_key_averages_compile(self):
+    device = torch.device("tpu")
+
+    def my_func(a, b):
+      return a @ b
+
+    compiled_func = torch.compile(my_func, backend="tpu")
+
+    a = torch.ones((16, 16)).to(device)
+    b = torch.ones((16, 16)).to(device)
+    # Warmup
+    c = compiled_func(a, b)
+    tpu_sync.synchronize(c)
+
+    _cleanup_profile_dir()
+
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
+        ],
+        record_shapes=True,
+    ) as prof:
+      c = compiled_func(a, b)
+      tpu_sync.synchronize(c)
+      prof.step()
+
+    table_str = prof.key_averages().table(
+        sort_by="self_cpu_time_total", row_limit=10
+    )
+    print(table_str, flush=True)
+
+    self.assertIn("TPU time", table_str)
+
+    has_tpu_time = any(
+        getattr(evt, "device_time_total", 0) > 0 for evt in prof.key_averages()
+    )
+    self.assertTrue(
+        has_tpu_time,
+        "Expected non-zero TPU time in key_averages for torch.compile mode",
+    )
+
   def test_automatic_xplane_path(self):
     device = torch.device("tpu")
 
@@ -185,7 +265,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
     ) as prof:
@@ -223,7 +303,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
 
     activities = [
         torch.profiler.ProfilerActivity.CPU,
-        torch.profiler.ProfilerActivity.PrivateUse1,
+        torch.profiler.ProfilerActivity.TPU,  # type: ignore
     ]
 
     _cleanup_profile_dir()
@@ -274,7 +354,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
         experimental_config=config,
@@ -309,7 +389,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(custom_run_dir),
         experimental_config=config,
@@ -346,7 +426,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
         experimental_config=config,
@@ -389,7 +469,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
       with torch.profiler.profile(
           activities=[
               torch.profiler.ProfilerActivity.CPU,
-              torch.profiler.ProfilerActivity.PrivateUse1,
+              torch.profiler.ProfilerActivity.TPU,  # type: ignore
           ],
           on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
           experimental_config=bad_config,
@@ -416,7 +496,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(
             str(output_dir)
@@ -477,7 +557,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
       with torch.profiler.profile(
           activities=[
               torch.profiler.ProfilerActivity.CPU,
-              torch.profiler.ProfilerActivity.PrivateUse1,
+              torch.profiler.ProfilerActivity.TPU,  # type: ignore
           ],
           on_trace_ready=torch.profiler.tensorboard_trace_handler(
               str(output_dir)
@@ -508,7 +588,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(
             str(output_dir)
@@ -560,6 +640,62 @@ class ProfilerIntegrationTest(parameterized.TestCase):
       stop_workers = True
       for t in threads:
         t.join()
+
+  def test_timestamps(self):
+
+    tpu_device = torch.device("tpu")
+
+    def model_tpu(x):
+      return x @ x
+
+    def model_cpu(x):
+      return x @ x
+
+    inputs = torch.ones(10, 10).to(tpu_device)
+
+    activities = [
+        torch.profiler.ProfilerActivity.CPU,
+        torch.profiler.ProfilerActivity.TPU,
+    ]
+
+    with torch.profiler.profile(
+        activities=activities,
+        record_shapes=True,
+    ) as prof:
+      output1_tpu = model_tpu(inputs)
+      tpu_sync.synchronize(output1_tpu)
+      output1_cpu = output1_tpu.cpu()
+      model_cpu(output1_cpu)
+      prof.step()
+
+    print("\n--- EVENTS ---", flush=True)
+    print("\n--- EVENTS ---", flush=True)
+    tpu_min = float("inf")
+    tpu_max = 0
+    cpu_min = float("inf")
+    cpu_max = 0
+
+    tpu_starts = []
+
+    for evt in prof.events():
+      start = evt.time_range.start
+      end = evt.time_range.end
+      dtype = str(getattr(evt, "device_type", None))
+      if "CPU" in dtype or "cpu" in dtype:
+        cpu_min = min(cpu_min, start)
+        cpu_max = max(cpu_max, end)
+      elif "TPU" in dtype or "tpu" in dtype or "PrivateUse1" in dtype:
+        tpu_min = min(tpu_min, start)
+        tpu_max = max(tpu_max, end)
+        tpu_starts.append(start)
+      else:
+        # Fallback based on name?
+        pass
+
+    print(f"CPU Times: {cpu_min} to {cpu_max}", flush=True)
+    print(f"TPU Times: {tpu_min} to {tpu_max}", flush=True)
+    print(f"Difference (TPU - CPU): {tpu_min - cpu_min}", flush=True)
+    print(f"TPU Starts (first 5): {tpu_starts[:5]}", flush=True)
 
 
 if __name__ == "__main__":

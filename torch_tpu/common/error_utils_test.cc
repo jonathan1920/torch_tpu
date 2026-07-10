@@ -1232,7 +1232,7 @@ TEST(CheckThrow, EvaluatesConditionErrorCodeMessageOnceOnFalse) {
 TEST(SafeWrapDim, ReturnsErrorOnInvalidNegativeDim) {
   const auto result = SafeWrapDim(/*dim=*/-2, /*dim_bound=*/1);
   EXPECT_FALSE(result.ok());
-  EXPECT_EQ(result.status().code(), error::kOutOfRange);
+  EXPECT_EQ(result.status().code(), error::kPythonIndexError);
   EXPECT_EQ(result.status().message(),
             "dimension out of range (expected to be in range of [-1, 0], but "
             "got -2)");
@@ -1241,7 +1241,7 @@ TEST(SafeWrapDim, ReturnsErrorOnInvalidNegativeDim) {
 TEST(SafeWrapDim, ReturnsErrorOnInvalidPositiveDim) {
   const auto result = SafeWrapDim(/*dim=*/1, /*dim_bound=*/1);
   EXPECT_FALSE(result.ok());
-  EXPECT_EQ(result.status().code(), error::kOutOfRange);
+  EXPECT_EQ(result.status().code(), error::kPythonIndexError);
   EXPECT_EQ(result.status().message(),
             "dimension out of range (expected to be in range of [-1, 0], but "
             "got 1)");
@@ -1251,14 +1251,14 @@ TEST(SafeWrapDim, ReturnsErrorOnNegativeDimBound) {
   // Negative dim_bound is not supported by SafeWrapDim.
   const auto result = SafeWrapDim(/*dim=*/0, /*dim_bound=*/-1);
   EXPECT_FALSE(result.ok());
-  EXPECT_EQ(result.status().code(), error::kOutOfRange);
+  EXPECT_EQ(result.status().code(), error::kPythonIndexError);
   EXPECT_EQ(result.status().message(), "rank cannot be negative but got -1");
 }
 
 TEST(SafeWrapDim, ReturnsErrorOnInvalidDimForZeroDimBound) {
   const auto result = SafeWrapDim(/*dim=*/1, /*dim_bound=*/0);
   EXPECT_FALSE(result.ok());
-  EXPECT_EQ(result.status().code(), error::kOutOfRange);
+  EXPECT_EQ(result.status().code(), error::kPythonIndexError);
   EXPECT_EQ(result.status().message(),
             "dimension out of range (expected to be in range of [-1, 0], but "
             "got 1)");

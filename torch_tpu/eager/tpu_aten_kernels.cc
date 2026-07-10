@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
@@ -28,9 +29,11 @@
 #include "ATen/core/stack.h"
 #include "ATen/native/CPUFallback.h"
 #include "ATen/native/DispatchStub.h"
+#include "ATen/native/Resize.h"
 #include "ATen/native/transformers/attention.h"
 #include "ATen/ops/empty.h"
 #include "ATen/ops/empty_like.h"
+#include "ATen/ops/result_type.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "c10/util/Exception.h"
@@ -68,6 +71,8 @@
 #include "torch_tpu/ops/dot/vdot_aten_kernels.h"
 #include "torch_tpu/ops/dropout/dropout_aten_kernels.h"
 #include "torch_tpu/ops/dynamic/dynamic_arange/dynamic_arange.h"
+#include "torch_tpu/ops/dynamic/dynamic_broadcast/dynamic_broadcast.h"
+#include "torch_tpu/ops/dynamic/dynamic_reshape/dynamic_reshape.h"
 #include "torch_tpu/ops/dynamic/set_dimension_logical_size/set_dimension_logical_size.h"
 #include "torch_tpu/ops/elu/elu_aten_kernels.h"
 #include "torch_tpu/ops/embedding/embedding_aten_kernels.h"
@@ -76,6 +81,8 @@
 #include "torch_tpu/ops/experimental/ragged_dot/ragged_dot_aten_kernels.h"
 #include "torch_tpu/ops/experimental/send_recv/send_recv_kernels.h"
 #include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_aten_kernels.h"
+#include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_adagrad_aten_kernels.h"
+#include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_adam_aten_kernels.h"
 #include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_sgd_aten_kernels.h"
 #include "torch_tpu/ops/exponential/exponential_aten_kernels.h"
 #include "torch_tpu/ops/eye/eye_aten_kernels.h"
@@ -86,6 +93,8 @@
 #include "torch_tpu/ops/fmax/fmax_aten_kernels.h"
 #include "torch_tpu/ops/fmin/fmin_aten_kernels.h"
 #include "torch_tpu/ops/foreach_aten_kernels.h"
+#include "torch_tpu/ops/fused_adamw/fused_adamw_aten_kernels.h"
+#include "torch_tpu/ops/fused_sgd/fused_sgd_aten_kernels.h"
 #include "torch_tpu/ops/gather/gather_aten_kernels.h"
 #include "torch_tpu/ops/gelu/gelu_aten_kernels.h"
 #include "torch_tpu/ops/glu/glu_aten_kernels.h"
@@ -115,6 +124,7 @@
 #include "torch_tpu/ops/linalg/solve_triangular/linalg_solve_triangular_kernels.h"
 #include "torch_tpu/ops/linalg/vector_norm/aten_vector_norm_kernels.h"
 #include "torch_tpu/ops/linspace/linspace_aten_kernels.h"
+#include "torch_tpu/ops/logcumsumexp/logcumsumexp_aten_kernels.h"
 #include "torch_tpu/ops/logical/logical_aten_kernels.h"
 #include "torch_tpu/ops/masked_fill/masked_fill_aten_kernels.h"  // IWYU pragma: keep for AtenMaskedFill
 #include "torch_tpu/ops/masked_scatter/masked_scatter_aten_kernels.h"
@@ -125,12 +135,15 @@
 #include "torch_tpu/ops/multinomial/multinomial_aten_kernels.h"
 #include "torch_tpu/ops/nan_to_num/nan_to_num_aten_kernels.h"
 #include "torch_tpu/ops/native_batch_norm/native_batch_norm_aten_kernels.h"
+#include "torch_tpu/ops/native_norm/native_norm_aten_kernels.h"
 #include "torch_tpu/ops/nll_loss/nll_loss_aten_kernels.h"
 #include "torch_tpu/ops/nonzero/nonzero_aten_kernels.h"
 #include "torch_tpu/ops/normal/normal_aten_kernels.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/optimization_barrier/optimization_barrier_kernels.h"
+#include "torch_tpu/ops/optimizer/fused_adam_aten_kernels.h"
+#include "torch_tpu/ops/polygamma/polygamma_aten_kernels.h"
 #include "torch_tpu/ops/pooling/adaptive_avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/max_pool_aten_kernels.h"
@@ -153,6 +166,7 @@
 #include "torch_tpu/ops/scatter/scatter_aten_kernels.h"
 #include "torch_tpu/ops/set/set_aten_kernels.h"
 #include "torch_tpu/ops/sigmoid/sigmoid_aten_kernels.h"
+#include "torch_tpu/ops/slice_scatter/slice_scatter_aten_kernels.h"
 #include "torch_tpu/ops/softmax/softmax_aten_kernels.h"
 #include "torch_tpu/ops/softplus/softplus_aten_kernels.h"
 #include "torch_tpu/ops/sort/sort_aten_kernels.h"
@@ -169,6 +183,7 @@
 #include "torch_tpu/ops/uniform/uniform_aten_kernels.h"
 #include "torch_tpu/ops/unique/unique_aten_kernels.h"
 #include "torch_tpu/ops/upsample/upsample_aten_kernels.h"
+#include "torch_tpu/ops/upsample/upsample_bicubic2d_aten_kernels.h"
 #include "torch_tpu/ops/view/view_aten_kernels.h"
 #include "torch_tpu/ops/weight_norm/weight_norm_aten_kernels.h"
 #include "torch_tpu/ops/where/where_aten_kernels.h"
@@ -307,6 +322,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kAddRelu_Tensor>(m, AtenAddRelu_Tensor);
   ImplStable<OpName::kAddcdivOut>(m, AtenAddcdivOut);
   ImplStable<OpName::kAddcmulOut>(m, AtenAddcmulOut);
+  ImplStable<OpName::kAddmmActivationOut>(m, AtenAddmmActivationOut);
   ImplStable<OpName::kAddmmDtype>(m, AtenAddmmDtype);
   ImplStable<OpName::kAddmmDtypeOut>(m, AtenAddmmDtypeOut);
   ImplStable<OpName::kAddmmOut>(m, AtenAddmmOut);
@@ -600,8 +616,15 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kForeachTrunc>(m, AtenForeachTrunc);
   ImplStable<OpName::kForeachTrunc_>(m, AtenForeachTrunc_);
   ImplStable<OpName::kForeachZero_>(m, AtenForeachZero_);
+  ImplStable<OpName::kFusedAdam>(m, AtenFusedAdam);
+  ImplStable<OpName::kFusedAdamTensorLr>(m, AtenFusedAdamTensorLr);
+  ImplStable<OpName::kFusedAdamw>(m, AtenFusedAdamw);
+  ImplStable<OpName::kFusedAdamwTensorLr>(m, AtenFusedAdamwTensorLr);
+  ImplStable<OpName::kFusedDropout>(m, AtenFusedDropout);
   ImplStable<OpName::kFusedRmsNorm>(m, AtenFusedRmsNorm);
   ImplStable<OpName::kFusedRmsNormBackward>(m, AtenFusedRmsNormBackward);
+  ImplStable<OpName::kFusedSgd>(m, AtenFusedSgd);
+  ImplStable<OpName::kFusedSgdTensorLr>(m, AtenFusedSgdTensorLr);
   ImplStable<OpName::kGather>(m, AtenGather);
   ImplStable<OpName::kGatherOut>(m, AtenGatherOut);
   ImplStable<OpName::kGeScalarOut>(m, AtenGeScalarOut);
@@ -656,6 +679,9 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kIsNan>(m, AtenIsNan);
   ImplStable<OpName::kIsNegInfOut>(m, AtenIsNegInfOut);
   ImplStable<OpName::kIsPosInfOut>(m, AtenIsPosInfOut);
+  ImplStable<OpName::kLdexpOut>(m, AtenLdexpOut);
+  ImplStable<OpName::kLdexpTensor>(m, AtenLdexpTensor);
+  ImplStable<OpName::kLdexp_>(m, AtenLdexp_);
   ImplStable<OpName::kLeScalarOut>(m, AtenLeScalarOut);
   ImplStable<OpName::kLeTensorOut>(m, AtenLeTensorOut);
   ImplStable<OpName::kLeakyReluBackward>(m, AtenLeakyReluBackwardGradInput);
@@ -679,15 +705,16 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kLog1pOut>(m, AtenLog1pOut);
   ImplStable<OpName::kLog2Out>(m, AtenLog2Out);
   ImplStable<OpName::kLogOut>(m, AtenLogOut);
-  ImplStable<OpName::kLogSigmoidBackward>(m, torch_tpu::AtenLogSigmoidBackward);
+  ImplStable<OpName::kLogSigmoidBackward>(m, AtenLogSigmoidBackward);
   ImplStable<OpName::kLogSigmoidBackwardGradInput>(
-      m, torch_tpu::AtenLogSigmoidBackwardGradInput);
-  ImplStable<OpName::kLogSigmoidForward>(m, torch_tpu::AtenLogSigmoidForward);
-  ImplStable<OpName::kLogSigmoidForwardOut>(
-      m, torch_tpu::AtenLogSigmoidForwardOut);
+      m, AtenLogSigmoidBackwardGradInput);
+  ImplStable<OpName::kLogSigmoidForward>(m, AtenLogSigmoidForward);
+  ImplStable<OpName::kLogSigmoidForwardOut>(m, AtenLogSigmoidForwardOut);
   ImplStable<OpName::kLogSoftmaxBackwardDataOut>(m,
                                                  AtenLogSoftmaxBackwardDataOut);
   ImplStable<OpName::kLogSoftmaxOut>(m, AtenLogSoftmaxOut);
+  ImplStable<OpName::kLogcumsumexp>(m, AtenLogcumsumexp);
+  ImplStable<OpName::kLogcumsumexpOut>(m, AtenLogcumsumexpOut);
   ImplStable<OpName::kLogicalAndOut>(m, AtenLogicalAndOut);
   ImplStable<OpName::kLogicalNotOut>(m, AtenLogicalNotOut);
   ImplStable<OpName::kLogicalOrOut>(m, AtenLogicalOrOut);
@@ -743,6 +770,9 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kNativeGroupNormBackward>(m, AtenNativeGroupNormBackward);
   ImplStable<OpName::kNativeLayerNorm>(m, AtenNativeLayerNorm);
   ImplStable<OpName::kNativeLayerNormBackward>(m, AtenLayerNormBackward);
+  ImplStable<OpName::kNativeNorm>(m, AtenNativeNormScalar);
+  ImplStable<OpName::kNativeNormScalarOptDimDtype>(
+      m, AtenNativeNormScalarOptDimDtype);
   ImplStable<OpName::kNeScalarOut>(m, AtenNeScalarOut);
   ImplStable<OpName::kNeTensorOut>(m, AtenNeTensorOut);
   ImplStable<OpName::kNegOut>(m, AtenNegOut);
@@ -766,6 +796,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kPdistBackward>(m, AtenPdistBackward);
   ImplStable<OpName::kPdistForward>(m, AtenPdistForward);
   ImplStable<OpName::kPolarOut>(m, AtenPolarOut);
+  ImplStable<OpName::kPolygammaOut>(m, AtenPolygammaOut);
   ImplStable<OpName::kPowScalarOut>(m, AtenPowScalarOut);
   ImplStable<OpName::kPowTensorScalarOut>(m, AtenPowTensorScalarOut);
   ImplStable<OpName::kPowTensorTensorOut>(m, AtenPowTensorTensorOut);
@@ -817,6 +848,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kRsubTensor>(m, AtenRsubTensor);
   ImplStable<OpName::kScaledDotProductEfficientAttention>(
       m, AtenScaledDotProductEfficientAttention);
+  ImplStable<OpName::kScaledDotProductEfficientAttentionBackward>(
+      m, AtenScaledDotProductEfficientAttentionBackward);
   ImplStable<OpName::kScaledDotProductFlashAttention>(
       m, AtenScaledDotProductFlashAttention);
   ImplStable<OpName::kScaledDotProductFlashAttentionBackward>(
@@ -846,6 +879,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kSiluOut>(m, AtenSiluOut);
   ImplStable<OpName::kSinOut>(m, AtenSinOut);
   ImplStable<OpName::kSinhOut>(m, AtenSinhOut);
+  ImplStable<OpName::kSliceScatter>(m, AtenSliceScatter);
   ImplStable<OpName::kSoftmaxBackwardDataOut>(m, AtenSoftmaxBackwardDataOut);
   ImplStable<OpName::kSoftmaxOut>(m, AtenSoftmaxOut);
   ImplStable<OpName::kSoftplusBackwardGradInput>(m,
@@ -874,6 +908,9 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kUnfoldBackward>(m, AtenUnfoldBackward);
   ImplStable<OpName::kUniform_>(m, AtenUniform_);
   ImplStable<OpName::kUnique2>(m, AtenUnique2);
+  ImplStable<OpName::kUpsampleBicubic2dBackwardGradInput>(
+      m, AtenUpsampleBicubic2dBackwardGradInput);
+  ImplStable<OpName::kUpsampleBicubic2dOut>(m, AtenUpsampleBicubic2dOut);
   ImplStable<OpName::kUpsampleBilinear2dBackwardGradInput>(
       m, AtenUpsampleBilinear2dBackwardGradInput);
   ImplStable<OpName::kUpsampleBilinear2dOut>(m, AtenUpsampleBilinear2dOut);
@@ -900,6 +937,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
                                                  AtenUpsampleNearestExact3dOut);
   ImplStable<OpName::kVarCorrection>(m, AtenVar);
   ImplStable<OpName::kVarCorrectionOut>(m, AtenVarOut);
+  ImplStable<OpName::kVarMeanCorrection>(m, AtenVarMeanCorrection);
   ImplStable<OpName::kVdot>(m, AtenVdot);
   ImplStable<OpName::kView>(m, AtenView);
   ImplStable<OpName::kViewAsComplex>(m, AtenViewAsComplex);
@@ -923,7 +961,7 @@ void TpuMissingOpFallback(const c10::OperatorHandle& op,
                           torch::jit::Stack* const stack) {
   const auto& op_name = op.schema().operator_name();
   if (!IsCpuFallbackEnabled()) {
-    TT_CHECK_THROW(false, error::kUnimplemented)
+    TT_CHECK_THROW(false, error::kPythonNotImplementedError)
         << "operator '" << op_name
         << "' is not implemented for TPU. Please file a feature request";
   } else {
@@ -980,16 +1018,18 @@ TORCH_LIBRARY(tpu, m) {
       "int[] stride, int[] padding, int[] dilation, bool ceil_mode) -> Tensor");
   m.def("ragged_dot(Tensor lhs, Tensor rhs, Tensor group_sizes) -> Tensor");
   m.def(
-      "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor grop_sizes, *, "
+      "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor group_sizes, *, "
       "Tensor(a!) out) -> Tensor(a!)");
   m.def(
       "ragged_all_to_all(Tensor operand, Tensor output, Tensor "
       "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
-      "recv_sizes, Tensor replica_groups) -> Tensor");
+      "recv_sizes, str process_group_name) -> "
+      "Tensor");
   m.def(
       "ragged_all_to_all.out(Tensor operand, Tensor output, Tensor "
       "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
-      "recv_sizes, Tensor replica_groups, *, Tensor(a!) out) "
+      "recv_sizes, str process_group_name, *, "
+      "Tensor(a!) out) "
       "-> Tensor(a!)");
   m.def("optimization_barrier(Tensor[] inputs) -> Tensor[]");
   // This op is a torch_tpu custom op for use in torch.compile() mode to handle
@@ -1031,6 +1071,47 @@ TORCH_LIBRARY(tpu, m) {
       "dynamic_arange(Tensor start, Tensor end, Tensor step, "
       "int max_length, ScalarType dtype) -> Tensor");
 
+  // Broadcasts the input tensor to a dynamic output shape.
+  //
+  // This operator is used in torch.compile() mode to support broadcasting
+  // tensors with bounded dynamism on TPU. It lowers to
+  // stablehlo.broadcast_in_dim followed by stablehlo.set_dimension_size for
+  // dynamic dimensions.
+  //
+  // Args:
+  //   input: The input tensor to broadcast.
+  //   shape: List of 0-D (scalar) int32 tensors containing the runtime sizes of
+  //     the output dimensions.
+  //   broadcast_dims: Specifies which dimensions of the output correspond to
+  //     dimensions of the input.
+  //   static_shape: The static upper bound for the output shape. Used for
+  //     static allocation.
+  //   is_dynamic: List of booleans indicating which output dimensions are
+  //     dynamic.
+  //
+  // Returns:
+  //   The broadcasted tensor, bounded to its dynamic shape.
+  m.def(
+      "dynamic_broadcast(Tensor input, Tensor[] shape, int[] broadcast_dims, "
+      "int[] static_shape, bool[] is_dynamic) -> Tensor");
+
+  // This op is a torch_tpu custom op for use in torch.compile() mode to handle
+  // dynamic reshape operations on TPU. It reshapes the input tensor to the
+  // specified shape.
+  // Args:
+  //   input: The input tensor to reshape.
+  //   shape: List of 0-D (scalar) int32 tensors containing the runtime sizes of
+  //     the output dimensions.
+  //   static_shape: The static upper bound for the output shape. Used for
+  //     static allocation.
+  //   is_dynamic: List of booleans indicating which output dimensions are
+  //     dynamic.
+  // Returns:
+  //   The reshaped tensor, bounded to its dynamic shape.
+  m.def(
+      "dynamic_reshape(Tensor input, Tensor[] shape, int[] static_shape, "
+      "bool[] is_dynamic) -> Tensor");
+
   // Experimental P2P communication ops for ProcessGroupTpu.
   // Isolated from the public torch.distributed API to safely prototype new
   // behaviors.
@@ -1042,10 +1123,27 @@ TORCH_LIBRARY(tpu, m) {
       "device_batch_size, int max_ids_per_partition, int "
       "max_unique_ids_per_partition) -> Tensor");
   m.def(
+      "sparse_dense_matmul_grad_with_adagrad(Tensor row_pointers, Tensor "
+      "embedding_ids, Tensor sample_ids, Tensor gains, Tensor embedding_table, "
+      "Tensor accumulator, Tensor activations_grad, Tensor learning_rate, "
+      "Tensor epsilon, int "
+      "device_batch_size, int max_ids_per_partition, int "
+      "max_unique_ids_per_partition, str computation_name) -> (Tensor, "
+      "Tensor)");
+  m.def(
       "sparse_dense_matmul_grad_with_sgd(Tensor row_pointers, Tensor "
       "embedding_ids, Tensor sample_ids, Tensor gains, Tensor embedding_table, "
       "Tensor activations_grad, Tensor learning_rate, int device_batch_size, "
-      "int max_ids_per_partition, int max_unique_ids_per_partition) -> Tensor");
+      "int max_ids_per_partition, int max_unique_ids_per_partition, str "
+      "computation_name) -> Tensor");
+  m.def(
+      "sparse_dense_matmul_grad_with_adam(Tensor row_pointers, Tensor "
+      "embedding_ids, Tensor sample_ids, Tensor gains, Tensor embedding_table, "
+      "Tensor momentum, Tensor velocity, Tensor activations_grad, Tensor "
+      "alpha_t, float beta_1, float beta_2, float epsilon, int "
+      "device_batch_size, int max_ids_per_partition, int "
+      "max_unique_ids_per_partition, str computation_name) -> (Tensor, Tensor, "
+      "Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(tpu, Meta, m) {
@@ -1081,8 +1179,64 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
          const at::Tensor& sample_ids, const at::Tensor& gains,
          const at::Tensor& embedding_table, const at::Tensor& activations_grad,
          const at::Tensor& learning_rate, int64_t device_batch_size,
-         int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition) {
+         int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+         std::string_view computation_name) {
         return at::empty_like(embedding_table);
+      });
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdagrad>(
+      m,
+      +[](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
+          const at::Tensor& sample_ids, const at::Tensor& gains,
+          const at::Tensor& embedding_table, const at::Tensor& accumulator,
+          const at::Tensor& activations_grad, const at::Tensor& learning_rate,
+          const at::Tensor& epsilon, int64_t device_batch_size,
+          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+          std::string_view computation_name) {
+        return std::make_tuple(at::empty_like(embedding_table),
+                               at::empty_like(accumulator));
+      });
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdam>(
+      m,
+      +[](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
+          const at::Tensor& sample_ids, const at::Tensor& gains,
+          const at::Tensor& embedding_table, const at::Tensor& momentum,
+          const at::Tensor& velocity, const at::Tensor& activations_grad,
+          const at::Tensor& alpha_t, double beta_1, double beta_2,
+          double epsilon, int64_t device_batch_size,
+          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+          std::string_view computation_name) {
+        return std::make_tuple(at::empty_like(embedding_table),
+                               at::empty_like(momentum),
+                               at::empty_like(velocity));
+      });
+  ImplStable<OpName::kRaggedDot>(
+      m, +[](const at::Tensor& lhs, const at::Tensor& rhs,
+             const at::Tensor& group_sizes) {
+        return at::empty({lhs.size(0), rhs.size(2)},
+                         lhs.options().dtype(at::result_type(lhs, rhs)));
+      });
+  ImplStable<OpName::kRaggedDotOut>(
+      m,
+      +[](const at::Tensor& lhs, const at::Tensor& rhs,
+          const at::Tensor& group_sizes, at::Tensor& out) -> at::Tensor& {
+        at::native::resize_output(out, {lhs.size(0), rhs.size(2)});
+        return out;
+      });
+  ImplStable<OpName::kRaggedAllToAll>(
+      m, +[](const at::Tensor& operand, const at::Tensor& output,
+             const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+             const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+             std::string_view process_group_name) {
+        return at::empty_like(output);
+      });
+  ImplStable<OpName::kRaggedAllToAllOut>(
+      m,
+      +[](const at::Tensor& operand, const at::Tensor& output,
+          const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+          const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+          std::string_view process_group_name, at::Tensor& out) -> at::Tensor& {
+        at::native::resize_output(out, output.sizes());
+        return out;
       });
 }
 
@@ -1102,9 +1256,15 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
   ImplExperimental<OpName::kSetDimensionLogicalSize>(m,
                                                      SetDimensionLogicalSize);
   ImplExperimental<OpName::kDynamicArange>(m, DynamicArange);
+  ImplExperimental<OpName::kDynamicBroadcast>(m, DynamicBroadcast);
+  ImplExperimental<OpName::kDynamicReshape>(m, DynamicReshape);
   ImplExperimental<OpName::kSparseDenseMatmul>(m, AtenSparseDenseMatmul);
   ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
       m, AtenSparseDenseMatmulGradWithSgd);
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdagrad>(
+      m, AtenSparseDenseMatmulGradWithAdagrad);
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdam>(
+      m, AtenSparseDenseMatmulGradWithAdam);
 }
 
 TORCH_LIBRARY_IMPL(tpu, CPU, m) {

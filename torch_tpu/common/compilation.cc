@@ -44,6 +44,7 @@
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/excess_precision.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -80,30 +81,6 @@ namespace {
 constexpr std::string_view kOptimizationLevelOption = "xla_optimization_level";
 constexpr std::string_view kMemoryFittingLevelOption =
     "xla_memory_fitting_level";
-
-// Represents the state of the "allow excess precision" compiler option.
-enum class ExcessPrecisionState {
-  // Use XLA_FLAGS or fall back to the default.
-  kUnset,
-  // Explicitly allow excess precision.
-  kAllow,
-  // Explicitly disallow excess precision.
-  kDisallow,
-};
-
-// Returns the cached default `xla::ExecutableBuildOptions` instance. This
-// function is memoized, so the XLA_FLAGS environment variable is parsed exactly
-// once.
-const xla::ExecutableBuildOptions& GetDefaultExecutableBuildOptions() {
-  static const absl::NoDestructor<xla::ExecutableBuildOptions>
-      default_executable_build_options([] {
-        xla::ExecutableBuildOptions options;
-        // Calling mutable_debug_options() triggers parsing XLA_FLAGS.
-        options.mutable_debug_options();
-        return options;
-      }());
-  return *default_executable_build_options;
-}
 
 }  // namespace
 
@@ -184,37 +161,6 @@ template <typename Map>
 static void UpdateMap(Map& map, Map updates) {
   for (auto& [key, value] : updates) {
     map[std::move(key)] = std::move(value);
-  }
-}
-
-static std::atomic<ExcessPrecisionState> g_allow_excess_precision{
-    ExcessPrecisionState::kUnset};
-
-void SetAllowExcessPrecision(bool allow) {
-  g_allow_excess_precision.store(allow ? ExcessPrecisionState::kAllow
-                                       : ExcessPrecisionState::kDisallow);
-}
-
-bool GetAllowExcessPrecision() {
-  switch (g_allow_excess_precision.load()) {
-    case ExcessPrecisionState::kAllow:
-      return true;
-    case ExcessPrecisionState::kDisallow:
-      return false;
-    case ExcessPrecisionState::kUnset:
-      // Fall back to XLA_FLAGS or default to true.
-      // Use static to memoize the value to avoid reading the debug options
-      // multiple times.
-      static const bool allow_excess_precision = [] {
-        const xla::DebugOptions& debug_options =
-            GetDefaultExecutableBuildOptions().debug_options();
-        if (debug_options.has_xla_allow_excess_precision()) {
-          return debug_options.xla_allow_excess_precision();
-        }
-        // TODO: b/502610173 - Set to False when XLA_FLAGS is not set.
-        return true;
-      }();
-      return allow_excess_precision;
   }
 }
 
@@ -461,13 +407,21 @@ absl::Status ApplyCompilerOptionOverrides(
 // LINT.IfChange(compile_options_key)
 [[nodiscard]] static FingerprintType Fingerprint(
     const xla::CompileOptions& options) {
-  return FingerprintCat(
+  FingerprintType fp = FingerprintCat(
       // Fingerprint of XLA executable build options, mainly device-related
       // information.
       Fingerprint(options.executable_build_options),
       // Fingerprint of resolved eventual compiler option overrides, including
       // TorchTPU defaults, TorchTPU-internal and explicit user overrides.
       Fingerprint(options.env_option_overrides));
+
+  if (options.argument_layouts.has_value()) {
+    for (const auto& shape : *options.argument_layouts) {
+      fp = FingerprintCat(fp,
+                          Fingerprint(shape.ToString(/*print_layout=*/true)));
+    }
+  }
+  return fp;
 }
 
 [[nodiscard]] CompileOptionsKey MakeCompileOptionsKey(
@@ -586,20 +540,13 @@ void PopCompilerOptionOverrides() {
   PopContextState<CustomCompilerOptionsContextState>();
 }
 
-UniqueCompileOptions GetCompileOptions(const CompilationMode mode) {
+CompilationSpec GetCompilationSpec(const CompilationMode mode) {
   auto current_state = GetContextState<CustomCompilerOptionsContextState>(
       GetDefaultCompilationContext);
-  const auto& spec = current_state->compilation_specs().at(mode);
+  const CompilationSpec& spec = current_state->compilation_specs().at(mode);
   // Intentionally make a copy as the input `xla::CompileOptions` object is
   // moved into `PjRtClient::CompileAndLoad` for compilation.
-  return std::make_unique<xla::CompileOptions>(*spec.xla_compile_options);
-}
-
-CompileOptionsKey GetCompileOptionsKey(const CompilationMode mode) {
-  auto current_state = GetContextState<CustomCompilerOptionsContextState>(
-      GetDefaultCompilationContext);
-  const auto& spec = current_state->compilation_specs().at(mode);
-  return spec.compile_options_key;
+  return spec.Copy();
 }
 
 }  // namespace torch_tpu

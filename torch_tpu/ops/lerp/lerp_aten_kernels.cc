@@ -50,7 +50,7 @@ absl::Status CheckLerpSelfInput(const at::Tensor& self) {
       << ToString(self.scalar_type());
 
   TT_RET_CHECK(self.scalar_type() != at::ScalarType::ComplexDouble,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "complex128 dtype is not yet supported";
 
   return absl::OkStatus();

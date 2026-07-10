@@ -17,7 +17,6 @@
 #include "torch_tpu/common/compile_options_key.h"
 
 #include <string>
-#include <string_view>
 
 #include "absl/log/absl_check.h"
 #include "gtest/gtest.h"
@@ -26,13 +25,8 @@
 #include "torch_tpu/common/compilation_test_helper.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
-#include "xla/pjrt/pjrt_executable.h"
 
 namespace torch_tpu {
-
-CompileOptionsKey GetCompileOptionsKey(std::string_view xla_flags,
-                                       const xla::CompileOptions& options);
-
 namespace {
 
 class CompileOptionsKeyTest : public testing::Test {
@@ -47,9 +41,13 @@ class CompileOptionsKeyTest : public testing::Test {
 };
 
 constexpr FingerprintType kFastCompileDefaultFingerprint =
-    11255405118680073921ULL;
-constexpr FingerprintType kFastRuntimeDefaultFingerprint =
-    10955459558934170598ULL;
+    609107305100108915ULL;
+constexpr FingerprintType kFastRuntimeDefaultFingerprint = 20876715154210356ULL;
+
+[[nodiscard]] CompileOptionsKey GetCompileOptionsKey(
+    const CompilationMode mode) {
+  return GetCompilationSpec(mode).compile_options_key;
+}
 
 TEST_F(CompileOptionsKeyTest, StableFingerprint) {
   {
@@ -85,7 +83,7 @@ TEST_F(CompileOptionsKeyTest, XlaExecutionEffortLevelOverrides) {
     const CompileOptionsKey key =
         GetCompileOptionsKey(CompilationMode::kFastCompile);
     EXPECT_NE(key.key(), kFastCompileDefaultFingerprint);
-    EXPECT_EQ(key.key(), 14056296875166197543ULL)
+    EXPECT_EQ(key.key(), 6130541222811647334ULL)
         << "Fingerprint stability is vital for the compilation cache "
            "correctness. Do not change the expected value to make the test "
            "pass unless the code changes how `xla::CompileOptions` is "
@@ -99,7 +97,7 @@ TEST_F(CompileOptionsKeyTest, XlaExecutionEffortLevelOverrides) {
     const CompileOptionsKey key =
         GetCompileOptionsKey(CompilationMode::kFastCompile);
     EXPECT_NE(key.key(), kFastCompileDefaultFingerprint);
-    EXPECT_EQ(key.key(), 12100832961370432928ULL)
+    EXPECT_EQ(key.key(), 15453772047345812996ULL)
         << "Fingerprint stability is vital for the compilation cache "
            "correctness. Do not change the expected value to make the test "
            "pass unless the code changes how `xla::CompileOptions` is "
@@ -114,7 +112,7 @@ TEST_F(CompileOptionsKeyTest, EnvOptionOverrides) {
   const CompileOptionsKey key =
       GetCompileOptionsKey(CompilationMode::kFastCompile);
   EXPECT_NE(key.key(), kFastCompileDefaultFingerprint);
-  EXPECT_EQ(key.key(), 9003441201055756418ULL)
+  EXPECT_EQ(key.key(), 1424714229709918503ULL)
       << "Fingerprint stability is vital for the compilation cache "
          "correctness. Do not change the expected value to make the test pass "
          "unless the code changes how `xla::CompileOptions` is fingerprinted.";
@@ -130,7 +128,7 @@ TEST_F(CompileOptionsKeyTest, ThreadLocalContextOverrides) {
     const CompileOptionsKey key =
         GetCompileOptionsKey(CompilationMode::kFastCompile);
     EXPECT_NE(key.key(), kFastCompileDefaultFingerprint);
-    EXPECT_EQ(key.key(), 14056296875166197543ULL)
+    EXPECT_EQ(key.key(), 6130541222811647334ULL)
         << "Fingerprint stability is vital for the compilation cache "
            "correctness. Do not change the expected value to make the test "
            "pass unless the code changes how `xla::CompileOptions` is "

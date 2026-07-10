@@ -22,6 +22,35 @@
 
 namespace torch_tpu {
 
+/**
+ * @brief Performs sparse-dense matrix multiplication, equivalent to embedding
+ * lookup.
+ *
+ * @details
+ * The sparse matrix inputs are expected in a specific layout optimized for
+ * SparseCore distribution, which can be found at
+ * https://jax-tpu-embedding.readthedocs.io/en/latest/input_processing.html
+ *
+ * @param row_pointers Integer 1D tensor containing indices that represent row
+ * pointers in CSR format.
+ * @param embedding_ids Integer 1D tensor of the local embedding IDs within each
+ * SparseCore to be looked up (local column indices of the embedding matrix).
+ * @param sample_ids Integer 1D tensor of sample/batch indices associated with
+ * each lookup (row indices of the sparse matrix).
+ * @param gains Float 1D tensor of weights/coefficients applied to each
+ * looked-up embedding vector.
+ * @param embedding_table The dense 2D tensor containing the actual embedding
+ * vectors of shape [V, D].
+ * @param device_batch_size The logical batch size processed by this device.
+ * @param max_ids_per_partition Hardware constraint: Maximum total IDs allowed
+ * per processing partition.
+ * @param max_unique_ids_per_partition Hardware constraint: Maximum unique IDs
+ * allowed per processing partition, influencing deduplication.
+ *
+ * @return A dense float tensor of reduced activations or embeddings with shape
+ * [B, D] where B is the device_batch_size.
+ */
+
 at::Tensor AtenSparseDenseMatmul(
     const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
     const at::Tensor& sample_ids, const at::Tensor& gains,

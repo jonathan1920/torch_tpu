@@ -21,7 +21,6 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "ATen/native/Resize.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -44,10 +43,13 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
+#include "torch_tpu/ops/gelu/gelu.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/precision_context.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
+#include "torch_tpu/ops/unary.h"
 
 namespace torch_tpu {
 
@@ -116,10 +118,12 @@ absl::Status CheckInputBroadcast(const at::Tensor& self,
   return absl::OkStatus();
 }
 
-absl::StatusOr<DeviceBufferRef> AddMm(
+// Validates input dtypes, matrix dimensions, and broadcastability for addmm
+// variants, returning the corresponding MLIR element type for the output.
+absl::StatusOr<mlir::ElementType> ValidateAddmmInputsAndGetOutputDtype(
     const at::Tensor& self, const at::Tensor& mat1, const at::Tensor& mat2,
-    MaybePromotedScalar beta, PromotedScalar alpha,
-    at::ScalarType out_scalar_type, OpParamCacheKeys& param_keys) {
+    const MaybePromotedScalar& beta, const PromotedScalar& alpha,
+    at::ScalarType out_scalar_type) {
   TT_RET_CHECK(self.scalar_type() != at::kBool &&
                    mat1.scalar_type() != at::kBool &&
                    mat2.scalar_type() != at::kBool &&
@@ -132,7 +136,7 @@ absl::StatusOr<DeviceBufferRef> AddMm(
                    beta.scalar().type() != at::kComplexDouble &&
                    alpha.scalar().type() != at::kComplexFloat &&
                    alpha.scalar().type() != at::kComplexDouble,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "complex dtypes are not yet supported";
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch prevents non-matrix mat1.
       mat1.dim() == 2, error::kInvalidArgument)
@@ -152,6 +156,17 @@ absl::StatusOr<DeviceBufferRef> AddMm(
                       _.SetOverride()
                           << "TorchTPU does not yet support the output dtype "
                           << ToString(out_scalar_type));
+  return output_dtype_mlir;
+}
+
+absl::StatusOr<DeviceBufferRef> AddMm(
+    const at::Tensor& self, const at::Tensor& mat1, const at::Tensor& mat2,
+    MaybePromotedScalar beta, PromotedScalar alpha,
+    at::ScalarType out_scalar_type, OpParamCacheKeys& param_keys) {
+  TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype_mlir,
+                      ValidateAddmmInputsAndGetOutputDtype(
+                          self, mat1, mat2, beta, alpha, out_scalar_type));
+  Dimensions output_dims_vec = {mat1.size(0), mat2.size(1)};
   const auto current_precision = GetAndAddPrecisionTo(param_keys);
 
   if (beta.ValueMatchesExclude()) {
@@ -193,6 +208,67 @@ absl::StatusOr<DeviceBufferRef> AddMm(
                         .op_param_cache_keys = std::move(param_keys)});
 }
 
+absl::StatusOr<DeviceBufferRef> AddMmActivation(
+    const at::Tensor& self, const at::Tensor& mat1, const at::Tensor& mat2,
+    MaybePromotedScalar beta, PromotedScalar alpha, bool use_gelu,
+    at::ScalarType out_scalar_type, OpParamCacheKeys& param_keys) {
+  TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype_mlir,
+                      ValidateAddmmInputsAndGetOutputDtype(
+                          self, mat1, mat2, beta, alpha, out_scalar_type));
+  Dimensions output_dims_vec = {mat1.size(0), mat2.size(1)};
+  const auto current_precision = GetAndAddPrecisionTo(param_keys);
+
+  if (beta.ValueMatchesExclude()) {
+    // If beta is zero, we can skip promoting it and dispatch the optimized
+    // 4-input op.
+    TT_ASSIGN_OR_RETURN(const at::Tensor alpha_tensor,
+                        alpha.GetTensor(out_scalar_type));
+    auto op_builder = [output_dtype_mlir, output_dims_vec, current_precision,
+                       use_gelu](FixedSizeSpan<mlir::MlirOp, 4> inputs_op)
+        -> absl::StatusOr<mlir::MlirOp> {
+      auto& [self_op, mat1_op, mat2_op, alpha_op] = inputs_op;
+      TT_ASSIGN_OR_RETURN(
+          mlir::MlirOp res,
+          BuildAddmmShlo(self_op, mat1_op, mat2_op, std::nullopt, alpha_op,
+                         output_dtype_mlir, current_precision));
+      if (use_gelu) {
+        return BuildGeluShlo(res, "none", output_dtype_mlir);
+      }
+      return BuildReluShlo(res);
+    };
+    return DispatchOp<4>(std::move(op_builder),
+                         {self, mat1, mat2, alpha_tensor},
+                         {.out_dtype = output_dtype_mlir,
+                          .out_dims = output_dims_vec,
+                          .op_param_cache_keys = std::move(param_keys)});
+  }
+
+  // Complex path: beta is non-zero, so we promote it and dispatch the 5-input
+  // op.
+  TT_ASSIGN_OR_RETURN(const at::Tensor beta_tensor,
+                      beta.GetTensor(out_scalar_type));
+  TT_ASSIGN_OR_RETURN(const at::Tensor alpha_tensor,
+                      alpha.GetTensor(out_scalar_type));
+  auto op_builder = [output_dtype_mlir, output_dims_vec, current_precision,
+                     use_gelu](FixedSizeSpan<mlir::MlirOp, 5> inputs_op)
+      -> absl::StatusOr<mlir::MlirOp> {
+    auto& [self_op, mat1_op, mat2_op, beta_op, alpha_op] = inputs_op;
+    TT_ASSIGN_OR_RETURN(
+        mlir::MlirOp res,
+        BuildAddmmShlo(self_op, mat1_op, mat2_op, beta_op, alpha_op,
+                       output_dtype_mlir, current_precision));
+    if (use_gelu) {
+      return BuildGeluShlo(res, "none", output_dtype_mlir);
+    }
+    return BuildReluShlo(res);
+  };
+  return DispatchOp<5>(std::move(op_builder),
+                       {self, mat1, mat2, beta_tensor, alpha_tensor},
+                       {.out_dtype = output_dtype_mlir,
+                        .out_dims = output_dims_vec,
+                        .op_param_cache_keys = std::move(param_keys)});
+}
+
 }  // namespace
 
 at::Tensor& AtenAddmmOut(const at::Tensor& self, const at::Tensor& mat1,
@@ -206,19 +282,55 @@ at::Tensor& AtenAddmmOut(const at::Tensor& self, const at::Tensor& mat1,
       (self, mat1, mat2, promoted_beta, promoted_alpha, out), {
         TT_CHECK_THROW(out.scalar_type() == self.scalar_type(),
                        error::kInvalidArgument)
-            << "input and out tensors expected to have the same dtype, got "
-               "input dtype "
-            << torch_tpu::ToString(self.scalar_type()) << " and out dtype "
+            << "expected input and out tensors to have the same dtype, got "
+            << torch_tpu::ToString(self.scalar_type()) << " vs "
             << torch_tpu::ToString(out.scalar_type());
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
             AddMm(self, mat1, mat2, std::move(promoted_beta),
                   std::move(promoted_alpha), out.scalar_type(), param_keys));
         at::IntArrayRef output_sizes_array_ref(result_buffer.dimensions());
-        ABSL_VLOG(3) << "calling at::native::resize_output for out tensor with "
-                        "target shape: ["
-                     << absl::StrJoin(output_sizes_array_ref, ", ") << "]";
-        at::native::resize_output(out, output_sizes_array_ref);
+        ABSL_VLOG(3)
+            << "calling ResizeTensorIfShapeDiffers for out tensor with "
+               "target shape: ["
+            << absl::StrJoin(output_sizes_array_ref, ", ") << "]";
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(out, output_sizes_array_ref));
+        TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=No user triggerable errors.
+            AssignBufferToAtTensor(std::move(result_buffer), out));
+        return out;
+      });
+}
+
+at::Tensor& AtenAddmmActivationOut(const at::Tensor& self,
+                                   const at::Tensor& mat1,
+                                   const at::Tensor& mat2,
+                                   const at::Scalar& beta,
+                                   const at::Scalar& alpha, bool use_gelu,
+                                   at::Tensor& out) {
+  MaybePromotedScalar promoted_beta =
+      PromoteScalar(beta).AvoidPromoting(ScalarValue::kZero);
+  PromotedScalar promoted_alpha = PromoteScalar(alpha);
+  TT_KERNEL(
+      OpName::kAddmmActivationOut, param_keys,
+      (self, mat1, mat2, promoted_beta, promoted_alpha, use_gelu, out), {
+        TT_CHECK_THROW(out.scalar_type() == self.scalar_type(),
+                       error::kInvalidArgument)
+            << "expected input and out tensors to have the same dtype, got "
+            << torch_tpu::ToString(self.scalar_type()) << " vs "
+            << torch_tpu::ToString(out.scalar_type());
+        TT_ASSIGN_OR_THROW(
+            auto result_buffer,
+            AddMmActivation(self, mat1, mat2, std::move(promoted_beta),
+                            std::move(promoted_alpha), use_gelu,
+                            out.scalar_type(), param_keys));
+        at::IntArrayRef output_sizes_array_ref(result_buffer.dimensions());
+        ABSL_VLOG(3)
+            << "calling ResizeTensorIfShapeDiffers for out tensor with "
+               "target shape: ["
+            << absl::StrJoin(output_sizes_array_ref, ", ") << "]";
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(out, output_sizes_array_ref));
         TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=No user triggerable errors.
             AssignBufferToAtTensor(std::move(result_buffer), out));
         return out;
@@ -260,6 +372,8 @@ at::Tensor& AtenAddmmDtypeOut(const at::Tensor& self, const at::Tensor& mat1,
             auto result_buffer,
             AddMm(self, mat1, mat2, std::move(promoted_beta),
                   std::move(promoted_alpha), out_dtype, param_keys));
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
         TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=No user triggerable errors.
             AssignBufferToAtTensor(std::move(result_buffer), out));
         return out;

@@ -26,6 +26,8 @@
 #include "ATen/Context.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBase.h"
+#include "ATen/core/grad_mode.h"
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -54,6 +56,40 @@
 namespace torch_tpu {
 
 namespace {
+
+// Returns strides for `target_sizes` that preserve the physical memory layout
+// permutation of `template_strides` on `template_sizes`, but compacted to be
+// dense (no gaps). This is useful for returning a tensor that is compatible
+// with subsequent view operations that expect a specific permutation, while
+// avoiding memory bloat and slice-by-slice writes (dynamic-update-slice).
+// Note: `template_sizes` and `target_sizes` must only be permutations of each
+// other.
+Strides DenseStrides(absl::Span<const int64_t> template_sizes,
+                     absl::Span<const int64_t> template_strides,
+                     absl::Span<const int64_t> target_sizes) {
+  int rank = template_sizes.size();
+  Strides target_strides(rank, 0);
+
+  struct Dim {
+    int index;
+    int64_t size;
+    int64_t stride;
+  };
+  std::vector<Dim> dims(rank);
+  for (int i = 0; i < rank; ++i) {
+    dims[i] = {i, template_sizes[i], template_strides[i]};
+  }
+  absl::c_stable_sort(
+      dims, [](const Dim& a, const Dim& b) { return a.stride > b.stride; });
+
+  int64_t current_stride = 1;
+  for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
+    target_strides[it->index] = current_stride;
+    current_stride *= target_sizes[it->index];
+  }
+
+  return target_strides;
+}
 
 struct AttentionPrepResults {
   mlir::MlirOp query_4d;
@@ -85,6 +121,60 @@ mlir::MlirOp GetCausalMask(mlir::MlirBuilder& builder,
 
   return mlir::stablehlo::Compare(iota_i, iota_j,
                                   mlir::stablehlo::ComparisonDirection::LT);
+}
+
+enum class SdpaPromotionType {
+  kNone,
+  kSoftmaxOnly,
+  kWholeModule,
+};
+
+// Determine exactly where type promotion should happen inside the attn module.
+// The softmax mode will emit a pattern that will ultimately be replace by XLA
+// with an optimized kernel. We have a simple huerstic informed by empirical
+// evidence to determine if this will be beneficial for performance.
+// The fallback is to run all the attn math in full precision for accuracy.
+SdpaPromotionType GetSdpaPromotionType(mlir::MlirOp query, mlir::MlirOp key,
+                                       bool allow_half_precision_reduction_math,
+                                       bool q_needs_grad) {
+  if (allow_half_precision_reduction_math) {
+    return SdpaPromotionType::kNone;
+  }
+
+  if (q_needs_grad) {
+    // Since the backward pass recomputes softmax with sum_exp, it will compute
+    // it with slightly different numerics causing non zero Q grad on first
+    // token of causal models. We conservatively limit targeting the custom
+    // kernel in inference only, relaxation may be explored in the future.
+    return SdpaPromotionType::kWholeModule;
+  }
+
+  auto query_shape = GetTensorTypeOrDie(query).getShape();
+  auto key_shape = GetTensorTypeOrDie(key).getShape();
+
+  int64_t total_elements = 1;
+  for (auto dim : query_shape) {
+    total_elements *= dim;
+  }
+
+  int query_rank = query_shape.size();
+  int key_rank = key_shape.size();
+  bool sequence_length_supported = true;
+  bool sequence_length_too_large = false;
+  if (query_rank >= 2 && key_rank >= 2) {
+    int64_t seq_len_q = query_shape[query_rank - 2];
+    int64_t seq_len_kv = key_shape[key_rank - 2];
+    sequence_length_supported =
+        (seq_len_q % 128 == 0) && (seq_len_kv % 128 == 0);
+    sequence_length_too_large = (seq_len_q > 8192) || (seq_len_kv > 8192);
+  }
+
+  bool should_fallback = (total_elements < 500000) ||
+                         !sequence_length_supported ||
+                         sequence_length_too_large;
+
+  return should_fallback ? SdpaPromotionType::kWholeModule
+                         : SdpaPromotionType::kSoftmaxOnly;
 }
 
 absl::StatusOr<AttentionPrepResults> PrepareAttentionLogits(
@@ -224,17 +314,18 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
                                    const at::Tensor& key,
                                    const at::Tensor& value,
                                    const std::optional<at::Tensor>& attn_bias,
-                                   bool is_causal,
-                                   std::optional<double> scale) {
+                                   bool is_causal, std::optional<double> scale,
+                                   OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
   Dimensions out_dims(query.sizes().begin(), query.sizes().end() - 1);
   out_dims.push_back(value.sizes().back());
   Dimensions lse_dims(query.sizes().begin(), query.sizes().end() - 1);
+  const bool q_needs_grad = at::GradMode::is_enabled() && query.requires_grad();
 
   auto op_builder =
-      [out_dims, lse_dims, is_causal, scale](
+      [out_dims, lse_dims, is_causal, scale, q_needs_grad](
           absl::Span<mlir::MlirOp> inputs,
           mlir::MlirBuilder& builder) -> absl::StatusOr<MlirOpResults<2>> {
     mlir::MlirOp query_mlir = inputs[0];
@@ -254,23 +345,26 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
       return GetTensorTypeOrDie(op).getElementType();
     };
 
-    auto should_promote = [&](mlir::MlirOp op) {
+    SdpaPromotionType promotion_type =
+        GetSdpaPromotionType(query_mlir, key_mlir,
+                             allow_half_precision_reduction_math, q_needs_grad);
+
+    auto should_promote_input = [&](mlir::MlirOp op) {
       auto type = get_element_type(op);
-      return !allow_half_precision_reduction_math &&
+      return (promotion_type == SdpaPromotionType::kWholeModule) &&
              (type.isF16() || type.isBF16());
     };
 
-    auto promote_if_required = [&](mlir::MlirOp op) {
-      return should_promote(op) ? mlir::stablehlo::ConvertElementType(
-                                      op, builder.getOpBuilder().getF32Type())
-                                : op;
+    auto promote_input_if_required = [&](mlir::MlirOp op) {
+      return should_promote_input(op)
+                 ? mlir::stablehlo::ConvertElementType(
+                       op, builder.getOpBuilder().getF32Type())
+                 : op;
     };
 
-    mlir::MlirOp query = promote_if_required(query_mlir);
-
-    mlir::MlirOp key = promote_if_required(key_mlir);
-
-    mlir::MlirOp value = promote_if_required(value_mlir);
+    mlir::MlirOp query = promote_input_if_required(query_mlir);
+    mlir::MlirOp key = promote_input_if_required(key_mlir);
+    mlir::MlirOp value = promote_input_if_required(value_mlir);
 
     std::optional<mlir::MlirOp> mask;
     if (mask_mlir) {
@@ -287,12 +381,29 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
     auto [query_4d, key_4d, value_4d, shifted_attn_logits, scale_value,
           head_count_ratio] = prep_results;
 
+    auto original_element_type = get_element_type(query_mlir);
+    bool is_half_precision =
+        original_element_type.isF16() || original_element_type.isBF16();
+
+    mlir::MlirOp logits = shifted_attn_logits;
+    if (promotion_type == SdpaPromotionType::kSoftmaxOnly &&
+        is_half_precision) {
+      logits = mlir::stablehlo::ConvertElementType(
+          shifted_attn_logits, builder.getOpBuilder().getF32Type());
+    }
+
     // Softmax along the last dimension (Lk)
-    mlir::MlirOp exp_val = mlir::stablehlo::Exp(shifted_attn_logits);
+    mlir::MlirOp exp_val = mlir::stablehlo::Exp(logits);
     mlir::MlirOp sum_exp = SumReduce(builder, exp_val, /*dimension=*/3);
     mlir::MlirOp sum_exp_broadcasted =
         mlir::stablehlo::BroadcastInDim(exp_val.getType(), sum_exp, {0, 1, 2});
     mlir::MlirOp softmax = mlir::stablehlo::Div(exp_val, sum_exp_broadcasted);
+
+    if (promotion_type == SdpaPromotionType::kSoftmaxOnly &&
+        is_half_precision) {
+      softmax =
+          mlir::stablehlo::ConvertElementType(softmax, original_element_type);
+    }
 
     // Compute Attention Output: softmax @ value
     // softmax: [B, H, Lq, Lk]
@@ -308,9 +419,6 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
     // Unflatten batch dimensions of output.
     mlir::MlirOp out_unflattened = unflatten_batch_dims(out_4d, out_dims);
 
-    // Convert back to original dtype
-    auto original_element_type =
-        GetTensorTypeOrDie(query_mlir).getElementType();
     mlir::MlirOp out = out_unflattened;
     if (GetTensorTypeOrDie(out_unflattened).getElementType() !=
         original_element_type) {
@@ -327,10 +435,6 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
     return {{out, unflattened_sum_exp}};
   };
 
-  TT_ASSIGN_OR_RETURN(auto param_keys, *OpParamCacheKeysBuilder()
-                                            .SetParam("is_causal", is_causal)
-                                            .SetParam("scale", scale));
-
   std::vector<at::Tensor> inputs = {query, key, value};
   if (attn_bias.has_value() && attn_bias->defined()) {
     inputs.push_back(*attn_bias);
@@ -343,16 +447,23 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
                            .out_dims_list = {out_dims, lse_dims},
                            .op_param_cache_keys = std::move(param_keys)})));
 
-  // The output must have the same layout as the query.
-  // This may be needed in other places but aten does not define what the result
-  // layouts should be so it is a trial-and-error process.
+  // We return a view with dense strides that preserves the layout permutation
+  // of the query. This ensures subsequent view operations (e.g., merging heads)
+  // do not crash due to unexpected non-contiguity, while avoiding the memory
+  // bloat and performance cost of matching exact CUDA strides (which may have
+  // gaps if the query was sliced).
+  // Note: This does not preserve the exact strides/offset for explicit
+  // `as_strided` calls, which is considered an acceptable trade-off.
+  // See: https://pytorch.org/docs/stable/generated/torch.as_strided.html
   if (query.sizes().back() == value.sizes().back()) {
     // We can only do this simple when the query and value have the same head
     // dimension.
     // TODO(willfroom): Check if we need to handle the general case.
+    Strides dense_strides =
+        DenseStrides(query.sizes(), query.strides(), out_dims);
     TT_ASSIGN_OR_RETURN(at::Tensor view_out,
-                        ContiguousToView(std::move(results[0]), query.strides(),
-                                         query.storage_offset()));
+                        ContiguousToView(std::move(results[0]), dense_strides,
+                                         /*target_storage_offset=*/0));
     return std::make_pair(std::move(view_out),
                           MakeTensor(std::move(results[1])));
   } else {
@@ -365,7 +476,8 @@ absl::StatusOr<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
 ScaledDotProductFusedAttentionShloBackward(
     const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
     const at::Tensor& value, const at::Tensor& attn_bias,
-    const at::Tensor& sum_exp, std::optional<double> scale, bool is_causal) {
+    const at::Tensor& sum_exp, std::optional<double> scale, bool is_causal,
+    OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
@@ -553,10 +665,6 @@ ScaledDotProductFusedAttentionShloBackward(
 
     return {{grad_query, grad_key, grad_value}};
   };
-
-  TT_ASSIGN_OR_RETURN(auto param_keys, *OpParamCacheKeysBuilder()
-                                            .SetParam("is_causal", is_causal)
-                                            .SetParam("scale", scale));
 
   std::vector<at::Tensor> inputs = {grad_out, query, key, value, sum_exp};
   if (attn_bias.defined()) {

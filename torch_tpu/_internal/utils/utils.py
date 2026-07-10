@@ -434,7 +434,7 @@ def _assert_tensor_close(
 
       if np.isinf(max_rel):
         suggestion_lines.append(
-            "\n    - rtol check is IMPOSSIBLE because `expected` is 0 but"
+            "\n    - rtol check is impossible because `expected` is 0 but"
             " `actual` is not."
         )
         suggestion_lines.append("\n      (Use LOOSE mode or fix the values)")
@@ -706,8 +706,8 @@ def format_model(
       with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
         results = model(*input_tensors)
 
-      shlo = sync.computation_mlir(results)
-      result += shlo + "\n"
+      shlo = sync.computation_mlir(results)  # pyrefly: ignore[bad-assignment]
+      result += shlo + "\n"  # pyrefly: ignore[unsupported-operation]
 
   return result
 

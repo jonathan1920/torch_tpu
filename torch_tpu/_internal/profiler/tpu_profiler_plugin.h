@@ -58,7 +58,7 @@ class TpuKinetoProfilerSession : public libkineto::IActivityProfilerSession {
     return std::make_unique<libkineto::DeviceInfo>(0, 0, "TPU", "TPU Device");
   }
   std::vector<libkineto::ResourceInfo> getResourceInfos() override {
-    return {};
+    return resource_infos_;
   }
   std::unique_ptr<libkineto::CpuTraceBuffer> getTraceBuffer() override {
     return nullptr;
@@ -73,6 +73,8 @@ class TpuKinetoProfilerSession : public libkineto::IActivityProfilerSession {
   std::set<libkineto::ActivityType> activity_types_;
   std::unique_ptr<XProfCallbackHandler> callback_handler_;
   std::string run_dir_ ABSL_GUARDED_BY(mutex_);
+  uint64_t start_time_ns_ = 0;
+  std::vector<libkineto::ResourceInfo> resource_infos_;
 };
 
 // TPU implementation of libkineto::IActivityProfiler.

@@ -409,7 +409,7 @@ def _process_mask(
             block_mask=None,
             num_active_blocks=None,
             partial_mask_blocks=None,
-            q_sequence=q_sequence,
+            q_sequence=q_sequence,  # pyrefly: ignore[bad-argument-type]
         ),
         mask.mask_function,
     )

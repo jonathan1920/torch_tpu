@@ -21,8 +21,12 @@
 #include <optional>
 
 #include "ATen/core/TensorBody.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "c10/util/OptionalArrayRef.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/ops/reductions/reductions.h"
 
 namespace torch_tpu {
 
@@ -30,6 +34,10 @@ namespace torch_tpu {
 at::Tensor& AtenMeanOut(const at::Tensor& self,
                         c10::OptionalArrayRef<int64_t> dim, bool keep_dim,
                         std::optional<c10::ScalarType> dtype, at::Tensor& out);
+
+absl::StatusOr<mlir::MlirOp> BuildMeanShlo(
+    mlir::MlirOp input, absl::Span<const int64_t> canonical_dims,
+    ReductionMode reduction_mode, mlir::ElementType mlir_type);
 
 }  // namespace torch_tpu
 

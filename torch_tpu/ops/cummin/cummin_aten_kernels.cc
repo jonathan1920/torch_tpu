@@ -55,7 +55,7 @@ void AtenCumminHelper(const at::Tensor& self, at::Tensor& values,
 
     const int64_t current_dim_size = self.sizes()[normalized_dim];
     TT_CHECK_THROW(current_dim_size <= std::numeric_limits<int32_t>::max(),
-                   error::kUnimplemented)
+                   error::kPythonNotImplementedError)
         << "expected dimension size to be less than or equal to "
         << std::numeric_limits<int32_t>::max() << ", got " << current_dim_size;
 

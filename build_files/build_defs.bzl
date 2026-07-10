@@ -798,7 +798,9 @@ def torch_tpu_py_test(
     # Standard paths for stable PyPI/wheel mode
     std_ld = [
         "../pypi_torch/site-packages/torch/lib",
+        "../rules_python++pip+torch_tpu_pypi_312_torch/site-packages/torch/lib",
         "../pypi_libtpu/site-packages/libtpu",
+        "../rules_python++pip+torch_tpu_pypi_312_libtpu_nightly/site-packages/libtpu",
         "../torch_tpu_py_import_unpacked_wheel/torch_tpu/_internal",
         "../_solib_x86_64",
     ]
@@ -842,7 +844,9 @@ def torch_tpu_py_test(
         env_v = dict(env_wheel)
         std_ld_v = [
             "../pypi_torch_{}/site-packages/torch/lib".format(v.replace(".", "")),
+            "../rules_python++pip+torch_tpu_pypi_{}_torch/site-packages/torch/lib".format(v.replace(".", "")),
             "../pypi_libtpu_{}/site-packages/libtpu".format(v.replace(".", "")),
+            "../rules_python++pip+torch_tpu_pypi_{}_libtpu_nightly/site-packages/libtpu".format(v.replace(".", "")),
             "../torch_tpu_py_import_unpacked_wheel/torch_tpu/_internal",
             "../_solib_x86_64",
         ]

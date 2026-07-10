@@ -19,7 +19,6 @@
 #include <array>
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -31,14 +30,13 @@
 #include "ATen/ops/zeros.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/flags/flag.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/core/DeviceType.h"
 #include "c10/core/ScalarType.h"
 #include "c10/util/Exception.h"
-#include "c10/util/StringUtil.h"
+#include "c10/util/Optional.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -51,9 +49,9 @@
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
-#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/custom_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
+#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/helpers.h"
@@ -98,8 +96,8 @@ absl::StatusOr<std::string_view> GetSdpaForwardKernel(at::ScalarType dtype,
 
   auto it = kKernelMap->find({dtype, is_causal});
   if (it == kKernelMap->end()) {
-    return TT_ERROR(error::kUnimplemented)
-           << "Unsupported dtype for SDPA custom kernel";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "unsupported dtype for sdpa custom kernel";
   }
   return it->second;
 }
@@ -129,8 +127,8 @@ absl::StatusOr<std::string_view> GetSdpaBackwardKernel(at::ScalarType dtype,
 
   auto it = kKernelMap->find({dtype, is_causal});
   if (it == kKernelMap->end()) {
-    return TT_ERROR(error::kUnimplemented)
-           << "Unsupported dtype for SDPA custom kernel";
+    return TT_ERROR(error::kPythonNotImplementedError)
+           << "unsupported dtype for sdpa custom kernel";
   }
   return it->second;
 }
@@ -341,11 +339,10 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
                            std::optional<double> scale, bool enable_gqa) {
   TT_KERNEL(
       OpName::kFusedSdpChoice, _,
-      (query, key, value, IgnoreInCacheKey(attn_mask, "Legacy usage"),
-       IgnoreInCacheKey(dropout_p, "Legacy usage"),
-       IgnoreInCacheKey(is_causal, "Legacy usage"),
-       IgnoreInCacheKey(scale, "Legacy usage"),
-       IgnoreInCacheKey(enable_gqa, "Legacy usage")),
+      (query, key, value, IgnoreInCacheKey(attn_mask, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(dropout_p, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(is_causal, "Unused"), IgnoreInCacheKey(scale, "Unused"),
+       IgnoreInCacheKey(enable_gqa, "Unused")),
       {
         const auto& ctx = at::globalContext();
         bool flash_enabled = ctx.userEnabledFlashSDP();
@@ -459,20 +456,20 @@ AtenScaledDotProductFusedAttentionOverrideable(
     const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
     const std::optional<at::Tensor>& attn_bias, double dropout_p,
     bool is_causal, bool return_debug_mask, std::optional<double> scale) {
-  TT_KERNEL(OpName::kScaledDotProductFusedAttentionOverrideable, _,
-            (query, key, value, IgnoreInCacheKey(attn_bias, "Legacy usage"),
-             IgnoreInCacheKey(dropout_p, "Legacy usage"),
-             IgnoreInCacheKey(is_causal, "Legacy usage"),
-             IgnoreInCacheKey(return_debug_mask, "Legacy usage"),
-             IgnoreInCacheKey(scale, "Legacy usage")),
-            {
-              TT_ASSIGN_OR_THROW(
-                  auto results,
-                  ScaledDotProductFusedAttentionShlo(
-                      query, key, value, attn_bias, is_causal, scale));
-              auto [out, logsumexp] = results;
-              return GenerateResults(out, logsumexp);
-            });
+  TT_KERNEL(
+      OpName::kScaledDotProductFusedAttentionOverrideable, param_keys,
+      (query, key, value,
+       IgnoreInCacheKey(attn_bias, "Tensors are implicitly fingerprinted."),
+       IgnoreInCacheKey(dropout_p, "Unused"), is_causal,
+       IgnoreInCacheKey(return_debug_mask, "Unused"), scale),
+      {
+        TT_ASSIGN_OR_THROW(auto results,
+                           ScaledDotProductFusedAttentionShlo(
+                               query, key, value, attn_bias, is_causal, scale,
+                               std::move(param_keys)));
+        auto [out, logsumexp] = results;
+        return GenerateResults(out, logsumexp);
+      });
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
@@ -484,29 +481,28 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
     const at::Tensor& cum_seq_k, at::SymInt max_q, at::SymInt max_k,
     double dropout_p, bool is_causal, const at::Tensor& philox_seed,
     const at::Tensor& philox_offset, std::optional<double> scale) {
-  TT_KERNEL(OpName::kScaledDotProductFusedAttentionOverrideableBackward, _,
-            (grad_out, query, key, value, attn_bias,
-             IgnoreInCacheKey(grad_input_mask, "Legacy usage"), out, logsumexp,
-             cum_seq_q, cum_seq_k, IgnoreInCacheKey(max_q, "Legacy usage"),
-             IgnoreInCacheKey(max_k, "Legacy usage"),
-             IgnoreInCacheKey(dropout_p, "Legacy usage"),
-             IgnoreInCacheKey(is_causal, "Legacy usage"), philox_seed,
-             philox_offset, IgnoreInCacheKey(scale, "Legacy usage")),
-            {
-              TT_ASSIGN_OR_THROW(auto out,
-                                 ScaledDotProductFusedAttentionShloBackward(
-                                     grad_out, query, key, value, attn_bias,
-                                     logsumexp, scale, is_causal));
+  TT_KERNEL(
+      OpName::kScaledDotProductFusedAttentionOverrideableBackward, param_keys,
+      (grad_out, query, key, value, attn_bias,
+       IgnoreInCacheKey(grad_input_mask, "Doesn't affect SHLO"), out, logsumexp,
+       cum_seq_q, cum_seq_k, IgnoreInCacheKey(max_q, "Unused"),
+       IgnoreInCacheKey(max_k, "Unused"), IgnoreInCacheKey(dropout_p, "Unused"),
+       is_causal, philox_seed, philox_offset, scale),
+      {
+        TT_ASSIGN_OR_THROW(
+            auto out, ScaledDotProductFusedAttentionShloBackward(
+                          grad_out, query, key, value, attn_bias, logsumexp,
+                          scale, is_causal, std::move(param_keys)));
 
-              return std::make_tuple(
-                  grad_input_mask[0] ? std::get<0>(out)
-                                     : at::zeros({0}, grad_out.options()),
-                  grad_input_mask[1] ? std::get<1>(out)
-                                     : at::zeros({0}, grad_out.options()),
-                  grad_input_mask[2] ? std::get<2>(out)
-                                     : at::zeros({0}, grad_out.options()),
-                  at::zeros({0}, grad_out.options()));
-            });
+        return std::make_tuple(
+            grad_input_mask[0] ? std::get<0>(out)
+                               : at::zeros({0}, grad_out.options()),
+            grad_input_mask[1] ? std::get<1>(out)
+                               : at::zeros({0}, grad_out.options()),
+            grad_input_mask[2] ? std::get<2>(out)
+                               : at::zeros({0}, grad_out.options()),
+            at::zeros({0}, grad_out.options()));
+      });
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
@@ -515,11 +511,11 @@ AtenScaledDotProductEfficientAttention(
     const std::optional<at::Tensor>& attn_bias, bool compute_log_sumexp,
     double dropout_p, bool is_causal, std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductEfficientAttention, _,
-            (query, key, value, IgnoreInCacheKey(attn_bias, "Legacy usage"),
-             IgnoreInCacheKey(compute_log_sumexp, "Legacy usage"),
-             IgnoreInCacheKey(dropout_p, "Legacy usage"),
-             IgnoreInCacheKey(is_causal, "Legacy usage"),
-             IgnoreInCacheKey(scale, "Legacy usage")),
+            (query, key, value, IgnoreInCacheKey(attn_bias, "Unused"),
+             IgnoreInCacheKey(compute_log_sumexp, "Unused"),
+             IgnoreInCacheKey(dropout_p, "Unused"),
+             IgnoreInCacheKey(is_causal, "Delegates to implementation"),
+             IgnoreInCacheKey(scale, "Delegates to implementation")),
             {
               // Unused arguments: attn_bias, compute_log_sumexp, dropout_p,
               // scale.
@@ -543,15 +539,46 @@ AtenScaledDotProductEfficientAttention(
             });
 }
 
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
+AtenScaledDotProductEfficientAttentionBackward(
+    const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
+    const at::Tensor& value, const at::Tensor& attn_bias, const at::Tensor& out,
+    const at::Tensor& logsumexp, const at::Tensor& philox_seed,
+    const at::Tensor& philox_offset, double dropout_p,
+    std::array<bool, 4> grad_input_mask, bool is_causal,
+    std::optional<double> scale) {
+  TT_KERNEL(
+      OpName::kScaledDotProductEfficientAttentionBackward, _,
+      (grad_out, query, key, value, attn_bias, out, logsumexp, philox_seed,
+       philox_offset, IgnoreInCacheKey(dropout_p, "Unused"),
+       IgnoreInCacheKey(grad_input_mask, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(is_causal, "Delegates to implementation"),
+       IgnoreInCacheKey(scale, "Delegates to implementation")),
+      {
+        TT_ASSIGN_OR_THROW(auto result,
+                           ScaledDotProductFusedAttentionBackwardImpl(
+                               grad_out, query, key, value, scale, is_causal));
+
+        const at::Tensor zero = AtenEfficientZeroTensor(
+            {0}, grad_out.scalar_type(), /*layout_opt=*/c10::nullopt,
+            grad_out.device(), /*pin_memory_opt=*/c10::nullopt);
+
+        return std::make_tuple(grad_input_mask[0] ? std::get<0>(result) : zero,
+                               grad_input_mask[1] ? std::get<1>(result) : zero,
+                               grad_input_mask[2] ? std::get<2>(result) : zero,
+                               zero);
+      });
+}
+
 std::tuple<at::Tensor, at::Tensor> AtenScaledDotProductFlashAttention(
     const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
     double dropout_p, bool is_causal,
     const std::optional<at::Tensor>& attn_mask, std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductFlashAttention, _,
             (query, key, value, IgnoreInCacheKey(dropout_p, "Unused"),
-             IgnoreInCacheKey(is_causal, "Constructed in implementation"),
+             IgnoreInCacheKey(is_causal, "Delegates to implementation"),
              IgnoreInCacheKey(attn_mask, "Unused"),
-             IgnoreInCacheKey(scale, "Constructed in implementation")),
+             IgnoreInCacheKey(scale, "Delegates to implementation")),
             {
               TT_ASSIGN_OR_THROW(auto out,
                                  ScaledDotProductFusedAttentionImpl(
@@ -576,9 +603,9 @@ AtenScaledDotProductFlashAttentionBackward(
   TT_KERNEL(OpName::kScaledDotProductFlashAttentionBackward, _,
             (grad_out, query, key, value, out, logsumexp,
              IgnoreInCacheKey(dropout_p, "Unused"),
-             IgnoreInCacheKey(is_causal, "Constructed in implementation"),
+             IgnoreInCacheKey(is_causal, "Delegates to implementation"),
              IgnoreInCacheKey(attn_mask, "Unused"),
-             IgnoreInCacheKey(scale, "Constructed in implementation")),
+             IgnoreInCacheKey(scale, "Delegates to implementation")),
             {
               TT_ASSIGN_OR_THROW(
                   auto out, ScaledDotProductFusedAttentionBackwardImpl(

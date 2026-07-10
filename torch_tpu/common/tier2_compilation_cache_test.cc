@@ -109,7 +109,7 @@ CompilationCacheKey MakeCacheKey(uint64_t shapeless_key, int num_dims) {
   const DimensionsKey dimensions_key(dims);
   return CompilationCacheKey(
       GraphKey(ShapelessKey(shapeless_key), dimensions_key),
-      GetCompileOptionsKey(CompilationMode::kFastCompile));
+      GetCompilationSpec(CompilationMode::kFastCompile).compile_options_key);
 }
 
 // A test environment that initializes the PjRt client, which is required for
@@ -165,7 +165,7 @@ TEST_F(Tier2CacheEntryLockTest, CreatesLockFileIfNeeded) {
   EXPECT_THAT(ListFiles(cache_path_),
               ElementsAre(absl::StrCat(
                   cache_path_, "/",
-                  "000000000000007b_5825f5f3bd962979_1e50903f6ba7baaf.lock")));
+                  "000000000000007b_5825f5f3bd962979_121ed38098a602e1.lock")));
 }
 
 // If the lock file for a key already exists, the Tier2CacheEntryLock ctor

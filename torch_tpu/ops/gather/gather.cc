@@ -48,7 +48,7 @@ absl::Status CheckGatherInputs(absl::Span<const int64_t> self_dims, int64_t dim,
                                bool sparse_grad) {
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error is caught by caller `Gather`
                  // function.
-      sparse_grad == false, error::kUnimplemented)
+      sparse_grad == false, error::kPythonNotImplementedError)
       << "sparse_grad is not yet supported";
 
   const int64_t self_rank = self_dims.size();

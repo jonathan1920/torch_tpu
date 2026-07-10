@@ -39,6 +39,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -130,6 +131,8 @@ at::Tensor& AtenLinalgSolveTriangularOut(const at::Tensor& a,
                        .out_dims = CopyIntVector(b.sizes()),
                        .op_param_cache_keys = std::move(param_keys)}));
 
+              TT_THROW_IF_ERROR(
+                  ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
               TT_THROW_IF_ERROR(
                   AssignBufferToAtTensor(std::move(result_buffer), out));
               return out;

@@ -88,7 +88,7 @@ def measure_cache_misses(run_type: str, step_name: str):
     current_cache_misses = torch.tpu._get_cache_misses()
     print(
         f"[{run_type}] Cache misses during {step_name}: ",
-        current_cache_misses - prev_cache_misses,
+        current_cache_misses - prev_cache_misses,  # pyrefly: ignore[unbound-name]
         flush=True,
     )
 
@@ -364,9 +364,9 @@ def main(argv: Sequence[str]) -> None:
 
   if _RUN_MODE.value == "both":
     assert output_text_with_bd == output_text_without_bd
-    for i in range(len(all_logits_without_bd)):
+    for i in range(len(all_logits_without_bd)):  # pyrefly: ignore[bad-argument-type]
       utils.assert_close(
-          all_logits_without_bd[i], all_logits_with_bd[i], rtol=10, atol=1e-2
+          all_logits_without_bd[i], all_logits_with_bd[i], rtol=10, atol=1e-2  # pyrefly: ignore[unsupported-operation]
       )
 
 

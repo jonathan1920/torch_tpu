@@ -18,8 +18,14 @@
 #define TORCH_TPU_OPS_DIGAMMA_DIGAMMA_ATEN_KERNELS_H_
 
 #include "ATen/core/ATen_fwd.h"
+#include "absl/status/statusor.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
+
+absl::StatusOr<mlir::MlirOp> BuildDigammaShlo(mlir::MlirOp input_op,
+                                              mlir::ElementType out_mlir_type);
 
 at::Tensor& AtenDigammaOut(const at::Tensor& self, at::Tensor& out);
 

@@ -85,6 +85,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
         "@xla//xla:shape_util",
@@ -132,6 +133,7 @@ torch_tpu_cc_library(
     srcs = ["var_aten_kernels.cc"],
     hdrs = ["var_aten_kernels.h"],
     deps = [
+        ":mean_aten_kernels",
         ":reduction_utils",
         ":reductions",
         ":sum",
@@ -153,14 +155,14 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
         "//torch_tpu/ops:unary",
-        "//torch_tpu/ops:unary_aten_kernels",
         "//torch_tpu/ops/macros:kernel",
-        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_broadcast_lowering",
+        "@stablehlo//:stablehlo_builder",
     ],
 )
 

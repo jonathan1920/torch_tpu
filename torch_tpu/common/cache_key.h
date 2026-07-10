@@ -27,11 +27,11 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/List.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -353,9 +353,6 @@ template <typename T>
 FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value);
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(absl::Span<T> value);
-template <typename K, typename V, typename Hash, typename Eq, typename Alloc>
-std::string FormatParamCacheKey(
-    const std::unordered_map<K, V, Hash, Eq, Alloc>& value);
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(c10::OptionalArrayRef<T> value);
 
@@ -418,15 +415,6 @@ FormattedKey<T> FormatParamCacheKey(absl::Span<T> value) {
                                                          value.end());
 }
 
-template <typename K, typename V, typename Hash, typename Eq, typename Alloc>
-std::string FormatParamCacheKey(
-    const std::unordered_map<K, V, Hash, Eq, Alloc>& value) {
-  using value_type =
-      typename std::unordered_map<K, V, Hash, Eq, Alloc>::value_type;
-  return FormatParamCacheKeyForRange<value_type, std::string>(value.begin(),
-                                                              value.end());
-}
-
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(const c10::OptionalArrayRef<T> value) {
   if (!value.has_value()) {
@@ -450,6 +438,12 @@ FormattedKey<T> FormatParamCacheKey(const std::vector<T>& value) {
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value) {
   return FormatParamCacheKey(absl::MakeConstSpan(value));
+}
+
+template <typename T>
+FormattedKey<T> FormatParamCacheKey(const c10::List<T>& value) {
+  return FormatParamCacheKeyForRange<T, FormattedKey<T>>(value.begin(),
+                                                         value.end());
 }
 
 [[nodiscard]] inline std::string FormatParamCacheKey(

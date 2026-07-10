@@ -48,7 +48,7 @@ _torch_compile = torch.compile
 # Register the TPU backend.
 # pylint: disable=protected-access
 if not hasattr(torch.backends, "tpu"):
-  torch.backends.tpu = _tpu_backend_config._TpuBackendConfig()
+  torch.backends.tpu = _tpu_backend_config._TpuBackendConfig()  # pyrefly: ignore[missing-attribute]
 
 
 def _get_default_backend_impl() -> backend_registry.CompilerFn:
@@ -139,7 +139,7 @@ def _init_device_impl(device: str) -> torch.device:
   )
 
   # pylint: disable=protected-access
-  torch._register_device_module(device, device_module)
+  torch._register_device_module(device, device_module)  # pyrefly: ignore[bad-argument-type]
   print(f"Registered Python module for '{device}'.", file=sys.stderr)
 
   print(
@@ -147,17 +147,18 @@ def _init_device_impl(device: str) -> torch.device:
       f" {device_d.index if device_d.index is not None else 'default'}"
   )
 
-  if (
-      device == "tpu"
-      and not torch.distributed.is_initialized()
-      and hardware.get_tpu_device_count() > 1
-  ):
-    # Looks like we are running in a distributed setup.
+  if device == "tpu" and not torch.distributed.is_initialized():
     # Register the TPU distributed runtime; users will also need to
-    # init_process_group() in their code.
+    # init_process_group() in their code. Registered unconditionally
+    # (not gated on multi-host) so single-host runs that still go
+    # through init_process_group(backend="tpu_dist") work.
+    #
+    # Pass `devices` as a list (not the bare string "tpu") to work around a
+    # register_backend string-handling bug fixed upstream in
+    # pytorch/pytorch#187960; the list form is correct regardless.
     print("Initializing TPU distributed runtime")
     torch.distributed.Backend.register_backend(
-        "tpu_dist", tpu_distributed.create_process_group, devices="tpu"
+        "tpu_dist", tpu_distributed.create_process_group, devices=["tpu"]
     )
 
   # Register the Kineto backend.

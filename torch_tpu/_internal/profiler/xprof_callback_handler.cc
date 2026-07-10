@@ -87,7 +87,7 @@ absl_nullable std::unique_ptr<at::ObserverContext> OnFunctionEnter(
   }
   return std::make_unique<XProfObserverContext>(tsl::profiler::TraceMe([&] {
     return tsl::profiler::TraceMeEncode(
-        fn.name(), {{"correlation_id", std::to_string(fn.handle())}});
+        fn.name(), {{"pt_correlation_id", std::to_string(fn.handle())}});
   }));
 }
 
@@ -107,11 +107,9 @@ XProfCallbackHandler::XProfCallbackHandler()
           at::RecordFunctionCallback(OnFunctionEnter, OnFunctionExit)
               .needsIds(true))) {}
 
-// Register the callback handler globally at library load time.
-// This ensures that PyTorch annotations are automatically captured by any
-// active TSL profiler session
-// The overhead is virtually zero when profiling is inactive due to the
-// fast-path TraceMe::Active() check in OnFunctionEnter.
-static absl::NoDestructor<XProfCallbackHandler> global_handler;
+// Register the callback handler explicitly to avoid SIOF.
+void XProfCallbackHandler::Register() {
+  static absl::NoDestructor<XProfCallbackHandler> global_handler;
+}
 
 }  // namespace torch_tpu

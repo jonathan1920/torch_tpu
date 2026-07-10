@@ -116,8 +116,10 @@ at::Tensor AtenBinCount(const at::Tensor& self,
                         c10::SymInt minlength) {
   TT_KERNEL(
       OpName::kBinCount, _,
-      (self, IgnoreInCacheKey(weights, "Legacy usage"),
-       IgnoreInCacheKey(minlength, "Legacy usage")),
+      (self,
+       IgnoreInCacheKey(weights,
+                        "Tensors are implicitly tracked by DispatchOp inputs"),
+       IgnoreInCacheKey(minlength, "Captured via nbins in param_keys")),
       {
         auto weights_ = SanitizeOptionalTensor(weights);
         int64_t minlength_val = minlength.guard_int(__FILE__, __LINE__);

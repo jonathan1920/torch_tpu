@@ -484,6 +484,8 @@ void CheckErrorMessageFollowsGuidelines(const TtError& error) {
 
 #endif  // TT_CHECK_ERROR_MESSAGE_FOLLOWS_GUIDELINES_
 
+}  // namespace
+
 // Adapts an external error message (e.g., from PyTorch or OpenXLA) to conform
 // to the TorchTPU error message guidelines (go/tt-error-guide).
 //
@@ -516,8 +518,6 @@ std::string AdaptExternalErrorMessage(const std::string_view message) {
 
   return new_message;
 }
-
-}  // namespace
 
 bool GetEnableDebugChecks() {
   const auto& env_var = GetEnvOnce<kTorchTpuInternalEnableDebugChecksEnvVar>();
@@ -695,10 +695,10 @@ void TranslateToC10ErrorAndThrow(const TtError& e) {
   // PyTorch (e.g. RuntimeError, IndexError, ValueError, etc).
   // TODO(wan): handle more error codes.
   switch (e.status().code()) {
-    case error::kOutOfRange:
+    case error::kPythonIndexError:
       throw  // Translates to Python IndexError.
           c10::IndexError(e.thrown_from(), message);
-    case error::kUnimplemented:
+    case error::kPythonNotImplementedError:
       throw  // Translates to Python NotImplementedError.
           c10::NotImplementedError(e.thrown_from(), message);
     default:

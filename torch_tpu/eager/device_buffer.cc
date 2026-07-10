@@ -34,6 +34,8 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "c10/core/Device.h"
+#include "c10/core/Stream.h"
 #include "c10/util/accumulate.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/cache_key.h"
@@ -45,6 +47,7 @@
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/primitive_util.h"
@@ -53,6 +56,39 @@
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
+
+DeviceBufferList::Data::Data(bool placeholder)
+    : placeholder_(placeholder), materialization_pending_(!placeholder) {
+  if (materialization_pending_) {
+    auto [promise, future] = xla::MakePromise<void>();
+    materialization_promise_ = std::move(promise);
+    materialization_future_ = std::move(future);
+  }
+}
+
+DeviceBufferList::Data::Data(
+    absl_nonnull std::shared_ptr<DeferredOp> deferred_op)
+    : empty_(IsEmptyOp(deferred_op->op_name())),
+      deferred_op_(std::move(deferred_op)) {
+  auto [promise, future] = xla::MakePromise<void>();
+  materialization_promise_ = std::move(promise);
+  materialization_future_ = std::move(future);
+}
+
+DeviceBufferList::Data::Data(
+    absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer)
+    : materialization_pending_(true), materialization_started_(true) {
+  auto client_or = PjrtBackend::GetInstance().GetSharedClient();
+  ABSL_CHECK(client_or.ok()) << client_or.status();  // CRASH_OK
+  std::vector<absl_nonnull std::unique_ptr<xla::PjRtBuffer>> buffers;
+  buffers.push_back(std::move(buffer));
+  materialized_buffers_ =
+      MaterializedData(std::move(client_or).value(), std::move(buffers));
+  auto [promise, future] = xla::MakePromise<void>();
+  materialization_promise_ = std::move(promise);
+  materialization_future_ = std::move(future);
+  materialization_promise_.Set(absl::OkStatus());
+}
 
 absl_nullable std::shared_ptr<DeferredOp> DeviceBufferList::Data::deferred_op()
     const {
@@ -125,10 +161,25 @@ absl::Status DeviceBufferList::Data::SetMaterializationStarted(
       << "attempted to set materialized buffers after materialization was "
          "already started";
 
-  buffers_ = std::move(buffers);
+  TT_ASSIGN_OR_RETURN(auto client,
+                      PjrtBackend::GetInstance().GetSharedClient());
+
+  materialized_buffers_ =
+      MaterializedData(std::move(client), std::move(buffers));
   materialization_promise_.Set(absl::OkStatus());
 
   return absl::OkStatus();
+}
+
+void DeviceBufferList::Data::ValidateMaterializedBuffers(int64_t index) const {
+  TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=internal check
+      materialized_buffers_.has_value(), error::kFailedPrecondition)
+      << "expected materialized buffers to be populated";
+  TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=internal check
+      index >= 0 && index < materialized_buffers_->buffers().size(),
+      error::kInvalidArgument)
+      << "index " << index << " is out of bounds for buffers of size "
+      << materialized_buffers_->buffers().size();
 }
 
 absl::StatusOr<xla::PjRtBuffer* absl_nonnull>
@@ -147,10 +198,9 @@ DeviceBufferList::Data::operator[](int64_t index) const {
     return materialization_status_;
   }
 
-  TT_RET_CHECK(index >= 0 && index < buffers_.size(), error::kInvalidArgument)
-      << "index " << index << " is out of bounds for buffers of size "
-      << buffers_.size();
-  return buffers_[index].get();
+  ValidateMaterializedBuffers(index);
+
+  return materialized_buffers_->buffers()[index].get();
 }
 
 std::ostream& DeviceBufferList::Data::PrintDebug(std::ostream& os) const {
@@ -175,9 +225,11 @@ std::ostream& DeviceBufferList::Data::PrintDebug(std::ostream& os) const {
     return os << "materialized, error: " << materialization_status_;
   }
 
-  // Materialization finished without an error. Safe to access buffers_.
+  // Materialization finished without an error. Safe to access
+  // materialized_buffers_->buffers.
   os << "materialized, ready";
-  xla::PjRtBuffer* maybe_pjrt_buffer = buffers_[0].get();
+  xla::PjRtBuffer* maybe_pjrt_buffer =
+      materialized_buffers_->buffers()[0].get();
   if (maybe_pjrt_buffer == nullptr) {
     return os << ", null";
   }
@@ -441,17 +493,17 @@ absl::Status DeviceBufferList::MarkDynamic(int64_t index, int64_t dimension,
       << "trying to mark dimension " << dimension
       << " as dynamic with invalid bounds [" << lower_bound << ", "
       << upper_bound << "]";
-  TT_RET_CHECK(index >= 0 && index < shapes_.size(), error::kOutOfRange)
+  TT_RET_CHECK(index >= 0 && index < shapes_.size(), error::kPythonIndexError)
       << "index " << index << " is out of bounds for DeviceBufferList of size "
       << shapes_.size();
   Shape& shape = shapes_[index];
   TT_RET_CHECK(dimension >= 0 && dimension < shape.dimensions().size(),
-               error::kOutOfRange)
+               error::kPythonIndexError)
       << "dimension " << dimension << " is out of bounds for tensor of rank "
       << shape.dimensions().size();
   TT_RET_CHECK(shape.dimensions()[dimension] >= lower_bound &&
                    shape.dimensions()[dimension] <= upper_bound,
-               error::kOutOfRange)
+               error::kPythonIndexError)
       << "trying to mark dimension " << dimension << " as dynamic with bounds ["
       << lower_bound << ", " << upper_bound << "], but the dimension size is "
       << shape.dimensions()[dimension];
@@ -482,7 +534,7 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferRef::Create(
   // Gracefully return an error on creation, but crash hard if the bounds check
   // is violated afterwards, as that would indicate this check was bypassed.
   TT_RET_CHECK(index >= 0 && index < device_buffer_list->size(),
-               error::kOutOfRange)
+               error::kPythonIndexError)
       << "index " << index << " is out of bounds for DeviceBufferList of size "
       << device_buffer_list->size();
   return DeviceBufferRef(std::move(device_buffer_list), index);
@@ -631,6 +683,14 @@ absl::Span<const BoundedDynamicDimension> DeviceBufferRef::dynamic_dimensions()
 
 void DeviceBufferRef::RecordChildOp(uint64_t child_index) const {
   device_buffer_list_->RecordChildOp(child_index);
+}
+
+c10::DeviceIndex DeviceBufferRef::device_index() const {
+  return device_buffer_list_->device_index();
+}
+
+c10::StreamId DeviceBufferRef::stream_id() const {
+  return device_buffer_list_->stream_id();
 }
 
 template <>

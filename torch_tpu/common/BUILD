@@ -56,6 +56,12 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "native_scan_support",
+    srcs = ["native_scan_support.cc"],
+    hdrs = ["native_scan_support.h"],
+)
+
+torch_tpu_cc_library(
     name = "dtype",
     srcs = ["dtype.cc"],
     hdrs = ["dtype.h"],
@@ -63,6 +69,7 @@ torch_tpu_cc_library(
         ":dimension_types",
         ":error_utils",
         ":fingerprint_utils",
+        ":macro_utils",
         ":to_string",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
@@ -215,6 +222,7 @@ torch_tpu_cc_library(
         ":context_states",
         ":env_vars",
         ":error_utils",
+        ":excess_precision",
         ":fingerprint_utils",
         ":shape",
         "//torch_tpu/ops:op_builder_utils",
@@ -237,6 +245,17 @@ torch_tpu_cc_library(
         "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/service:computation_placer_hdr",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "excess_precision",
+    srcs = ["excess_precision.cc"],
+    hdrs = ["excess_precision.h"],
+    deps = [
+        ":env_vars",
+        "@com_google_absl//absl/base:no_destructor",
+        "@xla//xla/client:executable_build_options",
     ],
 )
 
@@ -565,6 +584,7 @@ torch_tpu_cc_library(
     srcs = ["macro_utils.cc"],
     hdrs = ["macro_utils.h"],
     deps = [
+        "//shims/torch:torch_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -584,6 +604,8 @@ torch_tpu_cc_library(
     srcs = ["to_string.cc"],
     hdrs = ["to_string.h"],
     deps = [
+        ":macro_utils",
+        ":utils",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base_headers",
@@ -739,7 +761,9 @@ torch_tpu_cc_library(
     ],
 )
 
-# Note: workaround for all pytorch .so files required by torch_tpu
+# NOTE: Configures RPATH for C++ extensions in the standalone pip wheel.
+# This ensures the dynamic linker can locate libtorch.so in site-packages/torch/
+# at runtime.
 torch_tpu_cc_library(
     name = "torch_rpath_flags",
     linkopts = [
@@ -748,6 +772,9 @@ torch_tpu_cc_library(
     visibility = ["//visibility:private"],
 )
 
+# NOTE: Central aggregator for all C++ Python extensions in torch_tpu.
+# Any new pybind_extension target created in the codebase MUST be added to the
+# deps list below to ensure it is packaged into the standalone pip wheel.
 pywrap_library(
     name = "pywrap_torch_tpu",
     extra_deps = [
@@ -885,6 +912,7 @@ torch_tpu_cc_library(
         ":compilation",
         ":compilation_spec",
         ":compile_options_key",
+        ":context_manager",
         ":dimension_types",
         ":dtype",
         ":env_vars",
@@ -950,6 +978,49 @@ torch_tpu_cc_library(
     ],
 )
 
+# Since GetAllowExcessPrecision() memoizes the value of XLA_FLAGS in a static
+# variable, we need three separate test targets to verify different
+# environment configurations in fresh processes.
+#
+# Tests that excess precision defaults to False when XLA_FLAGS env var is unset.
+torch_tpu_cc_test(
+    name = "compilation_excess_precision_env_unset_test",
+    srcs = ["compilation_excess_precision_env_test.cc"],
+    env = {"EXPECTED_VALUE": "false"},
+    deps = [
+        ":excess_precision",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Tests that excess precision is True when XLA_FLAGS explicitly enables it.
+torch_tpu_cc_test(
+    name = "compilation_excess_precision_env_true_test",
+    srcs = ["compilation_excess_precision_env_test.cc"],
+    env = {
+        "EXPECTED_VALUE": "true",
+        "XLA_FLAGS": "--xla_allow_excess_precision=true",
+    },
+    deps = [
+        ":excess_precision",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Tests that excess precision is False when XLA_FLAGS explicitly disables it.
+torch_tpu_cc_test(
+    name = "compilation_excess_precision_env_false_test",
+    srcs = ["compilation_excess_precision_env_test.cc"],
+    env = {
+        "EXPECTED_VALUE": "false",
+        "XLA_FLAGS": "--xla_allow_excess_precision=false",
+    },
+    deps = [
+        ":excess_precision",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 torch_tpu_cc_test(
     name = "compilation_test",
     srcs = ["compilation_test.cc"],
@@ -985,6 +1056,7 @@ torch_tpu_cc_test(
         ":compilation_cache",
         ":compilation_spec",
         ":compile_options_key",
+        ":dtype",
         ":error_utils",
         ":flags",
         ":shape",
@@ -993,6 +1065,7 @@ torch_tpu_cc_test(
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
@@ -1005,6 +1078,7 @@ torch_tpu_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
         "@xla//xla:xla_proto_cc",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
@@ -1100,7 +1174,6 @@ torch_tpu_cc_test(
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest_main",
-        "@xla//xla/pjrt:pjrt_executable",
     ],
 )
 
@@ -1265,6 +1338,18 @@ torch_tpu_cc_library(
         "//shims/torch/c10/util:base",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:absl_check",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "context_state_access_test",
+    srcs = ["context_state_access_test.cc"],
+    deps = [
+        ":context_manager",
+        ":context_states",
+        "//shims/torch",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -58,6 +58,7 @@
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/contain.h"
+#include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
@@ -404,22 +405,29 @@ PerfStats CompilationCache::GetCacheStats() const {
   return stats;
 }
 
+const CacheEntry* CompilationCache::FindStaticCacheEntryOrNull(
+    CompilationCacheKey key) const {
+  const auto it = executable_cache_.find(key);
+  return it == executable_cache_.end() ? nullptr : &it->second;
+}
+
 std::optional<CompilationCache::CacheLookupInternal>
 CompilationCache::GetStaticCacheEntry(CompilationCacheKey key) const {
-  auto it = executable_cache_.find(key);
-  if (it == executable_cache_.end()) {
+  const CacheEntry* cache_entry = FindStaticCacheEntryOrNull(key);
+  if (cache_entry == nullptr) {
     return std::nullopt;
   }
 
   perf_stats_.num_cache_hits++;
-  it->second.stats().read_count++;
-  it->second.stats().last_read = absl::Now();
+  cache_entry->stats().read_count++;
+  cache_entry->stats().last_read = absl::Now();
   ABSL_VLOG(2) << "Compilation cache STATIC HIT for key: " << key;
   return CacheLookupInternal{
-      .executable_promise = it->second.executable_promise(),
-      .executable_future = it->second.executable_future(),
+      .executable_promise = cache_entry->executable_promise(),
+      .executable_future = cache_entry->executable_future(),
       .needs_compilation = false,
-      .dump_on_cache_miss = false};
+      .dump_on_cache_miss = false,
+  };
 }
 
 std::optional<CompilationCache::BoundedDynamicCache::iterator>
@@ -509,7 +517,9 @@ CompilationCache::GetOrCreateCacheEntry(
           : GetBoundedDynamicCacheEntries(key.graph_key().shapeless_key());
   if (dynamic_it.has_value()) {
     for (const auto& entry : (*dynamic_it)->second) {
-      if (entry.shape_dynamism_metadata.IsStaticShapeCompatible(input_shapes)) {
+      if (entry.shape_dynamism_metadata.IsStaticShapeCompatible(input_shapes) &&
+          entry.middle_executable_key.compile_options_key() ==
+              key.compile_options_key()) {
         ABSL_VLOG(2) << "Compilation cache DYNAMIC HIT for key: " << key;
 
         TT_ASSIGN_OR_RETURN(
@@ -555,9 +565,9 @@ CompilationCache::GetOrCreateCacheEntry(
 
 bool CompilationCache::IsExecutableReady(CompilationCacheKey key) const {
   absl::MutexLock lock(cache_mutex_);
-  if (const auto it = executable_cache_.find(key);
-      it != executable_cache_.end()) {
-    return IsFutureReady(it->second.executable_future());
+  if (const CacheEntry* cache_entry = FindStaticCacheEntryOrNull(key);
+      cache_entry != nullptr) {
+    return IsFutureReady(cache_entry->executable_future());
   }
   return false;
 }
@@ -782,7 +792,7 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
     const CompilationCacheKey key, const std::vector<Shape>& input_shapes,
     const std::vector<Shape>& output_shapes,
     MlirComputationBuilder computation_builder,
-    UniqueCompileOptions compile_options) {
+    UniqueCompileOptions compile_options, bool use_dynamic_adapters) {
   // Critical section for cache lookups and insertion.
   TT_ASSIGN_OR_RETURN(
       auto cache_lookup, [&]() -> absl::StatusOr<CacheLookupInternal> {
@@ -800,21 +810,25 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
                                      cache_lookup.executable_future};
   CompilationCacheKey storage_key = key;
   if (cache_lookup.shape_dynamism_metadata.has_value()) {
-    ABSL_VLOG(1) << "Found shape dynamism metadata for key: " << key;
-    // Create a copy of the compile options for the adapter.
-    auto adapter_compile_options =
-        std::make_unique<xla::CompileOptions>(*compile_options);
-    TT_ASSIGN_OR_RETURN(
-        compiled_kernel.dynamic_kernel_adapter,
-        CreateDynamicKernelAdapter(
-            *cache_lookup.shape_dynamism_metadata, input_shapes, output_shapes,
-            key.compile_options_key(), std::move(adapter_compile_options)));
     // Create a key for the storage of the dynamic executable.
     const GraphKey graph_key(
         key.graph_key().shapeless_key(),
         DimensionsKey(*cache_lookup.shape_dynamism_metadata));
     storage_key = CompilationCacheKey(graph_key, key.compile_options_key());
     ABSL_VLOG(2) << "Storage key for dynamic executable: " << storage_key;
+
+    if (use_dynamic_adapters) {
+      ABSL_VLOG(1) << "Found shape dynamism metadata for key: " << key;
+      // Create a copy of the compile options for the adapter.
+      auto adapter_compile_options =
+          std::make_unique<xla::CompileOptions>(*compile_options);
+      TT_ASSIGN_OR_RETURN(
+          compiled_kernel.dynamic_kernel_adapter,
+          CreateDynamicKernelAdapter(*cache_lookup.shape_dynamism_metadata,
+                                     input_shapes, output_shapes,
+                                     key.compile_options_key(),
+                                     std::move(adapter_compile_options)));
+    }
   }
 
   if (cache_lookup.needs_compilation) {
@@ -855,6 +869,10 @@ void CompilationCache::EnqueueCompilation(
   compilation_pool_->Schedule(
       [this, key, builder = std::move(executable_builder),
        compile_options = std::move(compile_options)]() mutable {
+        // Prevent compilation threads from accessing thread-local context
+        // states to enforce they always rely on resolved compiler options
+        // passed down from the dispatch thread.
+        DisallowThisThreadToAccessContextState();
         torch_tpu::ScopedMemMeasuringContainer container;
         this->GetFromTier2OrCompile(std::move(key), std::move(builder),
                                     std::move(compile_options));
@@ -980,6 +998,10 @@ void CompilationCache::GetFromTier3OrCompile(
     backup_compilation_pool_->Schedule(
         [this, key, builder = std::move(executable_builder),
          options = std::move(compile_options)]() mutable {
+          // Prevent backup compilation threads from accessing thread-local
+          // context states to enforce they always rely on resolved
+          // compiler options passed down from the dispatch thread.
+          DisallowThisThreadToAccessContextState();
           // As an optimization, if the tier-3 cache read has already
           // populated the executable, skip the backup compilation.
           if (this->IsExecutableReady(key)) {
@@ -1024,8 +1046,15 @@ void CompilationCache::GetFromTier3OrCompile(
   SharedLoadedExecutableWithMetadataFuture f;
   {
     absl::MutexLock lock(cache_mutex_);
-    const CacheEntry& cache_entry = executable_cache_[key];
-    f = cache_entry.executable_future();
+    // Return early if the cache entry has been concurrently evicted.
+    const CacheEntry* cache_entry = FindStaticCacheEntryOrNull(key);
+    if (cache_entry == nullptr) {
+      ABSL_VLOG(1)
+          << "Cache entry already evicted before reading tier-1 cache for key: "
+          << key;
+      return;
+    }
+    f = cache_entry->executable_future();
   }
   // Important: the .get() must be called outside the lock region to avoid a
   // deadlock. For example, if this function (GetFromTier3OrCompile) scheduled
@@ -1061,13 +1090,16 @@ void CompilationCache::GetFromTier3OrCompile(
                  << "\n  Pre-compile wait: " << pre_compile_duration
                  << "\n  Write duration: " << write_duration;
     absl::MutexLock lock(cache_mutex_);
-    const CacheEntry& cache_entry = executable_cache_[key];
-    auto& tier2_stats = cache_entry.stats().tier2;
-    if (!tier2_stats.has_value()) {
-      tier2_stats.emplace();
+    // Skip updating stats if the cache entry has been concurrently evicted.
+    const CacheEntry* cache_entry = FindStaticCacheEntryOrNull(key);
+    if (cache_entry != nullptr) {
+      auto& tier2_stats = cache_entry->stats().tier2;
+      if (!tier2_stats.has_value()) {
+        tier2_stats.emplace();
+      }
+      tier2_stats->pre_compile_duration = pre_compile_duration;
+      tier2_stats->write_duration = write_duration;
     }
-    tier2_stats->pre_compile_duration = pre_compile_duration;
-    tier2_stats->write_duration = write_duration;
   }
 
   if (tier == CacheTier::kTier1 && uses_tier3) {

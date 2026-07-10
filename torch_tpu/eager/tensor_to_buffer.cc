@@ -31,7 +31,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/flags/declare.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -63,7 +62,6 @@
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/status_builder.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
@@ -73,14 +71,11 @@
 #include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
-#include "torch_tpu/experimental/eager/materialize_new.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/pjrt/host_memory_allocator.h"
-
-ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
 
@@ -200,7 +195,7 @@ absl::StatusOr<DeviceBufferRef> GetBaseBuffer(const c10::TensorImpl& tensor) {
       << ", got " << tensor.device().str();
 
   // This will trigger a device mismatch in Pytorch, with a good call stack.
-  TT_RET_CHECK(tensor.storage().data_ptr(), error::kUnimplemented)
+  TT_RET_CHECK(tensor.storage().data_ptr(), error::kPythonNotImplementedError)
       << "tensor is on the custom PrivateUse1 device. But its storage data_ptr "
          "is null. This is usually caused by FakeTensor being run on TPU ops. "
          "And it is not supported";
@@ -352,7 +347,7 @@ class TpuAllocator final : public c10::DeviceAllocator {
 
   void copy_data(void* dest, const void* src,
                  std::size_t count) const override {
-    TT_CHECK_THROW(false, error::kUnimplemented)
+    TT_CHECK_THROW(false, error::kPythonNotImplementedError)
         << "TpuAllocator::copy_data is not implemented and should not be "
            "called directly for this conceptual allocator type.";
   }
@@ -417,9 +412,10 @@ class TpuAllocator final : public c10::DeviceAllocator {
   }
 
   void resetPeakStats(c10::DeviceIndex device) override {
-    TORCH_WARN_ONCE(
-        "torch.accelerator.memory.reset_peak_memory_stats is not implemented "
-        "for TPU.");
+    auto status = PjrtBackend::GetInstance().ClearAllocatorStats();
+    if (!status.ok()) {
+      TORCH_WARN("Failed to reset peak memory stats: ", status.ToString());
+    }
   }
 
   std::pair<size_t, size_t>  // STD_PAIR_OK=dictated by PyTorch.
@@ -540,64 +536,6 @@ void RegisterTpuAllocator() {
   at::setHostAllocator(GetPrivateUse1DeviceType(), GetTpuPinnedAllocator());
 }
 
-namespace {
-
-// Translates a raw background execution Out-of-Memory (OOM) error to a
-// high-level exception that is easy to understand by PyTorch users. Under
-// experimental asynchronous materialization, compilation and execution are
-// enqueued to the background thread. If an execution OOM happens in the
-// background, it is caught early during BlockOnPendingMaterializations() inside
-// MaterializeAndReturn(), bypassing the standard copy-transfer wrapper's
-// (TranslateXlaTensorOomError) execution blocks. We replicate the OOM mapping
-// here to ensure user exception signature consistency.
-absl::Status TranslateXlaOomError(const absl::Status& status,
-                                  const at::Tensor& tensor) {
-  if (!IsXlaOomError(status)) {
-    return status;
-  }
-  auto dtype_or = ConvertTo<mlir::ElementType>(tensor.scalar_type());
-  if (!dtype_or.ok()) {
-    return status;
-  }
-  return TT_ERROR(error::kResourceExhausted)
-         << "the TPU ran out of memory while awaiting the materialization of "
-            "value "
-         << ToString(*dtype_or) << "[" << absl::StrJoin(tensor.sizes(), ", ")
-         << "]:\n"
-         << status.message();
-}
-
-absl::Status MaybeBlockOnPendingMaterializationsNew(const at::Tensor& tensor) {
-  if (GetFlagOnce<bool,
-                  &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
-    // Under experimental asynchronous materialization, the main thread blocks
-    // and awaits for the background worker compilation and execution thread to
-    // catch up before returning the resolved device buffer reference.
-    auto status = BlockOnPendingMaterializations();
-    if (!status.ok()) {
-      if (IsXlaOomError(status)) {
-        // 1. If it is an execution OOM error, translate it to standard format
-        //    while preserving the default copy caller context prefix
-        //    ("to_copy").
-        return TranslateXlaOomError(status, tensor);
-      } else {
-        // 2. If it is a compilation error, wrap the existing status natively
-        //    via StatusBuilder to preserve the background thread's original
-        //    operator name context payload (e.g., "gather", "scatter",
-        //    "cumprod") captured during graph construction under
-        //    ScopedPythonContextProvider. Do NOT reconstruct the status (e.g.
-        //    using TT_ERROR), as that would overwrite the payload with the copy
-        //    thread's "to_copy" wrapper.
-        return ::torch_tpu::StatusBuilder(std::move(status)).SetPrepend()
-               << "materialization failed with: ";
-      }
-    }
-  }
-  return absl::OkStatus();
-}
-
-}  // namespace
-
 void DeleteDeviceBufferRef(void* ctx_ptr) {
   DeviceBufferRef* const ref_ptr = static_cast<DeviceBufferRef*>(ctx_ptr);
   if (ref_ptr) {
@@ -663,9 +601,6 @@ absl::StatusOr<std::vector<DeviceBufferRef>> MaterializeAndReturn(
   TT_RETURN_IF_ERROR(Materialize(nodes_to_materialize, reason,
                                  MaterializationMode::kSplitGraph));
   nodes_to_materialize.clear();
-  // The new materialization algorithm needs us to block here until all pending
-  // jobs are done.
-  TT_RETURN_IF_ERROR(MaybeBlockOnPendingMaterializationsNew(tensors[0]));
   return buffers_to_return;
 }
 
@@ -692,12 +627,12 @@ absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
     c10::optional<at::MemoryFormat> memory_format_opt) {
   TT_RET_CHECK(!dtype_opt.has_value() ||
                    dtype_opt.value() != at::ScalarType::ComplexHalf,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "TorchTPU does not yet support dtype complex32";
   // Check that we support all the provided options.
   CheckDeviceIsTpu(device_opt, "empty");
   TT_RET_CHECK(layout_opt.value_or(at::Layout::Strided) == at::Layout::Strided,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "only layout=torch.strided is supported by TorchTPU for now, "
          "got "
       << LayoutToString(layout_opt);

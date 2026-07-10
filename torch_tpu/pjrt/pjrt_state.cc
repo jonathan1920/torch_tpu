@@ -28,6 +28,7 @@
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -200,18 +201,18 @@ absl::Status PjrtBackend::InitializeInternal() {
                                options_.premapped_buffer_size_bytes),
       _.SetPrepend() << "retrieving a PjRtClient failed with: ");
 
-  TT_RET_CHECK(client_ != nullptr, error::kInternal)
-      << "PjRtClient is null after initialization";
-  TT_RET_CHECK(!client_->devices().empty(), error::kNotFound)
-      << "no PjRt devices found after client initialization";
+  ABSL_CHECK_NE(client_, nullptr)  // CRASH_OK
+      << "PjRtClient should not be null after initialization.";
+  ABSL_CHECK(!client_->devices().empty())  // CRASH_OK
+      << "No PjRt devices found after client initialization.";
 
   if (options_.device_type == "tpu") {
     MaybeRegisterProfiler(plugin_name);
   }
 
   const auto& addressable_devices = client_->addressable_devices();
-  TT_RET_CHECK(!addressable_devices.empty(), error::kInternal)
-      << "no addressable PjRt devices found";
+  ABSL_CHECK(!addressable_devices.empty())  // CRASH_OK
+      << "No addressable PjRt devices found.";
 
   int world_size = 1;
   if (auto world_size_or = GetWorldSizeFromEnvOnce(); world_size_or.ok()) {
@@ -222,11 +223,12 @@ absl::Status PjrtBackend::InitializeInternal() {
 
   // Initialize the global device count. This is used by the CompilationCache
   // to determine the number of replicas of the XLA computation.
-  TT_RET_CHECK(world_size == 1 || world_size == device_count,
-               error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=We can hit this error check, but we
+                 // currently do not propagate its status.
+      world_size == 1 || world_size == device_count, error::kInvalidArgument)
       << "invalid world_size configuration: expected 1 or " << device_count
       << ", but got " << world_size
-      << ". Please check your environment variables.";
+      << ". Please check your environment variables";
 
   if (addressable_devices.size() > 1 && world_size == 1) {
     ABSL_LOG(WARNING) << "Only using 1 device out of all the "
@@ -252,6 +254,13 @@ xla::PjRtClient* absl_nullable PjrtBackend::GetClient() {
   }
   absl::ReaderMutexLock lock(mutex_);
   return client_.get();
+}
+
+absl::StatusOr<absl_nonnull std::shared_ptr<xla::PjRtClient>>
+PjrtBackend::GetSharedClient() {
+  TT_RETURN_IF_ERROR(EnsureInitialized());
+  absl::ReaderMutexLock lock(mutex_);
+  return client_;
 }
 
 xla::PjRtDevice* absl_nullable PjrtBackend::GetDevice() {
@@ -294,6 +303,14 @@ absl::StatusOr<tsl::AllocatorStats> PjrtBackend::GetAllocatorStats() {
   return device->GetAllocatorStats();
 }
 
+absl::Status PjrtBackend::ClearAllocatorStats() {
+  xla::PjRtDevice* device = GetDevice();
+  if (device == nullptr) {
+    return TT_ERROR(error::kInternal) << "PjRt device is not initialized";
+  }
+  return device->ClearMemoryStats();
+}
+
 absl::StatusOr<xla::HostMemoryAllocator*> PjrtBackend::GetHostAllocator() {
   xla::PjRtClient* client = GetClient();
   if (client == nullptr) {
@@ -303,7 +320,7 @@ absl::StatusOr<xla::HostMemoryAllocator*> PjrtBackend::GetHostAllocator() {
       host_allocator != nullptr) {
     return host_allocator;
   }
-  return TT_ERROR(error::kUnimplemented)
+  return TT_ERROR(error::kPythonNotImplementedError)
          << "host memory allocator is not implemented for this client";
 }
 
@@ -314,8 +331,7 @@ void PjrtBackend::Shutdown() {
   }
   ABSL_VLOG(1) << "ShutdownPjRt";
 
-  // TODO(503040602): This is causing segfaults at shutdown
-  // client_.reset();
+  client_.reset();
   device_ = nullptr;
   device_type_ = PjRtDeviceType::kUnknown;
   global_device_count_ = 0;
@@ -452,7 +468,14 @@ void SynchronizeDevice(c10::DeviceIndex device_index) {
   }
 }
 
-int64_t RecordEventSnapshot(c10::DeviceIndex device_index, int64_t stream_id) {
+EventSnapshot::~EventSnapshot() {
+  StreamState& state = GetStreamState();
+  absl::MutexLock lock(state.mutex);
+  state.event_snapshots.erase(event_id_);
+}
+
+std::shared_ptr<EventSnapshot> EventSnapshot::Record(
+    c10::DeviceIndex device_index, int64_t stream_id) {
   StreamState& state = GetStreamState();
   absl::MutexLock lock(state.mutex);
   const int64_t event_id = state.next_snapshot_id++;
@@ -462,18 +485,19 @@ int64_t RecordEventSnapshot(c10::DeviceIndex device_index, int64_t stream_id) {
           ? it->second
           : std::vector<StreamState::SharedFuture>{};
   state.event_snapshots.emplace(event_id, std::move(futures));
-  return event_id;
+  // Can't use make_shared because the constructor is private.
+  return std::shared_ptr<EventSnapshot>(new EventSnapshot(event_id));
 }
 
-absl::Status WaitEventSnapshot(int64_t event_id) {
+absl::Status EventSnapshot::Wait() const {
   std::vector<StreamState::SharedFuture> futures;
   {
     StreamState& state = GetStreamState();
     absl::MutexLock lock(state.mutex);
-    auto it = state.event_snapshots.find(event_id);
+    auto it = state.event_snapshots.find(event_id_);
     if (it == state.event_snapshots.end()) {
       return TT_ERROR(error::kInvalidArgument)
-             << "unknown event snapshot id: " << event_id;
+             << "unknown event snapshot id: " << event_id_;
     }
     futures = it->second;
   }
@@ -486,15 +510,15 @@ absl::Status WaitEventSnapshot(int64_t event_id) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> QueryEventSnapshot(int64_t event_id) {
+absl::StatusOr<bool> EventSnapshot::Query() const {
   std::vector<StreamState::SharedFuture> futures;
   {
     StreamState& state = GetStreamState();
     absl::MutexLock lock(state.mutex);
-    auto it = state.event_snapshots.find(event_id);
+    auto it = state.event_snapshots.find(event_id_);
     if (it == state.event_snapshots.end()) {
       return TT_ERROR(error::kInvalidArgument)
-             << "unknown event snapshot id: " << event_id;
+             << "unknown event snapshot id: " << event_id_;
     }
     futures = it->second;
   }
@@ -504,12 +528,6 @@ absl::StatusOr<bool> QueryEventSnapshot(int64_t event_id) {
     }
   }
   return true;
-}
-
-void ReleaseEventSnapshot(int64_t event_id) {
-  StreamState& state = GetStreamState();
-  absl::MutexLock lock(state.mutex);
-  state.event_snapshots.erase(event_id);
 }
 
 }  // namespace torch_tpu

@@ -133,7 +133,7 @@ absl::StatusOr<std::vector<mlir::MlirOp>> ComputeMaxPoolWithIndices(
                       NumElements(shape.drop_front(2)));
 
   TT_RET_CHECK(spatial_input_elements <= std::numeric_limits<int32_t>::max(),
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "tpu doesn't support max_pool2d_with_indices on inputs with more than "
       << std::numeric_limits<int32_t>::max()
       << " spatial elements due to int32 indices limitation for now,"

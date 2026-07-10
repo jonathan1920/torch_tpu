@@ -94,6 +94,8 @@ py_library_providing_imports_info(
         [],
     ) + [
         ":_loader",
+        "//torch_tpu/_internal:env",
+        "//torch_tpu/_internal:native_scan",
         "//torch_tpu/_internal:testing",  # buildcleaner: keep
     ],
 )

@@ -99,8 +99,7 @@ torch_tpu_cc_test(
         "v7",
         reason = "Load balancing",
     ),
-    tags = [
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         ":kernel",
         "//shims/torch:aten_headers",

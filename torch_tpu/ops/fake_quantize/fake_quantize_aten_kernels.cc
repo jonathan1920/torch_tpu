@@ -85,8 +85,8 @@ struct FakeQuantizePerTensorAffineCachemaskResult {
 absl::StatusOr<FakeQuantizePerTensorAffineCachemaskResult>
 FakeQuantizePerTensorAffineCachemaskHelper(const at::Tensor& self, double scale,
                                            int64_t zero_point,
-                                           int64_t quant_min,
-                                           int64_t quant_max) {
+                                           int64_t quant_min, int64_t quant_max,
+                                           OpParamCacheKeys param_keys) {
   auto op_builder = [scale, zero_point, quant_min,
                      quant_max](mlir::MlirOp input) {
     return BuildFakeQuantizePerTensorAffineCachemaskShlo(
@@ -101,7 +101,7 @@ FakeQuantizePerTensorAffineCachemaskHelper(const at::Tensor& self, double scale,
       (DispatchOp<1, 2>(std::move(op_builder), {self},
                         {.out_dtypes = {output_dtype, mlir::ElementType::PRED},
                          .out_dims_list = {self.sizes(), self.sizes()},
-                         .op_param_cache_keys = OpParamCacheKeys::Empty()})));
+                         .op_param_cache_keys = std::move(param_keys)})));
 
   return FakeQuantizePerTensorAffineCachemaskResult{std::move(output),
                                                     std::move(mask)};
@@ -113,17 +113,14 @@ std::tuple<at::Tensor, at::Tensor> FakeQuantizePerTensorAffineCachemask(
     const at::Tensor& self, double scale, int64_t zero_point, int64_t quant_min,
     int64_t quant_max) {
   TT_KERNEL(
-      OpName::kFakeQuantizePerTensorAffineCachemask, _,
-      (self, IgnoreInCacheKey(scale, "Legacy usage"),
-       IgnoreInCacheKey(zero_point, "Legacy usage"),
-       IgnoreInCacheKey(quant_min, "Legacy usage"),
-       IgnoreInCacheKey(quant_max, "Legacy usage")),
-      {
+      OpName::kFakeQuantizePerTensorAffineCachemask, param_keys,
+      (self, scale, zero_point, quant_min, quant_max), {
         at::Tensor out = at::empty_like(self);
         at::Tensor mask = at::empty_like(self, at::kBool);
         TT_ASSIGN_OR_THROW((auto [output_buffer, mask_buffer]),
                            FakeQuantizePerTensorAffineCachemaskHelper(
-                               self, scale, zero_point, quant_min, quant_max));
+                               self, scale, zero_point, quant_min, quant_max,
+                               std::move(param_keys)));
 
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(output_buffer), out));

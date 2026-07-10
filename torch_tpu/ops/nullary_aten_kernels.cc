@@ -170,7 +170,7 @@ at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,
       {
         TT_CHECK_THROW(!dtype_opt.has_value() ||
                            dtype_opt.value() != at::ScalarType::ComplexHalf,
-                       error::kUnimplemented)
+                       error::kPythonNotImplementedError)
             << "TorchTPU does not yet support dtype complex32";
         TT_CHECK_THROW(final_sizes_vec.size() == final_strides_vec.size(),
                        error::kInvalidArgument)
