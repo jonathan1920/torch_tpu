@@ -219,11 +219,11 @@ absl::Status CheckScaledMmInputs(const at::Tensor& self, const at::Tensor& mat2,
   const int64_t m_dim = self.size(0);
   const int64_t n_dim = mat2.size(1);
   TT_RET_CHECK(scale_a.numel() == 1 || scale_a.numel() == m_dim,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "expected scale_a to have numel 1 (tensorwise) or " << m_dim
       << " (row-wise), got numel " << scale_a.numel();
   TT_RET_CHECK(scale_b.numel() == 1 || scale_b.numel() == n_dim,
-               error::kUnimplemented)
+               error::kPythonNotImplementedError)
       << "expected scale_b to have numel 1 (tensorwise) or " << n_dim
       << " (per-channel), got numel " << scale_b.numel();
 
