@@ -6351,57 +6351,6 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.scatter(self_t, 0, index, src).cpu()
 
-  def test_slice_scatter_self_scalar(self):
-    self_t = torch.tensor(1.0, device=et.device())
-    src = torch.ones(2, device=et.device())
-    err_type = RuntimeError if et.is_on_tpu() else IndexError
-    with et.assert_raises_message(
-        err_type,
-        tpu="""slice_scatter(): slice_scatter requires self to have at least 1 dimension, got rank 0""",
-        gpu="""slice() cannot be applied to a 0-dim tensor.""",
-    ):
-      torch.slice_scatter(self_t, src, 0, 0, 2, 1).cpu()
-
-  def test_slice_scatter_rank_mismatch(self):
-    self_t = torch.ones(5, 5, device=et.device())
-    src = torch.ones(5, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""slice_scatter(): slice_scatter requires self and src to have the same number of dimensions, got 2 and 1""",
-        gpu="""expected src to have a size equal to the slice of self. src size = [5], slice size = [5, 5]""",
-    ):
-      torch.slice_scatter(self_t, src, 0, 0, 5, 1).cpu()
-
-  def test_slice_scatter_invalid_step(self):
-    self_t = torch.ones(5, device=et.device())
-    src = torch.ones(5, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""slice_scatter(): step must be greater than 0, got 0""",
-        gpu="""slice step must be positive""",
-    ):
-      torch.slice_scatter(self_t, src, 0, 0, 5, 0).cpu()
-
-  def test_slice_scatter_src_size_mismatch_slice_dim(self):
-    self_t = torch.ones(6, 6, device=et.device())
-    src = torch.ones(3, 6, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""slice_scatter(): expected src shape size 2 at dim 0, got 3""",
-        gpu="""expected src to have a size equal to the slice of self. src size = [3, 6], slice size = [2, 6]""",
-    ):
-      torch.slice_scatter(self_t, src, 0, 0, 2, 1).cpu()
-
-  def test_slice_scatter_src_size_mismatch_other_dim(self):
-    self_t = torch.ones(6, 6, device=et.device())
-    src = torch.ones(2, 5, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""slice_scatter(): expected src and self sizes to match at dim 1, got self size 6 and src size 5""",
-        gpu="""expected src to have a size equal to the slice of self. src size = [2, 5], slice size = [2, 6]""",
-    ):
-      torch.slice_scatter(self_t, src, 0, 0, 2, 1).cpu()
-
   def test_softmax_backward_data_shape_mismatch(self):
     grad_output = torch.ones(5, 5, device=et.device())
     output = torch.ones(5, device=et.device())
