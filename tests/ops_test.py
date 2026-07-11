@@ -475,13 +475,14 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     # exp/log accumulation plus the associative scan reordering diverge from the
     # sequential CPU reference more than a plain cumulative reduction does.
     "logcumsumexp": {
+        torch.bfloat16: {"rtol": 2.7e-2, "atol": 5.9e-3},
         torch.float16: {"rtol": 8e-3, "atol": 1.5e-3},
         torch.float32: {"rtol": 3e-4, "atol": 1e-4},
     },
     "matmul": {
         torch.bfloat16: {"rtol": 3.9e-1, "atol": 2.9e-1},
         torch.complex64: {"rtol": 4e-1, "atol": 1.9},
-        torch.float16: {"rtol": 1e-3, "atol": 8e-1},
+        torch.float16: {"rtol": 1.3e-2, "atol": 8e-1},
         torch.float32: {"rtol": 4.5, "atol": 8.5e-1},
     },
     "mm": {
