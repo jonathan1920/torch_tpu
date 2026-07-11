@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/ops/optimizer/fused_adam_aten_kernels.h"
+#include "torch_tpu/ops/fused_adam/fused_adam_aten_kernels.h"
 
 #include <cstddef>
 #include <cstdint>
