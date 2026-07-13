@@ -85,6 +85,28 @@ def _default_tpu_compile(*args, **kwargs):
   return _torch_compile(*args, **kwargs)
 
 
+def _configure_native_scan_gate() -> None:
+  """Gates whether cumulative ops may emit the native scan emitter.
+
+  Cumulative ops (cumsum/cumprod/cummax/cummin/logcumsumexp) lower to the native
+  scan emitter (chlo.ScanOp), which needs a libtpu new enough to compile it.
+  Internal builds always do; OSS pins a wheel that may not, so gate on the
+  libtpu version and fall back to the while-loop lowering otherwise
+  (b/529376045).
+
+  This runs in _init_device_impl() after libtpu.configure_library_path() has
+  already run in __init__.py, ensuring TPU_LIBRARY_PATH is set before importing
+  _internal.env.
+  """
+  from torch_tpu._internal import env  # pylint: disable=g-import-not-at-top
+  from torch_tpu._internal import native_scan  # pylint: disable=g-import-not-at-top
+
+  env.set_native_scan_emitter_supported(
+      bool(env.IS_INTERNAL_TORCH_TPU)
+      or native_scan.libtpu_supports_native_scan()
+  )
+
+
 def _init_device_impl(device: str) -> torch.device:
   """Initializes a lazy pytorch device.
 
@@ -165,6 +187,9 @@ def _init_device_impl(device: str) -> torch.device:
   from torch_tpu._internal import profiler  # pylint: disable=g-import-not-at-top
 
   profiler.register_kineto_backend()
+
+  # Configure native scan gate for cumulative ops.
+  _configure_native_scan_gate()
 
   # Monkey patch torch.set_float32_matmul_precision and
   # torch.get_float32_matmul_precision to maintain global precision state.
