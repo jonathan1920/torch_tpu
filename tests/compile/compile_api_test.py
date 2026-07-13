@@ -859,7 +859,7 @@ class CompileApiTest(absltest.TestCase):
     self.assertTrue(tpu_torch_compile.is_device_shape_dynamic(dynamic_input))
 
   def test_get_dynamic_pad_module(self):
-    tensor_info = [([1, 4], torch.int64)]
+    tensor_info = [([1, 4], torch.int32)]
     bounds_list = [([1], [8])]
 
     compile_result = tpu_torch_compile.get_dynamic_pad_module(
@@ -872,7 +872,7 @@ class CompileApiTest(absltest.TestCase):
     self.assertIn('stablehlo.set_dimension_size', mlir_text)
     self.assertIn('stablehlo.get_dimension_size', mlir_text)
 
-    input_tensor = torch.ones(1, 4, dtype=torch.int64, device='tpu')
+    input_tensor = torch.ones(1, 4, dtype=torch.int32, device='tpu')
     result = tpu_torch_compile.execute(
         compile_result.executable, [input_tensor]
     )
@@ -881,7 +881,7 @@ class CompileApiTest(absltest.TestCase):
     self.assertEqual(padded_tensor.shape, (1, 8))
     self.assertTrue(tpu_torch_compile.is_device_shape_dynamic(padded_tensor))
 
-    expected = torch.tensor([[1, 1, 1, 1]], dtype=torch.int64)
+    expected = torch.tensor([[1, 1, 1, 1]], dtype=torch.int32)
     utils.assert_close(padded_tensor.cpu()[:, :4], expected)
 
   def test_executable_layouts(self):
