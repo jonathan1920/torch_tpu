@@ -44,4 +44,39 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "fused_moving_avg_obs_fq_helper_aten_kernels",
+    srcs = ["fused_moving_avg_obs_fq_helper_aten_kernels.cc"],
+    hdrs = ["fused_moving_avg_obs_fq_helper_aten_kernels.h"],
+    deps = [
+        "//shims/torch:aten",
+        "//shims/torch:aten_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:fixed_size_span",
+        "//torch_tpu/common:to_string",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/eager:tensor_to_buffer",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops/a_min_max",
+        "//torch_tpu/ops/macros:kernel",
+        "//torch_tpu/ops/reductions",
+        "//torch_tpu/ops/resize:resize_aten_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:chlo_builder",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
 torch_tpu_package_end()

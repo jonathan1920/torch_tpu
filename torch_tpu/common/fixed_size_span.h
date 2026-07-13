@@ -106,6 +106,23 @@ std::array<T, 5> MoveToStdArray(torch_tpu::FixedSizeSpan<T, 5> span) {
   return {std::move(span[0]), std::move(span[1]), std::move(span[2]),
           std::move(span[3]), std::move(span[4])};
 }
+template <typename T>
+std::array<T, 6> MoveToStdArray(torch_tpu::FixedSizeSpan<T, 6> span) {
+  return {std::move(span[0]), std::move(span[1]), std::move(span[2]),
+          std::move(span[3]), std::move(span[4]), std::move(span[5])};
+}
+template <typename T>
+std::array<T, 7> MoveToStdArray(torch_tpu::FixedSizeSpan<T, 7> span) {
+  return {std::move(span[0]), std::move(span[1]), std::move(span[2]),
+          std::move(span[3]), std::move(span[4]), std::move(span[5]),
+          std::move(span[6])};
+}
+template <typename T>
+std::array<T, 8> MoveToStdArray(torch_tpu::FixedSizeSpan<T, 8> span) {
+  return {std::move(span[0]), std::move(span[1]), std::move(span[2]),
+          std::move(span[3]), std::move(span[4]), std::move(span[5]),
+          std::move(span[6]), std::move(span[7])};
+}
 // More overloads can be added as needed.
 
 }  // namespace torch_tpu

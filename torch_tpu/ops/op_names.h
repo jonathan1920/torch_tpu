@@ -367,6 +367,7 @@ enum class OpName {
   kFusedAdamw,
   kFusedAdamwTensorLr,
   kFusedDropout,
+  kFusedMovingAvgObsFqHelper,
   kFusedRmsNorm,
   kFusedRmsNormBackward,
   kFusedSdpChoice,

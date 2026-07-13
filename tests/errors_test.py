@@ -7079,6 +7079,97 @@ Device-side assertion tracking was not enabled by user.""",
           maximize=False,
       )
 
+  def test_fused_moving_avg_obs_fq_helper_non_floating(self):
+    dev = et.device()
+    self_t = torch.ones((2, 3), dtype=torch.int32, device=dev)
+    observer_on = torch.tensor([1], dtype=torch.int32, device=dev)
+    fake_quant_on = torch.tensor([1], dtype=torch.int32, device=dev)
+    running_min = torch.empty((0,), dtype=torch.float32, device=dev)
+    running_max = torch.empty((0,), dtype=torch.float32, device=dev)
+    scale = torch.empty((0,), dtype=torch.float32, device=dev)
+    zero_point = torch.empty((0,), dtype=torch.int32, device=dev)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_moving_avg_obs_fq_helper(): expected floating point tensor for self, got int32""",
+        gpu=""""aminmax_kernel" not implemented for 'Int'""",
+    ):
+      torch.ops.aten._fused_moving_avg_obs_fq_helper(
+          self_t,
+          observer_on,
+          fake_quant_on,
+          running_min,
+          running_max,
+          scale,
+          zero_point,
+          0.01,
+          0,
+          255,
+          0,
+          False,
+          False,
+      )
+
+  def test_fused_moving_avg_obs_fq_helper_zero_dim_per_channel(self):
+    dev = et.device()
+    self_t = torch.tensor(1.5, dtype=torch.float32, device=dev)
+    observer_on = torch.tensor([1], dtype=torch.int32, device=dev)
+    fake_quant_on = torch.tensor([1], dtype=torch.int32, device=dev)
+    running_min = torch.empty((0,), dtype=torch.float32, device=dev)
+    running_max = torch.empty((0,), dtype=torch.float32, device=dev)
+    scale = torch.empty((0,), dtype=torch.float32, device=dev)
+    zero_point = torch.empty((0,), dtype=torch.int32, device=dev)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_moving_avg_obs_fq_helper(): expected positive tensor rank when per_row_fake_quant is true, got rank 0""",
+        gpu="""Error in fused_moving_avg_obs_fake_quant_cpu: ch_axis must be < self.dim()""",
+    ):
+      torch.ops.aten._fused_moving_avg_obs_fq_helper(
+          self_t,
+          observer_on,
+          fake_quant_on,
+          running_min,
+          running_max,
+          scale,
+          zero_point,
+          0.01,
+          0,
+          255,
+          0,
+          True,
+          False,
+      )
+
+  def test_fused_moving_avg_obs_fq_helper_out_of_bounds_ch_axis(self):
+    dev = et.device()
+    self_t = torch.ones((2, 3), dtype=torch.float32, device=dev)
+    observer_on = torch.tensor([1], dtype=torch.int32, device=dev)
+    fake_quant_on = torch.tensor([1], dtype=torch.int32, device=dev)
+    running_min = torch.empty((0,), dtype=torch.float32, device=dev)
+    running_max = torch.empty((0,), dtype=torch.float32, device=dev)
+    scale = torch.empty((0,), dtype=torch.float32, device=dev)
+    zero_point = torch.empty((0,), dtype=torch.int32, device=dev)
+    err_type = Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""fused_moving_avg_obs_fq_helper(): dimension out of range (expected to be in range of [-2, 1], but got 5)""",
+        gpu="""Error in fused_moving_avg_obs_fake_quant_cpu: ch_axis must be < self.dim()""",
+    ):
+      torch.ops.aten._fused_moving_avg_obs_fq_helper(
+          self_t,
+          observer_on,
+          fake_quant_on,
+          running_min,
+          running_max,
+          scale,
+          zero_point,
+          0.01,
+          0,
+          255,
+          5,
+          True,
+          False,
+      )
+
 
 if __name__ == "__main__":
   g3_multiprocessing.handle_test_main(absltest.main)

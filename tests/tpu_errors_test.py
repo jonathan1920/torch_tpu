@@ -3135,6 +3135,38 @@ module {
       )
 
   @et.why_tpu_only(
+      "Upstream CUDA crashes with illegal memory access without host check"
+  )
+  def test_fused_moving_avg_obs_fq_helper_invalid_quant_min_max(self):
+    dev = et.device()
+    self_t = torch.ones((2, 3), dtype=torch.float32, device=dev)
+    observer_on = torch.tensor([1], dtype=torch.int32, device=dev)
+    fake_quant_on = torch.tensor([1], dtype=torch.int32, device=dev)
+    running_min = torch.empty((0,), dtype=torch.float32, device=dev)
+    running_max = torch.empty((0,), dtype=torch.float32, device=dev)
+    scale = torch.empty((0,), dtype=torch.float32, device=dev)
+    zero_point = torch.empty((0,), dtype=torch.int32, device=dev)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_moving_avg_obs_fq_helper(): expected quant_min to be strictly less than quant_max, got quant_min=10 and quant_max=0""",
+    ):
+      torch.ops.aten._fused_moving_avg_obs_fq_helper(
+          self_t,
+          observer_on,
+          fake_quant_on,
+          running_min,
+          running_max,
+          scale,
+          zero_point,
+          0.01,
+          10,
+          0,
+          0,
+          False,
+          False,
+      )
+
+  @et.why_tpu_only(
       "sparse_dense_matmul_grad_with_adam is a TPU specific Custom Op"
   )
   def test_sparse_dense_matmul_grad_with_adam_velocity_shape(self):

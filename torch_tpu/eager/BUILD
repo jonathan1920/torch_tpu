@@ -544,6 +544,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/exponential:exponential_aten_kernels",
         "//torch_tpu/ops/eye:eye_aten_kernels",
         "//torch_tpu/ops/fake_quantize:fake_quantize_aten_kernels",
+        "//torch_tpu/ops/fake_quantize:fused_moving_avg_obs_fq_helper_aten_kernels",
         "//torch_tpu/ops/fft:fft_aten_kernels",
         "//torch_tpu/ops/fill:fill_aten_kernels",
         "//torch_tpu/ops/flip:flip_aten_kernels",
