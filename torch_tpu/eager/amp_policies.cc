@@ -119,7 +119,6 @@
 #include "ATen/ops/polar_ops.h"
 #include "ATen/ops/prelu_ops.h"
 #include "ATen/ops/prod_ops.h"
-#include "ATen/ops/qr_ops.h"
 #include "ATen/ops/quantile_ops.h"
 #include "ATen/ops/reflection_pad1d_ops.h"
 #include "ATen/ops/reflection_pad2d_ops.h"
@@ -313,7 +312,6 @@ TORCH_LIBRARY_IMPL(aten, AutocastPrivateUse1, m) {
   // which is preferred.
   TT_AMP_POLICY(prod, dim_int, fp32_set_opt_dtype);
   TT_AMP_POLICY(prod, fp32_set_opt_dtype);
-  TT_AMP_POLICY(qr, fp32);
   TT_AMP_POLICY(quantile, fp32);
   TT_AMP_POLICY(quantile, scalar, fp32);
   TT_AMP_POLICY(reflection_pad1d, fp32);
