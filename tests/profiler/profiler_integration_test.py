@@ -249,6 +249,41 @@ class ProfilerIntegrationTest(parameterized.TestCase):
         "Expected non-zero TPU time in key_averages for torch.compile mode",
     )
 
+  def test_tpu_profiler_with_stack(self):
+    device = torch.device("tpu")
+    output_dir = self.create_tempdir("with_stack").full_path
+
+    _cleanup_profile_dir()
+
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
+        ],
+        with_stack=True,
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
+    ) as prof:
+      a = torch.ones((16, 16)).to(device)
+      b = torch.ones((16, 16)).to(device)
+      c = a @ b
+      tpu_sync.synchronize(c)
+      prof.step()
+
+    tpu_xplane_path = pathlib.Path(output_dir) / "xplane.pb"
+    self._get_and_copy_xplane(tpu_xplane_path)
+
+    xspace = xplane_pb2.XSpace.FromString(tpu_xplane_path.read_bytes())
+    options_bytes = _get_profiler_options_bytes(xspace)
+    options = profiler_options_pb2.ProfileOptions.FromString(options_bytes)
+
+    with self.subTest(msg="ProfileOptions tracer level check"):
+      self.assertEqual(
+          options.python_tracer_level,
+          1,
+          "expected python_tracer_level=1 when with_stack=True, got"
+          f" {options.python_tracer_level}",
+      )
+
   def test_automatic_xplane_path(self):
     device = torch.device("tpu")
 
@@ -311,7 +346,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=activities,
         record_shapes=True,
-        with_stack=False,  # If True, might require torch.autograd.
+        with_stack=True,
         profile_memory=False,
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
     ):

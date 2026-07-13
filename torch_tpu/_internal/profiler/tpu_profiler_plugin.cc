@@ -51,6 +51,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "torch/csrc/profiler/api.h"
 
 // Forward declarations of PrivateUse1ProfilerRegistry marked as weak.
 // This allows compilation against Torch 2.10 (where these don't exist)
@@ -389,6 +390,15 @@ void TpuKinetoProfilerSession::start() {
   tensorflow::ProfileOptions opts = tsl::ProfilerSession::DefaultOptions();
   opts.set_device_type(tensorflow::ProfileOptions::TPU);
   opts.set_raise_error_on_start_failure(true);
+
+  bool with_stack = config_.isWithStackEnabled();
+  if (!with_stack && torch::autograd::profiler::profilerEnabled()) {
+    with_stack = torch::autograd::profiler::getProfilerConfig().with_stack;
+  }
+
+  if (with_stack) {
+    opts.set_python_tracer_level(1);
+  }
 
   TT_THROW_IF_ERROR(
       UpdateProfileOptions(config_.getCustomConfig(), opts, run_dir_));
