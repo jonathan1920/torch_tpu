@@ -26,6 +26,7 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:aten_headers",
         "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:dtype",
@@ -37,8 +38,8 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/digamma:digamma_aten_kernels",
         "//torch_tpu/ops/macros:kernel",
         "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
         "@stablehlo//:attr_type_builder_util",
-        "@stablehlo//:chlo_builder",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
         "@stablehlo//:stablehlo_ops",

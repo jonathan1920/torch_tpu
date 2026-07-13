@@ -606,7 +606,9 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float32: {"rtol": 1e-5, "atol": 5e-5},
     },
     "polygamma": {
-        torch.float32: {"rtol": 2.7e-5, "atol": 1.7e-3},
+        torch.bfloat16: {"rtol": 2.2e-1, "atol": 2.5e-4},
+        torch.float16: {"rtol": 1.3e-1, "atol": 2.6e-4},
+        torch.float32: {"rtol": 3.3e-5, "atol": 5.4e-4},
     },
     "pow": {
         torch.complex64: {"rtol": 6e-4, "atol": 1e-5},
@@ -1124,7 +1126,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float32: {"rtol": 1e-5, "atol": 5e-5},
     },
     "polygamma": {
-        torch.float32: {"rtol": 1.6e-4, "atol": 22},
+        torch.float32: {"rtol": 8.6e-6, "atol": 1.1e-4},
     },
     "pow": {
         torch.complex64: {"rtol": 5.8e-4, "atol": 1e-5},
@@ -1393,7 +1395,7 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.float16: {"atol": 4.7e-2},
     },
     "polygamma": {
-        torch.float32: {"rtol": 1.6e-4, "atol": 22},
+        torch.float32: {"rtol": 8.6e-6, "atol": 1.1e-4},
     },
     "pow": {
         torch.complex64: {"rtol": 5.8e-4, "atol": 1e-5},
@@ -1567,7 +1569,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float32: {"rtol": 2.1e-4, "atol": 1.4e-5},
             },
             "polygamma": {
-                torch.float32: {"rtol": 3.1e-5, "atol": 1.7e-3},
+                torch.float32: {"rtol": 3.1e-5, "atol": 1e-3},
             },
             "rsqrt": {
                 torch.bfloat16: {"rtol": 2e-2, "atol": 1e-3},
@@ -3276,12 +3278,8 @@ class TestOps(TorchTpuTestBase):
         + (torch.float64, torch.float16, torch.bfloat16),
     )
 
-  # TODO(b/529449058): Re-enable once the bug is fixed.
-  # def test_polygamma(self):
-  #   self.do_test_op(
-  #       "polygamma",
-  #       exclude_dtypes=(torch.float64,),  # EXCLUDE_DTYPES_OK=b/529449058
-  #   )
+  def test_polygamma(self):
+    self.do_test_op("polygamma")
 
   def test_prod(self):
     self.do_test_op("prod")
