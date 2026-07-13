@@ -47,14 +47,6 @@ namespace torch_tpu {
 namespace stablehlo = mlir::stablehlo;
 
 namespace {
-struct GroupedWeightParams {
-  mlir::MlirOp input;
-  mlir::MlirOp grad_output;
-  int64_t input_batch_dim;
-  int64_t input_feature_dim;
-  int64_t kernel_in_feat_dim;
-  int64_t kernel_out_feat_dim;
-};
 
 struct SpatialPadding {
   int64_t lo;
@@ -339,104 +331,6 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
   return stablehlo::Add(conv_op, shaped_bias);
 }
 
-// Helper function to prepare grouped convolution inputs for convolution
-// backward when groups > 1.
-GroupedWeightParams PrepareGroupedWeightInputs(
-    mlir::MlirOp input, mlir::MlirOp grad_output, int64_t groups,
-    int64_t input_batch_dimension, int64_t input_feature_dimension,
-    int64_t kernel_input_feature_dimension,
-    int64_t kernel_output_feature_dimension) {
-  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-  const mlir::RankedTensorType grad_type = GetTensorTypeOrDie(grad_output);
-  auto input_shape = input_type.getShape();
-  auto grad_shape = grad_type.getShape();
-
-  int64_t c_in = input_type.getDimSize(1);
-  int64_t c_in_g = c_in / groups;
-
-  // 1. Prepare Input (LHS)
-
-  Dimensions input_reshape_dims;
-  input_reshape_dims.push_back(input_shape[0]);  // N
-  input_reshape_dims.push_back(groups);
-  input_reshape_dims.push_back(c_in_g);
-  for (size_t i = 2; i < input_shape.size(); ++i) {
-    input_reshape_dims.push_back(input_shape[i]);
-  }
-
-  input =
-      stablehlo::Reshape(mlir::RankedTensorType::get(
-                             input_reshape_dims, input_type.getElementType()),
-                         input);
-
-  Dimensions input_transpose_perm;
-  input_transpose_perm.push_back(2);  // C_in/G
-  input_transpose_perm.push_back(1);  // G
-  input_transpose_perm.push_back(0);  // N
-  for (size_t i = 3; i < input_reshape_dims.size(); ++i) {
-    input_transpose_perm.push_back(i);
-  }
-
-  input = stablehlo::Transpose(input, input_transpose_perm);
-
-  Dimensions input_flat_dims;
-  input_flat_dims.push_back(c_in_g);
-  input_flat_dims.push_back(groups * input_shape[0]);  // G*N
-  for (size_t i = 2; i < input_shape.size(); ++i) {
-    input_flat_dims.push_back(input_shape[i]);
-  }
-  input = stablehlo::Reshape(
-      mlir::RankedTensorType::get(input_flat_dims, input_type.getElementType()),
-      input);
-
-  // 2. Prepare GradOutput (RHS)
-  int64_t c_out = grad_type.getDimSize(1);
-  int64_t c_out_g = c_out / groups;
-
-  Dimensions grad_reshape_dims;
-  grad_reshape_dims.push_back(grad_shape[0]);  // N
-  grad_reshape_dims.push_back(groups);
-  grad_reshape_dims.push_back(c_out_g);
-  for (size_t i = 2; i < grad_shape.size(); ++i) {
-    grad_reshape_dims.push_back(grad_shape[i]);
-  }
-  grad_output =
-      stablehlo::Reshape(mlir::RankedTensorType::get(
-                             grad_reshape_dims, grad_type.getElementType()),
-                         grad_output);
-
-  Dimensions grad_transpose_perm;
-  grad_transpose_perm.push_back(1);  // G
-  grad_transpose_perm.push_back(2);  // C_out/G
-  grad_transpose_perm.push_back(0);  // N
-  for (size_t i = 3; i < grad_reshape_dims.size(); ++i) {
-    grad_transpose_perm.push_back(i);
-  }
-
-  grad_output = stablehlo::Transpose(grad_output, grad_transpose_perm);
-
-  Dimensions grad_flat_dims;
-  grad_flat_dims.push_back(groups * c_out_g);  // G*C_out/G
-  grad_flat_dims.push_back(grad_shape[0]);     // N
-  for (size_t i = 2; i < grad_shape.size(); ++i) {
-    grad_flat_dims.push_back(grad_shape[i]);
-  }
-
-  grad_output = stablehlo::Reshape(
-      mlir::RankedTensorType::get(grad_flat_dims, grad_type.getElementType()),
-      grad_output);
-
-  std::swap(input_batch_dimension, input_feature_dimension);
-  std::swap(kernel_input_feature_dimension, kernel_output_feature_dimension);
-
-  return {input,
-          grad_output,
-          input_batch_dimension,
-          input_feature_dimension,
-          kernel_input_feature_dimension,
-          kernel_output_feature_dimension};
-}
-
 }  // namespace
 
 absl::StatusOr<mlir::MlirOp> BuildConvolution(
@@ -685,40 +579,6 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
   int kernel_input_feature_dimension = 0;
   int kernel_output_feature_dimension = 1;
 
-  if (groups > 1) {
-    // Optimized grouped convolution backward weight using feature_group_count.
-    //
-    // Input (LHS): (N, C_in, spatial...)
-    // GradOutput (RHS): (N, C_out, spatial...)
-    //
-    // We reshape dimensions to align with StableHLO's convolution with feature
-    // groups.
-    //
-    // LHS: (N, G, C_in/G, ...) -> (C_in/G, G, N, ...) -> (C_in/G, G*N, ...)
-    //   Batch: C_in/G
-    //   Feature: G*N
-    //
-    // RHS: (N, G, C_out/G, ...) -> (G, C_out/G, N, ...) -> (G*C_out/G, N, ...)
-    //   OutFeature: G*C_out/G
-    //   InFeature: N
-    //
-    // feature_group_count = G.
-    // LHS Feature (G*N) is split into G groups of N.
-    // RHS OutFeature (G*C_out/G) is split into G groups of C_out/G.
-    //
-    // Result: (C_in/G, G*C_out/G, ...) -> (C_out, C_in/G, ...) via transpose.
-    auto params = PrepareGroupedWeightInputs(
-        input, grad_output, groups, input_batch_dimension,
-        input_feature_dimension, kernel_input_feature_dimension,
-        kernel_output_feature_dimension);
-    input = params.input;
-    grad_output = params.grad_output;
-    input_batch_dimension = params.input_batch_dim;
-    input_feature_dimension = params.input_feature_dim;
-    kernel_input_feature_dimension = params.kernel_in_feat_dim;
-    kernel_output_feature_dimension = params.kernel_out_feat_dim;
-  }
-
   // 3. Convolution
 
   Dimensions input_spatial_dims(num_spatial_dims);
@@ -778,8 +638,9 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
       stablehlo::PrecisionConfigAttr::get(&ctx, precisions);
 
   Dimensions intermediate_dims;
-  intermediate_dims.push_back(weight_dims[1]);  // C_in
-  intermediate_dims.push_back(weight_dims[0]);  // C_out
+  intermediate_dims.push_back(
+      weight_dims[1]);  // C_in / groups (or C_out / groups)
+  intermediate_dims.push_back(weight_dims[0]);  // C_out (or C_in)
   for (size_t i = 0; i < num_spatial_dims; ++i) {
     intermediate_dims.push_back(weight_dims[2 + i]);
   }
@@ -791,8 +652,8 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
 
   auto conv = stablehlo::Convolution(
       intermediate_type, input, grad_output, dimension_numbers,
-      /*feature_group_count=*/groups,
-      /*batch_group_count=*/1, window_strides, dims_padding, lhs_dilation,
+      /*feature_group_count=*/1,
+      /*batch_group_count=*/groups, window_strides, dims_padding, lhs_dilation,
       rhs_dilation, window_reversal, precision_config);
 
   Dimensions transpose_perm;
