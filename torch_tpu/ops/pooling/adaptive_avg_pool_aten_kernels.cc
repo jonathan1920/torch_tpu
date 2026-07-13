@@ -506,116 +506,111 @@ absl::StatusOr<mlir::MlirOp> BuildAdaptiveAvgPool3dBackwardShlo(
 }
 }  // namespace
 
+absl::StatusOr<DeviceBufferRef> AdaptiveAvgPool2dHelper(
+    const at::Tensor& self, c10::SymIntArrayRef output_size,
+    at::ScalarType output_dtype, OpParamCacheKeys param_keys) {
+  TT_RET_CHECK(self.scalar_type() != at::ScalarType::Byte &&
+                   self.scalar_type() != at::ScalarType::Char &&
+                   self.scalar_type() != at::ScalarType::Short &&
+                   self.scalar_type() != at::ScalarType::Int &&
+                   self.scalar_type() != at::ScalarType::Long &&
+                   self.scalar_type() != at::ScalarType::ComplexFloat,
+               error::kInvalidArgument)
+      << "not yet implemented for uint8, int8, int16, int32, int64,"
+      << " and complex64 dtypes, got "
+      << torch_tpu::ToString(self.scalar_type());
+
+  const int64_t spatial_dim_count = 2;
+  auto num_dims = self.dim();
+  TT_ASSIGN_OR_RETURN(const auto output_mlir_dtype,
+                      ConvertTo<mlir::ElementType>(output_dtype));
+
+  TT_RET_CHECK(
+      num_dims == spatial_dim_count + 1 || num_dims == spatial_dim_count + 2,
+      error::kInvalidArgument)
+      << "input must be a " << spatial_dim_count + 1 << "-D or "
+      << spatial_dim_count + 2 << "-D tensor"
+      << ", got " << num_dims << "-D tensor";
+
+  const int64_t in_h = self.size(num_dims - 2);
+  const int64_t in_w = self.size(num_dims - 1);
+
+  // The output size is either a single integer H or a tuple (H, W)
+  const int64_t out_h = output_size[0].expect_int();
+  int64_t out_w = out_h;
+  if (output_size.size() > 1) {
+    out_w = output_size[1].expect_int();
+  }
+
+  auto out_dims = CopyIntVector(self.sizes());
+  out_dims[num_dims - 2] = out_h;
+  out_dims[num_dims - 1] = out_w;
+
+  // If the input size is divisible by the output size, the adaptive pool
+  // is mathematically equivalent to a standard average pool with:
+  // stride = input / output
+  // kernel = input - (output - 1) * stride
+  if (in_h >= out_h && in_w >= out_w && in_h % out_h == 0 &&
+      in_w % out_w == 0) {
+    auto stride_h = in_h / out_h;
+    auto stride_w = in_w / out_w;
+    auto kernel_h = in_h - (out_h - 1) * stride_h;
+    auto kernel_w = in_w - (out_w - 1) * stride_w;
+
+    Dimensions kernel_size = {kernel_h, kernel_w};
+    Dimensions stride = {stride_h, stride_w};
+    Dimensions padding = {0, 0};
+
+    return BuildAvgPoolNd(self, kernel_size, stride, padding,
+                          /*ceil_mode=*/false,
+                          /*count_include_pad=*/true,
+                          /*divisor_override=*/std::nullopt, output_mlir_dtype,
+                          out_dims, spatial_dim_count, std::move(param_keys),
+                          // Override the OpName to kAvgPool2dOut, since we are
+                          // lowering into it, anyway.
+                          /*override_op_name=*/OpName::kAvgPool2dOut);
+  } else {
+    auto op_builder = [in_h, in_w, out_h, out_w](
+                          mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
+      return BuildAdaptiveAvgPool2dShlo(input, in_h, in_w, out_h, out_w,
+                                        spatial_dim_count);
+    };
+
+    TT_ASSIGN_OR_RETURN(
+        auto result,
+        DispatchOp<1>(std::move(op_builder), self,
+                      {.out_dtype = output_mlir_dtype,
+                       .out_dims = std::move(out_dims),
+                       .op_param_cache_keys = std::move(param_keys)}));
+    return result;
+  }
+}
+
 at::Tensor& AtenAdaptiveAvgPool2dOut(const at::Tensor& self,
                                      c10::SymIntArrayRef output_size,
                                      at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kAdaptiveAvgPool2dOut, param_keys, (self, output_size, out), {
-        TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Byte &&
-                           self.scalar_type() != at::ScalarType::Char &&
-                           self.scalar_type() != at::ScalarType::Short &&
-                           self.scalar_type() != at::ScalarType::Int &&
-                           self.scalar_type() != at::ScalarType::Long &&
-                           self.scalar_type() != at::ScalarType::ComplexFloat,
-                       error::kInvalidArgument)
-            << "not yet implemented for uint8, int8, int16, int32, int64,"
-            << " and complex64 dtypes, got "
-            << torch_tpu::ToString(self.scalar_type());
-
-        const int64_t spatial_dim_count = 2;
-        auto num_dims = self.dim();
-        TT_ASSIGN_OR_THROW(const auto output_dtype,
-                           ConvertTo<mlir::ElementType>(out.scalar_type()));
-
-        TT_CHECK_THROW(num_dims == spatial_dim_count + 1 ||
-                           num_dims == spatial_dim_count + 2,
-                       error::kInvalidArgument)
-            << "input must be a " << spatial_dim_count + 1 << "-D or "
-            << spatial_dim_count + 2 << "-D tensor"
-            << ", got " << num_dims << "-D tensor";
-
-        const int64_t in_h = self.size(num_dims - 2);
-        const int64_t in_w = self.size(num_dims - 1);
-
-        // The output size is either a single integer H or a tuple (H, W)
-        const int64_t out_h = output_size[0].expect_int();
-        int64_t out_w = out_h;
-        if (output_size.size() > 1) {
-          out_w = output_size[1].expect_int();
-        }
-
-        // If the input size is divisible by the output size, the adaptive pool
-        // is mathematically equivalent to a standard average pool with:
-        // stride = input / output
-        // kernel = input - (output - 1) * stride
-        if (in_h >= out_h && in_w >= out_w && in_h % out_h == 0 &&
-            in_w % out_w == 0) {
-          auto stride_h = in_h / out_h;
-          auto stride_w = in_w / out_w;
-          auto kernel_h = in_h - (out_h - 1) * stride_h;
-          auto kernel_w = in_w - (out_w - 1) * stride_w;
-
-          Dimensions kernel_size = {kernel_h, kernel_w};
-          Dimensions stride = {stride_h, stride_w};
-          Dimensions padding = {0, 0};
-
-          TT_ASSIGN_OR_THROW(
-              auto result,
-              BuildAvgPoolOutNd(self, kernel_size, stride, padding,
-                                /*ceil_mode=*/false,
-                                /*count_include_pad=*/true,
-                                /*divisor_override=*/std::nullopt, out,
-                                spatial_dim_count, std::move(param_keys)));
-          return out;
-        } else {
-          // Otherwise, we need to use the general adaptive pooling
-          auto op_builder =
-              [in_h, in_w, out_h,
-               out_w](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
-            return BuildAdaptiveAvgPool2dShlo(input, in_h, in_w, out_h, out_w,
-                                              spatial_dim_count);
-          };
-
-          TT_ASSIGN_OR_THROW(
-              auto result,
-              DispatchOp<1>(std::move(op_builder), self,
-                            // Override the OpName passed to TT_KERNEL() as we
-                            // need a different computation than the one in the
-                            // true branch above.
-                            {.op_name = OpName::kAdaptiveAvgPool2d,
-                             .out_dtype = output_dtype,
-                             .out_dims = CopyIntVector(out.sizes()),
-                             .op_param_cache_keys = std::move(param_keys)}));
-
-          TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
-          return out;
-        }
-      });
+  TT_KERNEL(OpName::kAdaptiveAvgPool2dOut, param_keys, (self, output_size, out),
+            {
+              TT_ASSIGN_OR_THROW(
+                  auto buffer,
+                  AdaptiveAvgPool2dHelper(self, output_size, out.scalar_type(),
+                                          std::move(param_keys)));
+              TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(buffer), out));
+              return out;
+            });
 }
 
 at::Tensor AtenAdaptiveAvgPool2d(const at::Tensor& self,
                                  c10::SymIntArrayRef output_size) {
-  TT_KERNEL(OpName::kAdaptiveAvgPool2d, _,
+  TT_KERNEL(OpName::kAdaptiveAvgPool2d, param_keys,
             (self, IgnoreInCacheKey(output_size,
                                     "Delegates to AtenAdaptiveAvgPool2dOut")),
             {
-              auto num_dims = self.dim();
-
-              // The output size is either a single integer H or a tuple (H, W)
-              const int64_t out_h = output_size[0].expect_int();
-              int64_t out_w = out_h;
-              if (output_size.size() > 1) {
-                out_w = output_size[1].expect_int();
-              }
-
-              auto out_shape = CopyIntVector(self.sizes());
-              out_shape[num_dims - 2] = out_h;
-              out_shape[num_dims - 1] = out_w;
-
-              at::Tensor out = at::empty(out_shape, self.options());
-
-              AtenAdaptiveAvgPool2dOut(self, output_size, out);
-              return out;
+              TT_ASSIGN_OR_THROW(
+                  auto buffer,
+                  AdaptiveAvgPool2dHelper(self, output_size, self.scalar_type(),
+                                          std::move(param_keys)));
+              return MakeTensor(std::move(buffer));
             });
 }
 
@@ -754,7 +749,9 @@ at::Tensor AtenAdaptiveAvgPool2dBackward(const at::Tensor& grad_output,
           return BuildAdaptiveAvgPool2dBackwardShlo(inputs[0], inputs[1]);
         };
 
-        at::Tensor grad_input = at::empty(self.sizes(), self.options());
+        TT_ASSIGN_OR_THROW(
+            at::Tensor grad_input,
+            MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
         TT_ASSIGN_OR_THROW(
             auto result,
             (DispatchOp<2>(std::move(op_builder), {grad_output, self},

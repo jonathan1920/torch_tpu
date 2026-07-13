@@ -23,7 +23,9 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "absl/status/statusor.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/ops/op_names.h"
 
 namespace torch_tpu {
@@ -32,6 +34,14 @@ namespace torch_tpu {
 // It is exposed for use in adaptive average pooling, which supports a different
 // set of dtypes than standard average pooling and thus cannot always fall back
 // to AtenAvgPoolNd.
+absl::StatusOr<DeviceBufferRef> BuildAvgPoolNd(
+    const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
+    at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,
+    std::optional<int64_t> divisor_override, mlir::ElementType out_dtype,
+    at::IntArrayRef out_sizes, int64_t spatial_dim_count,
+    OpParamCacheKeys param_keys,
+    std::optional<OpName> override_op_name = std::nullopt);
+
 absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,

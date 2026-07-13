@@ -43,6 +43,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -451,14 +452,12 @@ absl::StatusOr<mlir::MlirOp> BuildAvgPoolBackwardShlo(
 
 // Helper function to build and dispatch N-dimensional average pooling
 // operations.
-absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
+absl::StatusOr<DeviceBufferRef> BuildAvgPoolNd(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,
-    std::optional<int64_t> divisor_override, at::Tensor& out,
-    int64_t spatial_dim_count, OpParamCacheKeys param_keys) {
-  TT_ASSIGN_OR_RETURN(auto out_type,
-                      ConvertTo<mlir::ElementType>(out.scalar_type()));
-
+    std::optional<int64_t> divisor_override, mlir::ElementType out_dtype,
+    at::IntArrayRef out_sizes, int64_t spatial_dim_count,
+    OpParamCacheKeys param_keys, std::optional<OpName> override_op_name) {
   auto op_builder = [kernel_size_vec = CopyIntVector(kernel_size),
                      stride_vec = CopyIntVector(stride),
                      padding_vec = CopyIntVector(padding), ceil_mode,
@@ -472,10 +471,25 @@ absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<1>(std::move(op_builder), self,
-                    {.out_dtype = out_type,
-                     .out_dims = CopyIntVector(out.sizes()),
+                    {.op_name = override_op_name,
+                     .out_dtype = out_dtype,
+                     .out_dims = CopyIntVector(out_sizes),
                      .op_param_cache_keys = std::move(param_keys)}));
+  return result_buf;
+}
 
+absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
+    const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
+    at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,
+    std::optional<int64_t> divisor_override, at::Tensor& out,
+    int64_t spatial_dim_count, OpParamCacheKeys param_keys) {
+  TT_ASSIGN_OR_RETURN(auto out_type,
+                      ConvertTo<mlir::ElementType>(out.scalar_type()));
+  TT_ASSIGN_OR_RETURN(
+      auto result_buf,
+      BuildAvgPoolNd(self, kernel_size, stride, padding, ceil_mode,
+                     count_include_pad, divisor_override, out_type, out.sizes(),
+                     spatial_dim_count, std::move(param_keys)));
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
   return out;
 }

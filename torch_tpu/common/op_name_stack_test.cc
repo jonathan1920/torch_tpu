@@ -38,15 +38,15 @@ TEST(OpNameStackTest, ScopedOpNamePushesAndPops) {
 }
 
 TEST(OpNameStackTest, NestedScopedOpNamesBehaveAsStack) {
-  ScopedOpName guard1(OpName::kAdaptiveAvgPool2d);
-  EXPECT_EQ(OpNameStack::Top(), OpName::kAdaptiveAvgPool2d);
+  ScopedOpName guard1(OpName::kMaxPool2d);
+  EXPECT_EQ(OpNameStack::Top(), OpName::kMaxPool2d);
 
   {
     ScopedOpName guard2(OpName::kSub);
     EXPECT_EQ(OpNameStack::Top(), OpName::kSub);
   }
 
-  EXPECT_EQ(OpNameStack::Top(), OpName::kAdaptiveAvgPool2d);
+  EXPECT_EQ(OpNameStack::Top(), OpName::kMaxPool2d);
 }
 
 }  // namespace
