@@ -5546,6 +5546,94 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(_test)
 
   @parameterized.product(
+      dtype=[torch.float32, torch.bfloat16],
+      dim=[0, 1],
+  )
+  def test_scatter_add_broadcast_index(self, dtype, dim):
+    """scatter_add with a broadcast (expanded) index matches CPU.
+
+    This is the top-k MoE token-combine idiom
+    `out.scatter_add_(0, ids[:, None].expand_as(src), src)`, which exercises the
+    row-broadcast fast path in BuildScatterShlo that lowers to a row/window
+    scatter (index_add) instead of a scalar scatter. Each id appears multiple
+    times, so accumulation of duplicates is covered.
+    """
+    t, k, feat = 8, 4, 6
+
+    def test_fn(device: torch.device) -> torch.Tensor:
+      ids = torch.arange(t * k, device=device) % t  # each id repeats k times
+      if dim == 0:
+        out = torch.zeros(t, feat, dtype=dtype, device=device)
+        src = (
+            torch.arange(t * k * feat, device=device, dtype=dtype).reshape(
+                t * k, feat
+            )
+            * 0.01
+        )
+        index = ids.unsqueeze(-1).expand_as(src)
+      else:
+        out = torch.zeros(feat, t, dtype=dtype, device=device)
+        src = (
+            torch.arange(feat * t * k, device=device, dtype=dtype).reshape(
+                feat, t * k
+            )
+            * 0.01
+        )
+        index = ids.unsqueeze(0).expand_as(src)
+      return out.scatter_add(dim, index, src)
+
+    rtol, atol = (1e-2, 1e-2) if dtype == torch.bfloat16 else (None, None)
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=rtol, atol=atol)
+
+  @parameterized.product(include_self=[True, False])
+  def test_scatter_reduce_sum_broadcast_index(self, include_self):
+    """scatter_reduce(sum) with a broadcast index matches CPU.
+
+    include_self=True hits the row-broadcast fast path; include_self=False must
+    fall through to the general scalar scatter and stay correct.
+    """
+    t, k, feat = 8, 4, 6
+
+    def test_fn(device: torch.device) -> torch.Tensor:
+      ids = torch.arange(t * k, device=device) % t
+      out = torch.zeros(t, feat, dtype=torch.float32, device=device)
+      src = (
+          torch.arange(
+              t * k * feat, device=device, dtype=torch.float32
+          ).reshape(t * k, feat)
+          * 0.01
+      )
+      index = ids.unsqueeze(-1).expand_as(src)
+      return out.scatter_reduce(
+          0, index, src, reduce="sum", include_self=include_self
+      )
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  def test_scatter_add_broadcast_index_lowers_to_row_scatter(self):
+    """The broadcast-index scatter_add lowers to a row (window) scatter.
+
+    The numerics tests above pass whether or not the fast path fires, so this
+    guards the lowering itself: assert the emitted StableHLO is the efficient
+    window scatter (`update_window_dims = [1]`) rather than the slow scalar
+    scatter (`update_window_dims = []`, one index entry per element).
+    """
+    t, k, feat = 8, 4, 6
+    ids = (torch.arange(t * k) % t).to("tpu")
+    src = torch.ones(t * k, feat, device="tpu")
+    with execution_mode.set_eager_mode(
+        execution_mode.EagerMode.INTERNAL_DEFER_ALL
+    ):
+      out = torch.zeros(t, feat, device="tpu")
+      result = out.scatter_add(0, ids.unsqueeze(-1).expand_as(src), src)
+    mlir_text = tpu_torch_compile.serialize_mlir_text(
+        tpu_torch_compile.build_mlir([result], [ids, src])
+    )
+    self.assertIn("stablehlo.scatter", mlir_text)
+    self.assertIn("update_window_dims = [1]", mlir_text)
+    self.assertNotIn("update_window_dims = []", mlir_text)
+
+  @parameterized.product(
       reduce_op=["add", "multiply"],
       dtype=[torch.float32, torch.int32, torch.bfloat16],
       value=[2.0, -1.5, 0.0],
