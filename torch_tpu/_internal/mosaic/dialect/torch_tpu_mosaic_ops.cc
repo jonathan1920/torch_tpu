@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_ops.h"
+#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_mosaic_ops.h"
 
 #define GET_OP_CLASSES  // NON_TT_MACRO_OK=MLIR gen
-#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_ops.cc.inc"
+#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_mosaic_ops.cc.inc"

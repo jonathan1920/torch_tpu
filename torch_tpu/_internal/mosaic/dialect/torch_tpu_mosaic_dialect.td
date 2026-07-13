@@ -18,9 +18,10 @@
 
 include "mlir/IR/OpBase.td"
 
-def TorchTpu_Dialect : Dialect {
-  let name = "torch_tpu";
-  let cppNamespace = "::mlir::torch_tpu";
+def TorchTpuMosaic_Dialect : Dialect {
+  let name = "torch_tpu_mosaic";
+  let cppNamespace = "::mlir::torch_tpu_mosaic";
+  let summary = "Thin wrapper around the Mosaic dialect for TorchTPU use cases.";
 }
 
 #endif  // TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_TD

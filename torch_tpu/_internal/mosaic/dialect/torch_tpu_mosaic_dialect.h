@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_attrs.h"
+#ifndef TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_MOSAIC_DIALECT_H_
+#define TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_MOSAIC_DIALECT_H_
 
-#define GET_ATTRDEF_CLASSES  // NON_TT_MACRO_OK=MLIR gen
-#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_attrs.cc.inc"
+#include "mlir/IR/Dialect.h"
+#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_mosaic_dialect.h.inc"
+
+#endif  // TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_MOSAIC_DIALECT_H_

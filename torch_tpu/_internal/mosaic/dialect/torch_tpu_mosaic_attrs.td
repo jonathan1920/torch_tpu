@@ -13,10 +13,9 @@
  limitations under the License.
 ==============================================================================*/
 
-#ifndef TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_OPS_TD
-#define TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_OPS_TD
+#ifndef TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_ATTRS_TD
+#define TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_ATTRS_TD
 
-include "mlir/IR/OpBase.td"
-include "torch_tpu/_internal/mosaic/dialect/torch_tpu_dialect.td"
+include "torch_tpu/_internal/mosaic/dialect/torch_tpu_mosaic_dialect.td"
 
-#endif  // TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_OPS_TD
+#endif  // TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_ATTRS_TD

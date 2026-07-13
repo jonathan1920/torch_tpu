@@ -12,21 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_dialect.h"
+#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_mosaic_dialect.h"
 
-#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_dialect.cc.inc"
+#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_mosaic_dialect.cc.inc"
 
-namespace mlir::torch_tpu {
+namespace mlir::torch_tpu_mosaic {
 
-void TorchTpuDialect::initialize() {
+void TorchTpuMosaicDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST  // NON_TT_MACRO_OK=MLIR gen
-#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_attrs.cc.inc"
+#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_mosaic_attrs.cc.inc"
       >();
   addOperations<
 #define GET_OP_LIST  // NON_TT_MACRO_OK=MLIR gen
-#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_ops.cc.inc"
+#include "torch_tpu/_internal/mosaic/dialect/torch_tpu_mosaic_ops.cc.inc"
       >();
 }
 
-}  // namespace mlir::torch_tpu
+}  // namespace mlir::torch_tpu_mosaic

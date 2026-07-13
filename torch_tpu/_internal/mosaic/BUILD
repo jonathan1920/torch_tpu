@@ -21,129 +21,91 @@ package(
 )
 
 td_library(
-    name = "torch_tpu_dialect_td_files",
-    srcs = [
-        "dialect/torch_tpu_dialect.td",
-    ],
+    name = "torch_tpu_mosaic_dialect_td_files",
+    srcs = ["dialect/torch_tpu_mosaic_dialect.td"],
     deps = [
         "@llvm-project//mlir:OpBaseTdFiles",
     ],
 )
 
 td_library(
-    name = "torch_tpu_attrs_td_files",
-    srcs = [
-        "dialect/torch_tpu_attrs.td",
-    ],
+    name = "torch_tpu_mosaic_attrs_td_files",
+    srcs = ["dialect/torch_tpu_mosaic_attrs.td"],
     deps = [
-        ":torch_tpu_dialect_td_files",
+        ":torch_tpu_mosaic_dialect_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
     ],
 )
 
 td_library(
-    name = "torch_tpu_ops_td_files",
-    srcs = [
-        "dialect/torch_tpu_ops.td",
-    ],
+    name = "torch_tpu_mosaic_ops_td_files",
+    srcs = ["dialect/torch_tpu_mosaic_ops.td"],
     deps = [
-        ":torch_tpu_dialect_td_files",
+        ":torch_tpu_mosaic_dialect_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
     ],
 )
 
 gentbl_cc_library(
-    name = "torch_tpu_dialect_inc_gen",
+    name = "torch_tpu_mosaic_dialect_inc_gen",
     tbl_outs = {
-        "dialect/torch_tpu_dialect.h.inc": [
-            "-gen-dialect-decls",
-            "-dialect=torch_tpu",
-        ],
-        "dialect/torch_tpu_dialect.cc.inc": [
-            "-gen-dialect-defs",
-            "-dialect=torch_tpu",
-        ],
+        "dialect/torch_tpu_mosaic_dialect.h.inc": ["-gen-dialect-decls"],
+        "dialect/torch_tpu_mosaic_dialect.cc.inc": ["-gen-dialect-defs"],
     },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect/torch_tpu_dialect.td",
-    deps = [":torch_tpu_dialect_td_files"],
+    td_file = "dialect/torch_tpu_mosaic_dialect.td",
+    deps = [":torch_tpu_mosaic_dialect_td_files"],
 )
 
 gentbl_cc_library(
-    name = "torch_tpu_attrs_inc_gen",
+    name = "torch_tpu_mosaic_attrs_inc_gen",
     tbl_outs = {
-        "dialect/torch_tpu_attrs.h.inc": [
-            "-gen-attrdef-decls",
-            "-dialect=torch_tpu",
-            "--attrdefs-dialect=torch_tpu",
-        ],
-        "dialect/torch_tpu_attrs.cc.inc": [
-            "-gen-attrdef-defs",
-            "-dialect=torch_tpu",
-            "--attrdefs-dialect=torch_tpu",
-        ],
+        "dialect/torch_tpu_mosaic_attrs.h.inc": ["-gen-attrdef-decls"],
+        "dialect/torch_tpu_mosaic_attrs.cc.inc": ["-gen-attrdef-defs"],
     },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect/torch_tpu_attrs.td",
-    deps = [":torch_tpu_attrs_td_files"],
+    td_file = "dialect/torch_tpu_mosaic_attrs.td",
+    deps = [":torch_tpu_mosaic_attrs_td_files"],
 )
 
 gentbl_cc_library(
-    name = "torch_tpu_ops_inc_gen",
+    name = "torch_tpu_mosaic_ops_inc_gen",
     tbl_outs = {
-        "dialect/torch_tpu_ops.h.inc": [
-            "-gen-op-decls",
-            "-dialect=torch_tpu",
-        ],
-        "dialect/torch_tpu_ops.cc.inc": [
-            "-gen-op-defs",
-            "-dialect=torch_tpu",
-        ],
+        "dialect/torch_tpu_mosaic_ops.h.inc": ["-gen-op-decls"],
+        "dialect/torch_tpu_mosaic_ops.cc.inc": ["-gen-op-defs"],
     },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect/torch_tpu_ops.td",
-    deps = [":torch_tpu_ops_td_files"],
+    td_file = "dialect/torch_tpu_mosaic_ops.td",
+    deps = [":torch_tpu_mosaic_ops_td_files"],
 )
 
 torch_tpu_cc_library(
-    name = "torch_tpu_dialect",
-    srcs = [
-        "dialect/torch_tpu_dialect.cc",
-    ],
-    hdrs = [
-        "dialect/torch_tpu_dialect.h",
-    ],
+    name = "torch_tpu_mosaic_dialect",
+    srcs = ["dialect/torch_tpu_mosaic_dialect.cc"],
+    hdrs = ["dialect/torch_tpu_mosaic_dialect.h"],
     deps = [
-        ":torch_tpu_attrs_inc_gen",
-        ":torch_tpu_dialect_inc_gen",
-        ":torch_tpu_ops_inc_gen",
+        ":torch_tpu_mosaic_attrs_inc_gen",
+        ":torch_tpu_mosaic_dialect_inc_gen",
+        ":torch_tpu_mosaic_ops_inc_gen",
         "@llvm-project//mlir:IR",
     ],
 )
 
 torch_tpu_cc_library(
-    name = "torch_tpu_attrs",
-    srcs = [
-        "dialect/torch_tpu_attrs.cc",
-    ],
-    hdrs = [
-        "dialect/torch_tpu_attrs.h",
-    ],
+    name = "torch_tpu_mosaic_attrs",
+    srcs = ["dialect/torch_tpu_mosaic_attrs.cc"],
+    hdrs = ["dialect/torch_tpu_mosaic_attrs.h"],
     deps = [
-        ":torch_tpu_attrs_inc_gen",
+        ":torch_tpu_mosaic_attrs_inc_gen",
         "@llvm-project//mlir:IR",
     ],
 )
 
 torch_tpu_cc_library(
-    name = "torch_tpu_ops",
-    srcs = [
-        "dialect/torch_tpu_ops.cc",
-    ],
-    hdrs = [
-        "dialect/torch_tpu_ops.h",
-    ],
-    deps = [":torch_tpu_ops_inc_gen"],
+    name = "torch_tpu_mosaic_ops",
+    srcs = ["dialect/torch_tpu_mosaic_ops.cc"],
+    hdrs = ["dialect/torch_tpu_mosaic_ops.h"],
+    deps = [":torch_tpu_mosaic_ops_inc_gen"],
 )
 
 torch_tpu_package_end()
