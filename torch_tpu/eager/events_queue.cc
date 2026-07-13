@@ -291,8 +291,7 @@ void ProcessDeferredOpEvent(
     const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         nodes_to_materialize_set,
     std::vector<SharedDeviceBufferList>& execution_order,
-    DefinedNodeMap& defined_node_map,
-    absl::flat_hash_set<const DeviceBufferList*>& materialized_empty_ops) {
+    DefinedNodeMap& defined_node_map) {
   if (device_buffer_list->is_empty()) {
     // `torch.empty()` and similar ops represent uninitialized memory; correct
     // user programs should never read them, so we should typically never need
@@ -317,8 +316,10 @@ void ProcessDeferredOpEvent(
   for (const auto& input : deferred_op.inputs()) {
     if (!input.is_deferred()) continue;
 
-    if (auto input_def_it =
-            defined_node_map.find(input.device_buffer_list().get());
+    const DeviceBufferList* input_device_buffer_list =
+        input.device_buffer_list().get();
+
+    if (auto input_def_it = defined_node_map.find(input_device_buffer_list);
         input_def_it != defined_node_map.end()) {
       // Update the usage of the input tensor from unused -> used, but leave
       // outputs as outputs.
@@ -331,25 +332,17 @@ void ProcessDeferredOpEvent(
           break;
       }
     } else if (input.is_empty() &&
-               materialized_empty_ops.insert(input.device_buffer_list().get())
+               defined_node_map
+                   .try_emplace(input_device_buffer_list, OpUsage::kUsed)
                    .second) {
       // The first time an empty tensor is read by a later op, we insert
-      // it into the execution order, as an output if it is live.
-      if (input.device_buffer_list()->is_stale()) {
-        ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Stale empty buffer "
-                     << input.device_buffer_list().get() << " is read by "
-                     << device_buffer_list.get() << "("
-                     << ToString(deferred_op.op_name())
-                     << ").\nInserting into execution order.";
-        defined_node_map[input.device_buffer_list().get()] = OpUsage::kUsed;
-      } else {
-        ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Live empty buffer "
-                     << input.device_buffer_list().get() << " is read by "
-                     << device_buffer_list.get() << "("
-                     << ToString(deferred_op.op_name())
-                     << ").\nInserting as output.";
-        defined_node_map[input.device_buffer_list().get()] = OpUsage::kOutput;
-      }
+      // it into the execution order, but not as an output as we don't want to
+      // materialize it unless the user explicitly asks for it.
+      ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Empty buffer "
+                   << input_device_buffer_list << " is read by "
+                   << device_buffer_list.get() << "("
+                   << ToString(deferred_op.op_name())
+                   << ").\nInserting into execution order.";
       execution_order.push_back(input.device_buffer_list());
     }
   }
@@ -481,7 +474,6 @@ PrepareMaterializationTraversals(
   std::vector<SharedDeviceBufferList> execution_order;
   std::vector<SharedDeviceBufferList> output_nodes;
   DefinedNodeMap defined_node_map;
-  absl::flat_hash_set<const DeviceBufferList*> materialized_empty_ops;
 
   for (const auto& event : deferred_op_events) {
     // Filter to only non-expired, deferred nodes.
@@ -508,7 +500,7 @@ PrepareMaterializationTraversals(
 
     ProcessDeferredOpEvent(std::move(device_buffer_list), *deferred_op,
                            nodes_to_materialize_set, execution_order,
-                           defined_node_map, materialized_empty_ops);
+                           defined_node_map);
 
     if (IsSplitAfter(split_mode)) {
       TT_ASSIGN_OR_RETURN(
@@ -525,15 +517,22 @@ PrepareMaterializationTraversals(
     }
   }
 
-  // If any node to materialize is an explicitly materialized empty tensor and
-  // we didn't see it in the execution order (possibly because we skipped it
-  // on an earlier call to PrepareMaterializationTraversals), add it to the
-  // last traversal.
+  // We never materialize an empty tensor unless it is explicitly
+  // requested by the user. If that does happen, then we append the
+  // empty tensors to the last Traversal to make sure they have defined buffers.
+  // This is necessary for downstream uses that require physical data buffers,
+  // such as torch.compile invocations.
   for (const auto& node : nodes_to_materialize) {
-    if (node->is_empty() && materialized_empty_ops.insert(node.get()).second &&
-        node->is_deferred()) {
-      execution_order.push_back(node);
-      defined_node_map[node.get()] = OpUsage::kOutput;
+    if (node->is_empty() && node->is_deferred()) {
+      bool inserted =
+          defined_node_map.insert_or_assign(node.get(), OpUsage::kOutput)
+              .second;
+      if (inserted) {
+        ABSL_VLOG(3) << "[PrepareMaterializationTraversals] empty buffer "
+                     << node.get()
+                     << " is an explicit output. Appending to final traversal.";
+        execution_order.push_back(node);
+      }
     }
   }
 

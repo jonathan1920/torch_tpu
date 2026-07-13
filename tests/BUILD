@@ -1945,4 +1945,17 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "empty_test",
+    srcs = ["empty_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/sync",
+    ],
+)
+
 torch_tpu_package_end()
