@@ -40,6 +40,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/ops/rng_utils.h"
 #include "torch_tpu/ops/uniform/uniform.h"
 
@@ -99,6 +100,7 @@ at::Tensor& AtenBernoulliOut(const at::Tensor& self,
                              std::optional<at::Generator> generator,
                              at::Tensor& out) {
   TT_KERNEL(OpName::kBernoulliOut, param_keys, (self, generator, out), {
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
     if (self.numel() == 0) {
       return out;
     }

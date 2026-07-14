@@ -45,6 +45,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -231,6 +232,8 @@ at::Tensor& AtenClampOut(const at::Tensor& self,
             ClampScalarHelper(self, std::move(promoted_min),
                               std::move(promoted_max), out.scalar_type(),
                               std::move(param_keys)));
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });
@@ -244,6 +247,7 @@ at::Tensor& AtenClampMinOut(const at::Tensor& self, const at::Scalar& min,
         auto result_buf,
         ClampScalarHelper(self, std::move(promoted_min), std::nullopt,
                           out.scalar_type(), std::move(param_keys)));
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -257,6 +261,7 @@ at::Tensor& AtenClampMaxOut(const at::Tensor& self, const at::Scalar& max,
         auto result_buf,
         ClampScalarHelper(self, std::nullopt, std::move(promoted_max),
                           out.scalar_type(), std::move(param_keys)));
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -270,6 +275,7 @@ at::Tensor& AtenClampTensorOut(const at::Tensor& self,
     TT_ASSIGN_OR_THROW(auto result_buf,
                        AtenClampTensorHelper(self, min, max, out.scalar_type(),
                                              std::move(param_keys)));
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -282,6 +288,7 @@ at::Tensor& AtenClampMinTensorOut(const at::Tensor& self, const at::Tensor& min,
         auto result_buf,
         AtenClampTensorHelper(self, min, std::nullopt, out.scalar_type(),
                               std::move(param_keys)));
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -294,6 +301,7 @@ at::Tensor& AtenClampMaxTensorOut(const at::Tensor& self, const at::Tensor& max,
         auto result_buf,
         AtenClampTensorHelper(self, std::nullopt, max, out.scalar_type(),
                               std::move(param_keys)));
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });

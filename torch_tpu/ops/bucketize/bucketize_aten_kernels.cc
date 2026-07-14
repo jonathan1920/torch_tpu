@@ -31,17 +31,18 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -202,6 +203,7 @@ at::Tensor& AtenBucketizeTensorOut(const at::Tensor& self,
                                    bool right, at::Tensor& out) {
   TT_KERNEL(OpName::kBucketizeTensorOut, param_keys,
             (self, boundaries, out_int32, right, out), {
+              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
               TT_ASSIGN_OR_THROW(DeviceBufferRef result_buffer,
                                  Bucketize(self, boundaries, out_int32, right,
                                            std::move(param_keys)));

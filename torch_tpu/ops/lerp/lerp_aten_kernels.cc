@@ -39,6 +39,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -90,6 +91,12 @@ NAryMlirOpBuilder<3> GetLerpTensorOutFunctional(mlir::ElementType common_type) {
 at::Tensor& AtenLerpTensorOut(const at::Tensor& self, const at::Tensor& end,
                               const at::Tensor& weight, at::Tensor& out) {
   TT_KERNEL(OpName::kLerpTensorOut, param_keys, (self, end, weight, out), {
+    TT_ASSIGN_OR_THROW(auto end_weight_size,
+                       InferSize(end.sizes(), weight.sizes()));
+    TT_ASSIGN_OR_THROW(auto expected_size,
+                       InferSize(self.sizes(), end_weight_size));
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, expected_size));
+
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
     auto promoted_dtype =

@@ -37,6 +37,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:rng_utils",
         "//torch_tpu/ops/macros:kernel",
+        "//torch_tpu/ops/resize:resize_aten_kernels",
         "//torch_tpu/ops/uniform",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",

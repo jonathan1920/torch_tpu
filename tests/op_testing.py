@@ -271,22 +271,6 @@ class OutVariantType(enum.Enum):
   # dimensions but incorrect dtype, both dtype and dimensions incorrect).
 
 
-# Ops that are known to fail the incorrect shape out-variant test due to
-# missing shape resizing in their TorchTPU C++ implementations, compiler
-# crashes, or incorrect decomposition.
-# TODO: fix these ops and remove them from this list.
-_OPS_WITHOUT_OUT_SHAPE_RESIZING: Final[set[str]] = {
-    "addcdiv",
-    "addcmul",
-    "bernoulli",
-    "bucketize",
-    "clamp_max",
-    "clamp_min",
-    "lerp",
-    "lgamma",
-}
-
-
 # Ops not included in the list of tested ops for pytorch.
 _ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
     OpInfo(
@@ -2446,11 +2430,6 @@ class TorchTpuTestBase(TestCase):
       exclude_out_variant_types = set()
     else:
       exclude_out_variant_types = set(exclude_out_variant_types)
-
-    # TODO: Remove this check and the _OPS_WITHOUT_OUT_SHAPE_RESIZING constant
-    # once all ops are fixed to support out shape resizing natively.
-    if op_name in _OPS_WITHOUT_OUT_SHAPE_RESIZING:
-      exclude_out_variant_types.add(OutVariantType.INCORRECT_SHAPE)
 
     exclude_dtypes = self._resolve_exclude_dtypes(exclude_dtypes)
     exclude_inplace_dtypes = self._resolve_exclude_dtypes(

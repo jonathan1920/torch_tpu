@@ -25,11 +25,11 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -37,6 +37,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -60,6 +61,12 @@ at::Tensor& AtenAddcdivOut(const at::Tensor& self, const at::Tensor& tensor1,
   auto promoted_value = PromoteScalar(value);
   TT_KERNEL(
       OpName::kAddcdivOut, _, (self, tensor1, tensor2, promoted_value, out), {
+        TT_ASSIGN_OR_THROW(auto t1_t2_size,
+                           InferSize(tensor1.sizes(), tensor2.sizes()));
+        TT_ASSIGN_OR_THROW(auto expected_size,
+                           InferSize(self.sizes(), t1_t2_size));
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, expected_size));
+
         TT_ASSIGN_OR_THROW(at::Tensor value_tensor, promoted_value.GetTensor());
 
         // Build the op.
