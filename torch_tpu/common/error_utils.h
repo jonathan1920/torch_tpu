@@ -93,6 +93,18 @@ inline constexpr absl::StatusCode kPythonRuntimeError =
 
 }  // namespace error
 
+// Sentinel string for XLA compiler errors.
+//
+// Leading and trailing spaces are added to this sentinel, so that we don't need
+// to keep manually adding them.
+//
+// Usage:
+//   TT_RETURN_IF_ERROR(...).SetPrepend()
+//       << "context of the error"
+//       << kXlaCompilerFailedWith;
+inline constexpr std::string_view kXlaCompilerFailedWith =
+    " -- the XLA compiler failed with: ";
+
 // Returns true if debug checks are enabled via the
 // TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS environment variable. This function is
 // memorized, so calling it is cheap and will always return the same value even

@@ -335,11 +335,24 @@ absl::Status HasValidFormat(const std::string_view message) {
 //     - "int64" vs. "si64"
 //     - "bool" vs. "pred"
 //     - "bfloat16" vs. "bf16".
-absl::Status DoesNotContainStableHloTypeName(const std::string_view message,
+//
+// Exception: XLA errors.
+//   XLA errors are not checked. In order to do this, we look for the sentinel
+//   kXlaCompilerFailedWith, and ignore everything after it.
+absl::Status DoesNotContainStableHloTypeName(std::string_view message,
                                              const TypeNamePair& pair) {
   ABSL_CHECK(  // CRASH_OK
       !message.empty())
       << kPreconditionViolatedError;
+
+  // Find the XLA compiler error sentinel string position.
+  //
+  // If it's found, update the message being checked, so that it ignores
+  // whatever comes after it.
+  const size_t pos = message.find(kXlaCompilerFailedWith);
+  if (pos != std::string_view::npos) {
+    message = message.substr(0, pos);
+  }
 
   const std::string type_name_regex =
       absl::StrCat("\\b", pair.stablehlo, "\\b");
@@ -352,6 +365,52 @@ absl::Status DoesNotContainStableHloTypeName(const std::string_view message,
       << pair.torch << "' instead of '" << pair.stablehlo
       << "'. Use ToString(mlir::ElementType) for retrieving the PyTorch "
          "dtype name.";
+  return absl::OkStatus();
+}
+
+// Check: if the sentinel is present, it must not have leading nor trailing
+// empty spaces.
+//
+// Pre-condition: The error message must not be empty.
+absl::Status HasNoSpacesSurroundingSentinel(const std::string_view message) {
+  ABSL_CHECK(  // CRASH_OK
+      !message.empty())
+      << kPreconditionViolatedError;
+
+  const size_t sentinel_beg = message.find(kXlaCompilerFailedWith);
+  const size_t sentinel_end = sentinel_beg + kXlaCompilerFailedWith.size();
+
+  if (sentinel_beg == std::string_view::npos) {
+    // Nothing to check if the sentinel string is not found.
+    return absl::OkStatus();
+  }
+
+  const std::string_view context = message.substr(0, sentinel_beg);
+  const std::string_view xla_error = message.substr(sentinel_end);
+
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
+                 // unreachable from Python.
+      !absl::StripAsciiWhitespace(context).empty(), error::kInternal)
+      << "The TorchTPU context should not be empty when using the XLA error "
+         "sentinel string. Make sure to add a context string before.";
+
+  const size_t leading_spaces_beg = context.find_last_not_of(' ') + 1;
+  const size_t leading_spaces_count = context.size() - leading_spaces_beg;
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
+                 // unreachable from Python.
+      leading_spaces_count == 0, error::kInternal)
+      << "Expected no spaces before the XLA compiler error sentinel \""
+      << kXlaCompilerFailedWith << "\" (it already begins with one), got "
+      << leading_spaces_count << ".";
+
+  const size_t trailing_spaces_count = xla_error.find_first_not_of(' ');
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
+                 // unreachable from Python.
+      trailing_spaces_count == 0, error::kInternal)
+      << "Expected no spaces after the XLA compiler error sentinel \""
+      << kXlaCompilerFailedWith << "\" (it already ends with one), got "
+      << trailing_spaces_count << ".";
+
   return absl::OkStatus();
 }
 
@@ -422,6 +481,7 @@ ErrorMessageChecksResult GetErrorMessageChecksResult(
 
   handle_check(HasNoLeadingWhitespace(message), CheckKind::kEnforce);
   handle_check(HasNoTrailingWhitespace(message), CheckKind::kEnforce);
+  handle_check(HasNoSpacesSurroundingSentinel(message), CheckKind::kEnforce);
 
   // TODO(marcosyukio): enforce the other error message checks.
   //
