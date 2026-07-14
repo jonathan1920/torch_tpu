@@ -524,6 +524,19 @@ class CompileApiTest(absltest.TestCase):
     # The logical values of tpu_dst should be identical to cpu_src.
     utils.assert_close(actual=actual, expected=cpu_src)
 
+  def test_dynamic_view_writeback(self):
+    with eager_mode_defer_all():
+      base = torch.empty(21, device='tpu')
+      out_view = base[0:20]
+      x = tpu_torch_compile.dynamic_placeholder(
+          [20], torch.float32, ([0], [30])
+      )
+      torch.lgamma(x, out=out_view)
+
+    mlir = tpu_torch_compile.build_mlir([out_view], [x])
+    executable = tpu_torch_compile.compile_mlir(mlir)
+    self.assertIsNotNone(executable)
+
   def test_optimization_barrier(self):
     with eager_mode_defer_all():
       inputs = [

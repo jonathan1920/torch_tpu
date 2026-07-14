@@ -33,6 +33,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/util/accumulate.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Types.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -385,6 +386,23 @@ struct AsStridedInverseBuilderPair {
   std::vector<DeviceBufferRef> inputs;
 };
 
+// Slices an MLIR input operand down to view_dimensions if its compiled type
+// shape differs.
+mlir::MlirOp SliceOperandIfNeeded(mlir::MlirOp input,
+                                  const Dimensions& view_dimensions) {
+  auto type = GetTensorTypeOrDie(input);
+  bool should_slice =
+      type.getShape() !=
+      llvm::ArrayRef<int64_t>(view_dimensions.data(), view_dimensions.size());
+  if (should_slice) {
+    Indices start_indices(view_dimensions.size(), 0);
+    Strides strides(view_dimensions.size(), 1);
+    return mlir::stablehlo::Slice(input, start_indices, view_dimensions,
+                                  strides);
+  }
+  return input;
+}
+
 // Helper function for AssignBufferToAtTensor to switch between two cases:
 //   * If the view is not a slice (so that the inversion fully overwrites the
 //     original tensor), then we don't care what the original tensor's values
@@ -392,10 +410,16 @@ struct AsStridedInverseBuilderPair {
 //   * If the view is a slice, then some amount of its original data will be
 //     retained, so we need to carry a dependency on the original base_buffer,
 //     and the DeferredOp is binary.
+//
+// Accepts view_dimensions to allow the op builder to check and slice dynamic
+// update operands down to the target view's static shape if dynamic bounds
+// exceed it.
+//
 // Returns the appropriate builder and inputs for the DeferredOp.
 AsStridedInverseBuilderPair MakeAsStridedInverseBuilder(
     InverseViewOperation inverse_view_operation,
-    DeviceBufferRef base_buffer_ref, DeviceBufferRef write_buf) {
+    DeviceBufferRef base_buffer_ref, DeviceBufferRef write_buf,
+    Dimensions view_dimensions) {
   if (inverse_view_operation.stages.size() == 1) {
     ABSL_VLOG(3)
         << "[MakeAsStridedInverseBuilder] View elements are 1:1 with base, "
@@ -415,14 +439,17 @@ AsStridedInverseBuilderPair MakeAsStridedInverseBuilder(
           inverse_primitive);
     }
 
-    auto op_builder = [view_sequence = std::move(merged_sequence)](
+    auto op_builder = [view_sequence = std::move(merged_sequence),
+                       view_dimensions = std::move(view_dimensions)](
                           mlir::MlirBuilder& builder,
                           absl::Span<mlir::MlirOp> inputs)
         -> absl::StatusOr<DynamicMlirOpResults> {
       TT_RET_CHECK(inputs.size() == 1, error::kInternal)
           << "expected 1 input, got " << inputs.size();
+      mlir::MlirOp sliced_input =
+          SliceOperandIfNeeded(inputs[0], view_dimensions);
       TT_ASSIGN_OR_RETURN(auto output,
-                          ViewSequenceShlo(inputs[0], view_sequence));
+                          ViewSequenceShlo(sliced_input, view_sequence));
       return DynamicMlirOpResults{std::move(output)};
     };
     auto inputs = {std::move(write_buf)};
@@ -432,15 +459,18 @@ AsStridedInverseBuilderPair MakeAsStridedInverseBuilder(
   // Otherwise, apply the full operation.
   ABSL_VLOG(3) << "[MakeAsStridedInverseBuilder] View is a slice, creating an "
                   "inverse DeferredOp that partially overwrites the base.";
-  auto op_builder =
-      [inverse_view_operation = std::move(inverse_view_operation)](
-          mlir::MlirBuilder& builder, absl::Span<mlir::MlirOp> inputs)
+  auto op_builder = [inverse_view_operation = std::move(inverse_view_operation),
+                     view_dimensions = std::move(view_dimensions)](
+                        mlir::MlirBuilder& builder,
+                        absl::Span<mlir::MlirOp> inputs)
       -> absl::StatusOr<DynamicMlirOpResults> {
     TT_RET_CHECK(inputs.size() == 2, error::kInternal)
         << "expected 2 inputs, got " << inputs.size();
-    TT_ASSIGN_OR_RETURN(
-        auto output,
-        InverseViewOperationShlo(inputs[0], inputs[1], inverse_view_operation));
+    mlir::MlirOp sliced_input =
+        SliceOperandIfNeeded(inputs[1], view_dimensions);
+    TT_ASSIGN_OR_RETURN(auto output,
+                        InverseViewOperationShlo(inputs[0], sliced_input,
+                                                 inverse_view_operation));
     return DynamicMlirOpResults{std::move(output)};
   };
   auto inputs = {std::move(base_buffer_ref), std::move(write_buf)};
@@ -588,13 +618,18 @@ absl::StatusOr<DeviceBufferRef> CreateInverseViewDeviceBufferRef(
 
   std::vector<Shape> output_shapes = {inverse_view_operation.final_shape};
 
+  Dimensions base_dimensions(base_buffer_ref.dimensions().begin(),
+                             base_buffer_ref.dimensions().end());
+  Dimensions view_dims(view_dimensions.begin(), view_dimensions.end());
+
   auto [op_builder, inputs] = MakeAsStridedInverseBuilder(
       std::move(inverse_view_operation), std::move(base_buffer_ref),
-      std::move(write_buf));
+      std::move(write_buf), std::move(view_dims));
 
   TT_ASSIGN_OR_RETURN(OpParamCacheKeys param_keys,
                       TT_MAKE_OP_PARAM_CACHE_KEYS(
-                          view_strides, view_storage_offset, view_is_conj));
+                          view_dimensions, base_dimensions, view_strides,
+                          view_storage_offset, view_is_conj));
 
   // Create the deferred DeviceBufferRef.
   internal::DeferredOpParams params{
