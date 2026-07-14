@@ -140,8 +140,8 @@ constexpr std::string_view kPreconditionViolatedError =
 // Check: is not empty nor filled with blank spaces.
 // Pre-conditions: None.
 absl::Status TrimmedErrorMessageIsNotEmpty(const std::string_view message) {
-  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal error supposedly unreachable
-                 // from Python.
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
+                 // unreachable from Python.
       !absl::StripAsciiWhitespace(message).empty(), error::kInternal)
       << "The trimmed error message should not be empty. Add an appropriate "
          "error message to this error.";
@@ -157,7 +157,9 @@ absl::Status HasNoLeadingWhitespace(const std::string_view message) {
 
   const size_t num_leading_whitespace =
       message.size() - absl::StripLeadingAsciiWhitespace(message).size();
-  TT_RET_CHECK(num_leading_whitespace == 0, error::kInternal)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
+                 // unreachable from Python.
+      num_leading_whitespace == 0, error::kInternal)
       << "The error message should not start with whitespace. Remove the "
          "leading "
       << num_leading_whitespace << " whitespace character(s).";
@@ -174,7 +176,9 @@ absl::Status HasNoTrailingWhitespace(const std::string_view message) {
 
   const size_t num_trailing_whitespace =
       message.size() - absl::StripTrailingAsciiWhitespace(message).size();
-  TT_RET_CHECK(num_trailing_whitespace == 0, error::kInternal)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
+                 // unreachable from Python.
+      num_trailing_whitespace == 0, error::kInternal)
       << "The error message should not end with whitespace. Remove the "
          "trailing "
       << num_trailing_whitespace << " whitespace character(s).";
@@ -226,8 +230,8 @@ absl::Status StartsWithNonUppercaseLetter(const std::string_view message) {
                                 : first_word);
   };
 
-  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal error supposedly unreachable
-                 // from Python.
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
+                 // unreachable from Python.
       !absl::ascii_isupper(message.front()), error::kInternal)
       << "The error message should start with a lowercase character. Replace '"
       << get_first_word() << "' with '" << get_first_word(/* to_lower= */ true)
@@ -272,8 +276,8 @@ absl::Status EndsWithAlphaNumAndAllowedCharacters(
   const size_t not_allowed_suffix_size =
       std::distance(last_allowed_char_it.base(), message.end());
 
-  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal error supposedly unreachable
-                 // from Python.
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
+                 // unreachable from Python.
       not_allowed_suffix_size == 0, error::kInternal)
       << "The error message should end with either an alpha-numeric character "
          "or one of the following characters: '"
@@ -310,8 +314,8 @@ absl::Status HasValidFormat(const std::string_view message) {
   static LazyRE2 kExpectedGotPattern = {R"(.*\bexpected\b.*,\s*\bgot\b.*)"};
 
   if (RE2::FullMatch(message, *kExpectedConditionOrActualValuePattern)) {
-    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal error supposedly unreachable
-                   // from Python.
+    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
+                   // unreachable from Python.
         RE2::FullMatch(message, *kExpectedGotPattern), error::kInternal)
         << "The error message states an expected condition or the actual "
            "value (i.e. contains \"expected\", \"must\", or \", (but) got\" "
@@ -340,7 +344,7 @@ absl::Status DoesNotContainStableHloTypeName(const std::string_view message,
   const std::string type_name_regex =
       absl::StrCat("\\b", pair.stablehlo, "\\b");
 
-  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal error supposedly
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
                  // unreachable from Python.
       !RE2::PartialMatch(message, type_name_regex), error::kInternal)
       << "The error message should use the PyTorch dtype names instead of "
