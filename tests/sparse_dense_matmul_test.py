@@ -415,7 +415,7 @@ class SparseDenseMatmulTest(
         * 0.01
     )
     learning_rate = torch.tensor(0.01, dtype=torch.float32, device=device)
-    epsilon = torch.tensor(1e-10, dtype=torch.float32, device=device)
+    epsilon = 1e-10
 
     def grad_fn(rp, e_ids, s_ids, g, et, acc, ag, lr, eps):
       return torch.ops.tpu.sparse_dense_matmul_grad_with_adagrad(
@@ -503,7 +503,7 @@ class SparseDenseMatmulTest(
     expected_update = (
         learning_rate.cpu().numpy()
         * grad_approx.cpu().numpy()
-        / (np.sqrt(expected_acc_np) + epsilon.cpu().numpy())
+        / (np.sqrt(expected_acc_np) + epsilon)
     )
     actual_update = initial_table_sharded_np - updated_table_tpu_np
     for r in updated_rows:
@@ -558,7 +558,7 @@ class SparseDenseMatmulTest(
         * 0.01
     )
     learning_rate = torch.tensor(0.01, dtype=torch.float32, device=device)
-    epsilon = torch.tensor(1e-10, dtype=torch.float32, device=device)
+    epsilon = 1e-10
 
     def grad_fn(rp, e_ids, s_ids, g, et, acc, ag, lr, eps):
       return torch.ops.tpu.sparse_dense_matmul_grad_with_adagrad(
@@ -646,7 +646,7 @@ class SparseDenseMatmulTest(
     expected_update = (
         learning_rate.cpu().numpy()
         * grad_approx_np
-        / (np.sqrt(expected_acc_np)[:, np.newaxis] + epsilon.cpu().numpy())
+        / (np.sqrt(expected_acc_np)[:, np.newaxis] + epsilon)
     )
     actual_update = initial_table_sharded_np - updated_table_tpu_np
     for r in updated_rows:

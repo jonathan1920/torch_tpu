@@ -56,10 +56,11 @@ namespace {
 
 auto SparseDenseMatmulGradWithAdagradBuilder(
     int64_t device_batch_size, int64_t max_ids_per_partition,
-    int64_t max_unique_ids_per_partition, std::string_view computation_name) {
+    int64_t max_unique_ids_per_partition, std::string_view computation_name,
+    double epsilon) {
   return [max_ids_per_partition, max_unique_ids_per_partition,
-          computation_name = std::string(computation_name)](
-             torch_tpu::FixedSizeSpan<mlir::MlirOp, 9> inputs)
+          computation_name = std::string(computation_name),
+          epsilon](torch_tpu::FixedSizeSpan<mlir::MlirOp, 8> inputs)
              -> absl::StatusOr<torch_tpu::MlirOpResults<2>> {
     mlir::MlirOp row_pointers = inputs[0];
     mlir::MlirOp embedding_ids = inputs[1];
@@ -69,10 +70,15 @@ auto SparseDenseMatmulGradWithAdagradBuilder(
     mlir::MlirOp accumulator = inputs[5];
     mlir::MlirOp activations_grad = inputs[6];
     mlir::MlirOp learning_rate = inputs[7];
-    mlir::MlirOp epsilon = inputs[8];
 
     mlir::MlirBuilder& builder = row_pointers.getBuilder();
     mlir::OpBuilder& op_builder = builder.getOpBuilder();
+
+    // Create compile-time constant for hyperparameter epsilon.
+    auto float_type = op_builder.getF32Type();
+    auto scalar_type = mlir::RankedTensorType::get({}, float_type);
+    auto epsilon_const =
+        MakeConstant(builder, static_cast<float>(epsilon), scalar_type);
 
     auto embedding_table_type = torch_tpu::GetTensorTypeOrDie(embedding_table);
     auto accumulator_type = torch_tpu::GetTensorTypeOrDie(accumulator);
@@ -216,7 +222,7 @@ auto SparseDenseMatmulGradWithAdagradBuilder(
         sample_ids.getValue(),       gains.getValue(),
         activations_grad.getValue(), embedding_table.getValue(),
         accumulator.getValue(),      learning_rate.getValue(),
-        epsilon.getValue()};
+        epsilon_const.getValue()};
 
     auto out_type = mlir::TupleType::get(
         op_builder.getContext(), {embedding_table_type, accumulator_type});
@@ -246,19 +252,17 @@ std::tuple<at::Tensor, at::Tensor> AtenSparseDenseMatmulGradWithAdagrad(
     const at::Tensor& sample_ids, const at::Tensor& gains,
     const at::Tensor& embedding_table, const at::Tensor& accumulator,
     const at::Tensor& activations_grad, const at::Tensor& learning_rate,
-    const at::Tensor& epsilon, int64_t device_batch_size,
-    int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
-    std::string_view computation_name) {
+    double epsilon, int64_t device_batch_size, int64_t max_ids_per_partition,
+    int64_t max_unique_ids_per_partition, std::string_view computation_name) {
   TT_KERNEL(
       torch_tpu::OpName::kSparseDenseMatmulGradWithAdagrad, param_keys,
       (row_pointers, embedding_ids, sample_ids, gains, embedding_table,
        accumulator, activations_grad, learning_rate, epsilon, device_batch_size,
        max_ids_per_partition, max_unique_ids_per_partition, computation_name),
       {
-        std::array<torch_tpu::TensorHolder, 9> inputs = {
+        std::array<torch_tpu::TensorHolder, 8> inputs = {
             row_pointers,    embedding_ids, sample_ids,       gains,
-            embedding_table, accumulator,   activations_grad, learning_rate,
-            epsilon};
+            embedding_table, accumulator,   activations_grad, learning_rate};
 
         torch_tpu::Dimensions out_dims(embedding_table.sizes().begin(),
                                        embedding_table.sizes().end());
@@ -267,7 +271,7 @@ std::tuple<at::Tensor, at::Tensor> AtenSparseDenseMatmulGradWithAdagrad(
 
         auto builder_fn = SparseDenseMatmulGradWithAdagradBuilder(
             device_batch_size, max_ids_per_partition,
-            max_unique_ids_per_partition, computation_name);
+            max_unique_ids_per_partition, computation_name, epsilon);
 
         TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
                            torch_tpu::ConvertTo<mlir::ElementType>(
@@ -277,7 +281,7 @@ std::tuple<at::Tensor, at::Tensor> AtenSparseDenseMatmulGradWithAdagrad(
             torch_tpu::ConvertTo<mlir::ElementType>(accumulator.scalar_type()));
 
         TT_ASSIGN_OR_THROW(
-            auto results, (torch_tpu::DispatchOp<9, 2>(
+            auto results, (torch_tpu::DispatchOp<8, 2>(
                               builder_fn, inputs,
                               {.out_dtypes = {out_dtype, acc_dtype},
                                .out_dims_list = {out_dims, acc_dims},
