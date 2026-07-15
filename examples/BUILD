@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_library")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_package_end",
+    "torch_tpu_py_library",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
