@@ -50,6 +50,9 @@ for this purpose.
     *   The **reviewer** will be the Googler assigned the PR (the quality
         champion), who's responsible for approving the CL
     *   The Google domain expert and all other reviewers will be **CC**-ed.
+    *   As long as the quality champion has approved the PR, anyone is allowed
+        to apply the `pull ready` label in case the quality champion forgets to
+        do so.
 1.  By this time, the CL should most likely be ready. If, however, more changes
     are needed (e.g. due to presubmit failures), the Google domain expert is
     usually responsible for making such changes. They can pick one of two ways
