@@ -11,7 +11,7 @@ SUPPORTED_PYTHON_VERSIONS = [
 ]
 
 # BCR dependencies
-bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "curl", version = "8.11.0")
 bazel_dep(name = "rules_cc", version = "0.2.9")
@@ -65,18 +65,20 @@ bazel_dep(name = "rules_ml_toolchain")
 
 archive_override(
     module_name = "xla",
-    integrity = "sha256-6103a9hGp02vVtT6Xavw7r/Ix0uAvK1U+/Iic2croiM=",
+    integrity = "sha256-ZxwHh0fhzk+anNYo8TRKSjtznK238GcYq0L01SS4uWw=",
     patch_strip = 1,
-    patches = ["//bazel/patches/xla:xla_bazel8.patch"],
-    strip_prefix = "xla-1e42a8527caa67e59827034e2d6371d965e9a1e8",
-    urls = ["https://github.com/openxla/xla/archive/1e42a8527caa67e59827034e2d6371d965e9a1e8.tar.gz"],
+    patches = ["//bazel/patches/xla:remove_stablehlo_source_location.patch"],
+    strip_prefix = "xla-cdbd8b766ff6992238c1127b58e61dbb3e56a5f3",
+    urls = ["https://github.com/openxla/xla/archive/cdbd8b766ff6992238c1127b58e61dbb3e56a5f3.tar.gz"],
 )
 
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-koXZBgF1eDjQZKEvUfFDdNQAZN3C+hmJeZCLa9D4k0g=",
-    strip_prefix = "rules_ml_toolchain-7f40603f574b95746152332ef3ad5fce63f1768d",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/7f40603f574b95746152332ef3ad5fce63f1768d.tar.gz"],
+    integrity = "sha256-izPVqzV2I7ox7EYzRzcRY6ogeLcHUr4LRP2xMrkWh6A=",
+    patch_strip = 1,
+    patches = ["//bazel/patches/rules_ml_toolchain:remove_experimental_include.patch"],
+    strip_prefix = "rules_ml_toolchain-236a498d8624bef88e35ce2518a833204b0db19f",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/236a498d8624bef88e35ce2518a833204b0db19f.tar.gz"],
 )
 
 archive_override(
