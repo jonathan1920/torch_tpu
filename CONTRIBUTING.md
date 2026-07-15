@@ -38,8 +38,10 @@ for this purpose.
     quality champion** as a reviewer AND the **assignee**.
     *   For now the domain expert needs to manually find a quality champion.
         Later we'll try to automate it.
-    *   See [this image](docs/pr-roles.png) for how the domain expert and
-        quality champion roles map to the GitHub UI.
+    *   See the image below for how the domain expert and quality champion roles
+        map to the GitHub UI.
+
+        <img src="docs/pr-roles.png" alt="PR Roles" width="400px">
 1.  The **Google quality champion** reviews the PR, focusing on style and
     quality, approves it, and then applies the `pull ready` label to the PR.
 1.  The `pull ready` label triggers the bot to generate a CL from the PR:
