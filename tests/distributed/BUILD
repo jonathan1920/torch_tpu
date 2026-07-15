@@ -437,6 +437,10 @@ torch_tpu_py_test(
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         "requires-tpu-v5lite:8",
+        # Skip this test on TPU v6 and v7. It was written targeting TPU v5. Running it on v6 and v7
+        # will cause issues due to their different topology.
+        "fails-on-tpu-v6",
+        "fails-on-tpu-v7",
     ],
     deps = [
         ":distributed_utils",
