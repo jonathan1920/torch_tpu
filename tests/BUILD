@@ -875,7 +875,7 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nolocal = "slow test",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
+    notap = "slow test - only need to run on demand for updating goldens",
     # Each shard generates one golden file that contains one slice of the
     # golden data. Therefore the smaller the count, the bigger each file
     # will be.
@@ -887,6 +887,36 @@ torch_tpu_py_test(
     #
     # If we adjust this, we must also adjust the data attribute in the
     # ops_test_vs_gpu target.
+    shard_count = 3,
+    tags = [
+        "requires-gpu-sm80",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+# Like ops_test_gen_gpu_golden, but only generates 1 sample per (op, dtype).
+# This is for quickly verifying that the logic for generating GPU goldens is
+# not broken. We run this on TAP automatically, while only running the full
+# ops_test_gen_gpu_golden on demand to update the goldens.
+torch_tpu_py_test(
+    name = "ops_test_gen_gpu_golden_smoke",
+    srcs = ["ops_test.py"],
+    args = [
+        "--test_mode=gen_gpu_golden",
+        "--max_samples_per_op_dtype=1",
+    ],
+    main = "ops_test.py",
+    nolocal = "slow test",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 3,
     tags = [
         "requires-gpu-sm80",
