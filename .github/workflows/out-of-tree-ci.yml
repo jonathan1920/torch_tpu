@@ -68,6 +68,9 @@ permissions:
 
 jobs:
   run_tests:
+    # Only trigger on upstream main branch merges and filter out the massive firehose of ciflow
+    # tags, ghstack branches, and developer pushes that the PyTorch CRCR relay blindly forwards.
+    if: github.event.client_payload.payload.ref == 'refs/heads/main'
     name: "Presubmit on ${{ matrix.job_info.name || matrix.job_info.runner }} against dispatched PyTorch"
     strategy:
       fail-fast: false
