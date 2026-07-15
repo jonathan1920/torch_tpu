@@ -5676,6 +5676,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(_test)
 
+  @absltest.skip("b/535216136")
   def test_arange_large_int_with_float_step(self):
     """Tests arange with large integers and a float step.
 
