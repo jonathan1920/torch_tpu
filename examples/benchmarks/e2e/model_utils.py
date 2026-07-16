@@ -1649,7 +1649,7 @@ def ml_layer_model_builder(
         chunk_size=kwargs["chunk_size"],
     )
     config.use_mamba_kernels = False
-    config.layers_block_type = ["mamba"]
+    config.layers_block_type = ["linear_attention"]
     model = modeling_nemotron_h.NemotronHBlock(config, layer_idx=0)
 
     class NemotronHMamba2BlockWrapper(torch.nn.Module):
