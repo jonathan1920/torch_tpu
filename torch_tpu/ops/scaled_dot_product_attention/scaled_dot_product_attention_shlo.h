@@ -33,6 +33,7 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
                                    const at::Tensor& value,
                                    const std::optional<at::Tensor>& attn_bias,
                                    bool is_causal, std::optional<double> scale,
+                                   bool allow_half_precision_reduction_math,
                                    OpParamCacheKeys param_keys);
 
 absl::StatusOr<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
@@ -40,7 +41,7 @@ ScaledDotProductFusedAttentionShloBackward(
     const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
     const at::Tensor& value, const at::Tensor& attn_bias,
     const at::Tensor& sum_exp, std::optional<double> scale, bool is_causal,
-    OpParamCacheKeys param_keys);
+    bool allow_half_precision_reduction_math, OpParamCacheKeys param_keys);
 
 }  // namespace torch_tpu
 

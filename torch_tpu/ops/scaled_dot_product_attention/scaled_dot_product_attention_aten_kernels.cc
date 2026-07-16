@@ -463,10 +463,16 @@ AtenScaledDotProductFusedAttentionOverrideable(
        IgnoreInCacheKey(dropout_p, "Unused"), is_causal,
        IgnoreInCacheKey(return_debug_mask, "Unused"), scale),
       {
-        TT_ASSIGN_OR_THROW(auto results,
-                           ScaledDotProductFusedAttentionShlo(
-                               query, key, value, attn_bias, is_causal, scale,
-                               std::move(param_keys)));
+        const bool allow_half_precision_reduction_math =
+            at::globalContext().allowFP16BF16ReductionMathSDP();
+        TT_THROW_IF_ERROR(param_keys.SetParam(
+            "allow_fp16_bf16_reduction", allow_half_precision_reduction_math));
+
+        TT_ASSIGN_OR_THROW(
+            auto results,
+            ScaledDotProductFusedAttentionShlo(
+                query, key, value, attn_bias, is_causal, scale,
+                allow_half_precision_reduction_math, std::move(param_keys)));
         auto [out, logsumexp] = results;
         return GenerateResults(out, logsumexp);
       });
@@ -489,10 +495,16 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
        IgnoreInCacheKey(max_k, "Unused"), IgnoreInCacheKey(dropout_p, "Unused"),
        is_causal, philox_seed, philox_offset, scale),
       {
+        const bool allow_half_precision_reduction_math =
+            at::globalContext().allowFP16BF16ReductionMathSDP();
+        TT_THROW_IF_ERROR(param_keys.SetParam(
+            "allow_fp16_bf16_reduction", allow_half_precision_reduction_math));
+
         TT_ASSIGN_OR_THROW(
             auto out, ScaledDotProductFusedAttentionShloBackward(
                           grad_out, query, key, value, attn_bias, logsumexp,
-                          scale, is_causal, std::move(param_keys)));
+                          scale, is_causal, allow_half_precision_reduction_math,
+                          std::move(param_keys)));
 
         return std::make_tuple(
             grad_input_mask[0] ? std::get<0>(out)

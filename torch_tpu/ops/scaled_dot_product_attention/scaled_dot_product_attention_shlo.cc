@@ -315,6 +315,7 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
                                    const at::Tensor& value,
                                    const std::optional<at::Tensor>& attn_bias,
                                    bool is_causal, std::optional<double> scale,
+                                   bool allow_half_precision_reduction_math,
                                    OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
@@ -325,7 +326,8 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
   const bool q_needs_grad = at::GradMode::is_enabled() && query.requires_grad();
 
   auto op_builder =
-      [out_dims, lse_dims, is_causal, scale, q_needs_grad](
+      [out_dims, lse_dims, is_causal, scale,
+       allow_half_precision_reduction_math, q_needs_grad](
           absl::Span<mlir::MlirOp> inputs,
           mlir::MlirBuilder& builder) -> absl::StatusOr<MlirOpResults<2>> {
     mlir::MlirOp query_mlir = inputs[0];
@@ -336,10 +338,6 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
       mask_mlir = inputs[3];
     }
     mlir::MLIRContext* context = &builder.getContext();
-
-    auto& ctx = at::globalContext();
-    bool allow_half_precision_reduction_math =
-        ctx.allowFP16BF16ReductionMathSDP();
 
     auto get_element_type = [](mlir::MlirOp op) {
       return GetTensorTypeOrDie(op).getElementType();
@@ -477,7 +475,7 @@ ScaledDotProductFusedAttentionShloBackward(
     const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
     const at::Tensor& value, const at::Tensor& attn_bias,
     const at::Tensor& sum_exp, std::optional<double> scale, bool is_causal,
-    OpParamCacheKeys param_keys) {
+    bool allow_half_precision_reduction_math, OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
@@ -488,8 +486,9 @@ ScaledDotProductFusedAttentionShloBackward(
   int64_t head_dim = query.size(rank - 1);
 
   auto op_builder = [rank, batch_size, is_causal, scale, num_head_kv,
-                     seq_len_kv, head_dim](absl::Span<mlir::MlirOp> inputs,
-                                           mlir::MlirBuilder& builder)
+                     seq_len_kv, head_dim, allow_half_precision_reduction_math](
+                        absl::Span<mlir::MlirOp> inputs,
+                        mlir::MlirBuilder& builder)
       -> absl::StatusOr<std::array<mlir::MlirOp, 3>> {
     mlir::MlirOp grad_out_mlir = inputs[0];
     mlir::MlirOp query_mlir = inputs[1];
@@ -501,10 +500,6 @@ ScaledDotProductFusedAttentionShloBackward(
       mask_mlir = inputs[5];
     }
     mlir::MLIRContext* context = &builder.getContext();
-
-    auto& ctx = at::globalContext();
-    bool allow_half_precision_reduction_math =
-        ctx.allowFP16BF16ReductionMathSDP();
 
     auto get_element_type = [](mlir::MlirOp op) {
       return GetTensorTypeOrDie(op).getElementType();
