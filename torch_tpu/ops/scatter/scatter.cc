@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -105,29 +106,35 @@ mlir::MlirOp BuildScatterIndices(mlir::MlirOp index, int64_t dim) {
   return mlir::stablehlo::Concatenate(builder, parts, /*dimension=*/rank);
 }
 
-// Returns true if `index` is a broadcast of a 1-D tensor that is constant along
-// every dimension except `dim` -- i.e. the `ids[:, None].expand_as(src)` form
-// emitted by the idiomatic top-k MoE token-combine. For such an index the
-// per-element scatter update `out[index[i][j], j] += src[i][j]` is invariant in
-// `j`, so a scatter-add collapses exactly to an index_add over the
-// pre-broadcast 1-D index. Both eager and compiled execution hand this builder
-// the broadcast, so detecting it here fixes the lowering for every execution
-// mode.
-bool IsRowBroadcastIndex(mlir::MlirOp index, int64_t dim) {
+// If `index` is a broadcast of a 1-D tensor that is constant along every
+// dimension except `dim` -- i.e. the `ids[:, None].expand_as(src)` form emitted
+// by the idiomatic top-k MoE token-combine -- returns that original 1-D tensor,
+// else nullopt. For such an index the per-element scatter update
+// `out[index[i][j], j] += src[i][j]` is invariant in `j`, so a scatter-add
+// collapses exactly to an index_add over the 1-D tensor. Both eager and
+// compiled execution hand this builder the broadcast, so detecting it here
+// fixes the lowering for every execution mode.
+std::optional<mlir::MlirOp> GetRowBroadcastIndex(mlir::MlirOp index,
+                                                 int64_t dim) {
   auto broadcast = mlir::dyn_cast_or_null<mlir::stablehlo::BroadcastInDimOp>(
       index.getValue().getDefiningOp());
   if (!broadcast) {
-    return false;
+    return std::nullopt;
   }
   auto operand_type =
       mlir::dyn_cast<mlir::RankedTensorType>(broadcast.getOperand().getType());
   if (!operand_type || operand_type.getRank() != 1) {
-    return false;
+    return std::nullopt;
   }
   // The single input dim must map only to the scatter dim, so the broadcast
-  // introduces stride-0 (constant) values along every other dim.
+  // introduces constant values along every other dim.
   llvm::ArrayRef<int64_t> broadcast_dims = broadcast.getBroadcastDimensions();
-  return broadcast_dims.size() == 1 && broadcast_dims[0] == dim;
+  if (broadcast_dims.size() != 1 || broadcast_dims[0] != dim) {
+    return std::nullopt;
+  }
+  // The pre-broadcast operand is the original 1-D index (length
+  // index.size(dim)).
+  return mlir::MlirOp(index.getBuilder(), broadcast.getOperand());
 }
 
 }  // namespace
@@ -204,44 +211,32 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
 
   // Fast path for a broadcast index (`ids[:, None].expand_as(src)`, the top-k
   // MoE token-combine idiom). When the index is constant along every dim except
-  // `dim`, scatter_add is exactly index_add, which lowers to an efficient row
-  // (window) scatter -- far faster on TPU than the per-element scalar scatter
-  // built below, which materializes a full index tensor. Restricted to what
-  // index_add can express: add/sum with include_self and matching shapes.
+  // `dim`, scatter_add is exactly index_add over the original 1-D index, which
+  // lowers to an efficient row (window) scatter -- far faster on TPU than the
+  // per-element scalar scatter built below, which materializes a full index
+  // tensor. Restricted to what index_add can express: add/sum with include_self
+  // and matching shapes.
   if ((scatter_op == ScatterOp::kAdd || scatter_op == ScatterOp::kSum) &&
       include_self == ScatterIncludeSelf::kYes &&
       self_src_match_off_scatter_dim &&
-      src_type.getShape() == index_type.getShape() &&
-      IsRowBroadcastIndex(index, dim)) {
-    mlir::MlirBuilder& fast_builder = self.getBuilder();
-    mlir::Type fast_computation_type =
-        mlir::getElementType(self.getContext(), computation_element_type);
-
-    // Collapse the broadcast index back to 1-D (length = index.size(dim)).
-    // slice-of-broadcast folds away in XLA, so this adds no real work.
-    Indices start_indices(index_type.getRank(), 0);
-    Indices limit_indices = CopyIntVector(index_type.getShape());
-    Indices strides(index_type.getRank(), 1);
-    for (int d = 0; d < index_type.getRank(); ++d) {
-      if (d != dim) {
-        limit_indices[d] = 1;
+      src_type.getShape() == index_type.getShape()) {
+    if (std::optional<mlir::MlirOp> index_1d =
+            GetRowBroadcastIndex(index, dim)) {
+      mlir::MlirBuilder& fast_builder = self.getBuilder();
+      mlir::Type fast_computation_type =
+          mlir::getElementType(self.getContext(), computation_element_type);
+      mlir::MlirOp alpha =
+          MakeScalarConstant(fast_builder, 1.0, fast_computation_type);
+      TT_ASSIGN_OR_RETURN(mlir::MlirOp result,
+                          BuildIndexAddShlo(self, dim, *index_1d, src, alpha,
+                                            computation_element_type));
+      if (GetTensorTypeOrDie(result).getElementType() !=
+          self_type.getElementType()) {
+        result = mlir::stablehlo::ConvertElementType(
+            result, self_type.getElementType());
       }
+      return result;
     }
-    mlir::MlirOp index_1d =
-        mlir::stablehlo::Slice(index, start_indices, limit_indices, strides);
-    index_1d = mlir::stablehlo::Reshape(index_1d, {index_type.getDimSize(dim)});
-
-    mlir::MlirOp alpha =
-        MakeScalarConstant(fast_builder, 1.0, fast_computation_type);
-    TT_ASSIGN_OR_RETURN(mlir::MlirOp result,
-                        BuildIndexAddShlo(self, dim, index_1d, src, alpha,
-                                          computation_element_type));
-    if (GetTensorTypeOrDie(result).getElementType() !=
-        self_type.getElementType()) {
-      result = mlir::stablehlo::ConvertElementType(result,
-                                                   self_type.getElementType());
-    }
-    return result;
   }
 
   // Convert arguments to the computation type if necessary.

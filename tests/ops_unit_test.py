@@ -5549,7 +5549,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       dtype=[torch.float32, torch.bfloat16],
       dim=[0, 1],
   )
-  def test_scatter_add_broadcast_index(self, dtype, dim):
+  def test_scatter_add_broadcast_index(self, dtype: torch.dtype, dim: int):
     """scatter_add with a broadcast (expanded) index matches CPU.
 
     This is the top-k MoE token-combine idiom
@@ -5586,7 +5586,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(test_fn, rtol=rtol, atol=atol)
 
   @parameterized.product(include_self=[True, False])
-  def test_scatter_reduce_sum_broadcast_index(self, include_self):
+  def test_scatter_reduce_sum_broadcast_index(self, include_self: bool):
     """scatter_reduce(sum) with a broadcast index matches CPU.
 
     include_self=True hits the row-broadcast fast path; include_self=False must
