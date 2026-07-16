@@ -15,6 +15,7 @@
 """Utilities for OSS/GCP environment detection and testing."""
 
 import functools
+import os
 
 
 def running_in_cloud() -> bool:
@@ -25,6 +26,28 @@ def running_in_cloud() -> bool:
     return True
   except ImportError:
     return False
+
+
+def is_oss() -> bool:
+  """Returns True if running in Open Source (OSS / GCP / Cloud) environment."""
+  return running_in_cloud() or os.getenv("IS_OSS", "0") == "1"
+
+
+def skip_in_oss(
+    reason: str = "Skipping in Open Source (OSS) environment due to numerics.",
+):
+  """Decorator to skip test in Open Source (OSS/GCP) environment."""
+
+  def decorator(func):
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+      if is_oss():
+        self.skipTest(reason)
+      return func(self, *args, **kwargs)
+
+    return wrapper
+
+  return decorator
 
 
 def libtpu_version() -> str:

@@ -176,6 +176,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -210,6 +211,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -244,6 +246,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -275,6 +278,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -304,6 +308,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -333,6 +338,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -367,6 +373,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -401,6 +408,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -435,6 +443,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -466,6 +475,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -495,6 +505,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -524,6 +535,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -559,6 +571,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -599,6 +612,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -638,6 +652,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -677,6 +692,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -713,6 +729,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -747,6 +764,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -781,6 +799,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -828,6 +847,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -857,6 +877,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -894,6 +915,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -924,6 +946,7 @@ torch_tpu_py_test(
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
+        ":oss_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",

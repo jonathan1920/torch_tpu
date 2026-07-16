@@ -29,6 +29,7 @@ from torch.nn import attention
 from torch_tpu._internal.utils import utils
 from tests import dynamism_test_utils
 from tests import op_testing
+from tests import oss_utils
 
 _TEST_CATEGORIES = flags.DEFINE_list(
     "test_categories",
@@ -2376,7 +2377,9 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_erf(self):
     self.do_test_op("_foreach_erf")
 
+  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
   @category("foreach")
+  @oss_utils.skip_in_oss()
   def test_foreach_erfc(self):
     self.do_test_op("_foreach_erfc")
 
@@ -2789,6 +2792,8 @@ class TestOps(TorchTpuTestBase):
         ),
     )
 
+  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
+  @oss_utils.skip_in_oss()
   def test_norm(self):
     self.do_test_op("norm")
 
@@ -3040,6 +3045,8 @@ class TestOps(TorchTpuTestBase):
         + (torch.bfloat16,),
     )
 
+  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
+  @oss_utils.skip_in_oss()
   def test_native_layer_norm(self):
     self.do_test_op(
         "native_layer_norm",
@@ -3121,6 +3128,8 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
     )
 
+  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
+  @oss_utils.skip_in_oss()
   def test_nn_functional_conv_transpose1d(self):
     self.do_test_op(
         "nn.functional.conv_transpose1d",
@@ -3181,9 +3190,11 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
     )
 
+  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
   # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
   # and dtype only causes comparison of outputs of different tests.
   @op_testing.skip_if_torch_tpu_vs_gpu_mode
+  @oss_utils.skip_in_oss()
   def test_nn_functional_scaled_dot_product_attention_math(self):
     # Force the MATH backend for both CPU and TPU.
     with attention.sdpa_kernel(attention.SDPBackend.MATH):
@@ -3194,9 +3205,11 @@ class TestOps(TorchTpuTestBase):
           exclude_dtypes=INTEGRAL_DTYPES + (torch.int64,),
       )
 
+  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
   # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
   # and dtype only causes comparison of outputs of different tests.
   @op_testing.skip_if_torch_tpu_vs_gpu_mode
+  @oss_utils.skip_in_oss()
   def test_nn_functional_scaled_dot_product_attention_overrideable(self):
     # TODO: b/476166586 change the SDP backend for GPU device. It doesn't
     # support `OVERRIDEABLE`, so it fails unconditionally.
@@ -3214,9 +3227,11 @@ class TestOps(TorchTpuTestBase):
           exclude_dtypes=(torch.int64,),
       )
 
+  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
   # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
   # and dtype only causes comparison of outputs of different tests.
   @op_testing.skip_if_torch_tpu_vs_gpu_mode
+  @oss_utils.skip_in_oss()
   def test_nn_functional_scaled_dot_product_attention_efficient(self):
     # Use EFFICIENT_ATTENTION backend for TPU, and MATH for CPU.
     with attention.sdpa_kernel(
@@ -3230,9 +3245,11 @@ class TestOps(TorchTpuTestBase):
           exclude_dtypes=(torch.int64,),
       )
 
+  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
   # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
   # and dtype only causes comparison of outputs of different tests.
   @op_testing.skip_if_torch_tpu_vs_gpu_mode
+  @oss_utils.skip_in_oss()
   def test_nn_functional_scaled_dot_product_attention_flash(self):
     # Use FLASH_ATTENTION backend for TPU, and MATH for CPU.
     with attention.sdpa_kernel(
@@ -3431,6 +3448,8 @@ class TestOps(TorchTpuTestBase):
   def test_slice(self):
     self.do_test_op("slice")
 
+  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
+  @oss_utils.skip_in_oss()
   def test_softmax(self):
     self.do_test_op("softmax")
 
@@ -3628,6 +3647,8 @@ class TestOps(TorchTpuTestBase):
   def test_where(self):
     self.do_test_op("where")
 
+  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
+  @oss_utils.skip_in_oss()
   def test_xlogy(self):
     self.do_test_op("xlogy")
 
