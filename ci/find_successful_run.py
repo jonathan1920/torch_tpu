@@ -23,6 +23,7 @@ import subprocess
 import sys
 import time
 from typing import Any, Final
+import urllib.error
 import urllib.request
 
 # Global configuration
@@ -33,6 +34,7 @@ GITHUB_REPOSITORY: Final[str] = os.environ.get(
 
 
 DEFAULT_PYTHON_VERSION: Final[str] = "cp312"
+_DEFAULT_HTTP_REQUEST_TIMEOUT: Final[float] = 60.0  # seconds
 
 
 def check_env() -> None:
@@ -42,7 +44,51 @@ def check_env() -> None:
     sys.exit(1)
 
 
-def get_runs(target_sha: str) -> Mapping[str, Any]:
+def _make_http_request(
+    req: urllib.request.Request, timeout: float
+) -> Mapping[str, Any]:
+  """Performs the HTTP request with a timeout and logs detailed error info.
+
+  This function logs diagnostic information for HTTP / network failures and
+  re-raises the exception for callers to handle (e.g. for retries).
+
+  Args:
+    req: The HTTP request to send.
+    timeout: The duration in seconds.
+
+  Returns:
+    The HTTP response as a JSON payload.
+  """
+  try:
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+      return json.loads(response.read().decode())
+  except urllib.error.HTTPError as e:
+    print(
+        f"ERROR: HTTP Error {e.code} during request to {req.full_url}:"
+        f" {e.reason}. Please check https://www.githubstatus.com/ if GitHub is"
+        " experiencing outages.",
+        file=sys.stderr,
+    )
+    raise
+  except urllib.error.URLError as e:
+    print(
+        f"ERROR: Network error during request to {req.full_url}:"
+        f" {e.reason}. Please check https://www.githubstatus.com/ if GitHub is"
+        " experiencing outages.",
+        file=sys.stderr,
+    )
+    raise
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    print(
+        f"ERROR: Failed to request {req.full_url}: {e!r}.",
+        file=sys.stderr,
+    )
+    raise
+
+
+def get_runs(
+    target_sha: str, timeout: float = _DEFAULT_HTTP_REQUEST_TIMEOUT
+) -> Mapping[str, Any]:
   """Queries the GitHub API for build_wheel runs matching target_sha."""
   url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/actions/workflows/build_wheel.yml/runs?head_sha={target_sha}"
   req = urllib.request.Request(
@@ -53,11 +99,12 @@ def get_runs(target_sha: str) -> Mapping[str, Any]:
           "User-Agent": "torch-tpu-ci-agent",
       },
   )
-  with urllib.request.urlopen(req) as response:
-    return json.loads(response.read().decode())
+  return _make_http_request(req, timeout=timeout)
 
 
-def get_jobs(run_id: int) -> Mapping[str, Any]:
+def get_jobs(
+    run_id: int, timeout: float = _DEFAULT_HTTP_REQUEST_TIMEOUT
+) -> Mapping[str, Any]:
   """Queries the GitHub API for jobs of a specific workflow run."""
   url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/actions/runs/{run_id}/jobs"
   req = urllib.request.Request(
@@ -68,8 +115,7 @@ def get_jobs(run_id: int) -> Mapping[str, Any]:
           "User-Agent": "torch-tpu-ci-agent",
       },
   )
-  with urllib.request.urlopen(req) as response:
-    return json.loads(response.read().decode())
+  return _make_http_request(req, timeout=timeout)
 
 
 def check_jobs_status(jobs: Sequence[Mapping[str, Any]]) -> str:
@@ -220,7 +266,7 @@ def main() -> None:
         sys.exit(1)
     except Exception as e:  # pylint: disable=broad-exception-caught
       print(
-          f"Warning: Temporary error fetching workflow status: {e}",
+          f"ERROR: Failed to fetch workflow status: {e}",
           file=sys.stderr,
       )
       status = "active"
@@ -237,7 +283,7 @@ def main() -> None:
       break
 
   print(
-      "Error: build_wheel workflow not found or failed after timeout.",
+      "ERROR: build_wheel workflow not found or failed after timeout.",
       file=sys.stderr,
   )
   sys.exit(1)
