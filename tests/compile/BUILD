@@ -324,6 +324,9 @@ torch_tpu_py_test(
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 6,
     tags = [
+        "noasan",  # b/535295645: TIMM model compilation overhead causes timeouts under ASAN
+        "nomsan",  # b/535295645: TIMM model compilation overhead causes timeouts under MSAN
+        "notsan",  # b/535295645: TIMM model compilation overhead causes timeouts under TSAN
         "requires-accel-hbm",
         "requires-net:external",
         "requires-tpu-v5lite",  #
