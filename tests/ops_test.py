@@ -279,6 +279,17 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 2.9, "atol": 4.7e-2},
         torch.float16: {"rtol": 1.3, "atol": 4.3e-3},
     },
+    "_thnn_fused_gru_cell": {
+        torch.bfloat16: {"rtol": 2.9e-1, "atol": 2.9e-5},
+        torch.complex64: {"rtol": 1.2e-4, "atol": 3.3e-2},
+        torch.float16: {"rtol": 5.3e-2, "atol": 2.8e-5},
+        torch.float32: {"rtol": 8.1e-3, "atol": 8.7e-5},
+    },
+    "_thnn_fused_lstm_cell": {
+        torch.complex64: {"rtol": 2.9e-4, "atol": 7.1e-4},
+        torch.float16: {"rtol": 4.8e-2, "atol": 3.1e-5},
+        torch.float32: {"rtol": 4.8e-2, "atol": 4.7e-5},
+    },
     "abs": {
         torch.float64: {"rtol": 4.7e-6, "atol": 1e-6},
     },
@@ -1457,6 +1468,16 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.bfloat16: {"rtol": 2.4e-2, "atol": 2e-3},
                 torch.float16: {"rtol": 5e-1, "atol": 9.8e-4},
                 torch.float32: {"rtol": 4.9e-1, "atol": 6.1e-5},
+            },
+            "_thnn_fused_gru_cell": {
+                torch.bfloat16: {"rtol": 3e-1, "atol": 5e-3},
+                torch.float16: {"rtol": 8e-2, "atol": 3e-4},
+                torch.float32: {"rtol": 1.5e-2, "atol": 2e-4},
+            },
+            "_thnn_fused_lstm_cell": {
+                torch.bfloat16: {"rtol": 6e-2, "atol": 8e-3},
+                torch.float16: {"rtol": 6e-2, "atol": 1e-3},
+                torch.float32: {"rtol": 5e-2, "atol": 2e-4},
             },
             "acos": {
                 torch.float16: {"rtol": 3e-3, "atol": 2e-2},
@@ -3641,6 +3662,12 @@ class TestOps(TorchTpuTestBase):
   @op_testing.skip_unless_torch_tpu_vs_gpu_mode
   def test_linalg_qr(self):
     self.do_test_op("linalg.qr")
+
+  def test_thnn_fused_gru_cell(self):
+    self.do_test_op("_thnn_fused_gru_cell", check_dynamism=False)
+
+  def test_thnn_fused_lstm_cell(self):
+    self.do_test_op("_thnn_fused_lstm_cell", check_dynamism=False)
 
 
 def setUpModule() -> None:

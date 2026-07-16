@@ -271,6 +271,216 @@ class OutVariantType(enum.Enum):
   # dimensions but incorrect dtype, both dtype and dimensions incorrect).
 
 
+def _sample_inputs_thnn_fused_rnn_cell(
+    op_info: OpInfo,
+    device: torch.device,
+    dtype: torch.dtype,
+    requires_grad: bool,
+    num_gates: int | None = None,
+    **kwargs,
+):
+  """Sample inputs generator for THNN fused LSTM and GRU cells.
+
+  Args:
+    op_info: The OpInfo object for the tested operator.
+    device: The target device for generated tensors.
+    dtype: The data type for generated tensors.
+    requires_grad: Whether generated tensors should require gradients.
+    num_gates: The number of gates in the RNN cell (4 for LSTM, 3 for GRU). If
+      None, inferred from op_info.name.
+    **kwargs: Additional unused keyword arguments.
+
+  Yields:
+    SampleInput instances for testing fused RNN cells.
+  """
+  del kwargs
+  if num_gates is None:
+    num_gates = 4 if "lstm" in op_info.name else 3
+  # Although fused LSTM/GRU cells only support floating-point dtypes,
+  # we must generate valid integer/bool sample tensors when requested
+  # by the test harness (e.g. when iterating across all op_db dtypes
+  # without explicit exclude_dtypes). Otherwise, calling `torch.randn`
+  # with integral dtypes throws NotImplementedError during sample
+  # generation (`sample_inputs()`), crashing the test harness before
+  # the op is invoked. Generating valid inputs here allows the op to
+  # run, raise its expected unsupported-dtype exception on CPU/TPU,
+  # and cleanly verify failure handling (`_assert_failure_consistency`).
+  if dtype.is_floating_point or dtype.is_complex:
+    make_arg = functools.partial(
+        torch.randn, device=device, dtype=dtype, requires_grad=requires_grad
+    )
+  elif dtype == torch.bool:
+    make_arg = lambda size: torch.randint(
+        0, 2, size, device=device, dtype=dtype
+    )
+  elif dtype == torch.uint8:
+    make_arg = lambda size: torch.randint(
+        0, 10, size, device=device, dtype=dtype
+    )
+  else:
+    make_arg = lambda size: torch.randint(
+        -10, 10, size, device=device, dtype=dtype
+    )
+  batch, hidden = 4, 8
+  ig = make_arg((batch, num_gates * hidden))
+  hg = make_arg((batch, num_gates * hidden))
+  hx = make_arg((batch, hidden))
+  ib = make_arg((num_gates * hidden,))
+  hb = make_arg((num_gates * hidden,))
+  yield SampleInput(ig, args=(hg, hx, ib, hb))
+  yield SampleInput(
+      ig.detach().clone().requires_grad_(requires_grad),
+      args=(
+          hg.detach().clone().requires_grad_(requires_grad),
+          hx.detach().clone().requires_grad_(requires_grad),
+          None,
+          None,
+      ),
+  )
+
+
+def _ref_thnn_fused_lstm_cell(
+    input_gates: torch.Tensor,
+    hidden_gates: torch.Tensor,
+    cx: torch.Tensor,
+    input_bias: torch.Tensor | None = None,
+    hidden_bias: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  """Analytical CPU reference implementation for `aten::_thnn_fused_lstm_cell`.
+
+  Upstream PyTorch registers `aten::_thnn_fused_lstm_cell` strictly for CUDA
+  (`aten/src/ATen/native/cuda/RNN.cu`) and does not provide a native CPU C++
+  kernel (`AutogradCPU`). This function provides an analytical pure-PyTorch CPU
+  reference implementation so that `do_test_op` can compute golden forward
+  values (`ops_test_tpu`) and analytical autograd gradients (`ops_test_grad`)
+  on CPU when validating TorchTPU accelerated kernels.
+
+  Implements the standard LSTM cell recurrence:
+  https://pytorch.org/docs/stable/generated/torch.nn.LSTMCell.html
+
+    i = sigmoid(W_ii * x + b_ii + W_hi * h + b_hi)
+    f = sigmoid(W_if * x + b_if + W_hf * h + b_hf)
+    g = tanh   (W_ig * x + b_ig + W_hg * h + b_hg)
+    o = sigmoid(W_io * x + b_io + W_ho * h + b_ho)
+    c' = f * c + i * g
+    h' = o * tanh(c')
+
+  Args:
+    input_gates: Pre-activation linear projection of input `x` [batch, 4*H].
+    hidden_gates: Pre-activation linear projection of state `hx` [batch, 4*H].
+    cx: Previous cell state [batch, H].
+    input_bias: Optional input projection bias [4*H].
+    hidden_bias: Optional hidden projection bias [4*H].
+
+  Returns:
+    A tuple `(hy, cy, workspace)` where:
+      - `hy`: New hidden state `h'` [batch, H].
+      - `cy`: New cell state `c'` [batch, H].
+      - `workspace`: Concat of activated gates `[i, f, g, o]` [batch, 4*H],
+        retained for backward gradient computation.
+
+  Raises:
+    RuntimeError: If `input_gates.dtype` is not floating-point or complex.
+  """
+  orig_dtype = input_gates.dtype
+  if not (orig_dtype.is_floating_point or orig_dtype.is_complex):
+    raise RuntimeError(
+        f"_thnn_fused_lstm_cell not implemented for {orig_dtype}"
+    )
+  if orig_dtype in (torch.bfloat16, torch.float16):
+    input_gates = input_gates.to(torch.float32)
+    hidden_gates = hidden_gates.to(torch.float32)
+    cx = cx.to(torch.float32)
+    if input_bias is not None:
+      input_bias = input_bias.to(torch.float32)
+    if hidden_bias is not None:
+      hidden_bias = hidden_bias.to(torch.float32)
+
+  ig = input_gates if input_bias is None else input_gates + input_bias
+  hg = hidden_gates if hidden_bias is None else hidden_gates + hidden_bias
+  gates = ig + hg
+  i_pre, f_pre, g_pre, o_pre = gates.chunk(4, dim=1)
+  ingate = torch.sigmoid(i_pre)
+  forgetgate = torch.sigmoid(f_pre)
+  cellgate = torch.tanh(g_pre)
+  outgate = torch.sigmoid(o_pre)
+  cy = forgetgate * cx + ingate * cellgate
+  hy = outgate * torch.tanh(cy)
+  workspace = torch.cat([ingate, forgetgate, cellgate, outgate], dim=1)
+  if orig_dtype in (torch.bfloat16, torch.float16):
+    hy = hy.to(orig_dtype)
+    cy = cy.to(orig_dtype)
+    workspace = workspace.to(orig_dtype)
+  return hy, cy, workspace.detach()
+
+
+def _ref_thnn_fused_gru_cell(
+    input_gates: torch.Tensor,
+    hidden_gates: torch.Tensor,
+    hx: torch.Tensor,
+    input_bias: torch.Tensor | None = None,
+    hidden_bias: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+  """Analytical CPU reference implementation for `aten::_thnn_fused_gru_cell`.
+
+  Upstream PyTorch registers `aten::_thnn_fused_gru_cell` strictly for CUDA
+  (`aten/src/ATen/native/cuda/RNN.cu`) and does not provide a native CPU C++
+  kernel (`AutogradCPU`). This function provides an analytical pure-PyTorch CPU
+  reference implementation so that `do_test_op` can compute golden forward
+  values (`ops_test_tpu`) and analytical autograd gradients (`ops_test_grad`)
+  on CPU when validating TorchTPU accelerated kernels.
+
+  Implements the standard GRU cell recurrence:
+  https://pytorch.org/docs/stable/generated/torch.nn.GRUCell.html
+
+    r  = sigmoid(i_r + h_r)
+    z  = sigmoid(i_z + h_z)
+    n  = tanh(i_n + r * h_n)
+    h' = (1 - z) * n + z * hx  ==  (hx - n) * z + n
+
+  Args:
+    input_gates: Pre-activation linear projection of input `x` [batch, 3*H].
+    hidden_gates: Pre-activation linear projection of state `hx` [batch, 3*H].
+    hx: Previous hidden state [batch, H].
+    input_bias: Optional input projection bias [3*H].
+    hidden_bias: Optional hidden projection bias [3*H].
+
+  Returns:
+    A tuple `(hy, workspace)` where:
+      - `hy`: New hidden state `h'` [batch, H].
+      - `workspace`: Concat of `[r, z, n, hx, h_n]` [batch, 5*H], retained for
+        backward gradient computation.
+
+  Raises:
+    RuntimeError: If `input_gates.dtype` is not floating-point or complex.
+  """
+  orig_dtype = input_gates.dtype
+  if not (orig_dtype.is_floating_point or orig_dtype.is_complex):
+    raise RuntimeError(f"_thnn_fused_gru_cell not implemented for {orig_dtype}")
+  if orig_dtype in (torch.bfloat16, torch.float16):
+    input_gates = input_gates.to(torch.float32)
+    hidden_gates = hidden_gates.to(torch.float32)
+    hx = hx.to(torch.float32)
+    if input_bias is not None:
+      input_bias = input_bias.to(torch.float32)
+    if hidden_bias is not None:
+      hidden_bias = hidden_bias.to(torch.float32)
+
+  ig = input_gates if input_bias is None else input_gates + input_bias
+  hg = hidden_gates if hidden_bias is None else hidden_gates + hidden_bias
+  ir, iz, in_ = ig.chunk(3, dim=1)
+  hr, hz, hn = hg.chunk(3, dim=1)
+  resetgate = torch.sigmoid(ir + hr)
+  updategate = torch.sigmoid(iz + hz)
+  newgate = torch.tanh(in_ + resetgate * hn)
+  hy = (hx - newgate) * updategate + newgate
+  workspace = torch.cat([resetgate, updategate, newgate, hx, hn], dim=1)
+  if orig_dtype in (torch.bfloat16, torch.float16):
+    hy = hy.to(orig_dtype)
+    workspace = workspace.to(orig_dtype)
+  return hy, workspace.detach()
+
+
 # Ops not included in the list of tested ops for pytorch.
 _ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
     OpInfo(
@@ -315,7 +525,34 @@ _ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
         supports_fwgrad_bwgrad=True,
         supports_out=False,
     ),
+    OpInfo(
+        "_thnn_fused_lstm_cell",
+        op=torch.ops.aten._thnn_fused_lstm_cell,  # pylint: disable=protected-access
+        ref=_ref_thnn_fused_lstm_cell,
+        aten_name="_thnn_fused_lstm_cell",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_thnn_fused_rnn_cell,
+        assert_autodiffed=True,
+        supports_forward_ad=True,
+        supports_fwgrad_bwgrad=True,
+        supports_out=True,
+    ),
+    OpInfo(
+        "_thnn_fused_gru_cell",
+        op=torch.ops.aten._thnn_fused_gru_cell,  # pylint: disable=protected-access
+        ref=_ref_thnn_fused_gru_cell,
+        aten_name="_thnn_fused_gru_cell",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_thnn_fused_rnn_cell,
+        assert_autodiffed=True,
+        supports_forward_ad=True,
+        supports_fwgrad_bwgrad=True,
+        supports_out=True,
+    ),
 ]
+for _op_info in _ADDITIONAL_TORCH_TPU_OPS:
+  if _op_info.name in ("_thnn_fused_lstm_cell", "_thnn_fused_gru_cell"):
+    _op_info.use_ref_for_cpu_golden = True
 
 # Used in the gen_gpu_golden mode to collect the golden results for each op.
 # The key is the op name, and the value is a dictionary from dtype to a list
@@ -1789,6 +2026,18 @@ class TorchTpuTestBase(TestCase):
         out = to(_make_tensors_incorrect_shape(base_result), device)
 
     op_func = op.inplace_variant if variant == OpVariant.INPLACE else op
+    # For operators that lack a native PyTorch CPU kernel (e.g. internal CUDA
+    # ops like _thnn_fused_lstm_cell / _thnn_fused_gru_cell), invoke the custom
+    # analytical reference function `.ref` when computing CPU golden results.
+    if (
+        device.type == "cpu"
+        and getattr(op, "ref", None) is not None
+        and (
+            op.name.startswith("_thnn_fused_")
+            or getattr(op, "use_ref_for_cpu_golden", False)
+        )
+    ):
+      op_func = op.ref
 
     # Clone the sample to prevent the op from mutating it.
     # We must deepcopy op_input *before* setting its device to the given device,
@@ -2476,7 +2725,7 @@ class TorchTpuTestBase(TestCase):
             max_samples_per_op_dtype=max_samples_per_op_dtype,
         )
 
-      if check_out_variant:
+      if check_out_variant and op.supports_out:
         print(f"Testing {op_name}(out=...).", flush=True)
 
         # Find the first valid dtype for the incorrect shape test

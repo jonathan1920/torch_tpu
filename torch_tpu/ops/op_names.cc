@@ -693,14 +693,14 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_foreach_trunc_";
     case OpName::kForeachZero_:
       return "_foreach_zero_";
-    case OpName::kFusedAdam:
-      return "_fused_adam_";
-    case OpName::kFusedAdamTensorLr:
-      return "_fused_adam_.tensor_lr";
     case OpName::kFusedAdagrad:
       return "_fused_adagrad_";
     case OpName::kFusedAdagradTensorLr:
       return "_fused_adagrad_.tensor_lr";
+    case OpName::kFusedAdam:
+      return "_fused_adam_";
+    case OpName::kFusedAdamTensorLr:
+      return "_fused_adam_.tensor_lr";
     case OpName::kFusedAdamw:
       return "_fused_adamw_";
     case OpName::kFusedAdamwTensorLr:
@@ -1309,6 +1309,18 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "tanh_backward.grad_input";
     case OpName::kTanhOut:
       return "tanh.out";
+    case OpName::kThnnFusedGruCell:
+      return "_thnn_fused_gru_cell";
+    case OpName::kThnnFusedGruCellBackward:
+      return "_thnn_fused_gru_cell_backward";
+    case OpName::kThnnFusedGruCellOut:
+      return "_thnn_fused_gru_cell.out";
+    case OpName::kThnnFusedLstmCell:
+      return "_thnn_fused_lstm_cell";
+    case OpName::kThnnFusedLstmCellBackwardImpl:
+      return "_thnn_fused_lstm_cell_backward_impl";
+    case OpName::kThnnFusedLstmCellOut:
+      return "_thnn_fused_lstm_cell.out";
     case OpName::kThresholdBackwardGradInput:
       return "threshold_backward.grad_input";
     case OpName::kThresholdOut:

@@ -7079,6 +7079,78 @@ Device-side assertion tracking was not enabled by user.""",
           maximize=False,
       )
 
+  def test_thnn_fused_lstm_cell_invalid_gate_sizes(self):
+    device = et.device()
+    ig = torch.randn(2, 32, device=device)
+    hg = torch.randn(4, 32, device=device)
+    cx = torch.randn(4, 8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""thnn_fused_lstm_cell(): expected size of argument #1 'input_gates' to match size of argument #2 'hidden_gates' ([4, 32]), got [2, 32]""",
+        gpu="""Expected tensor for argument #1 'input_gates' to have same size as tensor for argument #2 'hidden_gates'; but [2, 32] does not equal [4, 32] (while checking arguments for _thnn_fused_lstm_cell_cuda)""",
+    ):
+      torch.ops.aten._thnn_fused_lstm_cell(ig, hg, cx)
+
+  def test_thnn_fused_lstm_cell_invalid_batch_size(self):
+    device = et.device()
+    ig = torch.randn(2, 32, device=device)
+    hg = torch.randn(2, 32, device=device)
+    cx = torch.randn(4, 8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""thnn_fused_lstm_cell(): expected batch size of argument #1 'input_gates' to match batch size of argument #3 'cx' (4), got 2""",
+        gpu="""Expected tensor for argument #5 'prev_hidden' to have 16 elements; but it actually has 32 elements (while checking arguments for _thnn_fused_lstm_cell_cuda)""",
+    ):
+      torch.ops.aten._thnn_fused_lstm_cell(ig, hg, cx)
+
+  def test_thnn_fused_lstm_cell_invalid_feature_size(self):
+    device = et.device()
+    ig = torch.randn(4, 10, device=device)
+    hg = torch.randn(4, 10, device=device)
+    cx = torch.randn(4, 8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""thnn_fused_lstm_cell(): expected feature size of argument #1 'input_gates' to match 4 * feature size of argument #3 'cx' (32), got 10""",
+        gpu="""Expected tensor for argument #5 'prev_hidden' to have 10 elements; but it actually has 32 elements (while checking arguments for _thnn_fused_lstm_cell_cuda)""",
+    ):
+      torch.ops.aten._thnn_fused_lstm_cell(ig, hg, cx)
+
+  def test_thnn_fused_gru_cell_invalid_gate_sizes(self):
+    device = et.device()
+    ig = torch.randn(2, 24, device=device)
+    hg = torch.randn(4, 24, device=device)
+    hx = torch.randn(4, 8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""thnn_fused_gru_cell(): expected size of argument #1 'input_gates' to match size of argument #2 'hidden_gates' ([4, 24]), got [2, 24]""",
+        gpu="""Expected tensor for argument #1 'input_gates' to have same size as tensor for argument #2 'hidden_gates'; but [2, 24] does not equal [4, 24] (while checking arguments for _thnn_fused_gru_cell_cuda)""",
+    ):
+      torch.ops.aten._thnn_fused_gru_cell(ig, hg, hx)
+
+  def test_thnn_fused_gru_cell_invalid_batch_size(self):
+    device = et.device()
+    ig = torch.randn(2, 24, device=device)
+    hg = torch.randn(2, 24, device=device)
+    hx = torch.randn(4, 8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""thnn_fused_gru_cell(): expected batch size of argument #1 'input_gates' to match batch size of argument #3 'hx' (4), got 2""",
+        gpu="""Expected tensor for argument #5 'prev_hidden' to have 16 elements; but it actually has 32 elements (while checking arguments for _thnn_fused_gru_cell_cuda)""",
+    ):
+      torch.ops.aten._thnn_fused_gru_cell(ig, hg, hx)
+
+  def test_thnn_fused_gru_cell_invalid_feature_size(self):
+    device = et.device()
+    ig = torch.randn(4, 10, device=device)
+    hg = torch.randn(4, 10, device=device)
+    hx = torch.randn(4, 8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""thnn_fused_gru_cell(): expected feature size of argument #1 'input_gates' to match 3 * feature size of argument #3 'hx' (24), got 10""",
+        gpu="""Expected tensor for argument #5 'prev_hidden' to have 13 elements; but it actually has 32 elements (while checking arguments for _thnn_fused_gru_cell_cuda)""",
+    ):
+      torch.ops.aten._thnn_fused_gru_cell(ig, hg, hx)
+
   def test_fused_moving_avg_obs_fq_helper_non_floating(self):
     dev = et.device()
     self_t = torch.ones((2, 3), dtype=torch.int32, device=dev)
