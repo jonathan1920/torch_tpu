@@ -1587,36 +1587,6 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "adamw_test",
-    srcs = ["adamw_test.py"],
-    main = "adamw_test.py",
-    tags = ["requires-tpu-v5lite"],
-    deps = [
-        "//shims/absl_py/testing:absltest",
-        "//shims/torch:pytorch",
-        "//torch_tpu",
-        "//torch_tpu/_internal/compile",
-        "//torch_tpu/_internal/optim",
-        "//torch_tpu/_internal/utils",
-    ],
-)
-
-torch_tpu_py_test(
-    name = "patch_test",
-    srcs = ["patch_test.py"],
-    main = "patch_test.py",
-    tags = ["requires-tpu-v5lite"],
-    deps = [
-        "//shims/absl_py/testing:absltest",
-        "//shims/torch:pytorch",
-        "//torch_tpu",
-        "//torch_tpu/_internal/compile",
-        "//torch_tpu/_internal/optim",
-        "//torch_tpu/_internal/utils",
-    ],
-)
-
-torch_tpu_py_test(
     name = "dynamism_test",
     srcs = ["dynamism_test.py"],
     main = "dynamism_test.py",
