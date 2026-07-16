@@ -2619,9 +2619,9 @@ Device-side assertion tracking was not enabled by user.""",
       ),
   )
   def test_ragged_dot(self, lhs_arg, rhs_arg, group_sizes_arg, expected_error):
-    """Tests that torch_tpu.ragged_dot fails with expected errors.
+    """Tests that tpu.ragged_dot fails with expected errors.
 
-    This test checks various error conditions for the `torch_tpu.ragged_dot`
+    This test checks various error conditions for the `tpu.ragged_dot`
     operation, such as invalid input shapes, mismatched dimensions, and
     incorrect group sizes.
 

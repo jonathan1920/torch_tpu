@@ -6603,7 +6603,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""
 
   def test_ragged_dot_on_tpu(self):
-    """Tests the torch_tpu.ragged_dot custom op on TPU."""
+    """Tests the tpu.ragged_dot custom op on TPU."""
     device = torch.device("tpu")
     m, k, n, g = 5, 4, 3, 2
     lhs = torch.arange(m * k, dtype=torch.float32, device=device).reshape(m, k)
@@ -6625,7 +6625,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close(golden_result=expected.cpu(), torch_tpu_result=out.cpu())
 
   def test_ragged_dot_out_on_tpu(self):
-    """Tests the torch_tpu.ragged_dot custom op with an out parameter on TPU."""
+    """Tests the tpu.ragged_dot custom op with an out parameter on TPU."""
     device = torch.device("tpu")
     m, k, n, g = 4, 3, 2, 5
     lhs = torch.arange(m * k, dtype=torch.float32, device=device).reshape(m, k)
@@ -6707,7 +6707,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   @absltest.skip("b/498564738")
   def test_set_dimension_logical_size_on_tpu(self):
-    """Tests the torch_tpu.set_dimension_logical_size custom op on TPU."""
+    """Tests the tpu.set_dimension_logical_size custom op on TPU."""
     device = torch.device("tpu")
     x = torch.arange(100, device=device, dtype=torch.int32).reshape(10, 10)
     size = torch.tensor(5, device=device, dtype=torch.int32)
@@ -6715,7 +6715,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close(golden_result=x[:5].cpu(), torch_tpu_result=out[:5].cpu())
 
   def test_set_dimension_logical_size_with_mlir_on_tpu(self):
-    """Tests the torch_tpu.set_dimension_logical_size custom op on TPU using MLIR."""
+    """Tests the tpu.set_dimension_logical_size custom op on TPU using MLIR."""
     device = torch.device("tpu")
     x = torch.arange(25, device=device, dtype=torch.int32).reshape(5, 5)
     y = torch.arange(25, device=device, dtype=torch.int32).reshape(5, 5)
@@ -6739,7 +6739,7 @@ module {
     )
 
   def test_dynamic_arange_int_on_tpu(self):
-    """Tests the torch_tpu.dynamic_arange custom op on TPU with integers."""
+    """Tests the tpu.dynamic_arange custom op on TPU with integers."""
     device = torch.device("tpu")
     start = torch.tensor(1, device=device, dtype=torch.int32)
     end = torch.tensor(6, device=device, dtype=torch.int32)
@@ -6754,7 +6754,7 @@ module {
     )
 
   def test_dynamic_arange_float_on_tpu(self):
-    """Tests the torch_tpu.dynamic_arange custom op on TPU with floats."""
+    """Tests the tpu.dynamic_arange custom op on TPU with floats."""
     device = torch.device("tpu")
     start = torch.tensor(0.0, device=device, dtype=torch.float32)
     end = torch.tensor(2.5, device=device, dtype=torch.float32)
@@ -6769,7 +6769,7 @@ module {
     )
 
   def test_dynamic_arange_empty_on_tpu(self):
-    """Tests the torch_tpu.dynamic_arange custom op on TPU with an empty range."""
+    """Tests the tpu.dynamic_arange custom op on TPU with an empty range."""
     device = torch.device("tpu")
     start = torch.tensor(5, device=device, dtype=torch.int32)
     end = torch.tensor(2, device=device, dtype=torch.int32)

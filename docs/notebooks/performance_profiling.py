@@ -48,7 +48,7 @@ def _(mo):
   mo.md(r"""
     ## **1. The TPU Profiler**
 
-    The `torch_tpu.profiler` provides a **context manager** interface for tracing both CPU and TPU activities. You wrap the code you want to profile in a `profiler.profile()` block, and the collected traces are saved to disk for viewing in TensorBoard.
+    The `torch.profiler` provides a **context manager** interface for tracing both CPU and TPU activities. You wrap the code you want to profile in a `profiler.profile()` block, and the collected traces are saved to disk for viewing in TensorBoard.
 
     **Key components:**
 
@@ -65,11 +65,10 @@ def _(mo):
 @app.cell
 def _():
   import torch
-  from torch_tpu._internal import profiler
-  from torch_tpu._internal import sync
+  from torch import profiler
 
   device = torch.device("tpu")
-  return device, profiler, sync, torch
+  return device, profiler, torch
 
 
 @app.cell(hide_code=True)
@@ -89,7 +88,7 @@ def _(mo):
 
 
 @app.cell
-def _(device, profiler, sync, torch):
+def _(device, profiler, torch):
   # Build a small model and optimizer
   model = (
       torch.nn.Sequential(
@@ -219,7 +218,7 @@ def _(mo):
 
     | Step | Command / Code |
     |------|---------------|
-    | **Import** | `from torch_tpu._internal import profiler, sync` |
+    | **Import** | `from torch import profiler` |
     | **Profile** | `with profiler.profile(activities=[...], on_trace_ready=...):` |
     | **Save** | `profiler.xprof_trace_handler(dir_name="/tmp/profiler_output")` |
     | **View** | `tensorboard --logdir=/tmp/profiler_output` |
