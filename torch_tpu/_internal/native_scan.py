@@ -24,7 +24,7 @@ StableHLO while-loop lowering there. See b/529376045.
 # The first libtpu version that can compile the native scan emitter. libtpu
 # 0.0.40 (and older) cannot, so the scan lowering is gated to > 0.0.40. Bump
 # this if the required libtpu changes.
-MIN_LIBTPU_VERSION_WITH_NATIVE_SCAN = (0, 0, 41)
+MIN_LIBTPU_VERSION_WITH_NATIVE_SCAN = (0, 0, 44)
 
 
 def _parse_version(version: str) -> tuple[int, ...]:

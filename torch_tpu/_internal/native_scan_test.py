@@ -44,7 +44,7 @@ class NativeScanTest(absltest.TestCase):
     return mock.patch.dict(sys.modules, {"libtpu": fake})
 
   def test_supported_when_version_above_minimum(self):
-    with self._patch_libtpu("0.0.41"):
+    with self._patch_libtpu("0.0.44"):
       self.assertTrue(native_scan.libtpu_supports_native_scan())
 
   def test_supported_when_version_well_above_minimum(self):
