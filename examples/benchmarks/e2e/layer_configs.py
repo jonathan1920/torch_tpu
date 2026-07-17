@@ -980,6 +980,15 @@ class DropoutConfig:
 
 
 DROPOUT_CONFIGS = (
+    # GPT2 configs
+    DropoutConfig(
+        p=0.1,
+        shape=(1, 512, 768),
+    ),
+    DropoutConfig(
+        p=0.1,
+        shape=(1, 12, 512, 512),
+    ),
     # BERT configs
     DropoutConfig(
         p=0.1,

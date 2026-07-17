@@ -448,9 +448,6 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_dropout(self, run_mode, is_training, layer_config):
-    # TODO: b/494430218 - Fix dropout training.
-    if is_training:
-      self.skipTest("Dropout test fails in training mode.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,

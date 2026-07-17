@@ -544,7 +544,8 @@ def _get_optimizer(
     use_fused_optim: bool = True,
 ) -> torch.optim.Optimizer | None:
   """Returns optimizer for training, or None for inference."""
-  if not is_training:
+  # Model parameters can be empty for some layers, e.g. Dropout.
+  if not is_training or not list(model.parameters()):
     return None
   return torch.optim.AdamW(
       model.parameters(),

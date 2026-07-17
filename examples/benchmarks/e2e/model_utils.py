@@ -681,6 +681,7 @@ def ml_layer_model_builder(
         input_shape,
         dtype=weights_dtype,
         device=device,
+        requires_grad=is_training,
     )
   elif model_name == "nn.Tanh":
     input_shape = kwargs["shape"]
