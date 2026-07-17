@@ -28,19 +28,32 @@
 #                code.
 #   - 'format' : Used locally by developers. Blindly applies fixes to modified
 #                lines in-place without failing.
-
-set -e
+set -euo pipefail
 
 # Fall back to origin/main if BASE_SHA isn't passed by CI.
 BASE_SHA="${BASE_SHA:-origin/main}"
-MODE="${1}"
+# Default to empty so an omitted mode reaches the usage help message
+# instead of aborting with an "unbound variable" error.
+MODE="${1:-}"
+
+# Tell the user how to run this script correctly. Users may be tempted to run the script
+# directly instead of through tox.
+print_tool_use_hint() {
+  echo "ERROR: clang-format check could not run to completion." >&2
+  echo "It usually means the tool is not invoked properly. Run it via following commands:" >&2
+  echo "  pip install tox tox-uv   # one-time setup" >&2
+  echo "  tox -e lint              # check formatting issues" >&2
+  echo "  tox -e format            # apply fixes" >&2
+}
 
 # Ensure a valid mode is explicitly passed; fail on unexpected args.
 case "$MODE" in
   lint)
     echo "INFO: Running clang-format check..."
-    # Capture the formatting diff
-    DIFF=$(git diff -U0 --no-color "$BASE_SHA" HEAD -- "*.cc" "*.h" | clang-format-diff.py -binary clang-format -p1 -style=file || true)
+    if ! DIFF=$(git diff -U0 --no-color "$BASE_SHA" HEAD -- "*.cc" "*.h" | clang-format-diff.py -binary clang-format -p1 -style=file); then
+        print_tool_use_hint
+        exit 3
+    fi
 
     if [ -n "$DIFF" ]; then
         echo "================================================================="
@@ -64,8 +77,11 @@ case "$MODE" in
 
   format)
     echo "INFO: Applying clang-format fixes to modified files in-place."
-    git diff -U0 --no-color "$BASE_SHA" HEAD -- "*.cc" "*.h" | clang-format-diff.py -binary clang-format -p1 -style=file -i
-    echo "INFO: Formatting complete."
+    if ! git diff -U0 --no-color "$BASE_SHA" HEAD -- "*.cc" "*.h" | clang-format-diff.py -binary clang-format -p1 -style=file -i; then
+        print_tool_use_hint
+        exit 3
+    fi
+    echo "INFO: Successfully formatted changes."
     ;;
 
   *)
