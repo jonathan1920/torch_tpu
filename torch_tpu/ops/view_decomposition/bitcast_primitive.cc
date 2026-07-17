@@ -15,6 +15,7 @@
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 
 #include <cstdint>
+#include <optional>
 #include <ostream>
 #include <string_view>
 
@@ -23,11 +24,11 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Types.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -292,6 +293,26 @@ void CheckBitcastTypesAreNotComplex(const RealToRealBitcast& bitcast) {
       << ToString(bitcast.to_type) << GetViewPrimitiveErrorSuffix(bitcast);
 }
 
+std::optional<mlir::ElementType> GetUnsignedType(mlir::ElementType type) {
+  int64_t width = TorchEquivalentBitwidth(type);
+  switch (width) {
+    case 2:
+      return mlir::ElementType::UI2;
+    case 4:
+      return mlir::ElementType::UI4;
+    case 8:
+      return mlir::ElementType::UI8;
+    case 16:
+      return mlir::ElementType::UI16;
+    case 32:
+      return mlir::ElementType::UI32;
+    case 64:
+      return mlir::ElementType::UI64;
+    default:
+      return std::nullopt;
+  }
+}
+
 }  // namespace
 
 std::ostream& operator<<(std::ostream& os, const RealToRealBitcast& bitcast) {
@@ -465,6 +486,57 @@ bool UpdateLayout(StridedLayout& layout, const ViewAsComplex& bitcast) {
   return true;
 }
 
+mlir::MlirOp ExpandBitcastConvert(
+    mlir::MlirOp input, mlir::RankedTensorType result_type,
+    BitcastBitwidth bitwidth, mlir::ElementType input_unsigned_element_type,
+    mlir::ElementType output_unsigned_element_type) {
+  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
+  const absl::Span<const int64_t> input_shape = input_type.getShape();
+
+  mlir::MLIRContext& ctx = input.getContext();
+  const int64_t size_ratio = bitwidth.to / bitwidth.from;
+
+  // Collapse the last two dimensions into one.
+  const int64_t input_minor_dim = input_shape.back();
+  Dimensions collapsed_dims(input_shape.begin(), input_shape.end() - 1);
+  Dimensions slice_shape{collapsed_dims};
+  collapsed_dims.back() *= input_minor_dim;
+  auto collapsed_input = mlir::stablehlo::Reshape(input, collapsed_dims);
+
+  const int64_t input_rank = input_type.getRank();
+  Indices start_indices(input_rank - 1, 0);
+  Strides strides(input_rank - 1, 1);
+  strides.back() = input_minor_dim;
+  Indices limit_indices(collapsed_dims.begin(), collapsed_dims.end());
+  limit_indices.back() -= input_minor_dim;
+
+  mlir::MlirOp accumulator;
+  for (int64_t dim_index = 0; dim_index < size_ratio; ++dim_index) {
+    start_indices.back() = dim_index;
+    limit_indices.back() += 1;
+    mlir::MlirOp slice = mlir::stablehlo::Slice(collapsed_input, start_indices,
+                                                limit_indices, strides);
+    auto unsigned_from_tensor_type =
+        mlir::makeTensorType(ctx, slice_shape, input_unsigned_element_type);
+    mlir::MlirOp unsigned_slice =
+        mlir::stablehlo::BitcastConvert(unsigned_from_tensor_type, slice);
+
+    mlir::MlirOp extended_slice = mlir::stablehlo::ConvertElementType(
+        unsigned_slice, output_unsigned_element_type);
+
+    if (dim_index == 0) {
+      accumulator = extended_slice;
+      continue;
+    }
+    mlir::MlirOp shift_amount =
+        MakeConstantLike(extended_slice, dim_index * bitwidth.from);
+    mlir::MlirOp shifted =
+        mlir::stablehlo::ShiftLeft(extended_slice, shift_amount);
+    accumulator = mlir::stablehlo::Or(accumulator, shifted);
+  }
+  return mlir::stablehlo::BitcastConvert(result_type, accumulator);
+}
+
 // Applies a real-to-real bitcast to the given tensor, following PyTorch's
 // expectations for bitcast behavior on boolean types.
 absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(
@@ -502,20 +574,33 @@ absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(
   // Otherwise, this is a regular real-to-real bitcast.
   // stablehlo::BitcastConvert requires specifying the full output type.
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-  const absl::Span<const int64_t> shape = input_type.getShape();
+  const absl::Span<const int64_t> input_shape = input_type.getShape();
   // Need to propagate dynamic bound to output shape for bitcast.
   TT_RETURN_IF_ERROR(CheckStaticShape(input_type, "bitcast input"))
-      << GetViewPrimitiveShloErrorSuffix(bitcast, shape,
+      << GetViewPrimitiveShloErrorSuffix(bitcast, input_shape,
                                          ViewPrimitiveBugSuffix::kHide);
   Dimensions result_shape = GetShapeAfterRealToRealBitcast(
       bitcast, bitwidth, input_type.getShape(),
       /* error_message_suffix= */
-      GetViewPrimitiveShloErrorSuffix(bitcast, shape));
+      GetViewPrimitiveShloErrorSuffix(bitcast, input_shape));
   mlir::Type result_element_type =
       mlir::getElementType(input.getContext(), bitcast.to_type);
   mlir::RankedTensorType result_type =
       mlir::RankedTensorType::get(result_shape, result_element_type);
 
+  // TODO(jparkerh): Remove this once the expanded bitcast-convert is
+  // implemented in libtpu.
+  std::optional<mlir::ElementType> input_unsigned_element_type =
+      GetUnsignedType(bitcast.from_type);
+  std::optional<mlir::ElementType> output_unsigned_element_type =
+      GetUnsignedType(bitcast.to_type);
+  if (bitwidth.from < bitwidth.to && input_type.hasRank() &&
+      input_type.getRank() > 1 && input_unsigned_element_type.has_value() &&
+      output_unsigned_element_type.has_value()) {
+    return ExpandBitcastConvert(input, result_type, bitwidth,
+                                *input_unsigned_element_type,
+                                *output_unsigned_element_type);
+  }
   return mlir::stablehlo::BitcastConvert(result_type, input);
 }
 
