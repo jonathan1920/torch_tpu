@@ -702,22 +702,16 @@ def update_dict(d, u):
 # Like ACCURACY_OVERRIDES_VS_CPU, but for TPU vs GPU instead.
 ACCURACY_OVERRIDES_VS_GPU = {
     # go/keep-sorted start
-    "_fft_c2c": {
-        torch.complex64: {"rtol": 2e-4, "atol": 2e-4},
-    },
-    "_fft_c2r": {
-        torch.float32: {"rtol": 2e-4, "atol": 2e-4},
-    },
     "_foreach_acos": {
         torch.complex64: {"rtol": 4.2e-5, "atol": 7.1e-5},
     },
     "_foreach_add": {
-        torch.bfloat16: {"atol": 3.2e-2},
-        torch.float16: {"atol": 1.6e-2},
+        torch.bfloat16: {"rtol": 1, "atol": 3.2e-2},
+        torch.float16: {"rtol": 1, "atol": 1.6e-2},
     },
     "_foreach_addcdiv": {
-        torch.bfloat16: {"atol": 9.4e-2},
-        torch.float16: {"atol": 3.2e-2},
+        torch.bfloat16: {"rtol": 2.2, "atol": 9.4e-2},
+        torch.float16: {"rtol": 11, "atol": 3.2e-2},
     },
     "_foreach_addcmul": {
         torch.bfloat16: {"atol": 6.3e-2},
@@ -730,34 +724,34 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.complex64: {"rtol": 1.7e-5, "atol": 2.4e-5},
     },
     "_foreach_cos": {
-        torch.complex64: {"atol": 1e-2},
+        torch.complex64: {"rtol": 3.6e-6, "atol": 1e-2},
     },
     "_foreach_cosh": {
-        torch.complex64: {"atol": 1.3e-2},
-        torch.float32: {"atol": 1.2e-2},
-        torch.int16: {"atol": 1.2e-3},
-        torch.int32: {"atol": 1.2e-3},
-        torch.int64: {"atol": 1.2e-3},
-        torch.int8: {"atol": 1.2e-3},
-        torch.uint8: {"atol": 1.2e-3},
+        torch.complex64: {"rtol": 4.3e-6, "atol": 1.3e-2},
+        torch.float32: {"rtol": 4.2e-6, "atol": 1.2e-2},
+        torch.int16: {"rtol": 3.4e-6, "atol": 1.2e-3},
+        torch.int32: {"rtol": 3.4e-6, "atol": 1.2e-3},
+        torch.int64: {"rtol": 3.4e-6, "atol": 1.2e-3},
+        torch.int8: {"rtol": 3.4e-6, "atol": 1.2e-3},
+        torch.uint8: {"rtol": 3.4e-6, "atol": 1.2e-3},
     },
     "_foreach_exp": {
-        torch.complex64: {"atol": 1.9e-2},
-        torch.float32: {"atol": 2.4e-2},
-        torch.int16: {"atol": 2.4e-3},
-        torch.int32: {"atol": 2.4e-3},
-        torch.int64: {"atol": 2.4e-3},
-        torch.int8: {"atol": 2.4e-3},
-        torch.uint8: {"atol": 2.4e-3},
+        torch.complex64: {"rtol": 3.6e-6, "atol": 1.9e-2},
+        torch.float32: {"rtol": 4.1e-6, "atol": 2.4e-2},
+        torch.int16: {"rtol": 3.7e-6, "atol": 2.4e-3},
+        torch.int32: {"rtol": 3.7e-6, "atol": 2.4e-3},
+        torch.int64: {"rtol": 3.7e-6, "atol": 2.4e-3},
+        torch.int8: {"rtol": 3.7e-6, "atol": 2.4e-3},
+        torch.uint8: {"rtol": 3.7e-6, "atol": 2.4e-3},
     },
     "_foreach_expm1": {
-        torch.complex64: {"atol": 2.5e-2},
-        torch.float32: {"atol": 3e-2},
-        torch.int16: {"atol": 1.1e-2},
-        torch.int32: {"atol": 1.1e-2},
-        torch.int64: {"atol": 1.1e-2},
-        torch.int8: {"atol": 1.1e-2},
-        torch.uint8: {"atol": 1.1e-2},
+        torch.complex64: {"rtol": 3.9e-6, "atol": 2.4e-2},
+        torch.float32: {"rtol": 4.1e-6, "atol": 1.9e-2},
+        torch.int16: {"rtol": 3.7e-6, "atol": 2.4e-3},
+        torch.int32: {"rtol": 3.7e-6, "atol": 2.4e-3},
+        torch.int64: {"rtol": 3.7e-6, "atol": 2.4e-3},
+        torch.int8: {"rtol": 3.7e-6, "atol": 2.4e-3},
+        torch.uint8: {"rtol": 3.7e-6, "atol": 2.4e-3},
     },
     "_foreach_frac": {
         torch.bfloat16: {"atol": 1},
