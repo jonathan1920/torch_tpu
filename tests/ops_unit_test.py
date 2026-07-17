@@ -719,6 +719,18 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     y = torch.rsqrt(x)
     print(f"rsqrt(complex64) result: {y}")
 
+  def test_complex_abs_precision(self):
+    for dtype in [torch.complex64, torch.complex128]:
+      vals = [1e30, 1e-35]
+
+      for val in vals:
+        input_tensor = torch.tensor([complex(val, val)], dtype=dtype)
+
+        def run(device, input_tensor=input_tensor):
+          return torch.abs(input_tensor.to(device))
+
+        self.assert_close_tpu_vs_cpu(run, atol=0.0)
+
   def test_gather_scalar_grad(self):
     del self  # self is unused in this test.
     device = torch.device("tpu")

@@ -83,14 +83,21 @@ absl::StatusOr<mlir::MlirOp> BuildAbsShlo(mlir::MlirOp input) {
     // For complex numbers, abs(z) = sqrt(real(z)^2 + imag(z)^2).
     // To avoid overflow and underflow, we use:
     //   abs(z) = max(|x|, |y|) * sqrt(1 + (min(|x|, |y|) / max(|x|, |y|))^2)
-    // Similarly to CUDA, we promote to float32 for the computation.
-    TT_ASSIGN_OR_RETURN(mlir::ElementType f32_type,
-                        ConvertTo<mlir::ElementType>(at::kFloat));
+    mlir::Type base_type =
+        llvm::cast<mlir::ComplexType>(element_type).getElementType();
+    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=complex dtypes with < 32-bit base
+                   // (like complex32) are rejected at tensor creation.
+        base_type.getIntOrFloatBitWidth() >= 32, error::kInvalidArgument)
+        << "expected complex base type bit width to be at least 32, got "
+        << base_type.getIntOrFloatBitWidth();
+    TT_ASSIGN_OR_RETURN(mlir::ElementType compute_type,
+                        ConvertTo<mlir::ElementType>(base_type));
+
     auto x = mlir::stablehlo::Real(input);
     auto y = mlir::stablehlo::Imag(input);
 
-    x = mlir::stablehlo::ConvertElementType(x, f32_type);
-    y = mlir::stablehlo::ConvertElementType(y, f32_type);
+    x = mlir::stablehlo::ConvertElementType(x, compute_type);
+    y = mlir::stablehlo::ConvertElementType(y, compute_type);
 
     auto abs_x = mlir::stablehlo::Abs(x);
     auto abs_y = mlir::stablehlo::Abs(y);
@@ -98,26 +105,28 @@ absl::StatusOr<mlir::MlirOp> BuildAbsShlo(mlir::MlirOp input) {
     auto max_abs = mlir::stablehlo::Max(abs_x, abs_y);
     auto min_abs = mlir::stablehlo::Min(abs_x, abs_y);
 
-    // If max_abs is 0, then the result is 0.
-    // We avoid division by zero by using max(max_abs, epsilon).
-    auto epsilon = MakeScalarConstant(input.getBuilder(), 1e-30, f32_type);
-    TT_ASSIGN_OR_RETURN((auto [max_abs_b, epsilon_b]),
-                        ApplyBroadcastIfNeeded(max_abs, epsilon));
-    auto safe_max = mlir::stablehlo::Max(max_abs_b, epsilon_b);
+    // We avoid division by zero by replacing the divisor with 1.0 if max_abs is
+    // 0.0.
+    auto zero = MakeScalarConstant(input.getBuilder(), 0.0, compute_type);
+    auto one = MakeScalarConstant(input.getBuilder(), 1.0, compute_type);
+    TT_ASSIGN_OR_RETURN((auto [max_abs_b, zero_b]),
+                        ApplyBroadcastIfNeeded(max_abs, zero));
+    auto is_zero = mlir::stablehlo::Compare(
+        max_abs_b, zero_b, mlir::stablehlo::ComparisonDirection::EQ);
+    TT_ASSIGN_OR_RETURN((auto [one_b, max_abs_b2]),
+                        ApplyBroadcastIfNeeded(one, max_abs));
+    auto safe_max = mlir::stablehlo::Select(is_zero, one_b, max_abs_b2);
 
     auto ratio = mlir::stablehlo::Div(min_abs, safe_max);
     auto ratio_sq = mlir::stablehlo::Mul(ratio, ratio);
-    auto one = MakeScalarConstant(input.getBuilder(), 1.0, f32_type);
-    TT_ASSIGN_OR_RETURN((auto [one_b, ratio_sq_b]),
+    TT_ASSIGN_OR_RETURN((auto [one_b_ratio, ratio_sq_b]),
                         ApplyBroadcastIfNeeded(one, ratio_sq));
-    auto sum_sq = mlir::stablehlo::Add(one_b, ratio_sq_b);
+    auto sum_sq = mlir::stablehlo::Add(one_b_ratio, ratio_sq_b);
     auto sqrt_sum_sq = mlir::stablehlo::Sqrt(sum_sq);
     auto res = mlir::stablehlo::Mul(max_abs, sqrt_sum_sq);
 
     // PyTorch returns real result for abs(complex).
     // The output type should be the base float type.
-    mlir::Type base_type =
-        llvm::cast<mlir::ComplexType>(element_type).getElementType();
     return mlir::stablehlo::ConvertElementType(res, base_type);
   }
 
