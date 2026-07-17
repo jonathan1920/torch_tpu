@@ -3416,6 +3416,7 @@ class TestOps(TorchTpuTestBase):
   def test_scalar_tensor(self):
     self.do_test_op("scalar_tensor")
 
+  @category("searchsorted")
   def test_searchsorted(self):
     self.do_test_op(
         "searchsorted",
