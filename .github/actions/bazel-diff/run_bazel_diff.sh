@@ -113,7 +113,12 @@ if [ -s "$WORKSPACE_DIR/impacted_targets.txt" ]; then
   set +e
 
   # Use eval to properly expand any nested quotes in EXTRA_FLAGS (like --run_under="$(pwd)/...")
-  eval bazel test --config="$BAZEL_CONFIG" $EXTRA_FLAGS --target_pattern_file="$WORKSPACE_DIR/impacted_targets.txt"
+  # bazel-diff feeds the impacted targets as explicit labels, and Bazel treats
+  # an explicitly requested target whose target_compatible_with is unsatisfied
+  # as a hard error -- unlike the wildcard //... runs everywhere else, which
+  # skip it. --skip_incompatible_explicit_targets restores the wildcard
+  # behavior, so config-gated tests are skipped rather than failing presubmit.
+  eval bazel test --config="$BAZEL_CONFIG" $EXTRA_FLAGS --skip_incompatible_explicit_targets --target_pattern_file="$WORKSPACE_DIR/impacted_targets.txt"
   BAZEL_EXIT_CODE=$?
 
   # Re-enable "exit on error"
