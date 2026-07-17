@@ -35,13 +35,20 @@ The same instructions are available in the user guide linked above.
 First use python 3.12 virtual environment
 
 ```bash
-mkdir wheel; cd wheel
-python3.12 -m venv venv; source venv/bin/activate
+python3.12 -m venv .venv
+source .venv/bin/activate
+```
+
+or, with `uv`
+
+```bash
+uv venv .venv
+source .venv/bin/activate
 ```
 
 ### Install via pip
 
-Authenticate first:
+Authenticate first (for `uv` prepend `uv` to all `pip` commands):
 
 ```bash
 pip install keyrings.google-artifactregistry-auth
@@ -74,8 +81,7 @@ Install wheel via:
 
 ```bash
 cd <path_to_repo>
-mkdir wheel; cd wheel
-python3.12 -m venv venv; source venv/bin/activate
+python3.12 -m venv .venv; source .venv/bin/activate
 # The index-url includes the CPU version of torch at higher priority than the CUDA version.
 pip install ../bazel-bin/ci/wheel/*.whl --index-url "https://oauth2accesstoken:$(gcloud auth print-access-token)@us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-virtual-registry/simple/"
 ```
