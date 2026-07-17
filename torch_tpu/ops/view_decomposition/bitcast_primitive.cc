@@ -486,6 +486,20 @@ bool UpdateLayout(StridedLayout& layout, const ViewAsComplex& bitcast) {
   return true;
 }
 
+// Expand a bitcast_convert on a (..., N, R) to produce a (..., N) output with a
+// size ratio of R by extracting R strided slices from the input tensor and
+// performing `shift-left` and `bitwise-or` to combine them.
+// The algorithm for the int8->f32 conversion is as follows:
+//
+// reshaped_input = reshape(input) : tensor<...xNx4xi8> -> tensor<...x4Nxi8>
+// slice_i = offsets [0,..., 0, i][...N][1, ...,1, 4]
+//         : tensor<...x4Nxi8> -> tensor<...xNxi8>
+// bitcast_i = bitcast-convert(slice_i) : tensor<...xNxi8> -> tensor<...xNxui8>
+// convert_i = convert(slice_i) : tensor<...xNxui8> -> tensor<...xNxui32>
+// shift_i = shift_left(convert_i, 8*i)
+//         : tensor<...xNxui32> -> tensor<...xNxui32>
+// acc = or(result, shift_{i}) : tensor<...xNxui32>
+// result = bitcast-convert(acc) : tensor<...xNxui32> -> tensor<...xNxf32>
 mlir::MlirOp ExpandBitcastConvert(
     mlir::MlirOp input, mlir::RankedTensorType result_type,
     BitcastBitwidth bitwidth, mlir::ElementType input_unsigned_element_type,
@@ -510,17 +524,16 @@ mlir::MlirOp ExpandBitcastConvert(
   Indices limit_indices(collapsed_dims.begin(), collapsed_dims.end());
   limit_indices.back() -= input_minor_dim;
 
+  auto unsigned_from_tensor_type =
+      mlir::makeTensorType(ctx, slice_shape, input_unsigned_element_type);
   mlir::MlirOp accumulator;
   for (int64_t dim_index = 0; dim_index < size_ratio; ++dim_index) {
     start_indices.back() = dim_index;
     limit_indices.back() += 1;
     mlir::MlirOp slice = mlir::stablehlo::Slice(collapsed_input, start_indices,
                                                 limit_indices, strides);
-    auto unsigned_from_tensor_type =
-        mlir::makeTensorType(ctx, slice_shape, input_unsigned_element_type);
     mlir::MlirOp unsigned_slice =
         mlir::stablehlo::BitcastConvert(unsigned_from_tensor_type, slice);
-
     mlir::MlirOp extended_slice = mlir::stablehlo::ConvertElementType(
         unsigned_slice, output_unsigned_element_type);
 
