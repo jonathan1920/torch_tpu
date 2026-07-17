@@ -5834,6 +5834,35 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # Both TPU and CPU should return infinite values.
     self.assert_close_tpu_vs_cpu(foreach_div_inside_fn)
 
+  def test_foreach_div_different_dtypes(self):
+    """Tests _foreach_div with different dtypes (e.g. bfloat16 and float32)."""
+
+    def foreach_div_inside_fn(device):
+      self_list = [
+          torch.tensor([1.0, 2.0], dtype=torch.bfloat16, device=device),
+      ]
+      other_list = [
+          torch.tensor([2.0, 4.0], dtype=torch.float32, device=device),
+      ]
+      return torch._foreach_div(self_list, other_list)
+
+    self.assert_close_tpu_vs_cpu(foreach_div_inside_fn)
+
+  def test_foreach_div_inplace_different_dtypes(self):
+    """Tests _foreach_div_ with different dtypes (e.g. bfloat16 and float32)."""
+
+    def foreach_div_inplace_inside_fn(device):
+      self_list = [
+          torch.tensor([1.0, 2.0], dtype=torch.bfloat16, device=device),
+      ]
+      other_list = [
+          torch.tensor([2.0, 4.0], dtype=torch.float32, device=device),
+      ]
+      torch._foreach_div_(self_list, other_list)
+      return self_list
+
+    self.assert_close_tpu_vs_cpu(foreach_div_inplace_inside_fn)
+
   def test_upsample_nearest_with_size_parameters(self):
     """Tests that the upsample nearest op works with size parameters."""
 
