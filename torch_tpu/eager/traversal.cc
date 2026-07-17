@@ -72,8 +72,11 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/layout_util.h"
+#include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -618,10 +621,44 @@ std::string MlirModuleToString(mlir::ModuleOp module) {
 }
 }  // namespace
 
+bool Traversal::HasSparseCoreOp() const {
+  for (const SharedDeviceBufferList& node : execution_order_) {
+    if (node->is_deferred()) {
+      const std::shared_ptr<DeferredOp> op = node->deferred_op();
+      if (op != nullptr && IsSparseCoreOp(op->op_name())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 absl::StatusOr<CompiledKernel> Traversal::Compile(
     CompilationSpec spec, std::string* absl_nullable out_mlir_text,
     bool use_stablehlo_bounds,
     absl::Span<const Indices> argument_layouts) const {
+  if (HasSparseCoreOp()) {
+    absl::StatusOr<int> status =
+        PjrtBackend::GetInstance().GetGlobalDeviceCount();
+    if (status.ok() && *status > 1) {
+      const int num_devices = *status;
+      xla::ExecutableBuildOptions& exec_options =
+          spec.xla_compile_options->executable_build_options;
+      exec_options.set_num_replicas(num_devices);
+      exec_options.set_num_partitions(1);
+      xla::DeviceAssignment da(num_devices, 1);
+      for (int idx = 0; idx < num_devices; ++idx) {
+        da(idx, 0) = idx;
+      }
+      exec_options.set_device_assignment(da);
+      exec_options.set_use_spmd_partitioning(false);
+      exec_options.set_use_shardy_partitioner(false);
+      spec.compile_options_key =
+          MakeCompileOptionsKey(GetEnvOnce<kXlaFlagsEnvVar>().value_or(""),
+                                *spec.xla_compile_options);
+    }
+  }
+
   // Prepare a computation builder closure to be called on a cache miss.  Okay
   // to capture this here since CompilationCache::GetOrCompile() will call this
   // builder before the function returns and in the same thread it is invoked.

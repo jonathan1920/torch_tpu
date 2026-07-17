@@ -256,6 +256,137 @@ class SparseDenseMatmulTest(
 
     self.assert_close(golden_result=expected, torch_tpu_result=out.cpu())
 
+  def test_sparse_dense_matmul_eager_device_assignment(self):
+    device = torch.device("tpu")
+    row_pointers, embedding_ids, sample_ids, gains, embedding_table = (
+        self._get_inputs(device)
+    )
+
+    out = torch.ops.tpu.sparse_dense_matmul(
+        row_pointers,
+        embedding_ids,
+        sample_ids,
+        gains,
+        embedding_table,
+        device_batch_size=16,
+        max_ids_per_partition=16,
+        max_unique_ids_per_partition=16,
+    )
+
+    expected = torch.tensor(
+        [
+            [1.0] * 8,
+            [16.0] * 8,
+            [2.0] * 8,
+            [0.0] * 8,
+            [0.0] * 8,
+            [0.0] * 8,
+            [0.0] * 8,
+            [0.0] * 8,
+            [17.0] * 8,
+            [3.0] * 8,
+            [0.0] * 8,
+            [1.0] * 8,
+            [0.0] * 8,
+            [0.0] * 8,
+            [0.0] * 8,
+            [0.0] * 8,
+        ],
+        dtype=torch.float32,
+    )
+    self.assert_close(golden_result=expected, torch_tpu_result=out.cpu())
+
+  def test_sparse_dense_matmul_grad_eager_device_assignment(self):
+    device = torch.device("tpu")
+    row_pointers, embedding_ids, sample_ids, gains, embedding_table = (
+        self._get_inputs(device)
+    )
+    num_sc_per_device = _get_num_sc_per_device()
+    vocab_size, embedding_dim = embedding_table.shape
+
+    sharded_tables = []
+    for core_id in range(num_sc_per_device):
+      indices = [
+          i for i in range(vocab_size) if i % num_sc_per_device == core_id
+      ]
+      sharded_tables.append(embedding_table[indices])
+    embedding_table_sharded = torch.cat(sharded_tables, dim=0)
+
+    batch_size = 16
+    activations_grad = (
+        torch.ones(
+            batch_size, embedding_dim, dtype=torch.float32, device=device
+        )
+        * 0.01
+    )
+    learning_rate = torch.tensor(0.01, dtype=torch.float32, device=device)
+
+    # Execute backward SGD in eager mode without torch.compile
+    # to verify eager DeviceAssignment
+    updated_table_tpu = torch.ops.tpu.sparse_dense_matmul_grad_with_sgd(
+        row_pointers,
+        embedding_ids,
+        sample_ids,
+        gains,
+        embedding_table_sharded,
+        activations_grad,
+        learning_rate,
+        device_batch_size=batch_size,
+        max_ids_per_partition=16,
+        max_unique_ids_per_partition=16,
+        computation_name="test_sgd_eager_da",
+    )
+    self.assertEqual(updated_table_tpu.shape, embedding_table_sharded.shape)
+
+  def test_sparse_dense_matmul_grad_with_adagrad_eager_device_assignment(self):
+    device = torch.device("tpu")
+    row_pointers, embedding_ids, sample_ids, gains, embedding_table = (
+        self._get_inputs(device)
+    )
+    num_sc_per_device = _get_num_sc_per_device()
+    vocab_size, embedding_dim = embedding_table.shape
+
+    sharded_tables = []
+    for core_id in range(num_sc_per_device):
+      indices = [
+          i for i in range(vocab_size) if i % num_sc_per_device == core_id
+      ]
+      sharded_tables.append(embedding_table[indices])
+    embedding_table_sharded = torch.cat(sharded_tables, dim=0)
+    accumulator_sharded = torch.ones_like(embedding_table_sharded) * 0.1
+
+    batch_size = 16
+    activations_grad = (
+        torch.ones(
+            batch_size, embedding_dim, dtype=torch.float32, device=device
+        )
+        * 0.01
+    )
+    learning_rate = torch.tensor(0.01, dtype=torch.float32, device=device)
+    epsilon = torch.tensor(1e-8, dtype=torch.float32, device=device)
+
+    # Execute backward Adagrad in eager mode without torch.compile
+    # to verify eager DeviceAssignment
+    updated_table, updated_acc = (
+        torch.ops.tpu.sparse_dense_matmul_grad_with_adagrad(
+            row_pointers,
+            embedding_ids,
+            sample_ids,
+            gains,
+            embedding_table_sharded,
+            accumulator_sharded,
+            activations_grad,
+            learning_rate,
+            epsilon,
+            device_batch_size=batch_size,
+            max_ids_per_partition=16,
+            max_unique_ids_per_partition=16,
+            computation_name="test_adagrad_eager_da",
+        )
+    )
+    self.assertEqual(updated_table.shape, embedding_table_sharded.shape)
+    self.assertEqual(updated_acc.shape, accumulator_sharded.shape)
+
   @parameterized.parameters(False, True)
   def test_sparse_dense_matmul_grad_with_sgd_on_tpu(self, compile_op):
     device = torch.device("tpu")

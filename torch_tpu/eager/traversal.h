@@ -261,6 +261,9 @@ class Traversal {
   // Validates that the traversal is sound.
   absl::Status Validate() const;
 
+  // Returns true if the traversal contains any SparseCore custom operations.
+  [[nodiscard]] bool HasSparseCoreOp() const;
+
   // The arguments to the Traversal are all DeviceBufferRefs which are in either
   // the kMaterialized or kPlaceholder state.
   std::vector<DeviceBufferRef> arguments_;

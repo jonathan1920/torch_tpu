@@ -719,6 +719,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -740,6 +741,8 @@ torch_tpu_cc_library(
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/client:executable_build_options",
+        "@xla//xla/service:computation_placer_hdr",
     ],
 )
 

@@ -1244,6 +1244,17 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "eager_device_assignment_test",
+    srcs = ["eager_device_assignment_test.py"],
+    main = "eager_device_assignment_test.py",
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
 # Tests the tier-3 compilation cache.
 torch_tpu_py_test(
     name = "ops_unit_test_tier3_cache",

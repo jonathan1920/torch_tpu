@@ -744,6 +744,19 @@ inline std::ostream& operator<<(std::ostream& os, const OpName op_name) {
 // "add.out(...)" in their code. This should be used for error reporting.
 [[nodiscard]] std::string_view ToBaseName(OpName op_name);
 
+// Returns true if the op is a SparseCore custom operation.
+[[nodiscard]] inline bool IsSparseCoreOp(OpName op_name) {
+  switch (op_name) {
+    case OpName::kSparseDenseMatmul:
+    case OpName::kSparseDenseMatmulGradWithAdagrad:
+    case OpName::kSparseDenseMatmulGradWithAdam:
+    case OpName::kSparseDenseMatmulGradWithSgd:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // Returns true if the op is a distributed op.
 [[nodiscard]] inline bool IsDistributedOp(OpName op_name) {
   switch (op_name) {
