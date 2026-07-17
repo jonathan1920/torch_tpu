@@ -75,6 +75,28 @@ def is_base_symbol_node(node: torch.fx.Node) -> bool:
   return is_symint_node(node) and not is_symexpr_node(node)
 
 
+def get_target_device(consumer_node: torch.fx.Node) -> torch.device:
+  """Extracts target device from consumer node's input, graph, or kwargs."""
+  if (
+      "device" in consumer_node.kwargs
+      and consumer_node.kwargs["device"] is not None
+  ):
+    return consumer_node.kwargs["device"]
+
+  for arg in consumer_node.all_input_nodes:
+    if "val" in arg.meta and hasattr(arg.meta["val"], "device"):
+      return arg.meta["val"].device
+
+  for node in consumer_node.graph.nodes:
+    if "val" in node.meta and hasattr(node.meta["val"], "device"):
+      return node.meta["val"].device
+
+  try:
+    return torch.device("tpu")
+  except RuntimeError:
+    return torch.device("cpu")
+
+
 def symexpr_to_aten(
     graph_module: torch.fx.GraphModule,
     consumer_node: torch.fx.Node,
@@ -111,6 +133,9 @@ def symexpr_to_aten(
   with graph_module.graph.inserting_before(consumer_node):
     try:
       result_proxy = f(*proxies)
+      # the result should be always be of int32 type as that is the data
+      # type for dynamic dimension in stablehlo.
+      result_proxy = result_proxy.to(dtype=torch.int32)
       return result_proxy.node
     except (TypeError, AttributeError, ValueError) as e:
       logging.exception(

@@ -396,5 +396,259 @@ class SymIntArithmeticTest(absltest.TestCase):
     utils.assert_close(out1, torch.tensor([1024], device="tpu"))
 
 
+class DynamicReshapeTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    tt_testing.reset_eager_state()
+
+  def test_squeeze(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.squeeze(0)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(20, dtype=torch.float32, device="tpu").reshape(1, 10, 2)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=20)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(20, dtype=torch.float32, device="tpu")
+        .reshape(1, 10, 2)
+        .squeeze(0)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_unsqueeze(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.unsqueeze(0).unsqueeze(-1)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(20, dtype=torch.float32, device="tpu").reshape(5, 4)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=20)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(20, dtype=torch.float32, device="tpu")
+        .reshape(5, 4)
+        .unsqueeze(0)
+        .unsqueeze(-1)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_transpose(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.transpose(0, 1)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(30, dtype=torch.float32, device="tpu").reshape(2, 5, 3)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=20)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(30, dtype=torch.float32, device="tpu")
+        .reshape(2, 5, 3)
+        .transpose(0, 1)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_permute(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.permute(2, 0, 1)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(30, dtype=torch.float32, device="tpu").reshape(2, 5, 3)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=20)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(30, dtype=torch.float32, device="tpu")
+        .reshape(2, 5, 3)
+        .permute(2, 0, 1)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_flatten(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.flatten()
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(30, dtype=torch.float32, device="tpu").reshape(2, 5, 3)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=20)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(30, dtype=torch.float32, device="tpu")
+        .reshape(2, 5, 3)
+        .flatten()
+    )
+    utils.assert_close(out1, expected)
+
+  def test_collapse_reshape(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.reshape(-1, 3)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(30, dtype=torch.float32, device="tpu").reshape(2, 5, 3)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=20)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(30, dtype=torch.float32, device="tpu")
+        .reshape(2, 5, 3)
+        .reshape(-1, 3)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_expand_reshape_unambiguous(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.reshape(2, 3, -1, 1)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(30, dtype=torch.float32, device="tpu").reshape(6, 5)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=20)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(30, dtype=torch.float32, device="tpu")
+        .reshape(6, 5)
+        .reshape(2, 3, -1, 1)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_transpose_like_view(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.view(-1, 6, 1, 1, 5)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(300, dtype=torch.float32, device="tpu").reshape(
+        1, 10, 1, 6, 5
+    )
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=20)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(300, dtype=torch.float32, device="tpu")
+        .reshape(1, 10, 1, 6, 5)
+        .view(-1, 6, 1, 1, 5)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_expand_reshape_ambiguous(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.reshape(2, -1, 3)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    # Dynamic dim 0 (size 10) expands into two non-one dims (2, -1=5)
+    x1 = torch.arange(30, dtype=torch.float32, device="tpu").reshape(10, 3)
+    torch._dynamo.mark_dynamic(x1, 0)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(30, dtype=torch.float32, device="tpu")
+        .reshape(10, 3)
+        .reshape(2, -1, 3)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_same_size_reshape_ambiguous(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.reshape(3, -1)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    # Same rank reshape [2, 6] -> [3, 4] with dynamic dim 1
+    x1 = torch.arange(12, dtype=torch.float32, device="tpu").reshape(2, 6)
+    torch._dynamo.mark_dynamic(x1, 1)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(12, dtype=torch.float32, device="tpu")
+        .reshape(2, 6)
+        .reshape(3, -1)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_multi_dynamic_reshape_unambiguous(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.reshape(x.shape[0], 5, x.shape[1], 1)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(60, dtype=torch.float32, device="tpu").reshape(4, 3, 5)
+    torch._dynamo.mark_dynamic(x1, 0)
+    torch._dynamo.mark_dynamic(x1, 1)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(60, dtype=torch.float32, device="tpu")
+        .reshape(4, 3, 5)
+        .reshape(4, 5, 3, 1)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_multi_dynamic_collapse_reshape(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.reshape(-1, 5)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(60, dtype=torch.float32, device="tpu").reshape(4, 3, 5)
+    torch._dynamo.mark_dynamic(x1, 0)
+    torch._dynamo.mark_dynamic(x1, 1)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(60, dtype=torch.float32, device="tpu")
+        .reshape(4, 3, 5)
+        .reshape(-1, 5)
+    )
+    utils.assert_close(out1, expected)
+
+
 if __name__ == "__main__":
   absltest.main()

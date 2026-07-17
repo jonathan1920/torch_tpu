@@ -632,7 +632,7 @@ class DynamicCompiler(compiler.Compiler):
 
     logging.debug(
         "[DynamicTpuBackend] Static Model Executable MLIR: %s",
-        LazyString(lambda: getattr(default_executable, "mlir_text", None)),  # pyrefly: ignore[bad-argument-type]
+        LazyString(lambda: str(getattr(default_executable, "mlir_text", None))),  # pyrefly: ignore[bad-argument-type]
     )
 
     default_layout_key = _extract_minor_to_major(

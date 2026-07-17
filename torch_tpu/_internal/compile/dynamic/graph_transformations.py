@@ -26,6 +26,7 @@ from typing import Any
 import torch
 from torch.fx.passes import graph_transform_observer
 from torch_tpu._internal.compile.dynamic import sym_utils
+from torch_tpu._internal.compile.dynamic import view_ops_transformations
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
 from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
 
@@ -293,68 +294,6 @@ class HandleGenerativeOpsPass:
         if handler:
           handler(graph_module, node)
 
-  def _ensure_tensor(
-      self,
-      graph_module: torch.fx.GraphModule,
-      val: Any,
-      consumer_node: torch.fx.Node,
-      dtype: torch.dtype | None = None,
-  ) -> torch.fx.Node:
-    """Ensures the value is a tensor node, promoting scalars if needed.
-
-    Args:
-      graph_module: The FX GraphModule.
-      val: The value to ensure as a tensor. Can be a torch.fx.Node or a Python
-        constant (int, float, bool).
-      consumer_node: The node that will consume the resulting tensor node.
-      dtype: Optional desired dtype for the tensor.
-
-    Returns:
-      A torch.fx.Node representing a tensor.
-
-    Raises:
-      RuntimeError: If the value is not a tensor node and cannot be converted
-        to one.
-    """
-    if isinstance(val, torch.fx.Node):
-      # If it's already a tensor node, return it.
-      if "val" in val.meta and isinstance(val.meta["val"], torch.Tensor):
-        return val
-
-      # If it's a SymInt node, get or create a tensor node for it.
-      if sym_utils.is_symint_node(val):
-        tensor_node = self._sym_shape_manager.get_or_create_tensor_node(
-            val, consumer_node
-        )
-        assert tensor_node is not None, f"tensor node for {val} not found"
-        return tensor_node
-
-      # If it is a node representing a concrete scalar, extract its value
-      # to be converted to a tensor below.
-      if "val" in val.meta and isinstance(val.meta["val"], (int, float, bool)):
-        val = val.meta["val"]
-      else:
-        raise RuntimeError(f"Unsupported node type for ensure_tensor: {val}")
-
-    # Promote scalar to tensor node.
-    kwargs = {"device": consumer_node.kwargs.get("device")}
-    if dtype is not None:
-      kwargs["dtype"] = dtype
-    elif isinstance(val, bool):
-      kwargs["dtype"] = torch.bool
-    elif isinstance(val, int):
-      kwargs["dtype"] = torch.int32
-    elif isinstance(val, float):
-      kwargs["dtype"] = torch.float32
-    else:
-      raise RuntimeError(f"Unsupported type for ensure_tensor: {val}")
-
-    with graph_module.graph.inserting_before(consumer_node):
-      tensor_node = graph_module.graph.call_function(
-          torch.ops.aten.scalar_tensor.default, args=(val,), kwargs=kwargs
-      )
-      return tensor_node
-
   def _process_arange_op(
       self,
       graph_module: torch.fx.GraphModule,
@@ -422,8 +361,12 @@ class HandleGenerativeOpsPass:
     kwargs = node.kwargs.copy()
     kwargs["dtype"] = dtype
 
-    start_tensor = self._ensure_tensor(graph_module, start, node, dtype=dtype)
-    step_tensor = self._ensure_tensor(graph_module, step, node, dtype=dtype)
+    start_tensor = self._sym_shape_manager.ensure_tensor(
+        graph_module, start, node, dtype=dtype
+    )
+    step_tensor = self._sym_shape_manager.ensure_tensor(
+        graph_module, step, node, dtype=dtype
+    )
 
     # Create arange with static length
     with graph_module.graph.inserting_after(node):
@@ -474,9 +417,15 @@ class HandleGenerativeOpsPass:
     )
 
     # Convert inputs to tensor nodes if needed
-    start_tensor = self._ensure_tensor(graph_module, start, node, dtype=dtype)
-    end_tensor = self._ensure_tensor(graph_module, end, node, dtype=dtype)
-    step_tensor = self._ensure_tensor(graph_module, step, node, dtype=dtype)
+    start_tensor = self._sym_shape_manager.ensure_tensor(
+        graph_module, start, node, dtype=dtype
+    )
+    end_tensor = self._sym_shape_manager.ensure_tensor(
+        graph_module, end, node, dtype=dtype
+    )
+    step_tensor = self._sym_shape_manager.ensure_tensor(
+        graph_module, step, node, dtype=dtype
+    )
 
     # Create dynamic_arange op
     with graph_module.graph.inserting_after(node):
@@ -511,11 +460,9 @@ class HandleGenerativeOpsPass:
 
     for dim, arg in enumerate(sizes):
       if sym_utils.is_symint_node(arg):
-        tensor_node = self._sym_shape_manager.get_or_create_tensor_node(
-            arg, node
+        tensor_node = self._sym_shape_manager.ensure_tensor(
+            graph_module, arg, node
         )
-        assert tensor_node is not None, f"tensor node for {arg} not found"
-
         current_node = self._insert_set_dimension_logical_size(
             graph_module, current_node, tensor_node, dim, node
         )
@@ -570,14 +517,11 @@ class HandleSymIntUsagesPass:
         changed = False
         for arg in node.args:
           if sym_utils.is_symint_node(arg):
-            tensor_node = self._sym_shape_manager.get_or_create_tensor_node(
-                arg, node
+            tensor_node = self._sym_shape_manager.ensure_tensor(
+                graph_module, arg, node
             )
-            if tensor_node is not None:
-              new_args.append(tensor_node)
-              changed = True
-            else:
-              new_args.append(arg)
+            new_args.append(tensor_node)
+            changed = True
           else:
             new_args.append(arg)
 
@@ -612,10 +556,16 @@ def apply_dynamism_transformations(
       HandleGenerativeOpsPass(sym_shape_manager)
   )
 
+  # Updates view ops that are reshape like and have dynamic inputs.
+  GraphTransformObserver(graph_module, "handle_view_ops").apply_gm_pass(
+      view_ops_transformations.HandleViewOpsPass(sym_shape_manager)
+  )
+
   # Replaces remaining usages of SymInt nodes in standard tensor operations.
   GraphTransformObserver(graph_module, "handle_symint_usages").apply_gm_pass(
       HandleSymIntUsagesPass(sym_shape_manager)
   )
 
+  graph_module.graph.eliminate_dead_code()
   graph_module.recompile()
   graph_module.graph.lint()

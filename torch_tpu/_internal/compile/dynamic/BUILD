@@ -67,6 +67,19 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "view_ops_transformations",
+    srcs = [
+        "view_ops_transformations.py",
+    ],
+    deps = [
+        ":sym_shape_manager",
+        ":sym_utils",
+        ":symbol_bounds",
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
     name = "graph_transformations",
     srcs = [
         "graph_transformations.py",
@@ -75,6 +88,7 @@ torch_tpu_py_library(
         ":sym_shape_manager",
         ":sym_utils",
         ":symbol_bounds",
+        ":view_ops_transformations",
         "//shims/torch:pytorch",
     ],
 )
