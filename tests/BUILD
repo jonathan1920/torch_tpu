@@ -1239,7 +1239,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:hardware",
-        "//torch_tpu/ops/experimental/sparse_dense_matmul:input_preprocessing_kernels",
+        "//torch_tpu/ops/experimental/sparse_dense_matmul:preprocessing_config_py_pb2",
         "@pypi//numpy",
     ],
 )
@@ -2284,6 +2284,16 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu:_loader",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "run_upstream_test",
+    srcs = ["run_upstream_test.py"],
+    notap = "Requires external PyTorch test directory",
+    deps = [
+        "//torch_tpu",
+        "@pypi//pytest",
     ],
 )
 

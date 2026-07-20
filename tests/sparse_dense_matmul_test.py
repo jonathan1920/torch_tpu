@@ -13,13 +13,55 @@
 # limitations under the License.
 
 
+from typing import Any
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 import torch
 from torch_tpu._internal.utils.hardware import get_tpu_version
 from torch_tpu._internal.utils.hardware import TpuVersion
+from torch_tpu.ops.experimental.sparse_dense_matmul import preprocessing_config_pb2
 from tests import op_testing
+
+
+def preprocess_sparse_dense_matmul_input(
+    input_indices: dict[str, list[torch.Tensor]],
+    input_offsets: dict[str, list[torch.Tensor]],
+    stacked_tables_config: dict[str, list[dict[str, Any]]],
+    options: dict[str, Any] | None = None,
+) -> dict[str, dict[str, torch.Tensor]]:
+  config_proto = preprocessing_config_pb2.StackedTablesConfig()
+  for table_name, features in stacked_tables_config.items():
+    feature_list = config_proto.tables[table_name]
+    for i, feat in enumerate(features):
+      f_meta = feature_list.features.add()
+      f_meta.name = feat.get("name", f"feature_{i}")
+      f_meta.feature_index = feat.get("feature_index", i)
+      f_meta.max_ids_per_partition = feat.get("max_ids_per_partition", 128)
+      f_meta.max_unique_ids_per_partition = feat.get(
+          "max_unique_ids_per_partition", 128
+      )
+      f_meta.row_offset = feat.get("row_offset", 0)
+      f_meta.col_offset = feat.get("col_offset", 0)
+      f_meta.col_shift = feat.get("col_shift", 0)
+      f_meta.batch_size = feat.get("batch_size", 16)
+      f_meta.suggested_coo_buffer_size_per_device = feat.get(
+          "suggested_coo_buffer_size_per_device", 128
+      )
+      f_meta.combiner = feat.get("combiner", "sum")
+
+  if options is None:
+    options = {}
+
+  return torch.ops.tpu.preprocess_sparse_dense_matmul_input(
+      input_indices,
+      input_offsets,
+      config_proto.SerializeToString(),
+      options.get("local_device_count", 1),
+      options.get("global_device_count", 1),
+      options.get("num_sc_per_device", 2),
+      options.get("allow_id_dropping", True),
+  )
 
 
 def _get_num_sc_per_device():
@@ -41,6 +83,182 @@ class SparseDenseMatmulTest(
 
   This operator requires TPU v5e hardware because it uses SparseCore.
   """
+
+  def test_input_preprocessing_on_tpu_numerical(self):
+    device = torch.device("tpu")
+
+    # Provide a deterministic dataset on CPU with exactly 32 values and 16
+    # samples.
+    # To make hand calculation trivial, embedding_table[id] = [id, id, ...].
+    # Then the sum of any values is simply the sum of their IDs.
+    values = torch.arange(32, dtype=torch.int32)
+    # Samples distribution (lens: 1, 2, 3, 0, 2, 4, 1, 2, 0, 3, 1, 2, 3, 1, 4,
+    # 3)
+    offsets = torch.tensor(
+        [0, 1, 3, 6, 6, 8, 12, 13, 15, 15, 18, 19, 21, 24, 25, 29, 32],
+        dtype=torch.int32,
+    )
+    device_batch_size = 16
+
+    # Compute the mathematical expectation native.
+    # We hand-calculated the sum of the IDs for each sample bucket here:
+    expected_sums = [
+        0,  # s0: [0]
+        1 + 2,  # s1: [1, 2]
+        3 + 4 + 5,  # s2: [3, 4, 5]
+        0,  # s3: []
+        6 + 7,  # s4: [6, 7]
+        8 + 9 + 10 + 11,  # s5: [8, 9, 10, 11]
+        12,  # s6: [12]
+        13 + 14,  # s7: [13, 14]
+        0,  # s8: []
+        15 + 16 + 17,  # s9: [15, 16, 17]
+        18,  # s10: [18]
+        19 + 20,  # s11: [19, 20]
+        21 + 22 + 23,  # s12: [21, 22, 23]
+        24,  # s13: [24]
+        25 + 26 + 27 + 28,  # s14: [25, 26, 27, 28]
+        29 + 30 + 31,  # s15: [29, 30, 31]
+    ]
+
+    vocab_size = 32
+    embedding_dim = 8
+
+    # exp has shape (device_batch_size, embedding_dim)
+    exp = (
+        torch.tensor(expected_sums, dtype=torch.float32)
+        .unsqueeze(1)
+        .repeat(1, embedding_dim)
+    )
+
+    input_indices = {"table_0": [values]}
+    input_offsets = {"table_0": [offsets]}
+
+    stacked_tables_config = {
+        "table_0": [{
+            "name": "f0",
+            "feature_index": 0,
+            "max_ids_per_partition": 128,
+            "max_unique_ids_per_partition": 128,
+            "row_offset": 0,
+            "col_offset": 0,
+            "col_shift": 0,
+            "batch_size": device_batch_size,
+            "suggested_coo_buffer_size_per_device": 128,
+            "combiner": "sum",
+        }]
+    }
+
+    options = {
+        "local_device_count": 1,
+        "global_device_count": 1,
+        "num_sc_per_device": _get_num_sc_per_device(),
+        "allow_id_dropping": True,
+    }
+
+    outputs = preprocess_sparse_dense_matmul_input(
+        input_indices, input_offsets, stacked_tables_config, options
+    )
+
+    table_0_outputs = outputs["table_0"]
+    rp = table_0_outputs["row_pointers"]
+    e_ids = table_0_outputs["embedding_ids"]
+    s_ids = table_0_outputs["sample_ids"]
+    gains = table_0_outputs["gains"]
+
+    logical_table = (
+        torch.arange(vocab_size, dtype=torch.float32)
+        .unsqueeze(1)
+        .repeat(1, embedding_dim)
+    )
+
+    num_sc = _get_num_sc_per_device()
+    sharded_tables = []
+    for core_id in range(num_sc):
+      chunk = logical_table[core_id::num_sc]
+      sharded_tables.append(chunk)
+
+    embedding_table = torch.cat(sharded_tables, dim=0).to(device)
+
+    out_tpu = torch.ops.tpu.sparse_dense_matmul(
+        rp.to(device),
+        e_ids.to(device),
+        s_ids.to(device),
+        gains.to(device),
+        embedding_table,
+        device_batch_size=device_batch_size,
+        max_ids_per_partition=32,
+        max_unique_ids_per_partition=32,
+    )
+
+    self.assert_close(golden_result=exp, torch_tpu_result=out_tpu.cpu())
+
+  def test_input_preprocessing_table_stacking(self):
+    val_f0 = torch.tensor([0, 1, 2, 3], dtype=torch.int32)
+    off_f0 = torch.tensor([0, 1, 2, 3, 4], dtype=torch.int32)
+
+    val_f1 = torch.tensor([4, 5, 6, 7], dtype=torch.int32)
+    off_f1 = torch.tensor([0, 1, 2, 3, 4], dtype=torch.int32)
+
+    input_indices = {"table_0": [val_f0, val_f1]}
+    input_offsets = {"table_0": [off_f0, off_f1]}
+
+    stacked_tables_config = {
+        "table_0": [
+            {
+                "name": "f0",
+                "feature_index": 0,
+                "max_ids_per_partition": 8,
+                "max_unique_ids_per_partition": 8,
+                "row_offset": 0,
+                "col_offset": 0,
+                "col_shift": 0,
+                "batch_size": 4,
+                "suggested_coo_buffer_size_per_device": 16,
+                "combiner": "sum",
+            },
+            {
+                "name": "f1",
+                "feature_index": 1,
+                "max_ids_per_partition": 8,
+                "max_unique_ids_per_partition": 8,
+                "row_offset": 4,
+                "col_offset": 0,
+                "col_shift": 0,
+                "batch_size": 4,
+                "suggested_coo_buffer_size_per_device": 16,
+                "combiner": "sum",
+            },
+        ]
+    }
+
+    options = {
+        "local_device_count": 1,
+        "global_device_count": 1,
+        "num_sc_per_device": 2,
+        "allow_id_dropping": True,
+    }
+
+    outputs = preprocess_sparse_dense_matmul_input(
+        input_indices, input_offsets, stacked_tables_config, options
+    )
+
+    self.assertIn("table_0", outputs)
+    table_0_outputs = outputs["table_0"]
+    self.assertIn("row_pointers", table_0_outputs)
+    self.assertIn("embedding_ids", table_0_outputs)
+    self.assertIn("sample_ids", table_0_outputs)
+    self.assertIn("gains", table_0_outputs)
+
+    rp = table_0_outputs["row_pointers"]
+    e_ids = table_0_outputs["embedding_ids"]
+    s_ids = table_0_outputs["sample_ids"]
+    gains = table_0_outputs["gains"]
+
+    self.assertEqual(rp.dtype, torch.int32)
+    self.assertEqual(e_ids.dtype, torch.int32)
+    self.assertEqual(s_ids.dtype, torch.int32)
+    self.assertEqual(gains.dtype, torch.float32)
 
   def _get_inputs(self, device):
     row_pointers = torch.tensor(
@@ -1199,161 +1417,6 @@ class SparseDenseMatmulTest(
               f" Expected: {expected_vel_np[r]}"
           ),
       )
-
-
-class InputPreprocessingKernelsTest(parameterized.TestCase):
-
-  def _verify_preprocessing_invariants(
-      self,
-      global_device_count,
-      num_sc_per_device,
-      row_pointers,
-      embedding_ids,
-      sample_ids,
-  ):
-    num_scs = global_device_count * num_sc_per_device
-    bucket_size = max(num_scs, 16)  # internal_padding is 16
-
-    rp = row_pointers.tolist()
-    emb = embedding_ids.tolist()
-    sam = sample_ids.tolist()
-
-    sc_coo_begin = 0
-    for sc in range(num_sc_per_device):
-      lhs_row_begin = sc * bucket_size
-      for p in range(num_scs):
-        start = sc_coo_begin + (rp[lhs_row_begin + p - 1] if p > 0 else 0)
-        end = sc_coo_begin + rp[lhs_row_begin + p]
-
-        # Slice for this partition
-        part_sam = sam[start:end]
-        part_emb = emb[start:end]
-
-        # Filter out padding (2147483647)
-        valid_sam = [s for s in part_sam if s != 2147483647]
-        valid_emb = [e for e in part_emb if e != 2147483647]
-
-        # Assert sample_ids are sorted in non-decreasing order
-        self.assertEqual(
-            valid_sam,
-            sorted(valid_sam),
-            f"sample_ids in sc={sc}, part={p} are not sorted: {valid_sam}",
-        )
-
-        # Assert that all embedding_ids in this partition map to this partition
-        for local_emb_id in valid_emb:
-          emb_id = local_emb_id * num_scs + p
-          self.assertEqual(emb_id % num_scs, p)
-
-      sc_coo_begin += rp[lhs_row_begin + bucket_size - 1]
-
-  def test_simple_jagged_roundtrip(self):
-    values = torch.tensor([1, 2, 3, 4, 5, 6, 7], dtype=torch.int32)
-    offsets = torch.tensor([0, 2, 5, 7], dtype=torch.int32)
-    global_device_count = 1
-
-    # Preprocess
-    row_pointers, embedding_ids, sample_ids, gains = (
-        torch.ops.tpu.preprocess_sparse_dense_matmul_input(
-            values,
-            offsets,
-            global_device_count=global_device_count,
-            coo_buffer_size_per_device=-1,
-            num_sc_per_device=2,
-            allow_id_dropping=True,
-        )
-    )
-
-    def print_large_list(name, lst):
-      print(f"START_{name}")
-      for i in range(0, len(lst), 20):
-        print(", ".join(map(str, lst[i : i + 20])))
-      print(f"END_{name}")
-
-    print_large_list("ROW_POINTERS", row_pointers.tolist())
-    print_large_list("EMBEDDING_IDS", embedding_ids.tolist())
-    print_large_list("SAMPLE_IDS", sample_ids.tolist())
-    print_large_list("GAINS", gains.tolist())
-
-    self._verify_preprocessing_invariants(
-        global_device_count,
-        2,
-        row_pointers,
-        embedding_ids,
-        sample_ids,
-    )
-
-  def test_randomized_jagged_preprocessing(self):
-    torch.manual_seed(42)
-    global_device_count = 1
-    num_sc_per_device = 2
-    buffer_size = 500
-    num_rows = 32
-
-    lengths = torch.randint(10, 15, (num_rows,), dtype=torch.int32)
-    offsets = torch.cat([
-        torch.tensor([0], dtype=torch.int32),
-        lengths.cumsum(0, dtype=torch.int32),
-    ])
-    total_values = int(offsets[-1].item())
-    values = torch.randint(0, 10000, (total_values,), dtype=torch.int32)
-
-    # Preprocess
-    row_pointers, embedding_ids, sample_ids, _ = (
-        torch.ops.tpu.preprocess_sparse_dense_matmul_input(
-            values,
-            offsets,
-            global_device_count=global_device_count,
-            coo_buffer_size_per_device=buffer_size,
-            num_sc_per_device=num_sc_per_device,
-            allow_id_dropping=True,
-        )
-    )
-
-    self._verify_preprocessing_invariants(
-        global_device_count,
-        num_sc_per_device,
-        row_pointers,
-        embedding_ids,
-        sample_ids,
-    )
-
-  def test_sorting_strict_weak_ordering_and_large_scale(self):
-    # Create a large randomized input to trigger potential std::sort failures
-    # under strict weak ordering violations.
-    torch.manual_seed(12345)
-    global_device_count = 2
-    num_sc_per_device = 4
-    num_rows = 200
-    buffer_size = 10000
-
-    lengths = torch.randint(0, 50, (num_rows,), dtype=torch.int32)
-    offsets = torch.cat([
-        torch.tensor([0], dtype=torch.int32),
-        lengths.cumsum(0, dtype=torch.int32),
-    ])
-    total_values = int(offsets[-1].item())
-    values = torch.randint(0, 100000, (total_values,), dtype=torch.int32)
-
-    row_pointers, embedding_ids, sample_ids, _ = (
-        torch.ops.tpu.preprocess_sparse_dense_matmul_input(
-            values,
-            offsets,
-            global_device_count=global_device_count,
-            coo_buffer_size_per_device=buffer_size,
-            num_sc_per_device=num_sc_per_device,
-            allow_id_dropping=True,
-        )
-    )
-
-    self._verify_preprocessing_invariants(
-        global_device_count,
-        num_sc_per_device,
-        row_pointers,
-        embedding_ids,
-        sample_ids,
-    )
-
 
 if __name__ == "__main__":
   absltest.main()

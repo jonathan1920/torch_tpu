@@ -12,18 +12,19 @@ SUPPORTED_PYTHON_VERSIONS = [
 
 # BCR dependencies
 bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
-bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "curl", version = "8.11.0")
-bazel_dep(name = "rules_cc", version = "0.2.9")
+bazel_dep(name = "rules_cc", version = "0.2.18")
 bazel_dep(name = "rules_python", version = "1.8.5")
 bazel_dep(name = "rules_testing", version = "0.7.0")
 bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "rules_license", version = "1.0.0")
-bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "protobuf", version = "33.5", repo_name = "com_google_protobuf")
 bazel_dep(name = "googletest", version = "1.15.2", repo_name = "com_google_googletest")
 bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "googleapis", version = "0.0.0-20240819-fe8ba054a")
+bazel_dep(name = "highway", version = "1.3.0")
 bazel_dep(name = "re2", version = "2025-11-05.bcr.1", repo_name = "com_googlesource_code_re2")
 
 # BCR overrides
@@ -108,6 +109,7 @@ use_repo(
     "dlpack",
     "eigen_archive",
     "gloo",
+    "highwayhash",
     "nanobind",
     "shardy",
     "stablehlo",
@@ -203,4 +205,13 @@ http_file(
     downloaded_file_path = "libclang_rt.tsan.so",
     sha256 = "4495aec33d1d6b56785af7d36d2b3b1801ece4ff53db43fc83a2a7fcede97dfe",
     urls = ["https://storage.googleapis.com/ml-sysroot-testing/python/libclang_rt.tsan-llvm20-20260511.so"],
+)
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "jax_tpu_embedding",
+    sha256 = "43e45798fbe2dd44dfbdc24fbc72f11d63ac4fbcc3968e17c871ad9a15faad08",
+    strip_prefix = "jax-tpu-embedding-947ed8dc70efbef559ce7485b9638bce16935de5",
+    urls = ["https://github.com/jax-ml/jax-tpu-embedding/archive/947ed8dc70efbef559ce7485b9638bce16935de5.tar.gz"],
 )

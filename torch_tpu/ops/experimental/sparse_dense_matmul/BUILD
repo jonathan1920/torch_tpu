@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//build_files:build_defs.bzl",
     "torch_tpu_cc_library",
@@ -21,6 +24,21 @@ load(
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
+)
+
+proto_library(
+    name = "preprocessing_config_proto",
+    srcs = ["preprocessing_config.proto"],
+)
+
+cc_proto_library(
+    name = "preprocessing_config_cc_proto",
+    deps = [":preprocessing_config_proto"],
+)
+
+py_proto_library(
+    name = "preprocessing_config_py_pb2",
+    deps = [":preprocessing_config_proto"],
 )
 
 torch_tpu_cc_library(
@@ -128,15 +146,23 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
-    name = "input_preprocessing_kernels",
+    name = "input_preprocessing",
     srcs = ["input_preprocessing_aten_kernels.cc"],
-    hdrs = ["input_preprocessing_aten_kernels.h"],
     deps = [
+        ":preprocessing_config_cc_proto",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
+        "@jax_tpu_embedding//jax_tpu_embedding/sparsecore/lib/core:abstract_input_batch",
+        "@jax_tpu_embedding//jax_tpu_embedding/sparsecore/lib/core:input_preprocessing_core",
+        "@jax_tpu_embedding//jax_tpu_embedding/sparsecore/lib/core:input_preprocessing_util",
+        "@jax_tpu_embedding//jax_tpu_embedding/sparsecore/lib/core:ragged_tensor_input_batch",
     ],
     alwayslink = 1,
 )

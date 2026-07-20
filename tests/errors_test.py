@@ -7243,5 +7243,19 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
 
+class InputPreprocessingErrorTest(et.ErrorTestBase, parameterized.TestCase):
+
+  def test_input_preprocessing_invalid_proto(self):
+    if et.is_on_gpu():
+      self.skipTest("TPU only op")
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""failed to parse StackedTablesConfig proto""",
+    ):
+      torch.ops.tpu.preprocess_sparse_dense_matmul_input(
+          {}, {}, b"invalid proto", 1, 1, 2, True
+      )
+
+
 if __name__ == "__main__":
   g3_multiprocessing.handle_test_main(absltest.main)

@@ -1,0 +1,62 @@
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package torch_tpu.sparse_dense_matmul;
+
+// Configuration for a single feature within a stacked embedding table.
+message FeatureMetadata {
+  // Name identifier of the feature.
+  string name = 1;
+
+  // Index of this feature in the input batch list of features.
+  int64 feature_index = 2;
+
+  // Maximum total embedding IDs allowed per SparseCore partition.
+  int64 max_ids_per_partition = 3;
+
+  // Maximum unique embedding IDs allowed per SparseCore partition.
+  int64 max_unique_ids_per_partition = 4;
+
+  // Global row offset for this feature when multiple features are stacked.
+  int64 row_offset = 5;
+
+  // Global column offset (vocabulary ID offset) for this feature.
+  int64 col_offset = 6;
+
+  // Column shift to rotate vocabulary sharding across distributed chips.
+  int64 col_shift = 7;
+
+  // Process-local batch size for this feature.
+  int64 batch_size = 8;
+
+  // Suggested COO buffer size per device for sparse representation.
+  int64 suggested_coo_buffer_size_per_device = 9;
+
+  // Reduction combiner for embedding lookup (e.g., "sum", "mean", "sqrtn").
+  string combiner = 10;
+}
+
+// A collection of feature metadata stacked together in a single table.
+message FeatureList {
+  // List of features belonging to a stacked table.
+  repeated FeatureMetadata features = 1;
+}
+
+// Global configuration mapping table names to their stacked feature lists.
+message StackedTablesConfig {
+  // Map from table name to its list of stacked features.
+  map<string, FeatureList> tables = 1;
+}

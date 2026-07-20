@@ -14,216 +14,212 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/ops/experimental/sparse_dense_matmul/input_preprocessing_aten_kernels.h"
-
-#include <algorithm>
 #include <cstdint>
-#include <limits>
+#include <cstring>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <tuple>
 #include <vector>
 
+#include "ATen/core/Dict.h"
+#include "ATen/core/List.h"
 #include "ATen/core/TensorBody.h"
-#include "ATen/ops/full.h"
+#include "ATen/core/ivalue.h"
+#include "ATen/ops/empty.h"
 #include "ATen/ops/zeros.h"
+#include "Eigen/Core"
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "c10/core/ScalarType.h"
-#include "c10/util/Exception.h"
 #include "torch/library.h"
+#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/ops/experimental/sparse_dense_matmul/preprocessing_config.pb.h"
+
+// JAX input preprocessing library
+#include "jax_tpu_embedding/sparsecore/lib/core/abstract_input_batch.h"
+#include "jax_tpu_embedding/sparsecore/lib/core/input_preprocessing.h"
+#include "jax_tpu_embedding/sparsecore/lib/core/input_preprocessing_util.h"
+#include "jax_tpu_embedding/sparsecore/lib/core/ragged_tensor_input_batch.h"
 
 namespace torch_tpu {
 
-namespace {
+// TT_KERNEL is not required because this is a wrapper on the input
+// preprocessing from jax_tpu_embedding.
+TORCH_LIBRARY_FRAGMENT(tpu, m) {
+  auto func = [](c10::Dict<std::string, c10::List<at::Tensor>> input_indices,
+                 c10::Dict<std::string, c10::List<at::Tensor>> input_offsets,
+                 std::string_view stacked_tables_config_proto,
+                 int64_t local_device_count, int64_t global_device_count,
+                 int64_t num_sc_per_device, bool allow_id_dropping)
+      -> c10::Dict<std::string, c10::Dict<std::string, at::Tensor>> {
+    torch_tpu::sparse_dense_matmul::StackedTablesConfig config_proto;
+    TT_CHECK_THROW(config_proto.ParseFromString(stacked_tables_config_proto),
+                   error::kInvalidArgument)
+        << "failed to parse StackedTablesConfig proto";
 
-inline int32_t FloorMod(int32_t a, int32_t b) {
-  int32_t r = a % b;
-  return (r < 0) ? r + b : r;
-}
+    absl::flat_hash_map<std::string,
+                        std::vector<jax_sc_embedding::FeatureMetadataInStack>>
+        jax_stacked_tables;
+    std::vector<std::unique_ptr<jax_sc_embedding::AbstractInputBatch>>
+        input_batches;
+    std::vector<at::Tensor> contiguous_tensors_holder;
 
-inline int32_t FloorDiv(int32_t a, int32_t b) {
-  int32_t q = a / b;
-  int32_t r = a % b;
-  return (r < 0) ? q - 1 : q;
-}
-
-inline constexpr int64_t ALIGNMENT_SIZE = 16;
-
-struct CooTuple {
-  int32_t sample_id;
-  int32_t emb_id;
-  int32_t part_id;
-};
-
-// Note: TT_KERNEL macro bypass for standalone experimental op.
-}  // namespace
-
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
-SparseCoreInputTorch PreprocessToSparseCore(const at::Tensor& values,
-                                            const at::Tensor& offsets,
-                                            int64_t global_device_count,
-                                            int64_t coo_buffer_size_per_device,
-                                            int64_t num_sc_per_device,
-                                            bool allow_id_dropping) {
-  TORCH_CHECK(values.dim() == 1,  // TORCH_CHECK_OK
-              "values tensor must be 1D, got dim ", values.dim());
-  TORCH_CHECK(values.scalar_type() == at::kInt,  // TORCH_CHECK_OK
-              "values tensor must be int32_t");
-  TORCH_CHECK(offsets.dim() == 1,  // TORCH_CHECK_OK
-              "offsets tensor must be 1D, got dim ", offsets.dim());
-  TORCH_CHECK(offsets.size(0) >= 1,  // TORCH_CHECK_OK
-              "offsets tensor must have at least 1 element");
-  TORCH_CHECK(num_sc_per_device > 0,  // TORCH_CHECK_OK
-              "num_sc_per_device must be positive");
-  const int64_t num_rows = offsets.size(0) - 1;
-  const int64_t num_scs = global_device_count * num_sc_per_device;
-  const int64_t rows_per_sc =
-      (num_rows + num_sc_per_device - 1) / num_sc_per_device;
-  const int64_t bucket_size = std::max(num_scs, ALIGNMENT_SIZE);
-
-  auto contiguous_offsets = offsets.contiguous();
-  auto get_offset = [&](int64_t idx) -> int64_t {
-    if (contiguous_offsets.scalar_type() == at::kLong) {
-      return contiguous_offsets.data_ptr<int64_t>()[idx];
+    int total_features = 0;
+    for (const auto& [table_name, feature_list] : config_proto.tables()) {
+      total_features += feature_list.features_size();
     }
-    return contiguous_offsets.data_ptr<int32_t>()[idx];
+    contiguous_tensors_holder.reserve(total_features * 2);
+    input_batches.reserve(total_features);
+
+    int global_feat_idx = 0;
+    for (const auto& [table_name, feature_list] : config_proto.tables()) {
+      const auto& meta_list = feature_list.features();
+
+      auto indices_it = input_indices.find(table_name);
+      TT_CHECK_THROW(indices_it != input_indices.end(), error::kInvalidArgument)
+          << "input_indices missing table " << table_name;
+
+      auto offsets_it = input_offsets.find(table_name);
+      TT_CHECK_THROW(offsets_it != input_offsets.end(), error::kInvalidArgument)
+          << "input_offsets missing table " << table_name;
+
+      const auto& indices_list = indices_it->value();
+      const auto& offsets_list = offsets_it->value();
+
+      TT_CHECK_THROW(indices_list.size() == meta_list.size(),
+                     error::kInvalidArgument)
+          << "indices list size mismatch for table " << table_name;
+      TT_CHECK_THROW(offsets_list.size() == meta_list.size(),
+                     error::kInvalidArgument)
+          << "offsets list size mismatch for table " << table_name;
+
+      jax_stacked_tables[table_name].reserve(meta_list.size());
+
+      for (size_t i = 0; i < meta_list.size(); ++i) {
+        const auto& f = meta_list[i];
+        jax_stacked_tables[table_name].push_back(
+            jax_sc_embedding::FeatureMetadataInStack(
+                f.name(), global_feat_idx++,
+                static_cast<int>(f.max_ids_per_partition()),
+                static_cast<int>(f.max_unique_ids_per_partition()),
+                static_cast<int>(f.row_offset()),
+                static_cast<int>(f.col_offset()),
+                static_cast<int>(f.col_shift()), f.batch_size(),
+                f.suggested_coo_buffer_size_per_device() > 0
+                    ? std::make_optional(static_cast<int>(
+                          f.suggested_coo_buffer_size_per_device()))
+                    : std::nullopt,
+                jax_sc_embedding::GetRowCombiner(f.combiner())));
+
+        const at::Tensor& indices = indices_list[i];
+        const at::Tensor& offsets = offsets_list[i];
+
+        TT_CHECK_THROW(indices.dtype() == at::kInt, error::kInvalidArgument)
+            << "indices must be int32";
+        TT_CHECK_THROW(offsets.dtype() == at::kInt, error::kInvalidArgument)
+            << "offsets must be int32";
+
+        auto contiguous_indices = indices.contiguous();
+        auto contiguous_offsets = offsets.contiguous();
+        contiguous_tensors_holder.push_back(contiguous_indices);
+        contiguous_tensors_holder.push_back(contiguous_offsets);
+
+        absl::Span<const int32_t> val_span(
+            contiguous_indices.data_ptr<int32_t>(), contiguous_indices.numel());
+        absl::Span<const int32_t> off_span(
+            contiguous_offsets.data_ptr<int32_t>(), contiguous_offsets.numel());
+
+        input_batches.push_back(
+            std::make_unique<jax_sc_embedding::RaggedTensorInputBatch<
+                absl::Span<const int32_t>, absl::Span<const int32_t>>>(
+                val_span, off_span, table_name));
+      }
+    }
+
+    c10::Dict<std::string, c10::Dict<std::string, at::Tensor>> outputs;
+    jax_sc_embedding::OutputCsrArrays jax_output_buffers;
+
+    jax_sc_embedding::PreprocessSparseDenseMatmulInputOptions jax_options{
+        .local_device_count = static_cast<int>(local_device_count),
+        .global_device_count = static_cast<int>(global_device_count),
+        .num_sc_per_device = static_cast<int>(num_sc_per_device),
+        .sharding_strategy = jax_sc_embedding::ShardingStrategy::kMod,
+        .allow_id_dropping = allow_id_dropping,
+    };
+    const int row_pointers_size_per_device =
+        jax_options.GetRowPointersSizePerDevice();
+
+    for (const auto& [table_name, feature_list] : config_proto.tables()) {
+      const auto& meta_list = feature_list.features();
+      if (meta_list.empty()) continue;
+
+      int32_t required_buffer_size =
+          meta_list[0].suggested_coo_buffer_size_per_device();
+      if (required_buffer_size <= 0) {
+        required_buffer_size = 128;  // Default fallback
+      }
+
+      int total_row_pointers_size =
+          local_device_count * row_pointers_size_per_device;
+      int total_coo_buffer_size = local_device_count * required_buffer_size;
+
+      at::Tensor row_pointers = at::zeros({total_row_pointers_size}, at::kInt);
+      at::Tensor embedding_ids = at::empty({total_coo_buffer_size}, at::kInt);
+      at::Tensor sample_ids = at::empty({total_coo_buffer_size}, at::kInt);
+      at::Tensor gains = at::empty({total_coo_buffer_size}, at::kFloat);
+
+      // Wrap PyTorch data tensors DIRECTLY
+      Eigen::Map<jax_sc_embedding::MatrixXi> row_pointers_map(
+          row_pointers.data_ptr<int32_t>(), local_device_count,
+          row_pointers_size_per_device);
+      Eigen::Map<jax_sc_embedding::MatrixXi> embedding_ids_map(
+          embedding_ids.data_ptr<int32_t>(), local_device_count,
+          required_buffer_size);
+      Eigen::Map<jax_sc_embedding::MatrixXi> sample_ids_map(
+          sample_ids.data_ptr<int32_t>(), local_device_count,
+          required_buffer_size);
+      Eigen::Map<jax_sc_embedding::MatrixXf> gains_map(
+          gains.data_ptr<float>(), local_device_count, required_buffer_size);
+
+      jax_output_buffers.lhs_row_pointers.emplace(table_name, row_pointers_map);
+      jax_output_buffers.lhs_embedding_ids.emplace(table_name,
+                                                   embedding_ids_map);
+      jax_output_buffers.lhs_sample_ids.emplace(table_name, sample_ids_map);
+      jax_output_buffers.lhs_gains.emplace(table_name, gains_map);
+
+      c10::Dict<std::string, at::Tensor> table_dict;
+      table_dict.insert("row_pointers", row_pointers);
+      table_dict.insert("embedding_ids", embedding_ids);
+      table_dict.insert("sample_ids", sample_ids);
+      table_dict.insert("gains", gains);
+
+      outputs.insert(table_name, table_dict);
+    }
+
+    auto result = jax_sc_embedding::PreprocessSparseDenseMatmulInput(
+        absl::MakeSpan(input_batches), jax_stacked_tables, jax_options,
+        &jax_output_buffers);
+
+    TT_CHECK_THROW(result.ok(), result.status().code())
+        << result.status().message();
+
+    return outputs;
   };
 
-  if (coo_buffer_size_per_device <= 0) {
-    int64_t max_raw_per_sc = 0;
-    for (int64_t sc = 0; sc < num_sc_per_device; ++sc) {
-      const int64_t rs = std::min(sc * rows_per_sc, num_rows);
-      const int64_t re = std::min(rs + rows_per_sc, num_rows);
-      max_raw_per_sc =
-          std::max(max_raw_per_sc, get_offset(re) - get_offset(rs));
-    }
-    const int64_t aligned_per_part =
-        ((max_raw_per_sc + ALIGNMENT_SIZE - 1) / ALIGNMENT_SIZE) *
-        ALIGNMENT_SIZE;
-    coo_buffer_size_per_device =
-        aligned_per_part * bucket_size * num_sc_per_device;
-  }
-
-  auto row_pointers =
-      at::zeros({num_sc_per_device * bucket_size}, values.options());
-  auto embedding_ids =
-      at::full({coo_buffer_size_per_device},
-               std::numeric_limits<int32_t>::max(), values.options());
-  auto sample_ids =
-      at::full({coo_buffer_size_per_device},
-               std::numeric_limits<int32_t>::max(), values.options());
-  auto gains = at::full({coo_buffer_size_per_device},
-                        std::numeric_limits<float>::quiet_NaN(),
-                        values.options().dtype(at::kFloat));
-
-  auto contiguous_values = values.contiguous();
-  const int32_t* val_ptr = contiguous_values.data_ptr<int32_t>();
-  int32_t* row_ptr = row_pointers.data_ptr<int32_t>();
-  int32_t* emb_ptr = embedding_ids.data_ptr<int32_t>();
-  int32_t* sam_ptr = sample_ids.data_ptr<int32_t>();
-  float* gain_ptr = gains.data_ptr<float>();
-
-  std::vector<CooTuple> coo_entries;
-  coo_entries.reserve(values.numel());
-  int64_t coo_idx = 0;
-
-  for (int64_t sc = 0; sc < num_sc_per_device; ++sc) {
-    coo_entries.clear();
-    const int64_t sc_base_offset = coo_idx;
-    const int64_t row_start = sc * rows_per_sc;
-    const int64_t row_end = std::min(row_start + rows_per_sc, num_rows);
-    coo_entries.reserve(get_offset(row_end) - get_offset(row_start));
-
-    for (int64_t r = row_start; r < row_end; ++r) {
-      const int32_t local_sam_id = static_cast<int32_t>(r - row_start);
-      const int64_t start_idx = get_offset(r);
-      const int64_t end_idx = get_offset(r + 1);
-      for (int64_t i = start_idx; i < end_idx; ++i) {
-        const int32_t val = val_ptr[i];
-        coo_entries.push_back(
-            {local_sam_id, val, FloorMod(val, static_cast<int32_t>(num_scs))});
-      }
-    }
-
-    std::sort(coo_entries.begin(), coo_entries.end(),
-              [](const CooTuple& a, const CooTuple& b) {
-                if (a.part_id != b.part_id) {
-                  return a.part_id < b.part_id;
-                }
-                return a.sample_id < b.sample_id;
-              });
-
-    int64_t cur_part = 0;
-    const int64_t lhs_row_begin = sc * bucket_size;
-
-    auto set_row_pointer = [&](int64_t part) {
-      if (lhs_row_begin + part < num_sc_per_device * bucket_size) {
-        row_ptr[lhs_row_begin + part] =
-            static_cast<int32_t>(coo_idx - sc_base_offset);
-      }
-    };
-
-    auto pad_to_alignment = [&]() {
-      while (coo_idx % ALIGNMENT_SIZE != 0) {
-        if (coo_idx < coo_buffer_size_per_device) {
-          emb_ptr[coo_idx] = std::numeric_limits<int32_t>::max();
-          sam_ptr[coo_idx] = std::numeric_limits<int32_t>::max();
-          gain_ptr[coo_idx] = std::numeric_limits<float>::quiet_NaN();
-          coo_idx++;
-        } else {
-          break;
-        }
-      }
-    };
-
-    auto advance_partition_to = [&](int64_t target_part) {
-      while (cur_part < target_part) {
-        set_row_pointer(cur_part);
-        pad_to_alignment();
-        cur_part++;
-      }
-    };
-
-    int64_t idx = 0;
-    while (idx < static_cast<int64_t>(coo_entries.size())) {
-      const auto& item = coo_entries[idx];
-      advance_partition_to(item.part_id);
-
-      if (coo_idx < coo_buffer_size_per_device) {
-        emb_ptr[coo_idx] = FloorDiv(item.emb_id, static_cast<int32_t>(num_scs));
-        sam_ptr[coo_idx] = item.sample_id;
-        gain_ptr[coo_idx] = 1.0f;
-        coo_idx++;
-      } else {
-        TORCH_CHECK(allow_id_dropping,  // TORCH_CHECK_OK: capacity check
-                    "SparseCore buffer overflow: COO index exceeded capacity "
-                    "limit and allow_id_dropping is false.");
-      }
-      idx++;
-    }
-
-    advance_partition_to(num_scs);
-
-    for (int64_t p = cur_part; p < bucket_size; ++p) {
-      set_row_pointer(p);
-    }
-  }
-
-  return {row_pointers, embedding_ids, sample_ids, gains};
-}
-
-TORCH_LIBRARY_FRAGMENT(tpu, m) {
   m.def(
-      "preprocess_sparse_dense_matmul_input(Tensor values, Tensor offsets, "
-      "int global_device_count, int coo_buffer_size_per_device, "
-      "int num_sc_per_device=2, bool allow_id_dropping=True) -> "
-      "(Tensor, Tensor, Tensor, Tensor)",
-      [](const at::Tensor& values, const at::Tensor& offsets,
-         int64_t global_device_count, int64_t coo_buffer_size_per_device,
-         int64_t num_sc_per_device, bool allow_id_dropping) {
-        auto res = PreprocessToSparseCore(values, offsets, global_device_count,
-                                          coo_buffer_size_per_device,
-                                          num_sc_per_device, allow_id_dropping);
-        return std::make_tuple(res.row_pointers, res.embedding_ids,
-                               res.sample_ids, res.gains);
-      });
+      "preprocess_sparse_dense_matmul_input("
+      "    Dict(str, Tensor[]) input_indices, "
+      "    Dict(str, Tensor[]) input_offsets, "
+      "    str stacked_tables_config_proto, "
+      "    int local_device_count, "
+      "    int global_device_count, "
+      "    int num_sc_per_device, "
+      "    bool allow_id_dropping"
+      ") -> Dict(str, Dict(str, Tensor))",
+      func);
 }
 
 }  // namespace torch_tpu

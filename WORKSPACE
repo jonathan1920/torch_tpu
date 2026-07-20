@@ -62,6 +62,11 @@ load("//bazel:xla_repo.bzl", "xla_repo")
 
 xla_repo()
 
+# Fetch jax_tpu_embedding dependency
+load("//bazel:jax_tpu_embedding_repo.bzl", "jax_tpu_embedding_repo")
+
+jax_tpu_embedding_repo()
+
 load("@xla//:workspace4.bzl", "xla_workspace4")
 
 xla_workspace4()
