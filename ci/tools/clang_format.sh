@@ -50,7 +50,17 @@ print_tool_use_hint() {
 case "$MODE" in
   lint)
     echo "INFO: Running clang-format check..."
-    if ! DIFF=$(git diff -U0 --no-color "$BASE_SHA" HEAD -- "*.cc" "*.h" | clang-format-diff.py -binary clang-format -p1 -style=file); then
+    set +e
+    # Diff BASE_SHA against the working tree (not HEAD) so uncommitted edits
+    # on disk are inspected too.
+    DIFF=$(git diff -U0 --no-color "$BASE_SHA" -- "*.cc" "*.h" | clang-format-diff.py -binary clang-format -p1 -style=file)
+    STATUS=$?
+    set -e
+
+    # clang-format-diff.py exits 0 when the changes are already formatted,
+    # 1 when it finds formatting differences, and higher codes on tool errors.
+    # Only exit codes larger than 1 mean the tool failed to run.
+    if [ "$STATUS" -gt 1 ]; then
         print_tool_use_hint
         exit 3
     fi
@@ -77,7 +87,7 @@ case "$MODE" in
 
   format)
     echo "INFO: Applying clang-format fixes to modified files in-place."
-    if ! git diff -U0 --no-color "$BASE_SHA" HEAD -- "*.cc" "*.h" | clang-format-diff.py -binary clang-format -p1 -style=file -i; then
+    if ! git diff -U0 --no-color "$BASE_SHA" -- "*.cc" "*.h" | clang-format-diff.py -binary clang-format -p1 -style=file -i; then
         print_tool_use_hint
         exit 3
     fi
