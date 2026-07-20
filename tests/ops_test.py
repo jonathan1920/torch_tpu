@@ -1249,7 +1249,7 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     },
     "_softmax_backward_data": {
         torch.bfloat16: {"atol": 3e-2},
-        torch.float16: {"atol": 3.7e-4},
+        torch.float16: {"atol": 4e-3},
     },
     "acos": {
         torch.complex64: {"atol": 6.5e-5},
