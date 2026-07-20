@@ -16,7 +16,6 @@
 
 load(
     "//build_files:build_defs.bzl",
-    "internal_target",
     "torch_tpu_package_end",
 )
 load("//build_files:build_defs_test.bzl", "build_defs_test_suite")
@@ -67,10 +66,7 @@ bzl_library(
 
 # Creates a test suite with the given name. The individual tests in
 # the suite are named build_defs_test_<suffix> and defined in build_defs_test.bzl.
-# TODO: make the test work in OSS (The unittest framework from bazel_skylib
-# doesn't work in OSS.).
-internal_target(
-    build_defs_test_suite,
+build_defs_test_suite(
     name = "build_defs_test",
 )
 

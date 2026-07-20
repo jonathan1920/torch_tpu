@@ -14,13 +14,11 @@
 
 """Unit tests for build_defs.bzl."""
 
-load("@bazel_skylib//lib:unittest.bzl", "asserts", "unittest")
-load("//build_files:build_defs.bzl", "check_and_adjust_test_tags_for_testing", "tpu_gen")
+load("@rules_testing//lib:test_suite.bzl", "test_suite")
+load("//build_files:build_defs.bzl", "check_and_adjust_test_tags_for_testing", "is_oss", "tpu_gen")
 
-def _test_nobuild(ctx):
+def _test_nobuild(env):
     """Tests the nobuild parameter."""
-
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -28,14 +26,11 @@ def _test_nobuild(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nobuild"], "tags: %s" % tags)
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["nobuild"])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_notap(ctx):
+def _test_notap(env):
     """Tests the notap parameter."""
-
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -43,23 +38,12 @@ def _test_notap(ctx):
         tags = tags,
     )
 
-    asserts.true(
-        env,
-        tags == ["manual", "notap", "notest"],  # NOTAP_OK=tests
-        "tags: %s" % tags,
-    )
-    asserts.true(env, result.create_build_test)
-    asserts.true(
-        env,
-        result.build_test_tags == [],
-        "build_test_tags: %s" % result.build_test_tags,
-    )
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["manual", "notap", "notest"])  # NOTAP_OK=Testing notap tagging
+    env.expect.that_bool(result.create_build_test).equals(True)
+    env.expect.that_collection(result.build_test_tags).contains_exactly([])
 
-def _test_nopresubmit(ctx):
+def _test_nopresubmit(env):
     """Tests the nopresubmit parameter."""
-
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -67,14 +51,11 @@ def _test_nopresubmit(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["manual", "nopresubmit"], "tags: %s" % tags)
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["manual", "nopresubmit"])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_nolocal(ctx):
+def _test_nolocal(env):
     """Tests the nolocal parameter."""
-
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -82,32 +63,25 @@ def _test_nolocal(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["manual"], "tags: %s" % tags)
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["manual"])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_internal_nobuild_oss(ctx):
+def _test_internal_nobuild_oss(env):
     """Tests the nobuild_oss parameter in internal builds."""
-
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
         nobuild_oss = "reason",
         tags = tags,
     )
-
-    asserts.true(env, tags == [], "tags: %s" % tags)
 
     # In an internal build, nobuild_oss has no effect and thus does not make
     # it necessary to generate a build_test.
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly([])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_oss_nobuild_oss(ctx):
+def _test_oss_nobuild_oss(env):
     """Tests the nobuild_oss parameter in OSS."""
-
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = True,
@@ -115,16 +89,12 @@ def _test_oss_nobuild_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nobuild", "notest"], "tags: %s" % tags)
-
     # In an OSS build, nobuild_oss should disable generating the build_test.
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["nobuild", "notest"])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_internal_notest_oss(ctx):
+def _test_internal_notest_oss(env):
     """Tests the notest_oss parameter in internal builds."""
-
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -132,17 +102,13 @@ def _test_internal_notest_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == [], "tags: %s" % tags)
-
     # In an internal build, notest_oss has no effect and thus does not make
     # it necessary to generate a build_test.
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly([])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_oss_notest_oss(ctx):
+def _test_oss_notest_oss(env):
     """Tests the notest_oss parameter in OSS."""
-
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = True,
@@ -150,21 +116,13 @@ def _test_oss_notest_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["notest"], "tags: %s" % tags)
-
     # In an OSS build, notest_oss should enable generating the build_test.
-    asserts.true(env, result.create_build_test)
-    asserts.true(
-        env,
-        result.build_test_tags == [],
-        "build_test_tags: %s" % result.build_test_tags,
-    )
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["notest"])
+    env.expect.that_bool(result.create_build_test).equals(True)
+    env.expect.that_collection(result.build_test_tags).contains_exactly([])
 
-def _test_cuda_build_test(ctx):
+def _test_cuda_build_test(env):
     """Tests the notap parameter for CUDA tests."""
-
-    env = unittest.begin(ctx)
     tags = ["requires-gpu-a100"]
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -172,22 +130,13 @@ def _test_cuda_build_test(ctx):
         tags = tags,
     )
 
-    asserts.true(
-        env,
-        tags == ["manual", "notap", "notest", "requires-gpu-a100"],  # NOTAP_OK=tests
-        "tags: %s" % tags,
-    )
-    asserts.true(env, result.create_build_test)
-    asserts.true(
-        env,
-        result.build_test_tags == ["requires-gpu-nvidia"],
-        "result.build_test_tags: %s" % result.build_test_tags,
-    )
-    return unittest.end(env)
+    expected_tags = ["manual", "notap", "notest", "requires-gpu", "requires-gpu-a100"] if is_oss() else ["manual", "notap", "notest", "requires-gpu-a100"]  # NOTAP_OK=Testing notap tagging
+    env.expect.that_collection(tags).contains_exactly(expected_tags)
+    env.expect.that_bool(result.create_build_test).equals(True)
+    env.expect.that_collection(result.build_test_tags).contains_exactly(["requires-gpu-nvidia"])
 
-def _test_internal_notap_nobuild(ctx):
+def _test_internal_notap_nobuild(env):
     """Tests using both notap and nobuild in internal builds."""
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -196,17 +145,11 @@ def _test_internal_notap_nobuild(ctx):
         tags = tags,
     )
 
-    asserts.true(
-        env,
-        tags == ["manual", "nobuild", "notap", "notest"],  # NOTAP_OK=tests
-        "tags: %s" % tags,
-    )
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["manual", "nobuild", "notap", "notest"])  # NOTAP_OK=Testing notap tagging
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_oss_notest_oss_nobuild_oss(ctx):
+def _test_oss_notest_oss_nobuild_oss(env):
     """Tests using both notest_oss and nobuild_oss in OSS builds."""
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = True,
@@ -215,17 +158,11 @@ def _test_oss_notest_oss_nobuild_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(
-        env,
-        tags == ["nobuild", "notest"],
-        "tags: %s" % tags,
-    )
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["nobuild", "notest"])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_internal_nopresubmit_oss(ctx):
+def _test_internal_nopresubmit_oss(env):
     """Tests the nopresubmit_oss parameter in internal builds."""
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -233,13 +170,11 @@ def _test_internal_nopresubmit_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == [], "tags: %s" % tags)
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly([])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_oss_nopresubmit_oss(ctx):
+def _test_oss_nopresubmit_oss(env):
     """Tests the nopresubmit_oss parameter in OSS builds."""
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = True,
@@ -247,13 +182,11 @@ def _test_oss_nopresubmit_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nopresubmit"], "tags: %s" % tags)
-    asserts.true(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["nopresubmit"])
+    env.expect.that_bool(result.create_build_test).equals(True)
 
-def _test_internal_manual_nopresubmit_oss_tag(ctx):
+def _test_internal_manual_nopresubmit_oss_tag(env):
     """Tests that the nopresubmit_oss param appends correctly even if 'nopresubmit_oss' is in tags in internal builds."""
-    env = unittest.begin(ctx)
     tags = ["nopresubmit_oss"]
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -261,13 +194,11 @@ def _test_internal_manual_nopresubmit_oss_tag(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nopresubmit_oss"], "tags: %s" % tags)
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["nopresubmit_oss"])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_oss_manual_nopresubmit_oss_tag(ctx):
+def _test_oss_manual_nopresubmit_oss_tag(env):
     """Tests that the nopresubmit_oss param appends correctly even if 'nopresubmit_oss' is in tags in OSS builds."""
-    env = unittest.begin(ctx)
     tags = ["nopresubmit_oss"]
     result = check_and_adjust_test_tags_for_testing(
         is_oss = True,
@@ -275,13 +206,11 @@ def _test_oss_manual_nopresubmit_oss_tag(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nopresubmit", "nopresubmit_oss"], "tags: %s" % tags)
-    asserts.true(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["nopresubmit", "nopresubmit_oss"])
+    env.expect.that_bool(result.create_build_test).equals(True)
 
-def _test_internal_nonightly_oss(ctx):
+def _test_internal_nonightly_oss(env):
     """Tests the nonightly_oss parameter in internal builds."""
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -289,13 +218,11 @@ def _test_internal_nonightly_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == [], "tags: %s" % tags)
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly([])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_oss_nonightly_oss(ctx):
+def _test_oss_nonightly_oss(env):
     """Tests the nonightly_oss parameter in OSS builds."""
-    env = unittest.begin(ctx)
     tags = []
     result = check_and_adjust_test_tags_for_testing(
         is_oss = True,
@@ -303,13 +230,11 @@ def _test_oss_nonightly_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nonightly"], "tags: %s" % tags)
-    asserts.true(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["nonightly"])
+    env.expect.that_bool(result.create_build_test).equals(True)
 
-def _test_internal_manual_nonightly_oss_tag(ctx):
+def _test_internal_manual_nonightly_oss_tag(env):
     """Tests that the nonightly_oss param appends correctly even if 'nonightly_oss' is in tags in internal builds."""
-    env = unittest.begin(ctx)
     tags = ["nonightly_oss"]
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
@@ -317,13 +242,11 @@ def _test_internal_manual_nonightly_oss_tag(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nonightly_oss"], "tags: %s" % tags)
-    asserts.false(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["nonightly_oss"])
+    env.expect.that_bool(result.create_build_test).equals(False)
 
-def _test_oss_manual_nonightly_oss_tag(ctx):
+def _test_oss_manual_nonightly_oss_tag(env):
     """Tests that the nonightly_oss param appends correctly even if 'nonightly_oss' is in tags in OSS builds."""
-    env = unittest.begin(ctx)
     tags = ["nonightly_oss"]
     result = check_and_adjust_test_tags_for_testing(
         is_oss = True,
@@ -331,65 +254,33 @@ def _test_oss_manual_nonightly_oss_tag(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nonightly", "nonightly_oss"], "tags: %s" % tags)
-    asserts.true(env, result.create_build_test)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains_exactly(["nonightly", "nonightly_oss"])
+    env.expect.that_bool(result.create_build_test).equals(True)
 
-def _test_oss_presubmit_tpu_generation_explicit(ctx):
-    env = unittest.begin(ctx)
+def _test_oss_presubmit_tpu_generation_explicit(env):
     tags = []
     check_and_adjust_test_tags_for_testing(
         is_oss = True,
         oss_presubmit_tpu_generation = tpu_gen("v7", reason = "Requires specific hardware for feature testing"),
         tags = tags,
     )
-    asserts.true(env, "presubmit-v7" in tags, "tags: %s" % tags)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains("presubmit-v7")
 
-def _test_oss_presubmit_tpu_generation_implicit(ctx):
-    env = unittest.begin(ctx)
+def _test_oss_presubmit_tpu_generation_implicit(env):
     tags = ["requires-tpu", "fails-on-tpu-v5"]
     check_and_adjust_test_tags_for_testing(
         is_oss = True,
         tags = tags,
     )
-    asserts.true(env, "presubmit-v7" in tags, "tags: %s" % tags)
-    return unittest.end(env)
+    env.expect.that_collection(tags).contains("presubmit-v7")
 
-def _test_oss_presubmit_tpu_generation_implicit_v6(ctx):
-    env = unittest.begin(ctx)
+def _test_oss_presubmit_tpu_generation_implicit_v6(env):
     tags = ["requires-tpu", "fails-on-tpu-v5", "fails-on-tpu-v7"]
     check_and_adjust_test_tags_for_testing(
         is_oss = True,
         tags = tags,
     )
-    asserts.true(env, "presubmit-v6" in tags, "tags: %s" % tags)
-    return unittest.end(env)
-
-# go/keep-sorted start
-cuda_build_test = unittest.make(_test_cuda_build_test)
-internal_manual_nonightly_oss_tag_test = unittest.make(_test_internal_manual_nonightly_oss_tag)
-internal_manual_nopresubmit_oss_tag_test = unittest.make(_test_internal_manual_nopresubmit_oss_tag)
-internal_nobuild_oss_test = unittest.make(_test_internal_nobuild_oss)
-internal_nonightly_oss_test = unittest.make(_test_internal_nonightly_oss)
-internal_nopresubmit_oss_test = unittest.make(_test_internal_nopresubmit_oss)
-internal_notap_nobuild_test = unittest.make(_test_internal_notap_nobuild)
-internal_notest_oss_test = unittest.make(_test_internal_notest_oss)
-nobuild_test = unittest.make(_test_nobuild)
-nolocal_test = unittest.make(_test_nolocal)
-nopresubmit_test = unittest.make(_test_nopresubmit)
-notap_test = unittest.make(_test_notap)
-oss_manual_nonightly_oss_tag_test = unittest.make(_test_oss_manual_nonightly_oss_tag)
-oss_manual_nopresubmit_oss_tag_test = unittest.make(_test_oss_manual_nopresubmit_oss_tag)
-oss_nobuild_oss_test = unittest.make(_test_oss_nobuild_oss)
-oss_nonightly_oss_test = unittest.make(_test_oss_nonightly_oss)
-oss_nopresubmit_oss_test = unittest.make(_test_oss_nopresubmit_oss)
-oss_notest_oss_nobuild_oss_test = unittest.make(_test_oss_notest_oss_nobuild_oss)
-oss_notest_oss_test = unittest.make(_test_oss_notest_oss)
-oss_presubmit_tpu_generation_explicit_test = unittest.make(_test_oss_presubmit_tpu_generation_explicit)
-oss_presubmit_tpu_generation_implicit_test = unittest.make(_test_oss_presubmit_tpu_generation_implicit)
-oss_presubmit_tpu_generation_implicit_v6_test = unittest.make(_test_oss_presubmit_tpu_generation_implicit_v6)
-# go/keep-sorted end
+    env.expect.that_collection(tags).contains("presubmit-v6")
 
 def build_defs_test_suite(name):
     """Creates a test suite for build_defs.bzl, which will run all tests in this file.
@@ -397,39 +288,32 @@ def build_defs_test_suite(name):
     Args:
         name: The name of the test suite. All tests in this suite will be prefixed with this name.
     """
-
-    def add_test(tests, rule_func, name):
-        rule_func(name = name)
-        tests.append(":" + name)
-
-    tests = []
-
-    # go/keep-sorted start
-    add_test(tests, cuda_build_test, name + "_cuda_build_test")
-    add_test(tests, internal_manual_nonightly_oss_tag_test, name + "_internal_manual_nonightly_oss_tag")
-    add_test(tests, internal_manual_nopresubmit_oss_tag_test, name + "_internal_manual_nopresubmit_oss_tag")
-    add_test(tests, internal_nobuild_oss_test, name + "_internal_nobuild_oss")
-    add_test(tests, internal_nonightly_oss_test, name + "_internal_nonightly_oss")
-    add_test(tests, internal_nopresubmit_oss_test, name + "_internal_nopresubmit_oss")
-    add_test(tests, internal_notap_nobuild_test, name + "_internal_notap_nobuild")
-    add_test(tests, internal_notest_oss_test, name + "_internal_notest_oss")
-    add_test(tests, nobuild_test, name + "_nobuild")
-    add_test(tests, nolocal_test, name + "_nolocal")
-    add_test(tests, nopresubmit_test, name + "_nopresubmit")
-    add_test(tests, notap_test, name + "_notap")
-    add_test(tests, oss_manual_nonightly_oss_tag_test, name + "_oss_manual_nonightly_oss_tag")
-    add_test(tests, oss_manual_nopresubmit_oss_tag_test, name + "_oss_manual_nopresubmit_oss_tag")
-    add_test(tests, oss_nobuild_oss_test, name + "_oss_nobuild_oss")
-    add_test(tests, oss_nonightly_oss_test, name + "_oss_nonightly_oss")
-    add_test(tests, oss_nopresubmit_oss_test, name + "_oss_nopresubmit_oss")
-    add_test(tests, oss_notest_oss_nobuild_oss_test, name + "_oss_notest_oss_nobuild_oss")
-    add_test(tests, oss_notest_oss_test, name + "_oss_notest_oss")
-    add_test(tests, oss_presubmit_tpu_generation_explicit_test, name + "_oss_presubmit_tpu_generation_explicit")
-    add_test(tests, oss_presubmit_tpu_generation_implicit_test, name + "_oss_presubmit_tpu_generation_implicit")
-    add_test(tests, oss_presubmit_tpu_generation_implicit_v6_test, name + "_oss_presubmit_tpu_generation_implicit_v6")
-    # go/keep-sorted end
-
-    native.test_suite(
+    test_suite(
         name = name,
-        tests = tests,
+        basic_tests = [
+            # go/keep-sorted start
+            _test_cuda_build_test,
+            _test_internal_manual_nonightly_oss_tag,
+            _test_internal_manual_nopresubmit_oss_tag,
+            _test_internal_nobuild_oss,
+            _test_internal_nonightly_oss,
+            _test_internal_nopresubmit_oss,
+            _test_internal_notap_nobuild,
+            _test_internal_notest_oss,
+            _test_nobuild,
+            _test_nolocal,
+            _test_nopresubmit,
+            _test_notap,
+            _test_oss_manual_nonightly_oss_tag,
+            _test_oss_manual_nopresubmit_oss_tag,
+            _test_oss_nobuild_oss,
+            _test_oss_nonightly_oss,
+            _test_oss_nopresubmit_oss,
+            _test_oss_notest_oss_nobuild_oss,
+            _test_oss_notest_oss,
+            _test_oss_presubmit_tpu_generation_explicit,
+            _test_oss_presubmit_tpu_generation_implicit,
+            _test_oss_presubmit_tpu_generation_implicit_v6,
+            # go/keep-sorted end
+        ],
     )
