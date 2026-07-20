@@ -25,10 +25,16 @@ bzl_library(
     visibility = ["//visibility:private"],
 )
 
+bzl_library(
+    name = "supported_python_versions_bzl",
+    srcs = ["supported_python_versions.bzl"],
+    visibility = ["//:__subpackages__"],
+)
+
 py_binary(
     name = "assemble_wheel_deps",
     srcs = ["assemble_wheel_deps.py"],
-    visibility = ["//visibility:public"],
+    visibility = ["//:__subpackages__"],
 )
 
 exports_files([
