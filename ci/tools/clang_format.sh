@@ -41,9 +41,9 @@ MODE="${1:-}"
 print_tool_use_hint() {
   echo "ERROR: clang-format check could not run to completion." >&2
   echo "It usually means the tool is not invoked properly. Run it via following commands:" >&2
-  echo "  pip install tox tox-uv   # one-time setup" >&2
-  echo "  tox -e lint              # check formatting issues" >&2
-  echo "  tox -e format            # apply fixes" >&2
+  echo "  pip install nox   # one-time setup" >&2
+  echo "  nox -s lint       # check formatting issues" >&2
+  echo "  nox -s format     # apply fixes" >&2
 }
 
 # Ensure a valid mode is explicitly passed; fail on unexpected args.
