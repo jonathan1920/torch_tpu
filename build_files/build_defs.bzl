@@ -1071,20 +1071,69 @@ def _define_py_filegroup(name):
         tags = ["no-ide"],
     )
 
+def _define_py_wheel_test_site_packages(name):
+    """Defines filegroups for Python files excluding tests, for wheel tests.
+
+    The filegroups created are:
+    - "wheel_test_site_packages": Python files in the current package,
+      excluding tests.
+    - "wheel_test_site_packages_recursive": Python files in the current
+      package and subpackages recursively, excluding tests.
+
+    Args:
+        name: The name of the filegroup. It has to be
+            "wheel_test_site_packages_recursive" to collect files from
+            subpackages recursively.
+    """
+    if name != "wheel_test_site_packages_recursive":
+        fail(
+            "The name must be 'wheel_test_site_packages_recursive' to collect " +
+            "files recursively.",
+        )
+    native.filegroup(
+        name = "wheel_test_site_packages",
+        srcs = native.glob(
+            ["**/*.py"],
+            exclude = [
+                "**/*_test.py",
+                "**/*_tests.py",
+            ],
+        ),
+        visibility = ["//visibility:public"],
+        # See the comment on no-ide above.
+        tags = ["no-ide"],
+    )
+    native.filegroup(
+        name = name,
+        srcs = [
+            ":wheel_test_site_packages",
+        ] + _get_subpackage_targets_named(
+            name = name,
+        ),
+        visibility = ["//visibility:public"],
+        # See the comment on no-ide above.
+        tags = ["no-ide"],
+    )
+
 # buildifier: disable=unnamed-macro
 def torch_tpu_package_end():
     """Marks the end of a standard package for torch_tpu.
 
     This macro defines a recursive test suite named "all_tests",
-    a recursive Python filegroup named "all_py_files_recursive" and
-    a recursive C++ filegroup named "all_cpp_files_recursive"
-    for the current package and all subpackages. It MUST be used at the END
-    of every BUILD file in torch_tpu (or the "all_tests" group may not
-    collect all tests in the package).
+    a recursive Python filegroup named "all_py_files_recursive",
+    a recursive Python filegroup of non-test files named
+    "wheel_test_site_packages_recursive", and a recursive C++ filegroup
+    named "all_cpp_files_recursive" for the current package and all
+    subpackages. It MUST be used at the END of every BUILD file in
+    torch_tpu (or the "all_tests" group may not collect all tests in the
+    package).
     """
 
     _define_cpp_filegroup(name = "all_cpp_files_recursive")
     _define_py_filegroup(name = "all_py_files_recursive")
+    _define_py_wheel_test_site_packages(
+        name = "wheel_test_site_packages_recursive",
+    )
     _define_test_suite(name = "all_tests")
 
 def if_cuda_dep(dep):
