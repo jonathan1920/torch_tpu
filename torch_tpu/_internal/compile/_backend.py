@@ -296,6 +296,12 @@ class TpuBackend:
     # Dynamism support is currently experimental.
     if not self._dynamism:
       _raise_on_symint(example_inputs)
+    elif not torch._dynamo.config.assume_static_by_default:  # pylint: disable=protected-access
+      raise NotImplementedError(
+          "TPU backend does not support torch.compile(..., dynamic=True, ...)."
+          " Please run torch.compile() with default dynamism i.e."
+          " torch.compile(model) and try again."
+      )
 
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
 

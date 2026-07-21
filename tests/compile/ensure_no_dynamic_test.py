@@ -21,6 +21,7 @@ import sympy
 import torch
 from torch.fx.experimental.symbolic_shapes import ShapeEnv
 from torch_tpu._internal import testing as tt_testing
+from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile.compiler import has_dynamic_symints
 from torch_tpu._internal.utils import utils
 
@@ -52,6 +53,15 @@ class EnsureNoDynamicTest(absltest.TestCase):
     with self.assertRaises(Exception) as err:
       compiled(input_1).to("cpu")
     self.assertIn("torch.compile(..., dynamic=False, ...)", str(err.exception))
+
+  def test_dynamic_true_with_dynamism_enabled_not_supported(self):
+    input_1 = torch.tensor([0.1, 0.2], device=torch.device("tpu"))
+
+    backend = _backend.TpuBackend(dynamism=True)
+    compiled = torch.compile(simple, dynamic=True, backend=backend)
+    with self.assertRaises(Exception) as err:
+      compiled(input_1).to("cpu")
+    self.assertIn("dynamic=True", str(err.exception))
 
   def test_dynamic_none_and_size_change_recompile_not_supported(self):
     input_1 = torch.tensor([0.1, 0.2], device=torch.device("tpu"))
