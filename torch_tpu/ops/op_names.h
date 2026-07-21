@@ -62,6 +62,8 @@ enum class OpName {
   kAmin,
   kAminOut,
   kAminmaxOut,
+  kAngle,
+  kAngleOut,
   kAnyAllOut,
   kAnyOut,
   kArangeStartOut,

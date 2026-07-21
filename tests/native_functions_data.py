@@ -196,8 +196,6 @@ UNREGISTERED_OPS = frozenset([
     'addbmm',
     'addbmm.out',
     'addbmm_',
-    'angle',
-    'angle.out',
     'batch_norm_backward',
     'batch_norm_backward_elemt',
     'batch_norm_backward_reduce',
