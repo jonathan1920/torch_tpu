@@ -237,6 +237,8 @@ def _check_and_adjust_test_tags(
             non-nightly OSS, and it will be built and run in the nightly OSS.
         nonightly_oss: If a string is provided, the test will be built but not run in the nightly
             OSS.
+        oss_presubmit_tpu_generation: Optional integer specifying the TPU generation to run this
+            test on in OSS presubmit.
         tags: The tags to add to the test.
 
     Returns:
@@ -534,6 +536,8 @@ def torch_tpu_cc_test(
             non-nightly OSS, and it will be built and run in the nightly OSS.
         nonightly_oss: If a string is provided, the test will be built but not run in the nightly
             OSS.
+        oss_presubmit_tpu_generation: Optional integer specifying the TPU generation to run this
+            test on in OSS presubmit.
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
@@ -726,6 +730,8 @@ def torch_tpu_py_test(
             non-nightly OSS, and it will be built and run in the nightly OSS.
         nonightly_oss: If a string is provided, the test will be built but not run in the nightly
             OSS.
+        oss_presubmit_tpu_generation: Optional integer specifying the TPU generation to run this
+            test on in OSS presubmit.
         tags: The tags to add to the test.
         autoload: Enable autoload during the tests.
         **kwargs: Any additional arguments.
