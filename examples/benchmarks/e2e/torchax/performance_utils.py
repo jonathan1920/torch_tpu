@@ -28,6 +28,7 @@ from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils as pt_benchmark_utils
 from examples.benchmarks.e2e import common as pt_common
 from examples.benchmarks.e2e import device_utils
+from examples.benchmarks.e2e.harness import metrics as metrics_lib
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import performance_utils as pt_performance_utils
 import torchax
@@ -184,7 +185,7 @@ def _run_torchax_forward_pass(
     inputs: Any,
     run_mode: pt_common.RunMode,
     enable_xprof: bool,
-) -> pt_benchmark_utils.PerformanceBenchmarkResult:
+) -> metrics_lib.PerformanceMetrics:
   """Runs the forward pass benchmark for a TorchAx model."""
 
   weights = {
@@ -258,7 +259,7 @@ def _run_torchax_forward_pass(
 
   warmup_overhead = np.sum(warmup_timings) - (eval_time * len(warmup_timings))
 
-  return pt_benchmark_utils.PerformanceBenchmarkResult(
+  return metrics_lib.PerformanceMetrics(
       num_warmup_steps=len(warmup_timings),
       first_step_time_seconds=first_step_time,
       warmup_overhead_seconds=max(0.0, warmup_overhead),
@@ -276,7 +277,7 @@ def _run_torchax_backward_pass(
     inputs: Any,
     run_mode: pt_common.RunMode,
     enable_xprof: bool,
-) -> pt_benchmark_utils.PerformanceBenchmarkResult:
+) -> metrics_lib.PerformanceMetrics:
   """Runs the backward pass benchmark for a TorchAx model."""
 
   weights = {
@@ -392,7 +393,7 @@ def _run_torchax_backward_pass(
 
   warmup_overhead = np.sum(warmup_timings) - (eval_time * len(warmup_timings))
 
-  return pt_benchmark_utils.PerformanceBenchmarkResult(
+  return metrics_lib.PerformanceMetrics(
       num_warmup_steps=len(warmup_timings),
       first_step_time_seconds=first_step_time,
       warmup_overhead_seconds=max(0.0, warmup_overhead),

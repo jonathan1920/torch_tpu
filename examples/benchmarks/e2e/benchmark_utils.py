@@ -13,14 +13,14 @@
 # limitations under the License.
 
 """Utilities for running end-to-end benchmarks."""
-import abc
+
 import contextlib
 import dataclasses
 import enum
 import os
 import random
 import time
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
+from typing import Any, Callable, Iterable, Optional, Sequence
 
 from absl import flags
 from absl import logging
@@ -30,6 +30,7 @@ from torch.utils import _pytree as pytree
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import device_utils
+from examples.benchmarks.e2e.harness import metrics as metrics_lib
 from examples.benchmarks.ops.op_capture import OpCaptureMode
 from examples.benchmarks.quality_utils import quality_benchmark_model
 
@@ -132,22 +133,6 @@ MLCOMPASS_EXECUTION_MODE = flags.DEFINE_enum(
 _PROFILE_MAX_BYTES = 500 * 1024 * 1024  # 500 MB
 
 
-@dataclasses.dataclass
-class BenchmarkResultInterface(abc.ABC):
-  """Interface for benchmark results.
-
-  Attributes:
-    e2e_wall_time_seconds: The total wall time of the benchmark.
-  """
-
-  e2e_wall_time_seconds: float = 0.0
-
-  @abc.abstractmethod
-  def metric_map(self) -> Mapping[str, float]:
-    """Returns a map of metrics to be exported to MLCompass."""
-    raise NotImplementedError
-
-
 class BenchmarkCategory(enum.Enum):
   """The category of the benchmark."""
 
@@ -162,109 +147,6 @@ class BenchmarkCategory(enum.Enum):
   GEMMA_RAGGED_MOE = "gemma_ragged_moe"
   TORCHAUDIO = "torchaudio"
   INTERNAL_MODEL = "internal_model"
-
-
-@dataclasses.dataclass
-class PerformanceBenchmarkResult(BenchmarkResultInterface):
-  """Result of a performance benchmark run.
-
-  Attributes:
-    num_warmup_steps: The number of warmup steps taken for the cache misses to
-      stabilize
-    first_step_time_seconds: The time taken for the first step.
-    warmup_overhead_seconds: This is the extra time taken to run the benchmark
-      to warmup the caches. If it takes n steps for cache misses to stabilize,
-      then the warmup overhead is (wall time of n steps) - (wall time of 1 warm
-      step) * n. For example, if the cache misses are [100, 120, 130, 130] and
-      wall times are [15, 10, 10, 2], then the warmup overhead is (15 + 10 + 10)
-      - 2*3 = 29 seconds.
-    post_warmup_step_time_seconds: The average run time of a benchmark step
-      after the warmup is complete.
-    peak_device_memory_mb: The peak device memory usage in MB for a benchmark
-      step.
-    warmup_session_xprof_url: The URL of the xprof session for the warmup run.
-    post_warmup_run_session_xprof_url: The URL of the xprof session for the post
-      warmup run.
-  """
-
-  num_warmup_steps: int = 0
-  first_step_time_seconds: float = 0.0
-  warmup_overhead_seconds: float = 0.0
-  post_warmup_step_time_seconds: float = 0.0
-  peak_device_memory_mb: float = 0.0
-  warmup_session_xprof_url: str | None = None
-  post_warmup_run_session_xprof_url: str | None = None
-  average_post_warmup_device_time_seconds: float = -1.0
-  peak_host_compilation_memory_mb: float = 0.0
-
-  def metric_map(self) -> Mapping[str, float]:
-    """Returns a map of metrics to be exported to MLCompass."""
-    return {
-        "num_warmup_steps": self.num_warmup_steps,
-        "first_step_time_seconds": self.first_step_time_seconds,
-        "warmup_overhead_seconds": self.warmup_overhead_seconds,
-        "post_warmup_step_time_seconds": self.post_warmup_step_time_seconds,
-        "peak_device_memory_mb": self.peak_device_memory_mb,
-        "average_post_warmup_device_time_seconds": (
-            self.average_post_warmup_device_time_seconds
-        ),
-        "peak_host_compilation_memory_mb": self.peak_host_compilation_memory_mb,
-    }
-
-
-@dataclasses.dataclass
-class QualityBenchmarkResult(BenchmarkResultInterface):
-  """Result of a quality benchmark run.
-
-  Attributes:
-    metrics: A map of metrics to be exported to MLCompass.
-  """
-
-  metrics: Mapping[str, float] = dataclasses.field(default_factory=dict)
-
-  def metric_map(self) -> Mapping[str, float]:
-    """Returns a map of metrics to be exported to MLCompass."""
-    return self.metrics
-
-
-@dataclasses.dataclass
-class _WarmupRunResult:
-  """Result of the warmup run.
-
-  Attributes:
-    num_warmup_steps: The number of warmup steps taken for the cache misses to
-      stabilize
-    first_step_time_seconds: The time taken for the first step.
-    warmup_overhead_seconds: This is the extra time taken to run the benchmark
-      to warmup the caches. If it takes n steps for cache misses to stabilize,
-      then the warmup overhead is (wall time of n steps) - (wall time of 1 warm
-      step) * n. For example, if the cache misses are [100, 120, 130, 130] and
-      wall times are [15, 10, 10, 2], then the warmup overhead is (15 + 10 + 10)
-      - 2*3 = 29 seconds.
-    warmup_session_xprof_url: The URL of the xprof session for the warmup run.
-  """
-
-  num_warmup_steps: int = 0
-  first_step_time_seconds: float = 0.0
-  warmup_overhead_seconds: float = 0.0
-  warmup_session_xprof_url: str | None = None
-
-
-@dataclasses.dataclass
-class _PostWarmupRunResult:
-  """Result of the post warmup run.
-
-  Attributes:
-    post_warmup_step_time_seconds: The average step time in seconds after the
-      warmup is complete.
-    peak_device_memory_mb: The peak device memory usage in MB for a benchmark
-      step.
-  """
-
-  post_warmup_step_time_seconds: float = 0.0
-  peak_device_memory_mb: float = 0.0
-  post_warmup_run_session_xprof_url: str | None = None
-  average_post_warmup_device_time_seconds: float = -1.0
 
 
 class XprofContext:
@@ -396,7 +278,7 @@ def _warmup_run(
     optimizer: torch.optim.Optimizer | None = None,
     enable_xprof: bool = False,
     sync_params: bool = False,
-) -> _WarmupRunResult:
+) -> metrics_lib.WarmupRunResult:
   """Runs the model for MAX_WARMUP_STEPS times to warmup the caches.
 
   If the benchmark function compilations have not stabilized after
@@ -414,7 +296,7 @@ def _warmup_run(
       timing loops.
 
   Returns:
-    A _WarmupRunResult instance containing the number of warmup steps, the time
+    A WarmupRunResult instance containing the number of warmup steps, the time
     taken for the first step, and the warmup overhead in seconds.
   """
   # TODO(bbahl): Decide the number of warmup steps dynamically, possibly based
@@ -461,7 +343,7 @@ def _warmup_run(
         f"http://xprof/?session_id={warmup_run_context.session_id}"
     )
 
-  return _WarmupRunResult(
+  return metrics_lib.WarmupRunResult(
       num_warmup_steps=num_warmup_steps,  # pyrefly: ignore[bad-argument-type]
       first_step_time_seconds=timings[0],
       warmup_overhead_seconds=_get_warmup_overhead(timings, num_warmup_steps),  # pyrefly: ignore[bad-argument-type]
@@ -482,7 +364,7 @@ def _post_warmup_run(
     enable_xprof: bool = False,
     xprof_client: xprof_analysis_client.XprofAnalysisClient | None = None,
     sync_params: bool = False,
-) -> _PostWarmupRunResult:
+) -> metrics_lib.PostWarmupRunResult:
   """Runs the model once after the warmup is complete.
 
   Args:
@@ -497,7 +379,7 @@ def _post_warmup_run(
       timing loops.
 
   Returns:
-    A _PostWarmupRunResult instance containing the average step time and peak
+    A PostWarmupRunResult instance containing the average step time and peak
     device memory usage.
   """
 
@@ -595,7 +477,7 @@ def _post_warmup_run(
         " step to measure post warmup performance."
     )
 
-  return _PostWarmupRunResult(
+  return metrics_lib.PostWarmupRunResult(
       post_warmup_step_time_seconds=np.mean(non_xprof_timings),
       peak_device_memory_mb=memory_usage,
       post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
@@ -690,7 +572,7 @@ def run_performance_benchmark(
     sync_params: bool = False,
     is_bounded_dynamic: bool = False,
     capture_file_name: Optional[str] = None,
-) -> PerformanceBenchmarkResult:
+) -> metrics_lib.PerformanceMetrics:
   """Runs a performance benchmark for a given model.
 
   Args:
@@ -710,14 +592,14 @@ def run_performance_benchmark(
       If None, no data related to ops will be captured.
 
   Returns:
-    A PerformanceBenchmarkResult instance containing the results of the
+    A PerformanceMetrics instance containing the results of the
     benchmark.
   """
   if _get_device_name(device) == "cuda" and not torch.cuda.is_available():
     logging.warning("CUDA is not available. Skipping CUDA benchmark.")
     # Return a default result if CUDA is not available to avoid failing
     # presubmits on non-CUDA environments.
-    return PerformanceBenchmarkResult()
+    return metrics_lib.PerformanceMetrics()
 
   _synchronize_all_tensors(example_inputs, device)
   _synchronize_all_tensors(list(model.state_dict().values()), device)
@@ -732,7 +614,7 @@ def run_performance_benchmark(
         optimizer=optimizer,
         sync_params=sync_params,
     )
-    return PerformanceBenchmarkResult()
+    return metrics_lib.PerformanceMetrics()
 
   warmup_steps = MAX_WARMUP_STEPS.value
   if is_bounded_dynamic and (
@@ -744,7 +626,7 @@ def run_performance_benchmark(
         " POST_WARMUP_STEPS. This is unexpected for bounded dynamic"
         " benchmarks. Skipping benchmark."
     )
-    return PerformanceBenchmarkResult()
+    return metrics_lib.PerformanceMetrics()
 
   warmup_inputs = (
       example_inputs[:warmup_steps] if is_bounded_dynamic else example_inputs
@@ -785,7 +667,7 @@ def run_performance_benchmark(
       device_utils.get_peak_host_compilation_memory_mb(_get_device_name(device))
   )
 
-  return PerformanceBenchmarkResult(
+  return metrics_lib.PerformanceMetrics(
       e2e_wall_time_seconds=time.perf_counter() - start_time,
       **result_kwargs,
   )
@@ -797,7 +679,7 @@ def run_quality_benchmark(
     dataset_loader: Iterable[Any],
     benchmark_metrics: Sequence[quality_benchmark_model.MetricProducer],
     device: torch.device,
-) -> QualityBenchmarkResult:
+) -> metrics_lib.QualityMetrics:
   """Runs a quality benchmark for a given model.
 
   Args:
@@ -808,7 +690,7 @@ def run_quality_benchmark(
     device: The device the model and input data is on.
 
   Returns:
-    A QualityBenchmarkResult instance containing the results of the benchmark.
+    A QualityMetrics instance containing the results of the benchmark.
   """
   benchmark_model.initialize()
   start_time = time.perf_counter()
@@ -821,7 +703,7 @@ def run_quality_benchmark(
     metric_scores[benchmark_metric.get_name()] = score.item()  # pyrefly: ignore[missing-attribute]
   logging.info("Metric scores (device: %s): %s", device, metric_scores)
 
-  return QualityBenchmarkResult(
+  return metrics_lib.QualityMetrics(
       e2e_wall_time_seconds=time.perf_counter() - start_time,
       metrics=metric_scores,
   )

@@ -43,6 +43,7 @@ torch_tpu_py_library(
     deps = [
         ":common",
         ":device_utils",
+        "//examples/benchmarks/e2e/harness:metrics",
         "//examples/benchmarks/ops:op_capture",
         "//examples/benchmarks/quality_utils:quality_benchmark_model",
         "//shims/absl_py/flags",
@@ -60,8 +61,8 @@ torch_tpu_py_library(
     name = "mlcompass_utils",
     srcs = ["mlcompass_utils.py"],
     deps = [
-        ":benchmark_utils",
         ":common",
+        "//examples/benchmarks/e2e/harness:metrics",
         "//shims/absl_py/logging",
         "//torch_tpu/_internal/shims/mlcompass:benchmark_data",
         "//torch_tpu/_internal/shims/mlcompass:export_lib_borg",
@@ -79,6 +80,7 @@ torch_tpu_py_library(
         ":device_utils",
         ":mlcompass_utils",
         ":model_utils",
+        "//examples/benchmarks/e2e/harness:metrics",
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/torch",
@@ -268,6 +270,7 @@ torch_tpu_py_test(
         ":model_utils",
         ":performance_utils",
         ":test_utils",
+        "//examples/benchmarks/e2e/harness:metrics",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",

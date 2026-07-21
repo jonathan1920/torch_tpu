@@ -30,3 +30,8 @@ alias(
     name = "parameterized",
     actual = "@pypi//absl_py",
 )
+
+alias(
+    name = "flagsaver",
+    actual = "@pypi//absl_py",
+)

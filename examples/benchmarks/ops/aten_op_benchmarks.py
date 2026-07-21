@@ -40,6 +40,7 @@ from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import mlcompass_utils
+from examples.benchmarks.e2e.harness import metrics as metrics_lib
 from examples.benchmarks.e2e.performance_utils import _run_mode_context
 from examples.benchmarks.ops.op_input_loader import deserialize_args
 
@@ -50,7 +51,7 @@ MIN_RUN_TIME = flags.DEFINE_float(
 
 
 @dataclasses.dataclass
-class OpBenchmarkResult(benchmark_utils.BenchmarkResultInterface):
+class OpBenchmarkResult(metrics_lib.MetricsInterface):
   """Result of a single operator benchmark run."""
 
   median_time_us: float = 0.0

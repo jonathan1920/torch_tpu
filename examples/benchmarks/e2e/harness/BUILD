@@ -24,25 +24,24 @@ package(
 )
 
 torch_tpu_py_library(
-    name = "performance_utils",
-    testonly = 1,
-    srcs = ["performance_utils.py"],
+    name = "metrics",
+    srcs = ["metrics.py"],
+)
+
+torch_tpu_py_library(
+    name = "device_ops",
+    srcs = ["device_ops.py"],
+)
+
+torch_tpu_py_library(
+    name = "measure",
+    srcs = ["measure.py"],
     deps = [
-        "//examples/benchmarks/e2e:benchmark_utils",
-        "//examples/benchmarks/e2e:common",
-        "//examples/benchmarks/e2e:device_utils",
-        "//examples/benchmarks/e2e:mlcompass_utils",
-        "//examples/benchmarks/e2e:performance_utils",
-        "//examples/benchmarks/e2e/harness:metrics",
+        ":device_ops",
+        ":metrics",
+        "//shims/absl_py/flags",
         "//shims/absl_py/logging",
-        "//shims/torch",
-        "//shims/torch:pytorch",
-        "//torch_tpu/_internal/shims/xprof:traceme",
-        "//torch_tpu/_internal/utils:log_utils",
-        "@pypi//jax",
         "@pypi//numpy",
-        "@pypi//optax",
-        "@pypi//torchax",
     ],
 )
 

@@ -31,6 +31,7 @@ from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
 from examples.benchmarks.e2e import test_utils
+from examples.benchmarks.e2e.harness import metrics as metrics_lib
 
 from torch_tpu._internal.shims.xprof import traceme
 
@@ -176,7 +177,7 @@ class CompileBenchmarkTest(test_utils.BenchmarkTest):
 
     rank = int(os.environ.get("RANK", "0"))
     if benchmark_utils.MLCOMPASS_TRACKING_ID.value and rank == 0:
-      metrics = benchmark_utils.PerformanceBenchmarkResult(
+      metrics = metrics_lib.PerformanceMetrics(
           num_warmup_steps=benchmark_utils.MIN_WARMUP_STEPS.value,
           first_step_time_seconds=first_step_time_seconds,
           warmup_overhead_seconds=warmup_overhead_seconds,

@@ -34,6 +34,7 @@ from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
+from examples.benchmarks.e2e.harness import metrics as metrics_lib
 from tests.distributed import distributed_utils
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
@@ -207,7 +208,7 @@ _TENSORBOARD_EXPORTED = False
 
 
 def _export_to_tensorboard(
-    result: benchmark_utils.BenchmarkResultInterface,
+    result: metrics_lib.MetricsInterface,
     tblog_dir: str,
 ) -> None:
   """Exports benchmark results to TensorBoard.

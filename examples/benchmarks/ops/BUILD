@@ -67,6 +67,7 @@ torch_tpu_py_test(
         "//examples/benchmarks/e2e:device_utils",
         "//examples/benchmarks/e2e:mlcompass_utils",
         "//examples/benchmarks/e2e:performance_utils",
+        "//examples/benchmarks/e2e/harness:metrics",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
