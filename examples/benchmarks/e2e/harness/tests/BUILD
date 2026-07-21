@@ -35,4 +35,15 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "target_test",
+    srcs = ["target_test.py"],
+    deps = [
+        "//examples/benchmarks/e2e/harness:target",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//torch_tpu",
+    ],
+)
+
 torch_tpu_package_end()

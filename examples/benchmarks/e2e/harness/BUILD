@@ -45,4 +45,9 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_library(
+    name = "target",
+    srcs = ["target.py"],
+)
+
 torch_tpu_package_end()
