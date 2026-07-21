@@ -599,55 +599,55 @@ torch_tpu_py_test(
     ],
 )
 
-# TODO(b/537411907): Re-enable these tests once the bug is fixed.
-# torch_tpu_py_test(
-#     name = "spmd_util_collective_test",
-#     srcs = ["spmd_util_collective_test.py"],
-#     tags = if_oss(
-#         # In OSS, we have to run the test exclusively to avoid the
-#         # "TPU initialization failed ... Device or resource busy" error.
-#         ["exclusive"],
-#         [],
-#     ) + [
-#         "requires-tpu-v5lite:8",
-#     ],
-#     deps = [
-#         ":distributed_utils",
-#         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
-#         "//shims/absl_py/testing:absltest",
-#         "//shims/torch:pytorch",
-#         "//torch_tpu",
-#         "//torch_tpu/_internal/distributed:spmd_util",
-#         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
-#         "//torch_tpu/_internal/execution_mode",
-#         "//torch_tpu/_internal/sync",
-#     ],
-# )
+torch_tpu_py_test(
+    name = "spmd_util_collective_test",
+    srcs = ["spmd_util_collective_test.py"],
+    notest_oss = "TODO(b/537411907): Re-enable in OSS once fixed.",
+    tags = if_oss(
+        # In OSS, we have to run the test exclusively to avoid the
+        # "TPU initialization failed ... Device or resource busy" error.
+        ["exclusive"],
+        [],
+    ) + [
+        "requires-tpu-v5lite:8",
+    ],
+    deps = [
+        ":distributed_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/distributed:spmd_util",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/sync",
+    ],
+)
 
-# TODO(b/537411907): Re-enable these tests once the bug is fixed.
-# torch_tpu_py_test(
-#     name = "split_collective_ops_test",
-#     srcs = ["split_collective_ops_test.py"],
-#     tags = if_oss(
-#         ["exclusive"],
-#         [],
-#     ) + [
-#         "requires-tpu-v5lite:8",
-#     ],
-#     deps = [
-#         ":distributed_utils",
-#         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
-#         "//shims/absl_py/testing:absltest",
-#         "//shims/absl_py/testing:parameterized",
-#         "//shims/torch:pytorch",
-#         "//torch_tpu",
-#         "//torch_tpu/_internal/compile:compiler",
-#         "//torch_tpu/_internal/compile:split_compiler",
-#         "//torch_tpu/_internal/compile:torch_tpu_compiled_executable",
-#         "//torch_tpu/_internal/compile:tpu_backend",
-#         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
-#         "//torch_tpu/_internal/utils",
-#     ],
-# )
+torch_tpu_py_test(
+    name = "split_collective_ops_test",
+    srcs = ["split_collective_ops_test.py"],
+    notest_oss = "TODO(b/537411907): Re-enable in OSS once fixed.",
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
+        "requires-tpu-v5lite:8",
+    ],
+    deps = [
+        ":distributed_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:compiler",
+        "//torch_tpu/_internal/compile:split_compiler",
+        "//torch_tpu/_internal/compile:torch_tpu_compiled_executable",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/utils",
+    ],
+)
 
 torch_tpu_package_end()
