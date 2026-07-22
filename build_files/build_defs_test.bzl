@@ -14,8 +14,138 @@
 
 """Unit tests for build_defs.bzl."""
 
+load("@rules_testing//lib:analysis_test.bzl", "analysis_test")
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
-load("//build_files:build_defs.bzl", "check_and_adjust_test_tags_for_testing", "is_oss", "tpu_gen")
+load("//build_files:build_defs.bzl", "check_and_adjust_test_tags_for_testing", "is_oss", "torch_tpu_cc_test", "tpu_gen")
+
+_TagsInfo = provider(
+    "Provider for extracting rule attributes during analysis tests.",
+    fields = ["tags", "rule_kind", "env", "exec_properties"],
+)
+
+def _tags_aspect_impl(_target, ctx):
+    return [_TagsInfo(
+        tags = ctx.rule.attr.tags,
+        rule_kind = ctx.rule.kind,
+        env = getattr(ctx.rule.attr, "env", {}),
+        exec_properties = getattr(ctx.rule.attr, "exec_properties", {}),
+    )]
+
+tags_aspect = aspect(
+    implementation = _tags_aspect_impl,
+)
+
+def _test_macro_tags_impl(env, targets):
+    tags = targets.subject[_TagsInfo].tags
+    env.expect.that_collection(tags).contains("nobuild")
+
+def _test_macro_tags(name):
+    torch_tpu_cc_test(
+        name = name + "_subject",
+        srcs = [],
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_macro_tags_impl,
+        targets = {"subject": name + "_subject"},
+        attrs = {"subject": {"aspects": [tags_aspect]}},
+    )
+
+# --- requires_libtpu macro tests ---
+#
+# When torch_tpu_cc_test is invoked with requires_libtpu = True (or when requires_libtpu is
+# omitted and automatically inferred from a "requires-tpu" tag in OSS), the macro wraps the C++
+# binary inside an sh_test rule (run_cc_tpu_test.sh) to configure TPU_LIBRARY_PATH in OSS.
+# In internal Google3 builds, or when requires_libtpu is explicitly set to False, no sh_test
+# wrapper is created, and the top-level rule emitted is directly a cc_test.
+#
+# We verify this behavior using analysis tests that inspect the target's rule_kind via tags_aspect.
+
+def _test_requires_libtpu_inferred_impl(env, targets):
+    """Verifies that requires_libtpu defaults to True in OSS when 'requires-tpu' tag is present."""
+
+    # In OSS, because the target has 'requires-tpu' in its tags, requires_libtpu is inferred as True,
+    # emitting an sh_test top-level rule. In internal builds, it emits a cc_test.
+    rule_kind = targets.subject[_TagsInfo].rule_kind
+    env.expect.that_str(rule_kind).equals("sh_test" if is_oss() else "cc_test")
+
+def _test_requires_libtpu_inferred(name):
+    torch_tpu_cc_test(
+        name = name + "_subject",
+        srcs = [],
+        tags = ["requires-tpu"],
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_requires_libtpu_inferred_impl,
+        targets = {"subject": name + "_subject"},
+        attrs = {"subject": {"aspects": [tags_aspect]}},
+    )
+
+def _test_requires_libtpu_explicit_true_impl(env, targets):
+    """Verifies that explicitly passing requires_libtpu = True wraps the test in OSS and forwards env/exec_properties."""
+
+    # When requires_libtpu = True is explicitly provided, an sh_test wrapper is emitted in OSS
+    # even when no 'requires-tpu' hardware tags are present on the target.
+    info = targets.subject[_TagsInfo]
+    env.expect.that_str(info.rule_kind).equals("sh_test" if is_oss() else "cc_test")
+    env.expect.that_dict(info.env).contains_exactly({"TEST_ENV": "1"})
+
+    # In OSS (when rule_kind is sh_test), cpp_link.mem is filtered out from exec_properties
+    # so that sh_test does not crash with non-existent exec group errors.
+    expected_exec_properties = (
+        {"test.pool": "tpu-pool"} if is_oss() else {"cpp_link.mem": "20g", "test.pool": "tpu-pool"}
+    )
+    env.expect.that_dict(info.exec_properties).contains_exactly(expected_exec_properties)
+
+def _test_requires_libtpu_explicit_true(name):
+    torch_tpu_cc_test(
+        name = name + "_subject",
+        srcs = [],
+        requires_libtpu = True,
+        env = {"TEST_ENV": "1"},
+        exec_properties = {"cpp_link.mem": "20g", "test.pool": "tpu-pool"},
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_requires_libtpu_explicit_true_impl,
+        targets = {"subject": name + "_subject"},
+        attrs = {"subject": {"aspects": [tags_aspect]}},
+    )
+
+def _test_requires_libtpu_explicit_false_impl(env, targets):
+    """Verifies that explicitly passing requires_libtpu = False disables wrapping even when 'requires-tpu' is tagged."""
+
+    # When requires_libtpu = False is explicitly passed, it overrides any 'requires-tpu' tag inference,
+    # ensuring the top-level rule remains a cc_test across both OSS and internal builds.
+    rule_kind = targets.subject[_TagsInfo].rule_kind
+    env.expect.that_str(rule_kind).equals("cc_test")
+
+def _test_requires_libtpu_explicit_false(name):
+    torch_tpu_cc_test(
+        name = name + "_subject",
+        srcs = [],
+        requires_libtpu = False,
+        tags = ["requires-tpu"],
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_requires_libtpu_explicit_false_impl,
+        targets = {"subject": name + "_subject"},
+        attrs = {"subject": {"aspects": [tags_aspect]}},
+    )
 
 def _test_nobuild(env):
     """Tests the nobuild parameter."""
@@ -289,7 +419,13 @@ def build_defs_test_suite(name):
         name: The name of the test suite. All tests in this suite will be prefixed with this name.
     """
     test_suite(
-        name = name,
+        name = name + "_rules_testing",
+        tests = [
+            _test_macro_tags,
+            _test_requires_libtpu_inferred,
+            _test_requires_libtpu_explicit_true,
+            _test_requires_libtpu_explicit_false,
+        ],
         basic_tests = [
             # go/keep-sorted start
             _test_cuda_build_test,
@@ -316,4 +452,8 @@ def build_defs_test_suite(name):
             _test_oss_presubmit_tpu_generation_implicit_v6,
             # go/keep-sorted end
         ],
+    )
+    native.test_suite(
+        name = name,
+        tests = [":" + name + "_rules_testing"],
     )

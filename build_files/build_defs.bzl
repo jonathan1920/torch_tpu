@@ -496,6 +496,7 @@ def torch_tpu_cc_test(
         nonightly_oss = None,
         oss_presubmit_tpu_generation = None,
         tags = None,
+        requires_libtpu = None,
         **kwargs):
     """Creates a cc_test for torch_tpu.
 
@@ -538,6 +539,10 @@ def torch_tpu_cc_test(
             OSS.
         oss_presubmit_tpu_generation: Optional integer specifying the TPU generation to run this
             test on in OSS presubmit.
+        requires_libtpu: If True, wraps the C++ test inside an sh_test wrapper
+            in OSS to load libtpu.so cleanly. If None (default), the value is set
+            depending on whether the test is declared as running on TPUs (`True`)
+            or CPUs (`False`).
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
@@ -572,6 +577,10 @@ def torch_tpu_cc_test(
         data.append("@bazel_tools//tools/bash/runfiles")
     kwargs["data"] = data
 
+    cc_test_name = name
+    cc_test_tags = tags
+    effective_tags = list(tags)
+
     result = _check_and_adjust_test_tags(
         name = name,
         is_oss = is_oss(),
@@ -586,16 +595,90 @@ def torch_tpu_cc_test(
         nopresubmit_oss = nopresubmit_oss,
         nonightly_oss = nonightly_oss,
         oss_presubmit_tpu_generation = oss_presubmit_tpu_generation,
-        tags = tags,
+        tags = effective_tags,
     )
+
+    if requires_libtpu == None:
+        # requires-tpu is a generic tag automatically applied whenever at least
+        # one requires-tpu-X tag is present, where X is a TPU generation.
+        requires_libtpu = is_oss() and "requires-tpu" in effective_tags
+
+    is_wrapped = is_oss() and requires_libtpu
+
+    # TODO(b/479574836): This is implemented with a hack to set up the libtpu
+    # environment; refactor this when libtpu has an API equivalent to the Python
+    # initialization logic.
+    if is_wrapped:
+        cc_test_name = name + "_bin"
+        cc_test_tags = list(effective_tags)
+
+        # Tag the C++ binary as manual/notest to prevent direct execution in
+        # OSS; it should only run via the sh_test wrapper.
+        for t in ["manual", "notest"]:
+            if t not in cc_test_tags:
+                cc_test_tags.append(t)
+
+        # Define a wrapper around the C++ binary that sets up the libtpu environment
+        sh_test_kwargs = {}
+
+        # List of cc attributes we don't want to forward to sh_test.
+        _INVALID_SH_TEST_ATTRS = [
+            "deps",
+            "copts",
+            "linkopts",
+            "includes",
+            "defines",
+            "local_defines",
+            "linkstatic",
+            "malloc",
+            "stamp",
+            "alwayslink",
+            "additional_compiler_inputs",
+            "textual_hdrs",
+            "exec_properties",  # Handled explicitly below
+            "data",  # Passed explicitly below
+        ]
+        for attr, value in kwargs.items():
+            if attr not in _INVALID_SH_TEST_ATTRS:
+                sh_test_kwargs[attr] = value
+
+        if "exec_properties" in kwargs and kwargs["exec_properties"]:
+            # Filter out C++ execution group properties (e.g. cpp_link, cpp_compile)
+            # because sh_test does not have those execution groups.
+            filtered_exec_properties = {
+                k: v
+                for k, v in kwargs["exec_properties"].items()
+                if not k.startswith("cpp_link.") and not k.startswith("cpp_compile.")
+            }
+            if filtered_exec_properties:
+                sh_test_kwargs["exec_properties"] = filtered_exec_properties
+
+        native.sh_test(
+            name = name,
+            size = size,
+            timeout = timeout,
+            srcs = ["//ci/tools:run_cc_tpu_test.sh"],
+            args = ["$(location :" + cc_test_name + ")"] + args,
+            data = [
+                ":" + cc_test_name,
+                "//shims/libtpu:pypi_libtpu_whl",
+            ] + data,
+            tags = effective_tags,
+            **sh_test_kwargs
+        )
+    else:
+        cc_test_tags = effective_tags
+
     if result.create_build_test:
         build_test(
             name = name + "_build_test",
             targets = [":" + name],
             tags = result.build_test_tags,
         )
+
+    # Define the C++ test target (handles compilation, compilation options, and static linking)
     cc_test(
-        name = name,
+        name = cc_test_name,
         size = size,
         timeout = timeout,
         srcs = srcs,
@@ -603,7 +686,7 @@ def torch_tpu_cc_test(
         args = args,
         features = features,
         linkstatic = linkstatic,
-        tags = tags,
+        tags = cc_test_tags,
         **kwargs
     )
 
