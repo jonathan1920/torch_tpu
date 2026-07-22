@@ -217,6 +217,13 @@ absl::StatusOr<DeviceBufferRef> ClampScalarHelper(
                                std::move(param_keys));
 }
 
+absl::Status CheckNotBool(const at::Tensor& tensor,
+                          const std::string_view arg_name) {
+  TT_RET_CHECK(!IsBool(tensor), error::kInvalidArgument)
+      << arg_name << " must not be bool";
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 at::Tensor& AtenClampOut(const at::Tensor& self,
@@ -227,6 +234,7 @@ at::Tensor& AtenClampOut(const at::Tensor& self,
   auto promoted_max = PromoteScalar(max);
   TT_KERNEL(
       OpName::kClampOut, param_keys, (self, promoted_min, promoted_max, out), {
+        TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
         TT_ASSIGN_OR_THROW(
             auto result_buf,
             ClampScalarHelper(self, std::move(promoted_min),
@@ -243,6 +251,7 @@ at::Tensor& AtenClampMinOut(const at::Tensor& self, const at::Scalar& min,
                             at::Tensor& out) {
   auto promoted_min = PromoteScalar(min);
   TT_KERNEL(OpName::kClampMinOut, param_keys, (self, promoted_min, out), {
+    TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         ClampScalarHelper(self, std::move(promoted_min), std::nullopt,
@@ -257,6 +266,7 @@ at::Tensor& AtenClampMaxOut(const at::Tensor& self, const at::Scalar& max,
                             at::Tensor& out) {
   auto promoted_max = PromoteScalar(max);
   TT_KERNEL(OpName::kClampMaxOut, param_keys, (self, promoted_max, out), {
+    TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         ClampScalarHelper(self, std::nullopt, std::move(promoted_max),
@@ -272,6 +282,13 @@ at::Tensor& AtenClampTensorOut(const at::Tensor& self,
                                const c10::optional<at::Tensor>& max,
                                at::Tensor& out) {
   TT_KERNEL(OpName::kClampTensorOut, param_keys, (self, min, max, out), {
+    TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
+    if (min) {
+      TT_THROW_IF_ERROR(CheckNotBool(*min, /*arg_name=*/"min"));
+    }
+    if (max) {
+      TT_THROW_IF_ERROR(CheckNotBool(*max, /*arg_name=*/"max"));
+    }
     TT_ASSIGN_OR_THROW(auto result_buf,
                        AtenClampTensorHelper(self, min, max, out.scalar_type(),
                                              std::move(param_keys)));
@@ -284,6 +301,8 @@ at::Tensor& AtenClampTensorOut(const at::Tensor& self,
 at::Tensor& AtenClampMinTensorOut(const at::Tensor& self, const at::Tensor& min,
                                   at::Tensor& out) {
   TT_KERNEL(OpName::kClampMinTensorOut, param_keys, (self, min, out), {
+    TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(CheckNotBool(min, /*arg_name=*/"min"));
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         AtenClampTensorHelper(self, min, std::nullopt, out.scalar_type(),
@@ -297,6 +316,8 @@ at::Tensor& AtenClampMinTensorOut(const at::Tensor& self, const at::Tensor& min,
 at::Tensor& AtenClampMaxTensorOut(const at::Tensor& self, const at::Tensor& max,
                                   at::Tensor& out) {
   TT_KERNEL(OpName::kClampMaxTensorOut, param_keys, (self, max, out), {
+    TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(CheckNotBool(max, /*arg_name=*/"max"));
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         AtenClampTensorHelper(self, std::nullopt, max, out.scalar_type(),

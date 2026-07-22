@@ -4242,6 +4242,16 @@ Supported combinations for non-constant padding:
       ):
         torch.clamp(inp, min=minv, max=maxv, out=out)
 
+  def test_clamp_unsupported_bool(self):
+    t = torch.tensor([True, False], device=et.device(), dtype=torch.bool)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""clamp(): self must not be bool""",
+        gpu=""""clamp_scalar_cuda" not implemented for 'Bool'""",
+        message_reviewed_by="wan",
+    ):
+      torch.clamp(t, min=False, max=True)
+
   def test_bmm_bool(self):
     a = torch.ones(1, 2, 3, dtype=torch.float32, device=et.device())
     b = torch.ones(1, 3, 2, dtype=torch.float32, device=et.device())

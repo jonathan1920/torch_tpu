@@ -1991,8 +1991,9 @@ class TestOps(TorchTpuTestBase):
   def test_clamp(self):
     self.do_test_op(
         "clamp",
-        # b/446131726 - clamp() fails on TPU with bool dtypes but works on GPU.
-        exclude_inplace_dtypes=(torch.bool,),
+        # b/446131726 - clamp() fails on TPU with bool dtypes.
+        exclude_dtypes=(torch.bool,),  # EXCLUDE_DTYPES_OK=b/446131726
+        exclude_inplace_dtypes=(torch.bool,),  # EXCLUDE_DTYPES_OK=b/446131726
         # TODO: b/478321000 remove when PyTorch#173110 is fixed.
         skip_if=_inplace_clamp_input_has_negative_values_uint8_gpu,
         # TODO: fix clamp() returning enormous errors or nans when dynamism is
@@ -2005,8 +2006,14 @@ class TestOps(TorchTpuTestBase):
         "clamp_min",
         # TODO: b/478321000 remove when PyTorch#173110 is fixed.
         skip_if=_inplace_clamp_input_has_negative_values_uint8_gpu,
-        exclude_dtypes=(torch.complex64,),
-        exclude_inplace_dtypes=(torch.complex64,),
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=b/446131726
+            torch.complex64,
+            torch.bool,
+        ),
+        exclude_inplace_dtypes=(  # EXCLUDE_DTYPES_OK=b/446131726
+            torch.complex64,
+            torch.bool,
+        ),
     )
 
   def test_clamp_max(self):
@@ -2014,8 +2021,14 @@ class TestOps(TorchTpuTestBase):
         "clamp_max",
         # TODO: b/478321000 remove when PyTorch#173110 is fixed.
         skip_if=_inplace_clamp_input_has_negative_values_uint8_gpu,
-        exclude_dtypes=(torch.complex64,),
-        exclude_inplace_dtypes=(torch.complex64,),
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=b/446131726
+            torch.complex64,
+            torch.bool,
+        ),
+        exclude_inplace_dtypes=(  # EXCLUDE_DTYPES_OK=b/446131726
+            torch.complex64,
+            torch.bool,
+        ),
     )
 
   def test_clone(self):
