@@ -27,9 +27,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <fstream>
 #include <functional>
-#include <ios>
 #include <memory>
 #include <optional>
 #include <set>
@@ -438,8 +436,8 @@ void TpuKinetoProfilerSession::stop() {
         << "TpuKinetoProfilerSession::stop() Collected XSpace planes: "
         << xspace_.planes_size();
     if (!status.ok()) {
-      errors_.push_back("Failed to collect TPU profiling data: " +
-                        status.ToString());
+      errors_.push_back(absl::StrCat("Failed to collect TPU profiling data: ",
+                                     status.ToString()));
       status_ = libkineto::TraceStatus::ERROR;
       session_.reset();
       return;
@@ -453,25 +451,22 @@ void TpuKinetoProfilerSession::stop() {
 
     absl::StatusOr<std::string> resolved_path = GetXPlaneOutputPath(run_dir);
     if (!resolved_path.ok()) {
-      errors_.push_back("Failed to get XPlane output path: " +
-                        resolved_path.status().ToString());
+      errors_.push_back(absl::StrCat("Failed to get XPlane output path: ",
+                                     resolved_path.status().ToString()));
       ABSL_LOG(ERROR) << "Failed to get XPlane output path: "
                       << resolved_path.status();
     } else {
       std::string output_path = *resolved_path;
-      std::ofstream f(output_path, std::ios::binary);
       ABSL_VLOG(1) << "Attempting to write XPlane to " << output_path;
-      if (!f) {
-        errors_.push_back("Failed to open XSpace output file: " + output_path);
-        ABSL_LOG(ERROR) << "Failed to open XSpace output file: " << output_path;
+      absl::Status s =
+          tsl::WriteBinaryProto(tsl::Env::Default(), output_path, xspace_);
+      if (!s.ok()) {
+        errors_.push_back(
+            absl::StrCat("Failed to write XSpace to file: ", output_path));
+        ABSL_LOG(ERROR) << "Failed to write XSpace to file: " << output_path
+                        << ". Error: " << s;
       } else {
-        if (xspace_.SerializeToOstream(&f)) {
-          ABSL_LOG(INFO) << "Successfully wrote XPlane to " << output_path;
-        } else {
-          errors_.push_back("Failed to write XSpace to file: " + output_path);
-          ABSL_LOG(ERROR) << "Failed to write XSpace to file: " << output_path;
-        }
-        f.close();
+        ABSL_LOG(INFO) << "Successfully wrote XPlane to " << output_path;
       }
     }
   }

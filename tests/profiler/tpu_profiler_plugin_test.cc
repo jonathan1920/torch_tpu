@@ -97,6 +97,17 @@ TEST(TpuProfilerPluginTest, UpdateProfileOptionsRunDir) {
   EXPECT_EQ(run_dir, "/home/user/tb_logs");
 }
 
+TEST(TpuProfilerPluginTest, UpdateProfileOptionsRunDirGcs) {
+  tensorflow::ProfileOptions opts;
+  std::string run_dir;
+
+  EXPECT_TRUE(
+      UpdateProfileOptions("run_dir:gs://my-bucket/my-dir", opts, run_dir)
+          .ok());
+
+  EXPECT_EQ(run_dir, "gs://my-bucket/my-dir");
+}
+
 TEST(TpuProfilerPluginTest, UpdateProfileOptionsWhitespace) {
   tensorflow::ProfileOptions opts;
   std::string run_dir;

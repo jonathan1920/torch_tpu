@@ -32,9 +32,7 @@ package(
 torch_tpu_py_library(
     name = "profiler_config",
     srcs = ["profiler_config.py"],
-    deps = [
-        "//shims/torch:pytorch",
-    ],
+    deps = ["//shims/torch:pytorch"],
 )
 
 # We use py_library_providing_imports_info with profiler.modspec.json to explicitly

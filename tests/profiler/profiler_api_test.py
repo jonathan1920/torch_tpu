@@ -15,6 +15,8 @@
 """Tests for _internal.profiler.profile APIs."""
 
 import os
+import pathlib
+from unittest import mock
 
 from absl.testing import absltest
 import torch
@@ -23,6 +25,7 @@ from torch_tpu._internal import sync as tpu_sync
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.profiler import _impl as profiler_impl
 from torch_tpu._internal.profiler import profiler_api
+from torch_tpu._internal.profiler.profiler_config import TpuProfilerConfig
 
 
 class ProfilerApiTest(absltest.TestCase):
@@ -142,6 +145,35 @@ class ProfilerApiTest(absltest.TestCase):
     self.assertEqual(options.device_tracer_level, 0)
     self.assertEqual(options.host_tracer_level, 0)
     self.assertEqual(options.python_tracer_level, 0)
+
+  def test_tpu_profiler_config_run_dir(self):
+    gcs_uri = 'gs://my-bucket/my-dir'
+    local_path = '/tmp/my-dir'
+
+    # Mock __init__ to capture kwargs for assertion.
+    # We must call original_init because PyTorch C++ bindings enforce that the
+    # base class constructor is always invoked.
+    original_init = torch.profiler._ExperimentalConfig.__init__
+    called_kwargs = {}
+
+    def fake_init(self, *args, **kwargs):
+      called_kwargs.clear()
+      called_kwargs.update(kwargs)
+      original_init(self, *args, **kwargs)
+
+    with mock.patch.object(
+        torch.profiler._ExperimentalConfig, '__init__', new=fake_init
+    ):
+      # Test that passing a GCS string preserves the protocol completely
+      TpuProfilerConfig(run_dir=gcs_uri)
+      custom_config = called_kwargs.get('custom_profiler_config', '')
+      self.assertIn('host_tracer_level:', custom_config)
+      self.assertIn(f'run_dir:{gcs_uri}', custom_config)
+
+      # Test that passing a pathlib.Path works for local paths
+      TpuProfilerConfig(run_dir=pathlib.Path(local_path))
+      custom_config = called_kwargs.get('custom_profiler_config', '')
+      self.assertIn(f'run_dir:{local_path}', custom_config)
 
 
 if __name__ == '__main__':

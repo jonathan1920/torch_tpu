@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-import pathlib
+import os
 from typing import TypeAlias
 
 import torch
@@ -87,7 +87,7 @@ class TpuProfilerConfig(torch.profiler._ExperimentalConfig):  # pylint: disable=
       host_tracer_level: int = 2,
       device_tracer_level: int = 1,
       python_tracer_level: int = 0,
-      run_dir: pathlib.Path | None = None,
+      run_dir: os.PathLike[str] | str | None = None,
       experimental_options: Mapping[str, _ExperimentalValue] | None = None,
       check_experimental_options: bool = True,
   ):
@@ -121,9 +121,7 @@ class TpuProfilerConfig(torch.profiler._ExperimentalConfig):  # pylint: disable=
         experimental keys are recognized by the underlying profiling compiler
         backend.
     """
-    run_dir_posix = (
-        pathlib.Path(run_dir).as_posix() if run_dir is not None else None
-    )
+    run_dir_posix = os.fspath(run_dir) if run_dir is not None else None
     for key in experimental_options or {}:
       if key in _STABLE_KEYS:
         raise ValueError(
