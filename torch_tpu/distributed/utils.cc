@@ -34,6 +34,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/distributed/types.h"
+#include "torch_tpu/eager/repeated_ops_heuristic.h"
 
 namespace torch_tpu {
 
@@ -85,7 +86,10 @@ absl::Status ValidateReductionOp(c10d::ReduceOp reduce_op,
   return absl::OkStatus();
 }
 
-void EnterSpmdSafeRegion() { PushContextState<IsSpmdSafeContextState>(true); }
+void EnterSpmdSafeRegion() {
+  PushContextState<IsSpmdSafeContextState>(true);
+  ResetRepeatedOpsHeuristicState();
+}
 
 void ExitSpmdSafeRegion() { PopContextState<IsSpmdSafeContextState>(); }
 

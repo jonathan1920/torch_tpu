@@ -101,6 +101,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:context_states",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:to_string",
+        "//torch_tpu/eager:repeated_ops_heuristic",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

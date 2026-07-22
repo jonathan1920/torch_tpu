@@ -602,6 +602,11 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "spmd_util_collective_test",
     srcs = ["spmd_util_collective_test.py"],
+    env = {
+        # We explicitly disable the compilation cache because we rely on every rank compiling for itself so that we can definitively confirm that every rank produces the same MLIR.
+        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
+        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "",
+    },
     notest_oss = "TODO(b/537411907): Re-enable in OSS once fixed.",
     tags = if_oss(
         # In OSS, we have to run the test exclusively to avoid the

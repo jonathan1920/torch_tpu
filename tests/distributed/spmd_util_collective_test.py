@@ -15,6 +15,7 @@
 import glob
 import hashlib
 import os
+import re
 from typing import TypeAlias
 from unittest import mock
 
@@ -32,7 +33,24 @@ from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multi
 EagerMode: TypeAlias = execution_mode.EagerMode
 
 
+def _update_xla_dump_to(xla_flags: str, dump_dir: str) -> str:
+  pattern = r"--xla_dump_to=\S+"
+  new_flag = f"--xla_dump_to={dump_dir}"
+  if re.search(pattern, xla_flags):
+    return re.sub(pattern, new_flag, xla_flags)
+  return f"{xla_flags} {new_flag}".strip()
+
+
 def _test_wrapper(test_fn, *args, **kwargs):
+  dump_dir = kwargs.pop("dump_dir", None)
+  if dump_dir is not None:
+    rank = os.environ.get("RANK", "0")
+    rank_dump_dir = os.path.join(dump_dir, f"rank_{rank}")
+    os.makedirs(rank_dump_dir, exist_ok=True)
+    os.environ["XLA_FLAGS"] = _update_xla_dump_to(
+        os.environ.get("XLA_FLAGS", ""), rank_dump_dir
+    )
+
   dist.init_process_group(backend="tpu_dist")
   try:
     test_fn(*args, **kwargs)
@@ -75,6 +93,28 @@ def run_spmd_safe_decorator_backward_test():
   sync.synchronize(x.grad, wait=True)
 
 
+def run_uncoordinated_op_stream_test():
+  """Repro test for interaction of SPMD safe and repeated ops heuristic."""
+  rank = dist.get_rank()
+  x = torch.ones((2, 2), device="cpu").to("tpu")
+
+  with execution_mode.set_eager_mode(EagerMode.DEFER_AND_FUSE):
+    for i in range(10):
+      if rank == 0 and i % 2 == 0:
+        x = x + 1
+
+      @spmd_util.spmd_safe
+      def foo(x):
+        for _ in range(10):
+          x = x + 1
+        dist.all_reduce(x)
+        return x
+
+      x = foo(x)
+
+    sync.synchronize(x, wait=True)
+
+
 class SpmdSafeDecoratorTest(absltest.TestCase):
   _world_size = 4
 
@@ -107,10 +147,53 @@ class SpmdSafeDecoratorTest(absltest.TestCase):
           f" {mlir_files}\nDetails:\n{details_str}"
       )
 
+  def _check_all_reduce_mlir_matching(self, dump_dir):
+    """Verifies that all MLIR files containing all_reduce match across all ranks."""
+    rank_mlirs = []
+    for r in range(self._world_size):
+      rank_dir = os.path.join(dump_dir, f"rank_{r}")
+      mlir_files = glob.glob(
+          os.path.join(rank_dir, "**/*.mlir"), recursive=True
+      )
+
+      all_reduce_contents = []
+      for fpath in sorted(mlir_files):
+        with open(fpath, "r") as f:
+          content = f.read()
+          if "all_reduce" in content:
+            all_reduce_contents.append(content)
+
+      rank_mlirs.append(all_reduce_contents)
+
+    rank_0_mlirs = rank_mlirs[0]
+    self.assertNotEmpty(
+        rank_0_mlirs, f"No all_reduce MLIR files found for rank 0 in {dump_dir}"
+    )
+
+    for r in range(1, self._world_size):
+      self.assertEqual(
+          len(rank_mlirs[r]),
+          len(rank_0_mlirs),
+          f"Rank {r} produced {len(rank_mlirs[r])} all_reduce MLIR modules, "
+          f"but Rank 0 produced {len(rank_0_mlirs)}.",
+      )
+      for idx, (mlir_0, mlir_r) in enumerate(zip(rank_0_mlirs, rank_mlirs[r])):
+        self.assertEqual(
+            mlir_0,
+            mlir_r,
+            f"MLIR content mismatch for all_reduce module #{idx} between rank 0"
+            f" and rank {r}!",
+        )
+
   def test_spmd_safe_decorator(self):
     dump_dir = self.create_tempdir(name="xla_dump_fused_collective").full_path
     with mock.patch.dict(
-        os.environ, {"XLA_FLAGS": f"--xla_dump_to={dump_dir}"}
+        os.environ,
+        {
+            "XLA_FLAGS": _update_xla_dump_to(
+                os.environ.get("XLA_FLAGS", ""), dump_dir
+            )
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,
@@ -126,7 +209,12 @@ class SpmdSafeDecoratorTest(absltest.TestCase):
         name="xla_dump_fused_collective_compile"
     ).full_path
     with mock.patch.dict(
-        os.environ, {"XLA_FLAGS": f"--xla_dump_to={dump_dir}"}
+        os.environ,
+        {
+            "XLA_FLAGS": _update_xla_dump_to(
+                os.environ.get("XLA_FLAGS", ""), dump_dir
+            )
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,
@@ -143,7 +231,12 @@ class SpmdSafeDecoratorTest(absltest.TestCase):
         name="xla_dump_fused_collective_compile_backward"
     ).full_path
     with mock.patch.dict(
-        os.environ, {"XLA_FLAGS": f"--xla_dump_to={dump_dir}"}
+        os.environ,
+        {
+            "XLA_FLAGS": _update_xla_dump_to(
+                os.environ.get("XLA_FLAGS", ""), dump_dir
+            )
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,
@@ -153,6 +246,18 @@ class SpmdSafeDecoratorTest(absltest.TestCase):
           test_fn=run_spmd_safe_decorator_backward_test,
       )
     self._check_fused_mlir(dump_dir, expected_count=2)
+
+  def test_uncoordinated_op_stream_deadlock(self):
+    dump_dir = self.create_tempdir(name="xla_dump_deadlock_test").full_path
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            _test_wrapper, world_size=self._world_size
+        ),
+        test_fn=run_uncoordinated_op_stream_test,
+        dump_dir=dump_dir,
+    )
+    self._check_all_reduce_mlir_matching(dump_dir)
 
 
 if __name__ == "__main__":
