@@ -26,12 +26,13 @@ from typing import Any
 import torch
 from torch.fx.passes import graph_transform_observer
 from torch_tpu._internal.compile.dynamic import sym_utils
+from torch_tpu._internal.compile.dynamic import symbol_bounds
 from torch_tpu._internal.compile.dynamic import view_ops_transformations
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
-from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
 
 
 GraphTransformObserver = graph_transform_observer.GraphTransformObserver
+get_symint_bounds = symbol_bounds.get_symint_bounds
 
 
 class HandleDynamicInputTensorPass:
@@ -556,9 +557,16 @@ def apply_dynamism_transformations(
       HandleGenerativeOpsPass(sym_shape_manager)
   )
 
-  # Updates view ops that are reshape like and have dynamic inputs.
-  GraphTransformObserver(graph_module, "handle_view_ops").apply_gm_pass(
-      view_ops_transformations.HandleViewOpsPass(sym_shape_manager)
+  # Updates view ops that are reshape-like and have dynamic inputs.
+  GraphTransformObserver(graph_module, "handle_reshape_like_ops").apply_gm_pass(
+      view_ops_transformations.HandleReshapeLikeOpsPass(sym_shape_manager)
+  )
+
+  # Updates broadcast operations that have dynamic inputs.
+  GraphTransformObserver(
+      graph_module, "handle_broadcast_like_ops"
+  ).apply_gm_pass(
+      view_ops_transformations.HandleBroadcastLikeOpsPass(sym_shape_manager)
   )
 
   # Replaces remaining usages of SymInt nodes in standard tensor operations.

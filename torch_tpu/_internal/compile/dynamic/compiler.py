@@ -21,8 +21,10 @@ from absl import logging
 import torch
 from torch._inductor.utils import InputType
 from torch._logging import LazyString
+from torch.fx.passes.graph_transform_observer import GraphTransformObserver
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.compile.dynamic import view_ops_transformations
 from torch_tpu._internal.compile.dynamic.graph_transformations import apply_dynamism_transformations
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
 from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
@@ -471,6 +473,12 @@ class DynamicCompiler(compiler.Compiler):
       graph_module: torch.fx.GraphModule,
   ) -> None:
     self.static_compiler.execute_pre_grad_passes(graph_module)
+
+    GraphTransformObserver(
+        graph_module, "replace_dynamic_output_broadcast_ops_pre_grad"
+    ).apply_gm_pass(
+        view_ops_transformations.ReplaceDynamicOutputBroadcastOpsPreGradPass()
+    )
 
   def __call__(
       self,

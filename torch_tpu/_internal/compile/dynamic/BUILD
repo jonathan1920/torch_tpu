@@ -75,6 +75,7 @@ torch_tpu_py_library(
         ":sym_shape_manager",
         ":sym_utils",
         ":symbol_bounds",
+        "//shims/absl_py/logging",
         "//shims/torch:pytorch",
     ],
 )
@@ -106,6 +107,7 @@ torch_tpu_py_library(
         ":graph_transformations",
         ":sym_shape_manager",
         ":symbol_bounds",
+        ":view_ops_transformations",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile:compiler",

@@ -650,5 +650,116 @@ class DynamicReshapeTest(absltest.TestCase):
     utils.assert_close(out1, expected)
 
 
+class DynamicBroadcastTest(absltest.TestCase):
+
+  def test_expand_dynamic_input_unambiguous(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.expand(-1, 3, 5)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(20, dtype=torch.float32, device="tpu").reshape(4, 1, 5)
+    torch._dynamo.mark_dynamic(x1, 0)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(20, dtype=torch.float32, device="cpu")
+        .reshape(4, 1, 5)
+        .expand(4, 3, 5)
+    )
+    utils.assert_close(out1, expected)
+
+  def test_expand_dynamic_output_dim(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x, y):
+        return x.expand(y.shape[0], 5)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(5, dtype=torch.float32, device="tpu").reshape(1, 5)
+    y1 = torch.arange(20, dtype=torch.float32, device="tpu").reshape(4, 5)
+    torch._dynamo.mark_dynamic(y1, 0, min=2, max=10)
+
+    out1 = compiled(x1, y1)
+    expected = x1.to("cpu").expand(4, 5)
+    utils.assert_close(out1, expected)
+
+  def test_expand_multi_dynamic(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x, y):
+        return x.expand(x.shape[0], y.shape[1])
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(4, dtype=torch.float32, device="tpu").reshape(4, 1)
+    y1 = torch.arange(12, dtype=torch.float32, device="tpu").reshape(4, 3)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=10)
+    torch._dynamo.mark_dynamic(y1, 0, min=2, max=10)
+    torch._dynamo.mark_dynamic(y1, 1, min=2, max=10)
+
+    out1 = compiled(x1, y1)
+    expected = x1.to("cpu").expand(4, 3)
+    utils.assert_close(out1, expected)
+
+  def test_broadcast_to_dynamic_output_dim(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x, y):
+        z = torch.broadcast_to(x, (y.shape[0], 5))
+        return z * 2
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(5, dtype=torch.float32, device="tpu").reshape(1, 5)
+    y1 = torch.arange(20, dtype=torch.float32, device="tpu").reshape(4, 5)
+    torch._dynamo.mark_dynamic(y1, 0, min=2, max=10)
+
+    out1 = compiled(x1, y1)
+    expected = torch.broadcast_to(x1.to("cpu"), (4, 5)) * 2
+    utils.assert_close(out1, expected)
+
+  def test_broadcast_to_dynamic_output_returned(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x, y):
+        return torch.broadcast_to(x, (y.shape[0], 5))
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(5, dtype=torch.float32, device="tpu").reshape(1, 5)
+    y1 = torch.arange(20, dtype=torch.float32, device="tpu").reshape(4, 5)
+    torch._dynamo.mark_dynamic(y1, 0, min=2, max=10)
+
+    out1 = compiled(x1, y1)
+    expected = torch.broadcast_to(x1.to("cpu"), (4, 5))
+    utils.assert_close(out1, expected)
+
+  def test_expand_method_sequence_arg(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x, y):
+        return x.expand([y.shape[0], 5])
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(5, dtype=torch.float32, device="tpu").reshape(1, 5)
+    y1 = torch.arange(20, dtype=torch.float32, device="tpu").reshape(4, 5)
+    torch._dynamo.mark_dynamic(y1, 0, min=2, max=10)
+
+    out1 = compiled(x1, y1)
+    expected = x1.to("cpu").expand([4, 5])
+    utils.assert_close(out1, expected)
+
+
 if __name__ == "__main__":
   absltest.main()
