@@ -2978,7 +2978,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       assert (
           False
       ), "This test should fail because input shapes are not compatible"
-    except:  # pylint: disable=bare-except
+    except RuntimeError:
       # Expected exception.
       pass
 
