@@ -28,7 +28,6 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -41,6 +40,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/ops/unary.h"
 
 namespace torch_tpu {
@@ -97,6 +97,9 @@ at::Tensor& AtenXlogyOutTensor(const at::Tensor& self, const at::Tensor& other,
       return BuildXlogyShlo(x_op, y_op, computation_dtype);
     };
 
+    TT_ASSIGN_OR_THROW(const auto out_dims,
+                       InferSize(self.sizes(), other.sizes()));
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, out_dims));
     TT_ASSIGN_OR_THROW(auto out_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
 
@@ -104,7 +107,7 @@ at::Tensor& AtenXlogyOutTensor(const at::Tensor& self, const at::Tensor& other,
         auto result_buffer,
         DispatchOp<2>(std::move(op_builder), {self, other},
                       {.out_dtype = out_dtype,
-                       .out_dims = CopyIntVector(out.sizes()),
+                       .out_dims = out_dims,
                        .op_param_cache_keys = OpParamCacheKeys::Empty()}));
 
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buffer), out));

@@ -20,7 +20,6 @@
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
-#include "ATen/native/Resize.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"

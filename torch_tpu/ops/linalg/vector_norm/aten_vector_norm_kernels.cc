@@ -102,26 +102,28 @@ at::Tensor& AtenLinalgVectorNormOut(const at::Tensor& self,
                                     at::Tensor& out) {
   MaybePromotedScalar promoted_ord =
       PromoteScalar(ord).AvoidPromoting(ScalarValue::kZero);
-  TT_KERNEL(OpName::kLinalgVectorNormOut, op_cache_keys,
-            (self, promoted_ord, dim, keepdim, dtype, out), {
-              // ord == inf, max(abs(x))
-              // ord == -inf, min(abs(x))
-              // ord == 0, sum(x != 0), count nonzero
-              // ord == int or float, sum(abs(x)^{ord})^{(1 / ord)}
+  TT_KERNEL(
+      OpName::kLinalgVectorNormOut, op_cache_keys,
+      (self, promoted_ord, dim, keepdim, dtype, out), {
+        // ord == inf, max(abs(x))
+        // ord == -inf, min(abs(x))
+        // ord == 0, sum(x != 0), count nonzero
+        // ord == int or float, sum(abs(x)^{ord})^{(1 / ord)}
 
-              if (promoted_ord.IsZero()) {
-                // TODO: maybe convert to StableHLO, if more efficient.
-                auto temp = at::sum(self.ne(0), dim, keepdim,
-                                    dtype.value_or(out.scalar_type()));
-                out.copy_(temp);
-              } else {
-                TT_THROW_IF_ERROR(op_cache_keys.SetParam("ord", ord));
-                TT_THROW_IF_ERROR(PNormOut(self, promoted_ord, ord.toDouble(),
-                                           dim, keepdim, dtype, out,
-                                           std::move(op_cache_keys)));
-              }
-              return out;
-            });
+        if (promoted_ord.IsZero()) {
+          // TODO: maybe convert to StableHLO, if more efficient.
+          auto temp = at::sum(self.ne(0), dim, keepdim,
+                              dtype.value_or(out.scalar_type()));
+          TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, temp.sizes()));
+          out.copy_(temp);
+        } else {
+          TT_THROW_IF_ERROR(op_cache_keys.SetParam("ord", ord));
+          TT_THROW_IF_ERROR(PNormOut(self, promoted_ord, ord.toDouble(), dim,
+                                     keepdim, dtype, out,
+                                     std::move(op_cache_keys)));
+        }
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

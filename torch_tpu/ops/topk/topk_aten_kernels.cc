@@ -21,13 +21,9 @@
 #include <utility>
 
 #include "ATen/core/TensorBase.h"
-#include "ATen/native/Resize.h"
 #include "absl/status/statusor.h"
-#include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "torch/csrc/autograd/generated/variable_factories.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
@@ -38,6 +34,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/ops/topk/topk.h"
 #include "xla/xla_data.pb.h"
 
@@ -90,6 +87,8 @@ std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(
                 {.out_dtypes = {elem_type, mlir::ElementType::I64},
                  .out_dims_list = {output_dims, output_dims},
                  .op_param_cache_keys = std::move(param_keys)})));
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(values, output_dims));
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(indices, output_dims));
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(values_buf), values));
         TT_THROW_IF_ERROR(
