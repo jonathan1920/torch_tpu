@@ -50,4 +50,14 @@ torch_tpu_py_library(
     srcs = ["target.py"],
 )
 
+torch_tpu_py_library(
+    name = "torch_device_ops",
+    srcs = ["torch_device_ops.py"],
+    deps = [
+        ":target",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
 torch_tpu_package_end()

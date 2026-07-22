@@ -46,4 +46,17 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "torch_device_ops_test",
+    srcs = ["torch_device_ops_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//examples/benchmarks/e2e/harness:target",
+        "//examples/benchmarks/e2e/harness:torch_device_ops",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
 torch_tpu_package_end()
