@@ -262,7 +262,6 @@ class TpuBackend:
       debug: bool = False,
       dynamism: bool = False,
       enable_serialization: bool = True,
-      precompile_steps: int = 0,
   ):
     """Initializes the TPU backend.
 
@@ -275,12 +274,10 @@ class TpuBackend:
         True so PyTorch's AOTAutogradCache can save/load compilation artifacts.
         Debug mode disables serialization so debug callers inspect freshly
         compiled artifacts instead of cache hits.
-      precompile_steps: The number of steps to precompile dynamic adapters for.
     """
     self._debug = debug
     self._dynamism = dynamism
     self._enable_serialization = False if debug else enable_serialization
-    self._precompile_steps = precompile_steps
     # Stores information about each compiled executable.
     # Organized by order of compilation (index 0 is the first compilation, etc.)
     self._compiled_executables: list[compiler.CompiledArtifact] = []
@@ -307,10 +304,7 @@ class TpuBackend:
 
     has_dynamic_symints = compiler.has_dynamic_symints(example_inputs)
     if has_dynamic_symints:
-      base_compiler = dynamic_compiler.DynamicCompiler(
-          debug=self._debug,
-          precompile_steps=self._precompile_steps,
-      )
+      base_compiler = dynamic_compiler.DynamicCompiler(debug=self._debug)
     else:
       base_compiler = compiler.StaticCompiler(debug=self._debug)
 

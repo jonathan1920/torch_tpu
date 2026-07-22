@@ -23,11 +23,16 @@ from torch._inductor.utils import InputType
 from torch._logging import LazyString
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
-from torch_tpu._internal.compile.dynamic.dynamic_adapters import DynamicAdapterLinearHypothesis
-from torch_tpu._internal.compile.dynamic.dynamic_adapters import ShapeBoundInfo
 from torch_tpu._internal.compile.dynamic.graph_transformations import apply_dynamism_transformations
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
 from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
+
+
+class ShapeBoundInfo(NamedTuple):
+  """Shape bound information for dynamic dimensions of a tensor."""
+
+  dynamic_dims: list[int]
+  upper_bounds: list[int]
 
 
 def _get_example_inputs(
@@ -140,7 +145,6 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
       example_inputs: Sequence[Any],
       sym_shape_manager: SymShapeManager,
       is_fwd: bool,
-      precompile_steps: int,
       default_executable: Any,
       default_layout_key: tuple[tuple[int, ...], ...],
   ):
@@ -149,7 +153,6 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     self.example_inputs = example_inputs
     self.sym_shape_manager = sym_shape_manager
     self.is_fwd = is_fwd
-    self._precompile_steps = precompile_steps
 
     # Cache for compiled executables: layout_key -> executable.
     self.model_executables: dict[tuple[tuple[int, ...], ...], Any] = {
@@ -162,13 +165,9 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     )
 
     self._precomputed_bounds_list = self._precompute_bounds_list()
-    self.input_linear_hypothesis = DynamicAdapterLinearHypothesis(
-        self._precomputed_bounds_list
-    )
     self._default_scalar_tensor_cache = {}
     self._prepare_input_packing_plan()
     self._backend_device = None
-    self._padded_output_shapes = self._get_padded_output_shapes()
 
   def _get_backend_device(self) -> torch.device:
     if self._backend_device is None:
@@ -366,21 +365,6 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
 
     return model_inputs
 
-  def _get_padded_output_shapes(self):
-    padded_input_shapes = []
-    for idx, arg in enumerate(self.sym_shape_manager.example_inputs):
-      if isinstance(arg, torch.SymInt):
-        upper_bound = self.sym_shape_manager.get_symint_upper_bound(arg)
-        padded_input_shapes.append(upper_bound)
-      else:
-        padded_input_shapes.append(
-            self.sym_shape_manager.get_bounded_shape(idx)
-        )
-    padded_output_shapes = _compute_output_shapes(
-        self.sym_shape_manager, padded_input_shapes
-    )
-    return padded_output_shapes
-
   def _get_model_inputs_layouts(
       self, model_inputs: Sequence[Any]
   ) -> tuple[tuple[tuple[int, ...], ...], list[list[int]]]:
@@ -399,84 +383,6 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
 
     layout_key = tuple(tuple(l) for l in argument_layouts)
     return layout_key, argument_layouts
-
-  def _precompile_dynamic_adapters(
-      self,
-      args: Sequence[Any],
-      tensor_info: Sequence[_TensorInfo],
-  ) -> None:
-    """Precompiles dynamic adapters in the background with a linear hypothesis.
-
-    This method updates the input linear tracker, and if the input behavior is
-    linear, predicts the future input shapes and output slice shapes, and
-    enqueues their compilation.
-    Args:
-      args: The runtime positional arguments passed to the executable call.
-      tensor_info: Tensor metadata representing current input shapes and dtypes.
-    """
-    # Map from original tensor index to its index in tensor_info
-    # (which only has dynamic tensors).
-    original_to_dynamic_idx = {}
-    dyn_idx = 0
-    for idx, arg in enumerate(self.sym_shape_manager.example_inputs):
-      if not isinstance(arg, torch.Tensor) or (
-          self.sym_shape_manager.get_num_dynamic_dims(idx) == 0
-      ):
-        continue
-      original_to_dynamic_idx[idx] = dyn_idx
-      dyn_idx += 1
-
-    self.input_linear_hypothesis.update([info.shape for info in tensor_info])
-    if self.input_linear_hypothesis.is_linear:
-      logging.debug(
-          "[DynamicTpuBackend] Linear hypothesis detected, precompiling dynamic"
-          " adapters"
-      )
-      output_types = self.sym_shape_manager.get_output_dtypes()
-      updated_tensor_info = [
-          _TensorInfo(shape=list(info.shape), dtype=info.dtype)
-          for info in tensor_info
-      ]
-      for shape_update in self.input_linear_hypothesis.get_shape_updates(
-          self._precompile_steps
-      ):
-        for (tensor_idx, dim_idx), value in shape_update.items():
-          updated_tensor_info[tensor_idx].shape[dim_idx] = value
-        tpu_torch_compile.precompile_pad_module(
-            updated_tensor_info, self._precomputed_bounds_list
-        )
-
-        sym_values = {}
-        for sym_name, (
-            t_idx,
-            d_idx,
-        ) in self.sym_shape_manager.symint_to_tensor_and_dim_idx.items():
-          dyn_idx = original_to_dynamic_idx.get(t_idx)
-          assert dyn_idx is not None, f"Expected tensor {t_idx} to be dynamic"
-          sym_values[sym_name] = updated_tensor_info[dyn_idx].shape[d_idx]
-
-        for (
-            sym_name,
-            arg_idx,
-        ) in self.sym_shape_manager.symint_to_arg_idx.items():
-          if sym_name not in sym_values:
-            sym_values[sym_name] = args[arg_idx]
-
-        runtime_output_shapes = (
-            self.sym_shape_manager.compute_output_shapes_from_sym_values(
-                sym_values
-            )
-        )
-
-        if runtime_output_shapes is not None:
-          tpu_torch_compile.precompile_slice_module(
-              runtime_output_shapes, self._padded_output_shapes, output_types
-          )
-    else:
-      logging.debug(
-          "[DynamicTpuBackend] Non-linear hypothesis detected, not precompiling"
-          " slice subgraph"
-      )
 
   def __call__(self, *args: Any) -> Any:
     logging.debug("[DynamicTpuBackend] Execute Model")
@@ -528,8 +434,6 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     # Run model executable with constructed inputs
     outputs = executable(model_inputs, output_shapes=output_shapes)
 
-    if self._precompile_steps > 0:
-      self._precompile_dynamic_adapters(args, tensor_info)
     return outputs
 
   def __reduce__(self) -> tuple[Callable[..., Any], tuple[Any, ...]]:
@@ -546,7 +450,6 @@ class DynamicCompiler(compiler.Compiler):
       self,
       compilation_context: compiler.CompilationContext | None = None,
       debug: bool = False,
-      precompile_steps: int = 0,
   ):
     """Initializes the DynamicCompiler instance.
 
@@ -555,12 +458,10 @@ class DynamicCompiler(compiler.Compiler):
         maintaining compilation state.
       debug: A `bool` that, when `True`, enables debug logging and artifact
         generation.
-      precompile_steps: The number of steps to precompile dynamic adapters.
     """
     if compilation_context is None:
       compilation_context = compiler.CompilationContext()
     super().__init__(compilation_context, debug=debug)
-    self._precompile_steps = precompile_steps
     self.static_compiler = compiler.StaticCompiler(
         compilation_context, debug=debug, use_stablehlo_bounds=True
     )
@@ -649,7 +550,6 @@ class DynamicCompiler(compiler.Compiler):
         example_inputs=example_inputs,
         sym_shape_manager=sym_shape_manager,
         is_fwd=is_fwd,
-        precompile_steps=self._precompile_steps,
         default_executable=default_executable,
         default_layout_key=default_layout_key,
     )
