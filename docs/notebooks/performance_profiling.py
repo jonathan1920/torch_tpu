@@ -139,7 +139,7 @@ def _(mo):
     tensorboard --logdir=/tmp/profiler_output --port=6006
     ```
 
-    xprof can also be run as a standalone server. 
+    xprof can also be run as a standalone server.
     ```shell
     xprof --logdir=profiler/demo --port=6006
     ```
