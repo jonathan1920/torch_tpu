@@ -92,9 +92,7 @@ std::tuple<at::Tensor, at::Tensor> AtenDropoutCommonImpl(
                      ConvertTo<mlir::ElementType>(input.scalar_type()));
 
   const int64_t num_elements = input.numel();
-  // The StableHLO generates a uint64 random tensor to produce the dropout
-  // mask.
-  const int64_t bit_width = 64;
+  const int64_t bit_width = TorchEquivalentBitwidth(output_dtype);
 
   TT_ASSIGN_OR_THROW(
       auto results,

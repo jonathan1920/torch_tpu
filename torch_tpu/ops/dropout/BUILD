@@ -56,7 +56,9 @@ torch_tpu_cc_library(
     srcs = ["dropout.cc"],
     hdrs = ["dropout.h"],
     deps = [
+        "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops/uniform",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status:statusor",

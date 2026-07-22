@@ -59,7 +59,7 @@ RNG_OPS = (
         lambda device: torch.nn.functional.dropout(
             torch.ones(100, device=device), p=0.5
         ),
-        50,  # Offset increment: 100 (size) * 64 (bits) // 128 (philox step).
+        25,  # Offset increment: 100 (size) * 32 (bits) // 128 (philox step).
     ),
     (
         "randperm",

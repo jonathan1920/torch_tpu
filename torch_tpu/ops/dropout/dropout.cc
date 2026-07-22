@@ -26,7 +26,9 @@
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/ops/uniform/uniform.h"
 
 namespace torch_tpu {
 
@@ -37,45 +39,11 @@ absl::StatusOr<MlirOpResults<2>> BuildDropoutTrainShlo(
   ABSL_CHECK(p > 0 && p < 1.0)  // CRASH_OK=Caller validates p.
       << "expected p to be in the exclusive range (0, 1), got " << p;
   mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-  const auto rng_input_state_type = GetTensorTypeOrDie(rng_input_state);
-  mlir::MlirBuilder& builder = input.getBuilder();
-  mlir::OpBuilder& op_builder = builder.getOpBuilder();
+  TT_ASSIGN_OR_RETURN(
+      auto rand_op,
+      BuildUniformShlo(rng_input_state, /*from=*/0.0, /*to=*/1.0,
+                       input_type.getShape(), GetElementTypeOrDie(input)));
 
-  // Call rng bit generator,
-  auto input_type_float = input_type.clone(op_builder.getF64Type());
-  auto input_type_uint64 =
-      input_type.clone(op_builder.getIntegerType(64, false));
-
-  auto algorithm = mlir::stablehlo::RngAlgorithmAttr::get(
-      op_builder.getContext(), mlir::stablehlo::RngAlgorithm::PHILOX);
-  auto rng_op = mlir::stablehlo::RngBitGeneratorOp::create(
-      op_builder, input.getValue().getLoc(), rng_input_state_type,
-      input_type_uint64, algorithm, rng_input_state.getValue());
-
-  mlir::MlirOp rng_output_op = mlir::MlirOp(builder, rng_op.getOutput());
-  const mlir::RankedTensorType rng_output_op_type =
-      GetTensorTypeOrDie(rng_output_op);
-  ABSL_VLOG(1) << "[BuildDropoutTrainShlo] rng_output_state_type: "
-               << mlir::debugString(rng_output_op_type);
-  // Need to convert this tensor of u64s to a tensor of f64s with exponent bits
-  // set to 1.
-  // TODO(unda): extract this to a common util, probably part of some other rng
-  // op, and make the random bit usage more efficient.
-
-  // Clear the exponent and sign bits
-  mlir::MlirOp clear_exponent_mask =
-      MakeConstantLike(rng_output_op, 0x000FFFFFFFFFFFFFUL);
-  rng_output_op = mlir::stablehlo::And(rng_output_op, clear_exponent_mask);
-  // Set the exponent bits to 0 (f64 bias is 1023, so we store 0 + 1023 = 0x3FF)
-  mlir::MlirOp set_exp_to_one_mask =
-      MakeConstantLike(rng_output_op, 0x3FF0000000000000UL);
-  rng_output_op = mlir::stablehlo::Or(rng_output_op, set_exp_to_one_mask);
-  // Interpret as f64s
-  mlir::MlirOp rand_op =
-      mlir::stablehlo::BitcastConvert(input_type_float, rng_output_op);
-  // Subtract 1.0
-  mlir::MlirOp one_const = MakeConstantLike(rand_op, 1.0);
-  rand_op = mlir::stablehlo::Subtract(rand_op, one_const);
   auto p_const = MakeConstantLike(rand_op, p);
   auto mask_op = mlir::stablehlo::Compare(
       rand_op, p_const, mlir::stablehlo::ComparisonDirection::GE);
