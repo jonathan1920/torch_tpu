@@ -46,6 +46,15 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "step_fn",
+    srcs = ["step_fn.py"],
+    deps = [
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
     name = "target",
     srcs = ["target.py"],
 )

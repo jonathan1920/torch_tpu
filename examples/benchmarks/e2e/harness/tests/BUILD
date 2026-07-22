@@ -36,6 +36,22 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "step_fn_test",
+    srcs = ["step_fn_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//examples/benchmarks/e2e/harness:measure",
+        "//examples/benchmarks/e2e/harness:step_fn",
+        "//examples/benchmarks/e2e/harness:target",
+        "//examples/benchmarks/e2e/harness:torch_device_ops",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:flagsaver",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_test(
     name = "target_test",
     srcs = ["target_test.py"],
     deps = [
