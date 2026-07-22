@@ -2179,6 +2179,7 @@ oss_target(
     env = {"TORCH_TPU_INTERNAL_TEST_DEVICE": "tpu"},
     main = "run_upstream_test.py",
     nolocal = "This test requires downloading the raw PyTorch source tree. Exclude from wildcard runs.",
+    nonightly_oss = "This test requires downloading the raw PyTorch source tree. Restricted strictly to the upstream_tests.yaml workflow.",
     nopresubmit_oss = "This test requires downloading the raw PyTorch source tree. Relegate to nightly to avoid adding flakiness/latency to every PR.",
     tags = [
         "requires-tpu-v5lite",
@@ -2201,6 +2202,7 @@ oss_target(
     env = {"TORCH_TPU_INTERNAL_TEST_DEVICE": "cpu"},
     main = "run_upstream_test.py",
     nolocal = "This test requires downloading the raw PyTorch source tree. Exclude from wildcard runs.",
+    nonightly_oss = "This test requires downloading the raw PyTorch source tree. Restricted strictly to the upstream_tests.yaml workflow.",
     nopresubmit_oss = "This test requires downloading the raw PyTorch source tree. Relegate to nightly to avoid adding flakiness/latency to every PR.",
     tags = [
         # TODO: b/523384731 - Remove the "local" tag once upstream PyTorch is migrated natively into
