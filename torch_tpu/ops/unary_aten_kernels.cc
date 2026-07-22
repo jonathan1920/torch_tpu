@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/unary_aten_kernels.h"
 
 #include <optional>
+#include <string_view>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
@@ -93,6 +94,14 @@
   TT_REQUIRE_SEMICOLON_
 
 namespace torch_tpu {
+
+absl::Status CheckNotComplex(const at::Tensor& tensor,
+                             const std::string_view arg_name) {
+  TT_RET_CHECK(!IsComplex(tensor), error::kInvalidArgument)
+      << "expected " << arg_name << " not to be complex, got "
+      << ToString(tensor.scalar_type());
+  return absl::OkStatus();
+}
 
 absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self,
                                    MlirUnaryOpBuilder op_builder,
@@ -207,9 +216,6 @@ TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAtanOut, AtenAtan, BuildAtanShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAtanhOut, AtenAtanh, BuildAtanhShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kCosOut, AtenCos, BuildCosShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kCoshOut, AtenCosh, BuildCoshShlo);
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kErfInvOut, AtenErfInv,
-                                 BuildErfInvShlo);
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kErfOut, AtenErf, BuildErfShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kExp2Out, AtenExp2, BuildExp2Shlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kExpM1Out, AtenExpm1, BuildExpm1Shlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kExpOut, AtenExp, BuildExpShlo);
@@ -238,6 +244,38 @@ at::Tensor& AtenAbsOut(const at::Tensor& self, at::Tensor& out) {
   });
 }
 
+at::Tensor& AtenErfOut(const at::Tensor& self, at::Tensor& out) {
+  TT_KERNEL(OpName::kErfOut, param_keys, (self, out), {
+    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_ASSIGN_OR_THROW(const auto out_dtype,
+                       ConvertTo<mlir::ElementType>(InferOutputDtype(self)));
+    auto op_builder =
+        [out_dtype](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
+      return BuildErfShlo(input, out_dtype);
+    };
+    TT_THROW_IF_ERROR(UnaryOpOut(self, out, std::move(op_builder),
+                                 {.op_param_cache_keys = std::move(param_keys),
+                                  .out_dtype = out_dtype}));
+    return out;
+  });
+}
+
+at::Tensor& AtenErfInvOut(const at::Tensor& self, at::Tensor& out) {
+  TT_KERNEL(OpName::kErfInvOut, param_keys, (self, out), {
+    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_ASSIGN_OR_THROW(const auto out_dtype,
+                       ConvertTo<mlir::ElementType>(InferOutputDtype(self)));
+    auto op_builder =
+        [out_dtype](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
+      return BuildErfInvShlo(input, out_dtype);
+    };
+    TT_THROW_IF_ERROR(UnaryOpOut(self, out, std::move(op_builder),
+                                 {.op_param_cache_keys = std::move(param_keys),
+                                  .out_dtype = out_dtype}));
+    return out;
+  });
+}
+
 at::Tensor& AtenNegOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kNegOut, _, (self, out), {
     TT_THROW_IF_ERROR(
@@ -249,10 +287,10 @@ at::Tensor& AtenNegOut(const at::Tensor& self, at::Tensor& out) {
 
 at::Tensor AtenRelu(const at::Tensor& self) {
   TT_KERNEL(OpName::kRelu, _, (self), {
-    TT_ASSIGN_OR_THROW(at::Tensor result,
-                       ::torch_tpu::UnaryOp(
-                           self, BuildReluShlo,
-                           {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    TT_ASSIGN_OR_THROW(
+        at::Tensor result,
+        UnaryOp(self, BuildReluShlo,
+                {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return result;
   });
 }

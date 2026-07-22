@@ -3920,6 +3920,38 @@ Supported combinations for non-constant padding:
         ):
           op([t])
 
+  def test_erf_unsupported_complex(self):
+    for dtype in [torch.complex64, torch.complex128]:
+      t = torch.randn(2, 2, dtype=dtype, device=et.device())
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=re.compile(
+              r"erf(\.out)?\(\): expected self not to be complex, got"
+              r" complex(64|128)"
+          ),
+          gpu=re.compile(
+              r".*not implemented for ('ComplexFloat'|'ComplexDouble')"
+          ),
+          message_reviewed_by="wan",
+      ):
+        torch.erf(t)
+
+  def test_erfinv_unsupported_complex(self):
+    for dtype in [torch.complex64, torch.complex128]:
+      t = torch.randn(2, 2, dtype=dtype, device=et.device())
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=re.compile(
+              r"erfinv(\.out)?\(\): expected self not to be complex, got"
+              r" complex(64|128)"
+          ),
+          gpu=re.compile(
+              r".*not implemented for ('ComplexFloat'|'ComplexDouble')"
+          ),
+          message_reviewed_by="wan",
+      ):
+        torch.erfinv(t)
+
   def test_cat_out_invalid_cast(self):
     """Tests that cat fails when the out tensor has an incompatible dtype."""
     t_f32 = torch.tensor([1.0, 2.0], device=et.device(), dtype=torch.float32)
