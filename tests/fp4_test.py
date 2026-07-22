@@ -232,6 +232,26 @@ class FP4Test(absltest.TestCase):
         dest.to("cpu").view(torch.uint8).tolist(), [[17, 34], [85, 102]]
     )
 
+  def test_fp4_eq_and_ne(self):
+    device = torch.device("tpu")
+    a_u8 = torch.tensor([[0x11, 0x22], [0x33, 0x44]], dtype=torch.uint8)
+    b_u8 = torch.tensor([[0x11, 0x20], [0x33, 0x44]], dtype=torch.uint8)
+
+    a_tpu = a_u8.view(torch.float4_e2m1fn_x2).to(device)
+    b_tpu = b_u8.view(torch.float4_e2m1fn_x2).to(device)
+
+    # Tensor-Tensor eq and ne
+    eq_res = torch.eq(a_tpu, b_tpu)
+    ne_res = torch.ne(a_tpu, b_tpu)
+
+    expected_eq = torch.tensor([[True, False], [True, True]], device=device)
+    expected_ne = torch.tensor([[False, True], [False, False]], device=device)
+
+    self.assertEqual(eq_res.shape, torch.Size([2, 2]))
+    self.assertEqual(ne_res.shape, torch.Size([2, 2]))
+    utils.assert_close(eq_res, expected_eq)
+    utils.assert_close(ne_res, expected_ne)
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -1205,6 +1205,10 @@ at::Tensor& AtenDivOutMode(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor& AtenEqScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
+  TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch dispatcher catches scalar
+                   // comparison before kernel.
+      self.scalar_type() != at::kFloat4_e2m1fn_x2, error::kInvalidArgument)
+      << "Scalar comparison is not supported for float4_e2m1fn_x2";
   PromotedScalar promoted_other = PromoteScalar(other);
   TT_KERNEL(OpName::kEqScalarOut, _, (self, promoted_other, out), {
     TT_THROW_IF_ERROR(AtenComparisonScalarOutHelper(
@@ -1216,6 +1220,22 @@ at::Tensor& AtenEqScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenEqTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kEqOut, _, (self, other, out), {
+    TT_ASSIGN_OR_THROW(auto output_dtype,
+                       ConvertTo<mlir::ElementType>(out.scalar_type()));
+    if (self.scalar_type() == at::kFloat4_e2m1fn_x2 ||
+        other.scalar_type() == at::kFloat4_e2m1fn_x2) {
+      TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch dispatcher catches dtype
+                       // mismatch in promoteTypes before kernel.
+          self.scalar_type() == other.scalar_type(), error::kInvalidArgument)
+          << "Expected both self and other to be float4_e2m1fn_x2";
+      at::Tensor self_u8 = self.view(at::kByte);
+      at::Tensor other_u8 = other.view(at::kByte);
+      TT_THROW_IF_ERROR(
+          BinaryOpOut(self_u8, other_u8, out, BuildEqShlo,
+                      {.output_dtype_override = output_dtype,
+                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+      return out;
+    }
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildEqShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1475,6 +1495,10 @@ at::Tensor& AtenMulOut(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor& AtenNeScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
+  TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch dispatcher catches scalar
+                   // comparison before kernel.
+      self.scalar_type() != at::kFloat4_e2m1fn_x2, error::kInvalidArgument)
+      << "Scalar comparison is not supported for float4_e2m1fn_x2";
   PromotedScalar promoted_other = PromoteScalar(other);
   TT_KERNEL(OpName::kNeScalarOut, _, (self, promoted_other, out), {
     TT_THROW_IF_ERROR(AtenComparisonScalarOutHelper(
@@ -1488,6 +1512,20 @@ at::Tensor& AtenNeTensorOut(const at::Tensor& self, const at::Tensor& other,
   TT_KERNEL(OpName::kNeOut, _, (self, other, out), {
     TT_ASSIGN_OR_THROW(auto output_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
+    if (self.scalar_type() == at::kFloat4_e2m1fn_x2 ||
+        other.scalar_type() == at::kFloat4_e2m1fn_x2) {
+      TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch dispatcher catches dtype
+                       // mismatch in promoteTypes before kernel.
+          self.scalar_type() == other.scalar_type(), error::kInvalidArgument)
+          << "Expected both self and other to be float4_e2m1fn_x2";
+      at::Tensor self_u8 = self.view(at::kByte);
+      at::Tensor other_u8 = other.view(at::kByte);
+      TT_THROW_IF_ERROR(
+          BinaryOpOut(self_u8, other_u8, out, BuildNeShlo,
+                      {.output_dtype_override = output_dtype,
+                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+      return out;
+    }
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildNeShlo,
                     {.output_dtype_override = output_dtype,
