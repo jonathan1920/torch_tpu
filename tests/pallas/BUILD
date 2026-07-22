@@ -44,6 +44,23 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "pallas_signature_test",
+    srcs = ["pallas_signature_test.py"],
+    env = {
+        "TPU_PREMAPPED_BUFFER_SIZE": "0",
+        "IS_OSS": if_oss("1", "0"),
+    },
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/pallas",
+        "@pypi//jax",
+    ],
+)
+
+torch_tpu_py_test(
     name = "pallas_communication_test",
     srcs = ["pallas_communication_test.py"],
     env = {"TPU_PREMAPPED_BUFFER_SIZE": "0"},

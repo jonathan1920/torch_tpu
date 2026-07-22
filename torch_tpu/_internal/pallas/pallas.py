@@ -525,7 +525,12 @@ class JaxCallable:
       self.donate_argnums = donate_argnums if donate_argnums is not None else []
       self.input_output_aliases = {}
 
-    self.__signature__ = _get_torch_signature(inspect.signature(jit_fn))
+    # Unwrap jax.jit and other wrappers to get the original function for its
+    # __globals__.
+    sig_source = inspect.unwrap(jit_fn)
+    self.__signature__ = _get_torch_signature(
+        inspect.signature(sig_source, eval_str=True)
+    )
     self.__globals__ = None
 
     logging.debug("Creating JAX callable: %s", self)
@@ -838,7 +843,9 @@ def jax_op(
   def dec(fn: Callable[..., object]) -> CustomOpDef:
     nonlocal name
 
-    signature = inspect.signature(fn, follow_wrapped=False)
+    # Unwrap any jax.jit or decorators before getting signature to preserve
+    # globals.
+    signature = inspect.signature(inspect.unwrap(fn), eval_str=True)
     _verify_signature(signature)
     static_argnums = _infer_static_argnums(signature)
     wrapped_fn = custom_jax_kernel(
