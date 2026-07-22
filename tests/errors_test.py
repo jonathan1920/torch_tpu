@@ -20,7 +20,7 @@ import unittest
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch
-from torch_tpu._internal import env
+from torch_tpu._internal import env  # pylint: disable=unused-import
 from tests import error_testing as et
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
@@ -884,9 +884,11 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
           "expected target dtype to be Long or Byte, but got Int"
       )
     else:
-      tpu_error_message = (
-          "nll_loss_forward(): expected the target dtype to be either int64"
-          " or uint8, got int32"
+      # TODO: b/533385796 - Change this back to a string later.
+      tpu_error_message = re.compile(
+          r"^(expected target dtype to be Long or Byte, but got Int|"
+          r"nll_loss_forward\(\): expected the target dtype to be either int64"
+          r" or uint8, got int32)$"
       )
     with et.assert_raises_message(
         RuntimeError,
