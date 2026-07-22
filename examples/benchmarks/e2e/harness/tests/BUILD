@@ -36,6 +36,17 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "registry_test",
+    srcs = ["registry_test.py"],
+    deps = [
+        "//examples/benchmarks/e2e/harness:registry",
+        "//examples/benchmarks/e2e/harness:step_fn",
+        "//shims/absl_py/testing:absltest",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_test(
     name = "step_fn_test",
     srcs = ["step_fn_test.py"],
     tags = ["requires-tpu-v5lite"],

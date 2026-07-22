@@ -46,6 +46,15 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "registry",
+    srcs = ["registry.py"],
+    deps = [
+        ":step_fn",
+        ":target",
+    ],
+)
+
+torch_tpu_py_library(
     name = "step_fn",
     srcs = ["step_fn.py"],
     deps = [
