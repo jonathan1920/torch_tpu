@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from typing import Any
 import torch
 from torch.fx.passes import graph_transform_observer
+from torch.utils import _pytree
 from torch_tpu._internal.compile.dynamic import sym_utils
 from torch_tpu._internal.compile.dynamic import symbol_bounds
 from torch_tpu._internal.compile.dynamic import view_ops_transformations
@@ -453,20 +454,36 @@ class HandleGenerativeOpsPass:
   ) -> None:
     """Processes ones op node."""
     sizes = node.args[0]
-    if not isinstance(sizes, (list, tuple)):
-      sizes = [sizes]
+    is_container = isinstance(sizes, (list, tuple))
+    sizes_list = list(sizes) if is_container else [sizes]
 
     original_users = set(node.users.keys())
     current_node = node
+    new_sizes = []
+    has_symint = False
 
-    for dim, arg in enumerate(sizes):
-      if sym_utils.is_symint_node(arg):
+    for dim, arg in enumerate(sizes_list):
+      if sym_utils.is_symint_node(arg) or isinstance(arg, torch.SymInt):
+        has_symint = True
+        symint = arg.meta["val"] if sym_utils.is_symint_node(arg) else arg
+        _, upper = get_symint_bounds(symint)
+        assert (
+            upper is not None
+        ), f"Failed to extract upper bound for SymInt {symint}"
+        new_sizes.append(upper)
+
         tensor_node = self._sym_shape_manager.ensure_tensor(
             graph_module, arg, node
         )
         current_node = self._insert_set_dimension_logical_size(
             graph_module, current_node, tensor_node, dim, node
         )
+      else:
+        new_sizes.append(arg)
+
+    if has_symint:
+      new_size_arg = type(sizes)(new_sizes) if is_container else new_sizes[0]
+      node.args = (new_size_arg, *node.args[1:])
 
     if current_node != node:
       node.replace_all_uses_with(
@@ -530,6 +547,28 @@ class HandleSymIntUsagesPass:
           node.args = tuple(new_args)
 
 
+class DetectSymIntUsagesPass:
+  """Pass to detect any remaining SymInt usages in the graph after transformations.
+
+  If any FX node in the graph still consumes a SymInt input argument, this pass
+  returns a list of unhandled (node, symint_arg) usages.
+  """
+
+  def __call__(
+      self, graph_module: torch.fx.GraphModule
+  ) -> list[tuple[torch.fx.Node, Any]]:
+    unhandled_usages = []
+    for node in graph_module.graph.nodes:
+      flat_args, _ = _pytree.tree_flatten((node.args, node.kwargs))
+      for arg in flat_args:
+        if isinstance(arg, torch.SymInt) or (
+            isinstance(arg, torch.fx.Node) and sym_utils.is_symint_node(arg)
+        ):
+          unhandled_usages.append((node, arg))
+
+    return unhandled_usages
+
+
 def apply_dynamism_transformations(
     graph_module: torch.fx.GraphModule, sym_shape_manager: SymShapeManager
 ) -> None:
@@ -577,3 +616,20 @@ def apply_dynamism_transformations(
   graph_module.graph.eliminate_dead_code()
   graph_module.recompile()
   graph_module.graph.lint()
+
+  # Detect any remaining unhandled symint usages in the graph.
+  unhandled_usages = GraphTransformObserver(
+      graph_module, "detect_symint_usages"
+  ).apply_gm_pass(DetectSymIntUsagesPass())
+
+  if unhandled_usages:
+    err_msg_lines = [
+        "Detected following unhandled SymInt usage(s) in FX graph. Please set"
+        " torch.compile(..., dynamic=False, ...) and try again."
+    ]
+    for node, sym_arg in unhandled_usages:
+      err_msg_lines.append(
+          f"  - Node '{node.name}' (op={node.op!r}, target={node.target})"
+          f" uses SymInt input '{sym_arg}'"
+      )
+    raise NotImplementedError("\n".join(err_msg_lines))
