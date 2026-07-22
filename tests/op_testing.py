@@ -612,6 +612,32 @@ NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
     *INTEGRAL_DTYPES,
 )
 
+# Maps a dtype to its tier (smaller is more important).
+TIER_OF_DTYPE: Final[Mapping[torch.dtype, int]] = {
+    # go/keep-sorted start
+    torch.bfloat16: 1,  # Primary FP type for modern models.
+    torch.bool: 1,  # Masks and logic ops.
+    torch.complex128: 4,  # High-precision complex, no native TPU support.
+    torch.complex64: 3,  # Signal processing.
+    torch.float16: 2,  # Half precision for modern models.
+    torch.float32: 1,  # Default FP type for PyTorch.
+    torch.float4_e2m1fn_x2: 1,  # FP4 supported by TPU v8.
+    torch.float64: 3,  # Scientific computing.
+    torch.float8_e4m3fn: 2,  # FP8 for weights/activations (higher precision).
+    torch.float8_e5m2: 2,  # FP8 for gradients (wider range).
+    torch.int16: 3,
+    torch.int32: 1,  # Tensor dimensions, lighter indexing.
+    torch.int4: 1,  # Quantized inference for vLLM.
+    torch.int64: 1,  # Standard type for indexing.
+    torch.int8: 2,  # Quantized inference.
+    torch.uint16: 3,
+    torch.uint32: 3,
+    torch.uint4: 4,
+    torch.uint64: 4,  # No native TPU support.
+    torch.uint8: 2,  # Raw image.
+    # go/keep-sorted end
+}
+
 
 @functools.lru_cache(maxsize=None)
 def _dtypes_to_test() -> Sequence[torch.dtype]:
