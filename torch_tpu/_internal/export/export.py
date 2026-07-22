@@ -47,7 +47,7 @@ def _extract_states_from_exported_program(exported_model):
   state_dict = copy.copy(exported_model.state_dict)
   if (constants := getattr(exported_model, "constants", None)) is not None:
     state_dict.update(constants)
-  param_buffer_values = list(state_dict[key] for key in param_and_buffer_keys)
+  param_buffer_values = [state_dict[key] for key in param_and_buffer_keys]
 
   if hasattr(exported_model.graph_signature, "lifted_tensor_constants"):
     for name in exported_model.graph_signature.lifted_tensor_constants:

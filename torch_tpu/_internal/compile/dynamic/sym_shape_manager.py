@@ -152,7 +152,7 @@ class _OutputSymShape:
           if can_evaluate:
             # Pre-compile the sympy expression using sympy.lambdify.
             # Sort symbols to ensure consistent argument order.
-            symbols = sorted(list(expr.free_symbols), key=str)
+            symbols = sorted(expr.free_symbols, key=str)
             param_names = [str(s) for s in symbols]
             base_fn = sympy.lambdify(
                 symbols, expr, modules=[sym_utils.CUSTOM_SYMPY_FUNCS, "math"]
@@ -448,7 +448,7 @@ class SymShapeManager:
 
     logging.debug(
         "outputs_sym_shape: %s",
-        [output_sym_shape for output_sym_shape in outputs_sym_shape],
+        list(outputs_sym_shape),
     )
     self.outputs_sym_shape = outputs_sym_shape
 

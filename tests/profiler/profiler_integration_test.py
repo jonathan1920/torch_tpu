@@ -147,7 +147,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
 
     events = trace_data.get("traceEvents", [])
     tpu_events = [e for e in events if e.get("cat") == "Trace"]
-    cats = set(e.get("cat") for e in events if "cat" in e)
+    cats = {e.get("cat") for e in events if "cat" in e}
 
     xplane_exists = tpu_xplane_path.exists()
     xplane_contents = (

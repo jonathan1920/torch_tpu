@@ -377,7 +377,7 @@ class SplitCompiler(compiler.Compiler):
       else:
         partition_map[node] = partition_id
 
-    num_partitions = len(set(v for v in partition_map.values()))
+    num_partitions = len(set(partition_map.values()))
     if num_partitions <= 1:
       logging.info(
           "Skipping split because there is only %d partition", num_partitions

@@ -407,13 +407,13 @@ class BinaryElementwiseDynamicOpInfo(DynamicOpInfo):
 class TernaryElementwiseDynamicOpInfo(DynamicOpInfo):
   """A wrapper around OpInfo that supports bounded dynamism."""
 
-  ternary_elementwise_ops = set([
+  ternary_elementwise_ops = {
       "addcdiv",
       "addcmul",
       "clamp",
       "lerp",
       "where",
-  ])
+  }
 
   @staticmethod
   def adapter_supports_op(op_info: core.OpInfo):
