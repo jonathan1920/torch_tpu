@@ -3894,6 +3894,32 @@ Supported combinations for non-constant padding:
     ):
       torch._foreach_addcdiv(self_list, tensor1_list, tensor2_list)
 
+  def test_foreach_unary_ops_complex(self):
+    for dtype in [torch.complex64, torch.complex128]:
+      t = torch.randn(2, 2, dtype=dtype, device=et.device())
+      ops = [
+          torch._foreach_ceil,
+          torch._foreach_erf,
+          torch._foreach_erfc,
+          torch._foreach_floor,
+          torch._foreach_frac,
+          torch._foreach_lgamma,
+          torch._foreach_round,
+          torch._foreach_trunc,
+      ]
+      for op in ops:
+        with et.assert_raises_message(
+            RuntimeError,
+            tpu=re.compile(
+                r"foreach_[a-z0-9_]+\(\): expected all 1 tensors in the self"
+                r" list not to be complex, got 1 complex tensor: "
+                r"complex(64|128) at index 0"
+            ),
+            gpu=re.compile(r".*not implemented for 'Complex(Float|Double)'"),
+            message_reviewed_by="wan",
+        ):
+          op([t])
+
   def test_cat_out_invalid_cast(self):
     """Tests that cat fails when the out tensor has an incompatible dtype."""
     t_f32 = torch.tensor([1.0, 2.0], device=et.device(), dtype=torch.float32)
