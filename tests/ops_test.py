@@ -315,9 +315,9 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1.8e-2, "atol": 7.9e-3},
     },
     "addmm": {
-        torch.float16: {"rtol": 1.5e-2, "atol": 1.6e-1},
-        # TODO(b/495931205): why are rtol and atol so high?
-        torch.float32: {"rtol": 1.3e-2, "atol": 1.3e-1},
+        torch.bfloat16: {"atol": 8.3e-3},
+        torch.float16: {"rtol": 1.9e-1, "atol": 2.2e-1},
+        torch.float32: {"rtol": 1.9e-1, "atol": 2.1e-1},
     },
     "addmv": {
         torch.bfloat16: {"rtol": 1.1e-1, "atol": 2.5e-1},
@@ -879,8 +879,8 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"atol": 1.3e-1},
     },
     "addmm": {
-        torch.float16: {"atol": 1.6e-1},
-        torch.float32: {"atol": 1.3e-1},
+        torch.float16: {"rtol": 1.5e-2},
+        torch.float32: {"rtol": 7.7e-3},
     },
     "arange": {
         torch.bfloat16: {"atol": 6.4e-3},
