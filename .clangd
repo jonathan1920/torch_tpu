@@ -1,0 +1,9 @@
+# clangd project configuration.
+# See https://clangd.llvm.org/config for details.
+
+If:
+  # Generated *_mlir_embed.cc files are ~1 MB character arrays embedding
+  # precompiled TPU kernels. They're slow to parse and meaningless to read.
+  PathMatch: .*_mlir_embed\.cc
+Index:
+  Background: Skip

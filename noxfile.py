@@ -39,3 +39,16 @@ def format(session: nox.Session) -> None:  # pylint: disable=redefined-builtin
   """Apply clang-format fixes to modified files automatically."""
   session.install("clang-format")
   session.run("ci/tools/clang_format.sh", "format", external=True)
+
+
+# Use venv_backend="none" to allow running the script directly in the host.
+# The script relies exclusively on Python standard libraries, so creating
+# a virtual env adds unnecessary overhead with no benefits.
+@nox.session(venv_backend="none")
+def refresh_compile_commands(session: nox.Session) -> None:
+  """Refresh compile_commands.json for clangd."""
+  session.run(
+      "./setup_clangd.py",
+      *session.posargs,
+      external=True,
+  )

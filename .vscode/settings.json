@@ -1,0 +1,25 @@
+{
+  // C++ language support with clangd
+  // https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd
+  "clangd.arguments": [
+    // Don't auto-insert #include directives; with Bazel they usually
+    // require a matching BUILD dependency edit anyway.
+    "--header-insertion=never",
+    // Find compile_commands.json at the repo root even when browsing
+    // headers outside the source tree, e.g. under external/.
+    "--compile-commands-dir=${workspaceFolder}/",
+    // Allow clangd to query the hermetic toolchain's clang for its
+    // built-in include paths.
+    "--query-driver=**/clang*",
+    // Build the background index at full thread priority (the default is
+    // `low`). It speeds up the one-time first index considerably. Afterwards,
+    // only changed files re-index, so the extra CPU load is acceptable.
+    "--background-index-priority=normal",
+    // Keep preambles (PCH) in memory instead of on disk. It enables faster reparses
+    // and code completion, at the cost of RAM per open file.
+    "--pch-storage=memory"
+  ],
+  // Disable IntelliSense engine shipped with Microsoft's C/C++ extension pack
+  // because it conflicts with clangd.
+  "C_Cpp.intelliSenseEngine": "disabled"
+}

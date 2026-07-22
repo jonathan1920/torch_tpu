@@ -3,6 +3,12 @@ MODULE.bazel.lock
 # Bazel symlinks, e.g. bazel-out.
 bazel-*
 user.bazelrc
+# clangd compilation database, index cache, and the
+# symlink to external repositories under output base.
+/compile_commands.json
+/.cache/
+/external
+
 # Generated Python artifacts.
 *.pyc
 */**/__pycache__

@@ -139,6 +139,45 @@ bazel info
 
 It should print information about the repo without errors.
 
+## VSCode `clangd` Setup
+
+For C++ code navigation, it is recommended to use VSCode with
+[`clangd` extension](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd).
+Relying on a
+[compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html)
+generated from Bazel action graph, [clangd](https://clangd.llvm.org/) is able to
+enrich the editor with various smart features, including code completions, go-to
+definitions, *etc.*
+
+1.  Install VSCode extensions via UI or the following command:
+
+    ```sh
+    code --install-extension llvm-vs-code-extensions.vscode-clangd
+    # Uninstall Microsoft C++ extensions to avoid interference.
+    code --uninstall-extension ms-vscode.cpptools
+    ```
+
+1.  Generate the initial `compile_commands.json`:
+
+    ```sh
+    ./setup_clangd.py
+    ```
+
+It may take a while (> 30 minutes) for the first run to make a full build, but
+reruns will be incremental and cheap. If you have run `bazel build` recently,
+generated files already exist so you can pass `--no-build` to skip waiting for
+heavy builds (note that on a fresh workspace, skipping the build may prevent
+`clangd` from resolving generated files). See more options in the
+[script](./setup_clangd.py) file-level comments.
+
+Alternatively, you can invoke the script via `nox` (arguments after `--` are
+forwarded):
+
+```sh
+nox -s refresh_compile_commands -- --no-build
+nox -s refresh_compile_commands -- //torch_tpu/ops/...
+```
+
 ## Contributing
 
 We welcome contributions to the PyTorch on TPU project! Please see our
