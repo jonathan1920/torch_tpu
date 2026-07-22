@@ -16,21 +16,24 @@
 
 #include "torch_tpu/ops/view_decomposition/slice_primitive.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <ostream>
-#include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/absl_check.h"
+#include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
@@ -196,11 +199,34 @@ SlicePrimitive Merge(SlicePrimitive first, const SlicePrimitive second) {
 absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(mlir::MlirOp input,
                                                const SlicePrimitive& slice) {
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-  CheckSlice(slice, input_type.getShape(),
+  ABSL_VLOG(3) << "ViewPrimitiveShlo: input_type: "
+               << mlir::debugString(input_type)
+               << " slice: " << ToString(slice);
+
+  const mlir::stablehlo::Dimensions input_dims = GetDimensions(input);
+  Dimensions input_sizes;
+  input_sizes.reserve(input_dims.size());
+  for (const auto& dim : input_dims) {
+    input_sizes.push_back(dim.size);
+  }
+
+  CheckSlice(slice, input_sizes,
              /* get_error_message_suffix= */ [&]() {
                return GetViewPrimitiveShloErrorSuffix(slice,
                                                       input_type.getShape());
              });
+
+  for (size_t i = 0; i < input_dims.size(); ++i) {
+    if (input_dims[i].boundOp.has_value()) {
+      const auto& slice_dim = slice.slice_dims[i];
+      TT_RET_CHECK(slice_dim.start_index == 0 &&
+                       slice_dim.limit_index == input_dims[i].size &&
+                       slice_dim.stride == 1,
+                   error::kInvalidArgument)
+          << "slicing dynamic dimension " << i << " for input "
+          << mlir::debugString(input_type) << " is not supported";
+    }
+  }
 
   // Restructure from list-of-tuples to tuple-of-lists to match StableHLO API.
   Indices start_indices;
@@ -214,7 +240,21 @@ absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(mlir::MlirOp input,
     limit_indices.push_back(slice_dim.limit_index);
     strides.push_back(slice_dim.stride);
   }
-  return mlir::stablehlo::Slice(input, start_indices, limit_indices, strides);
+
+  mlir::MlirOp sliced_op =
+      mlir::stablehlo::Slice(input, start_indices, limit_indices, strides);
+
+  for (size_t i = 0; i < input_dims.size(); ++i) {
+    if (input_dims[i].boundOp.has_value()) {
+      mlir::MlirOp boundOp =
+          mlir::MlirOp(input.getBuilder(), *input_dims[i].boundOp);
+      auto dim_size =
+          mlir::stablehlo::GetDimensionSize(boundOp, input_dims[i].boundOpDim);
+      sliced_op = mlir::stablehlo::SetDimensionSize(sliced_op, dim_size, i);
+    }
+  }
+
+  return sliced_op;
 }
 
 }  // namespace torch_tpu

@@ -1294,6 +1294,22 @@ Please use clone() or contiguous() to copy the tensor before writing""",
       # Try to mark dimension 1 as dynamic too.
       dynamism.mark_dynamic(inp, 1, 5, 20)
 
+  @et.why_tpu_only("Bounded dynamism is a TPU-specific feature.")
+  def test_slice_dynamic_dim_on_dynamic_tensor_error(self):
+    inp = torch.ones(5, 2, device=et.device())
+
+    # Mark dimension 0 of `inp` as dynamic.
+    dynamism.mark_dynamic(inp, 0, 4, 10)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=re.compile(
+            r".*slicing dynamic dimension 0 for input .* is not supported"
+        ),
+    ):
+      out = inp[1:]
+      out.cpu()
+
   # PyTorch `native_group_norm_backward` implementation doesn't check the
   # dimensions of `grad` and `inp`.
   @et.why_tpu_only("TODO: make the behavior consistent between TPU and CPU.")

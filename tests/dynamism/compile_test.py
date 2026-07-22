@@ -761,5 +761,31 @@ class DynamicBroadcastTest(absltest.TestCase):
     utils.assert_close(out1, expected)
 
 
+class DynamicSliceTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    tt_testing.reset_eager_state()
+    self.device = torch.accelerator.current_accelerator()
+
+  def test_slice_static_dim_on_dynamic_tensor(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, grid):
+        return grid[:, 1] * grid[:, 2]
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    grid = torch.tensor(
+        [[1, 24, 48], [1, 24, 48]], dtype=torch.int64, device=self.device
+    )
+    torch._dynamo.mark_dynamic(grid, 0, min=1, max=32)
+
+    out = compiled(grid)
+    expected = grid[:, 1] * grid[:, 2]
+    utils.assert_close(out, expected)
+
+
 if __name__ == "__main__":
   absltest.main()
