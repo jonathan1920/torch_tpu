@@ -117,7 +117,7 @@ class SchedOverheadTest(parameterized.TestCase):
     w = torch.randn([sz, sz], device=device)
     for _ in range(_NUM_WARMUP_STEPS.value):
       y = x @ w
-      unused_y_cpu = y.to("cpu")  # pylint: disable=unused-variable
+      _ = y.to("cpu")
 
     session = xprof_session.XprofSession()
     session.start_session(host_trace_level=3, enable_python_tracer=True)
@@ -128,7 +128,7 @@ class SchedOverheadTest(parameterized.TestCase):
         cpu_start_time = time.time()
         y = x @ w
         cpu_total_time = time.time() - cpu_start_time
-        unused_y_cpu = y.to("cpu")  # pylint: disable=unused-variable
+        _ = y.to("cpu")
     time_per_step = (time.time() - loop_start_time) / _NUM_STEPS.value
     xprof_url = session.end_session_and_get_url()
 

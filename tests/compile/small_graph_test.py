@@ -583,7 +583,8 @@ class FunctionTest(absltest.TestCase):
     compiled_fn = compiler_instance(gm, [x])
 
     # Run before pickle
-    result_before = compiled_fn([x])  # pylint: disable=unused-variable
+    result_before = compiled_fn([x])
+    utils.assert_close(result_before[0].cpu(), x * 3 + 1)
 
     # Pickle roundtrip
     data = pickle.dumps(compiled_fn)
