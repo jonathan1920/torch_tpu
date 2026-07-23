@@ -302,9 +302,11 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
-    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
     shard_count = 15,
     tags = [
+        # Specifically designed to test v6e, mark as failing on other hardware.
+        "fails-on-tpu-v5",
+        "fails-on-tpu-v7",
         "nosan",  # Rely on ops_test_tpu for *san coverage.
         # Specifically tests TPU v6e behaviors in postsubmit. Do not change to
         # other TPU versions.
@@ -334,9 +336,11 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
-    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
     shard_count = 10,
     tags = [
+        # Specifically designed to test v6e, mark as failing on other hardware.
+        "fails-on-tpu-v5",
+        "fails-on-tpu-v7",
         "nosan",  # Rely on ops_test_tpu for *san coverage.
         "requires-tpu-v6e",
     ],
@@ -364,9 +368,11 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
-    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
     shard_count = 1,
     tags = [
+        # Specifically designed to test v6e, mark as failing on other hardware.
+        "fails-on-tpu-v5",
+        "fails-on-tpu-v7",
         "nosan",  # Rely on ops_test_tpu for *san coverage.
         "requires-tpu-v6e",
     ],
@@ -394,9 +400,11 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
-    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
     shard_count = 1,
     tags = [
+        # Specifically designed to test v6e, mark as failing on other hardware.
+        "fails-on-tpu-v5",
+        "fails-on-tpu-v7",
         "nosan",  # Rely on ops_test_tpu for *san coverage.
         "requires-tpu-v6e",
     ],
@@ -564,9 +572,11 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
-    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
     shard_count = 12,
     tags = [
+        # Specifically designed to test v6e, mark as failing on other hardware.
+        "fails-on-tpu-v5",
+        "fails-on-tpu-v7",
         "nosan",  # Rely on ops_test_grad for *san coverage.
         # Specifically tests TPU v6e behaviors in postsubmit. Do not change to
         # other TPU versions.
@@ -596,9 +606,11 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
-    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
     shard_count = 10,
     tags = [
+        # Specifically designed to test v6e, mark as failing on other hardware.
+        "fails-on-tpu-v5",
+        "fails-on-tpu-v7",
         "nosan",  # Rely on ops_test_grad for *san coverage.
         "requires-tpu-v6e",
     ],
@@ -626,9 +638,11 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
-    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
     shard_count = 1,
     tags = [
+        # Specifically designed to test v6e, mark as failing on other hardware.
+        "fails-on-tpu-v5",
+        "fails-on-tpu-v7",
         "nosan",  # Rely on ops_test_grad for *san coverage.
         "requires-tpu-v6e",
     ],
@@ -656,9 +670,11 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
-    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
     shard_count = 1,
     tags = [
+        # Specifically designed to test v6e, mark as failing on other hardware.
+        "fails-on-tpu-v5",
+        "fails-on-tpu-v7",
         "nosan",  # Rely on ops_test_grad for *san coverage.
         "requires-tpu-v6e",
     ],
