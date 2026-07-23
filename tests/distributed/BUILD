@@ -481,6 +481,36 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "uneven_sharding_test",
+    srcs = ["uneven_sharding_test.py"],
+    args = [
+        "--xla_tpu_collect_sflag_wait_stats_trace=true",
+        "--xla_tpu_debug_sflag_wait_shalt_on_detection=true",
+        "--xla_tpu_debug_sc_sflag_wait_timeout_ms=10000",
+        "--xla_tpu_debug_sflag_wait_timeout_ms=10000",
+    ],
+    notest_oss = "XLA timeout flags not available.",
+    shard_count = 4,
+    tags = [
+        "noasan",  # Disabled due to b/497035517.
+        "nomsan",  # Disabled due to b/516945438.
+        "notsan",  # Disabled due to b/497035517.
+        "requires-tpu-v5lite:8",
+    ],
+    deps = [
+        ":distributed_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/utils",
+    ],
+)
+
+torch_tpu_py_test(
     name = "fairscale_tp_test",
     srcs = ["fairscale_tp_test.py"],
     args = [
