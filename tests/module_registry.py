@@ -812,11 +812,8 @@ class TransformersProvider(BaseProvider):
       return []
     assert self._base_path is not None
     modules = []
-    for owner_path in self._base_path.iterdir():
-      if owner_path.is_dir():
-        for model_path in owner_path.iterdir():
-          if model_path.is_dir():
-            modules.append(f"{owner_path.name}/{model_path.name}")
+    for p in self._base_path.glob("*/*/"):
+      modules.append(p.relative_to(self._base_path).as_posix())
     return modules
 
   def get_module_spec(
@@ -990,11 +987,8 @@ class DiffusersProvider(BaseProvider):
       return []
     assert self._base_path is not None
     modules = []
-    for owner_path in self._base_path.iterdir():
-      if owner_path.is_dir():
-        for model_path in owner_path.iterdir():
-          if model_path.is_dir():
-            modules.append(f"{owner_path.name}/{model_path.name}")
+    for p in self._base_path.glob("*/*/"):
+      modules.append(p.relative_to(self._base_path).as_posix())
     return modules
 
   def get_module_spec(
