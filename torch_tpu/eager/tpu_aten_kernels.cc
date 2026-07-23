@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
@@ -149,6 +150,7 @@
 #include "torch_tpu/ops/pooling/adaptive_avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/max_pool_aten_kernels.h"
+#include "torch_tpu/ops/pooling/pooling.h"
 #include "torch_tpu/ops/prod/prod_aten_kernels.h"
 #include "torch_tpu/ops/put/put_aten_kernels.h"
 #include "torch_tpu/ops/random/random_aten_kernels.h"
@@ -1168,12 +1170,15 @@ TORCH_LIBRARY(tpu, m) {
 
 TORCH_LIBRARY_IMPL(tpu, Meta, m) {
   ImplStable<OpName::kMaxPool2d>(
-      m, [](const at::Tensor& self, at::IntArrayRef kernel_size,
-            at::IntArrayRef stride, at::IntArrayRef padding,
-            at::IntArrayRef dilation, bool ceil_mode) {
-        return at::empty(GetMaxPoolOutputSize(self.sizes(), kernel_size, stride,
-                                              padding, dilation, ceil_mode, 2),
-                         self.options());
+      m,
+      [](const at::Tensor& self, at::IntArrayRef kernel_size,
+         at::IntArrayRef stride, at::IntArrayRef padding,
+         at::IntArrayRef dilation, bool ceil_mode) -> at::Tensor {
+        TT_ASSIGN_OR_THROW(
+            auto output_size,
+            GetPoolingOutputSize(self.sizes(), kernel_size, stride, padding,
+                                 dilation, ceil_mode, 2));
+        return at::empty(output_size, self.options());
       });
   ImplStable<OpName::kMaxPool2dBackward>(
       m, [](const at::Tensor& grad_output, const at::Tensor& self,

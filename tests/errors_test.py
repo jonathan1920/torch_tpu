@@ -6146,10 +6146,9 @@ Device-side assertion tracking was not enabled by user.""",
     dilation = [1, 1]
     ceil_mode = False
 
-    # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""max_pool2d_with_indices(): materialization failed with: input must be a 3-D or 4-D tensor, got 2-D tensor""",
+        tpu="""max_pool2d_with_indices(): expected non-empty 3D or 4D (batch mode) tensor for input, got 2D tensor""",
         gpu="""non-empty 3D or 4D (batch mode) tensor expected for input""",
     ):
       out, indices = torch.ops.aten.max_pool2d_with_indices.out(
@@ -6180,10 +6179,9 @@ Device-side assertion tracking was not enabled by user.""",
     count_include_pad = True
     divisor_override = None
 
-    # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""avg_pool2d(): materialization failed with: input must be a 3-D or 4-D tensor, got 2-D tensor""",
+        tpu="""avg_pool2d(): expected non-empty 3D or 4D (batch mode) tensor for input, got 2D tensor""",
         gpu="""Dimension out of range (expected to be in range of [-2, 1], but got -3)""",
     ):
       torch.ops.aten.avg_pool2d.out(

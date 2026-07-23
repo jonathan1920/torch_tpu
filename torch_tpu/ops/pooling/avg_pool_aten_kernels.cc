@@ -36,7 +36,6 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
@@ -51,6 +50,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/pooling/pooling.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -483,12 +483,17 @@ absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
     at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,
     std::optional<int64_t> divisor_override, at::Tensor& out,
     int64_t spatial_dim_count, OpParamCacheKeys param_keys) {
+  TT_ASSIGN_OR_RETURN(
+      const Dimensions output_size,
+      GetPoolingOutputSize(self.sizes(), kernel_size, stride, padding,
+                           at::IntArrayRef({1}), ceil_mode, spatial_dim_count));
+  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_size));
   TT_ASSIGN_OR_RETURN(auto out_type,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       BuildAvgPoolNd(self, kernel_size, stride, padding, ceil_mode,
-                     count_include_pad, divisor_override, out_type, out.sizes(),
+                     count_include_pad, divisor_override, out_type, output_size,
                      spatial_dim_count, std::move(param_keys)));
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
   return out;

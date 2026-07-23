@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "c10/util/ArrayRef.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LLVM.h"
@@ -65,6 +66,18 @@ std::vector<std::pair<int64_t, int64_t>> CeilModePadding(
     mlir::ArrayRef<int64_t> padding,            // [P_h, P_w]
     mlir::ArrayRef<int64_t> dilation,           // [D_h, D_w]
     bool ceil_mode);
+
+// Calculates the output dimensions for N-dimensional pooling operations (max
+// pool, avg pool, etc.).
+//
+// Computes spatial dimensions (D, H, W) based on kernel_size, stride, padding,
+// dilation, and ceil_mode. Handles input shapes formatted as (N, C, ...) or (C,
+// ...). Returns an error status if input_size rank is insufficient for
+// spatial_dim_count.
+absl::StatusOr<Dimensions> GetPoolingOutputSize(
+    at::IntArrayRef input_size, at::IntArrayRef kernel_size,
+    at::IntArrayRef stride, at::IntArrayRef padding, at::IntArrayRef dilation,
+    bool ceil_mode, int64_t spatial_dim_count);
 
 // Creates the padding config to be used to pad the input tensor and iota tensor
 // consistently, which is also required by StableHLO's ReduceWindowOp.

@@ -16,6 +16,7 @@
 
 #include "torch_tpu/ops/pooling/pooling.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
@@ -43,12 +44,13 @@ absl::StatusOr<BatchInput> CreateBatchInput(mlir::MlirOp input,
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
   auto num_dims = input_type.getRank();
 
-  TT_RET_CHECK(
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Rank is already checked by
+                 // GetPoolingOutputSize.
       num_dims == spatial_dim_count + 1 || num_dims == spatial_dim_count + 2,
       error::kInvalidArgument)
-      << "input must be a " << spatial_dim_count + 1 << "-D or "
-      << spatial_dim_count + 2 << "-D tensor"
-      << ", got " << num_dims << "-D tensor";
+      << "expected non-empty " << spatial_dim_count + 1 << "D or "
+      << spatial_dim_count + 2 << "D (batch mode) tensor for input, got "
+      << num_dims << "D tensor";
 
   // If the input doesn't have a batch dimension, add a size 1 batch dimension
   if (num_dims == spatial_dim_count + 1) {
@@ -196,6 +198,62 @@ ReduceWindowAttributes GetReduceWindowAttributes(
       .window_dilations =
           mlir::DenseI64ArrayAttr::get(&builder.getContext(), dilation),
       .padding = reduce_padding_attr};
+}
+
+namespace {
+
+int64_t GetSingleDim(const int64_t in, const int64_t i,
+                     at::IntArrayRef kernel_size, at::IntArrayRef stride,
+                     at::IntArrayRef padding, at::IntArrayRef dilation,
+                     const bool ceil_mode) {
+  const int64_t k = kernel_size.size() == 1 ? kernel_size[0] : kernel_size[i];
+  const int64_t s =
+      stride.empty() ? k : (stride.size() == 1 ? stride[0] : stride[i]);
+  const int64_t p = padding.size() == 1 ? padding[0] : padding[i];
+  const int64_t d = dilation.size() == 1 ? dilation[0] : dilation[i];
+  const int64_t numerator = in + 2 * p - d * (k - 1) - 1;
+
+  if (!ceil_mode) {
+    return numerator / s + 1;
+  }
+
+  const int64_t out = (numerator + s - 1) / s + 1;
+  if ((out - 1) * s >= in + p) {
+    return out - 1;
+  }
+  return out;
+}
+
+}  // namespace
+
+absl::StatusOr<Dimensions> GetPoolingOutputSize(
+    at::IntArrayRef input_size, at::IntArrayRef kernel_size,
+    at::IntArrayRef stride, at::IntArrayRef padding, at::IntArrayRef dilation,
+    const bool ceil_mode, const int64_t spatial_dim_count) {
+  const int64_t dims_num = input_size.size();
+  TT_RET_CHECK(
+      dims_num == spatial_dim_count + 1 || dims_num == spatial_dim_count + 2,
+      error::kInvalidArgument)
+      << "expected non-empty " << spatial_dim_count + 1 << "D or "
+      << spatial_dim_count + 2 << "D (batch mode) tensor for input, got "
+      << dims_num << "D tensor";
+
+  // If (N, C, ...), spatial starts at 2. If (C, ...), starts at 1.
+  const int64_t spatial_start_index =
+      (dims_num == spatial_dim_count + 2) ? 2 : 1;
+
+  Dimensions output_size(dims_num);
+  std::copy(input_size.begin(), input_size.begin() + spatial_start_index,
+            output_size.begin());
+
+  // Calculates Spatial Dims (D, H, W).
+  for (int i = 0; i < spatial_dim_count; ++i) {
+    const int64_t in = input_size[spatial_start_index + i];
+    const int64_t out =
+        GetSingleDim(in, i, kernel_size, stride, padding, dilation, ceil_mode);
+    output_size[spatial_start_index + i] = std::max<int64_t>(out, 1);
+  }
+  return output_size;
 }
 
 }  // namespace torch_tpu

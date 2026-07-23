@@ -51,9 +51,7 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/csrc/autograd/custom_function.h"
-#include "torch/csrc/autograd/function.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
@@ -67,6 +65,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/pooling/pooling.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -229,43 +228,6 @@ absl::StatusOr<mlir::MlirOp> ComputeMaxPool(
       RemoveTrivialBatch(batch_result, original_dim_size, spatial_dim_count);
 
   return final_output;
-}
-
-// Calculates the size of a single output dimension (height, width, or depth)
-// for max_pool3d, including support for floor and ceil modes.
-//
-// Inputs:
-//   in: the size of the input dimension
-//   i: the index of the dimension
-//   kernel_size, stride, padding, dilation: the attributes of max_pool3d
-//   ceil_mode: indicates whether the pooling uses the floor or ceil mode
-//
-// Returns:
-//   int64_t: The calculated size of the single output dimension.
-//
-// Calculation Formula (Standard):
-//   Output Size = floor/ceil((Input Size + 2 * Padding - Dilation * (Kernel
-//   Size - 1) - 1) / Stride) + 1
-int64_t GetSingleDim(const int64_t in, const int64_t i,
-                     at::IntArrayRef kernel_size, at::IntArrayRef stride,
-                     at::IntArrayRef padding, at::IntArrayRef dilation,
-                     const bool ceil_mode) {
-  const int64_t k = kernel_size.size() == 1 ? kernel_size[0] : kernel_size[i];
-  const int64_t s =
-      stride.empty() ? k : (stride.size() == 1 ? stride[0] : stride[i]);
-  const int64_t p = padding.size() == 1 ? padding[0] : padding[i];
-  const int64_t d = dilation.size() == 1 ? dilation[0] : dilation[i];
-  const int64_t numerator = in + 2 * p - d * (k - 1) - 1;
-
-  if (!ceil_mode) {
-    return numerator / s + 1;
-  }
-
-  const int64_t out = (numerator + s - 1) / s + 1;
-  if ((out - 1) * s >= in + p) {
-    return out - 1;
-  }
-  return out;
 }
 
 // Builds the max_pool operations with indices and out tensors using
@@ -706,6 +668,12 @@ absl::Status BuildMaxPoolWithIndicesOutNd(
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
     at::Tensor& out, at::Tensor& indices, int64_t spatial_dim_count,
     OpParamCacheKeys param_keys) {
+  TT_ASSIGN_OR_RETURN(
+      const Dimensions output_size,
+      GetPoolingOutputSize(self.sizes(), kernel_size, stride, padding, dilation,
+                           ceil_mode, spatial_dim_count));
+  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_size));
+  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(indices, output_size));
   TT_ASSIGN_OR_RETURN(auto element_type,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   TT_ASSIGN_OR_RETURN(auto indices_type,
@@ -729,8 +697,7 @@ absl::Status BuildMaxPoolWithIndicesOutNd(
       (auto [result_buf, indices_buf]),
       (DispatchOp<1, 2>(std::move(op_builder), self,
                         {.out_dtypes = {element_type, indices_type},
-                         .out_dims_list = {CopyIntVector(out.sizes()),
-                                           CopyIntVector(indices.sizes())},
+                         .out_dims_list = {output_size, output_size},
                          .op_param_cache_keys = std::move(param_keys)})));
 
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
@@ -743,6 +710,11 @@ absl::Status BuildMaxPoolOutNd(const at::Tensor& self,
                                at::IntArrayRef dilation, bool ceil_mode,
                                at::Tensor& out, int64_t spatial_dim_count,
                                OpParamCacheKeys param_keys) {
+  TT_ASSIGN_OR_RETURN(
+      Dimensions output_size,
+      GetPoolingOutputSize(self.sizes(), kernel_size, stride, padding, dilation,
+                           ceil_mode, spatial_dim_count));
+  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_size));
   TT_ASSIGN_OR_RETURN(auto element_type,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
 
@@ -759,7 +731,7 @@ absl::Status BuildMaxPoolOutNd(const at::Tensor& self,
       auto result_buf,
       (DispatchOp<1>(std::move(op_builder), self,
                      {.out_dtype = element_type,
-                      .out_dims = CopyIntVector(out.sizes()),
+                      .out_dims = std::move(output_size),
                       .op_param_cache_keys = std::move(param_keys)})));
 
   return AssignBufferToAtTensor(std::move(result_buf), out);
@@ -849,8 +821,10 @@ std::tuple<at::Tensor, at::Tensor> AtenMaxPool3dWithIndices(
        IgnoreInCacheKey(dilation, "Delegates to AtenMaxPool3dWithIndicesOut"),
        IgnoreInCacheKey(ceil_mode, "Delegates to AtenMaxPool3dWithIndicesOut")),
       {
-        auto output_size = GetMaxPoolOutputSize(
-            self.sizes(), kernel_size, stride, padding, dilation, ceil_mode, 3);
+        TT_ASSIGN_OR_THROW(
+            const auto output_size,
+            GetPoolingOutputSize(self.sizes(), kernel_size, stride, padding,
+                                 dilation, ceil_mode, 3));
 
         at::Tensor out = at::empty(output_size, self.options());
         at::Tensor indices =
@@ -927,30 +901,6 @@ at::Tensor& AtenMaxPool3dWithIndicesBackwardGradInput(
             });
 }
 
-Dimensions GetMaxPoolOutputSize(at::IntArrayRef input_size,
-                                at::IntArrayRef kernel_size,
-                                at::IntArrayRef stride, at::IntArrayRef padding,
-                                at::IntArrayRef dilation, const bool ceil_mode,
-                                const int64_t spatial_dim_count) {
-  const int64_t dims_num = input_size.size();
-  // If (N, C, ...), spatial starts at 2. If (C, ...), starts at 1.
-  const int64_t spatial_start_index =
-      (dims_num == spatial_dim_count + 2) ? 2 : 1;
-
-  Dimensions output_size(dims_num);
-  std::copy(input_size.begin(), input_size.begin() + spatial_start_index,
-            output_size.begin());
-
-  // Calculates Spatial Dims (D, H, W).
-  for (int i = 0; i < spatial_dim_count; ++i) {
-    const int64_t in = input_size[spatial_start_index + i];
-    const int64_t out =
-        GetSingleDim(in, i, kernel_size, stride, padding, dilation, ceil_mode);
-    output_size[spatial_start_index + i] = std::max<int64_t>(out, 1);
-  }
-  return output_size;
-}
-
 at::Tensor AtenMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
                          at::IntArrayRef stride, at::IntArrayRef padding,
                          at::IntArrayRef dilation, bool ceil_mode) {
@@ -985,9 +935,10 @@ at::Tensor TpuMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
                   << "bool dtype is not supported";
 
               const int64_t spatial_dim_count = 2;
-              auto output_size = GetMaxPoolOutputSize(
-                  self.sizes(), kernel_size, stride, padding, dilation,
-                  ceil_mode, spatial_dim_count);
+              TT_ASSIGN_OR_THROW(const auto output_size,
+                                 GetPoolingOutputSize(
+                                     self.sizes(), kernel_size, stride, padding,
+                                     dilation, ceil_mode, spatial_dim_count));
               at::Tensor out = at::empty(output_size, self.options());
 
               TT_THROW_IF_ERROR(BuildMaxPoolOutNd(

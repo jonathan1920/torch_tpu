@@ -17,14 +17,11 @@
 #ifndef TORCH_TPU_OPS_POOLING_MAX_POOL_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_POOLING_MAX_POOL_ATEN_KERNELS_H_
 
-#include <cstdint>
 #include <tuple>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "torch/csrc/autograd/custom_function.h"
-#include "torch/csrc/autograd/function.h"
-#include "torch_tpu/common/dimension_types.h"
 
 namespace torch_tpu {
 
@@ -36,12 +33,6 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool2dWithIndicesOut(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
     at::Tensor& out, at::Tensor& indices);
-
-Dimensions GetMaxPoolOutputSize(at::IntArrayRef input_size,
-                                at::IntArrayRef kernel_size,
-                                at::IntArrayRef stride, at::IntArrayRef padding,
-                                at::IntArrayRef dilation, const bool ceil_mode,
-                                const int64_t spatial_dim_count);
 
 at::Tensor TpuMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
                         at::IntArrayRef stride, at::IntArrayRef padding,
