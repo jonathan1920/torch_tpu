@@ -3082,6 +3082,35 @@ def float_random_perm(num_elem: int, dtype: torch.dtype) -> torch.Tensor | None:
   return float_bits.view(dtype)
 
 
+def _set_up_test_random_seed() -> None:
+  """Picks a random seed for the test and updates _RANDOM_SEED to it."""
+
+  global _RANDOM_SEED
+
+  if absltest.FLAGS["test_random_seed"].present:
+    # The user explicitly passed --test_random_seed=N, so we use that value.
+    _RANDOM_SEED = absltest.FLAGS.test_random_seed
+  elif (
+      _torch_tpu_vs_cpu_mode()
+      and _device_ops_backend._is_optimized_build()  # pylint: disable=protected-access
+  ):
+    # We are in postsubmit (optimized build) and comparing TPU vs CPU.
+    # We set the seed based on the time, so that we get more test coverage
+    # over time.
+    _RANDOM_SEED = time.time_ns() % 100000
+  else:
+    # We are either in presubmit (fastbuild) or comparing TPU vs GPU or
+    # generating GPU golden data. In these cases, we want a fixed seed for
+    # reproducible behavior. For example, we don't want presubmit to block
+    # a CL due to unrelated flakes caused by non-deterministic seeds.
+    _RANDOM_SEED = 1234
+
+  # Set the random seed for Python and Torch.
+  _seed_rngs(_RANDOM_SEED)
+  print(f"Repro with --test_random_seed={_RANDOM_SEED}", flush=True)
+  print(f"Torch initial seed: {torch.initial_seed()}", flush=True)
+
+
 def set_up_test_module() -> None:
   """Sets up the entire test module."""
 
@@ -3107,28 +3136,7 @@ def set_up_test_module() -> None:
     if is_compiled_mode():
       torch.backends.tpu.allow_excess_precision = True  # pytype: disable=module-attr
 
-  # Pick a random seed for the test.
-  global _RANDOM_SEED
-  if absltest.FLAGS["test_random_seed"].present:
-    # The user explicitly passed --test_random_seed=N, so we use that value.
-    _RANDOM_SEED = absltest.FLAGS.test_random_seed  # pyrefly: ignore[bad-assignment]
-  elif (
-      _torch_tpu_vs_cpu_mode()
-      and _device_ops_backend._is_optimized_build()  # pylint: disable=protected-access
-  ):
-    # In postsubmit (optimized build), we keep the random time-based seed
-    # to continuously explore different inputs and maintain test coverage.
-    _RANDOM_SEED = time.time_ns() % 100000  # pyrefly: ignore[bad-assignment]
-  else:
-    # The user did not pass --test_random_seed and we are in presubmit
-    # (fastbuild) or other modes, so we pick a fixed seed to prevent flaky
-    # tests.
-    _RANDOM_SEED = 1234  # pyrefly: ignore[bad-assignment]
-
-  # Set the random seed for Python and Torch.
-  _seed_rngs(_RANDOM_SEED)
-  print(f"Repro with --test_random_seed={_RANDOM_SEED}", flush=True)
-  print(f"Torch initial seed: {torch.initial_seed()}", flush=True)
+  _set_up_test_random_seed()
 
   # Assert that `torch.get_default_dtype()` returns `torch.float` when `setUp`
   # and `tearDown` are called.
