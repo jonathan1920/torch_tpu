@@ -329,8 +329,9 @@ def run_gather_wrong_output_list_size() -> None:
     )
     with et.assert_raises_message(RuntimeError, tpu=expected_msg):
       pg.gather([], [tensor], opts)
-  else:
-    pg.gather([], [tensor], opts)
+  # Intentionally do NOT call gather on non-dst ranks.
+  # The rank-specific error will prevent the gather() from actually starting;
+  # trying to gather() on non-dst ranks would deadlock.
 
 
 def run_gather_wrong_output_tensor_count() -> None:
@@ -349,8 +350,9 @@ def run_gather_wrong_output_tensor_count() -> None:
     )
     with et.assert_raises_message(RuntimeError, tpu=expected_msg):
       torch.distributed.gather(tensor, gather_list=gather_list, dst=dst)
-  else:
-    torch.distributed.gather(tensor, gather_list=None, dst=dst)
+  # Intentionally do NOT call gather on non-dst ranks.
+  # The rank-specific error will prevent the gather() from actually starting;
+  # trying to gather() on non-dst ranks would deadlock.
 
 
 def run_gather_mismatch_input_size() -> None:
@@ -368,8 +370,9 @@ def run_gather_mismatch_input_size() -> None:
     )
     with et.assert_raises_message(RuntimeError, tpu=expected_msg):
       torch.distributed.gather(tensor, gather_list=gather_list, dst=dst)
-  else:
-    torch.distributed.gather(tensor, gather_list=None, dst=dst)
+  # Intentionally do NOT call gather on non-dst ranks.
+  # The rank-specific error will prevent the gather() from actually starting;
+  # trying to gather() on non-dst ranks would deadlock.
 
 
 def run_gather_non_uniform_output_shapes() -> None:
@@ -388,8 +391,9 @@ def run_gather_non_uniform_output_shapes() -> None:
     )
     with et.assert_raises_message(RuntimeError, tpu=expected_msg):
       torch.distributed.gather(tensor, gather_list=gather_list, dst=dst)
-  else:
-    torch.distributed.gather(tensor, gather_list=None, dst=dst)
+  # Intentionally do NOT call gather on non-dst ranks.
+  # The rank-specific error will prevent the gather() from actually starting;
+  # trying to gather() on non-dst ranks would deadlock.
 
 
 def run_gather_output_on_non_root() -> None:

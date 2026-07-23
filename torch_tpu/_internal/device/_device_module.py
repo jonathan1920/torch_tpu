@@ -424,6 +424,9 @@ class _DeviceModule(abc.ABC):
   @classmethod
   def _shutdown_runtime(cls):
     if cls.is_initialized():
+      if torch.distributed.is_available():
+        if torch.distributed.is_initialized():
+          torch.distributed.barrier()
       _device_ops_backend._shutdown_runtime()  # pylint: disable=protected-access
 
 

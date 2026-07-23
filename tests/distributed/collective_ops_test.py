@@ -46,7 +46,7 @@ if __name__ == "__main__":  # We are in the parent process.
   os.environ[
       "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT"
   ] += f"/{date}.{random_seed}"
-
+# pylint: disable=g-code-after-main
 
 import torch  # pylint: disable=g-import-not-at-top
 from torch import distributed as dist
@@ -627,6 +627,24 @@ def run_barrier_blocking(async_op: bool) -> None:
       )
 
 
+def run_rank_variable_dead_collective_without_hang(world_size: int) -> None:
+  """Tests that process exits on some ranks will not cause hangs on others."""
+  rank = int(os.environ["RANK"])
+  input_tensor = torch.ones(1, dtype=torch.float32, device="cpu").to(
+      device="tpu"
+  )
+  dist.all_reduce(input_tensor, op=dist.ReduceOp.SUM)
+  if rank != 0:
+    # Ranks other than 0 will try to exit without waiting for the collective to
+    # finish.
+    return
+  # Rank 0 will wait for the result of the all_reduce.
+  # This should not hang.
+  result = input_tensor.cpu()
+  expected = torch.tensor([world_size], dtype=torch.float32, device="cpu")
+  utils.assert_close(result, expected)
+
+
 class CollectiveOpsTest(absltest.TestCase):
   _world_size = 8
 
@@ -926,6 +944,16 @@ class CollectiveOpsTest(absltest.TestCase):
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_send_recv_same_tag, world_size=self._world_size
         ),
+    )
+
+  def test_rank_variable_dead_collective_without_hang(self):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            _test_wrapper, world_size=self._world_size
+        ),
+        test_fn=run_rank_variable_dead_collective_without_hang,
+        world_size=self._world_size,
     )
 
 

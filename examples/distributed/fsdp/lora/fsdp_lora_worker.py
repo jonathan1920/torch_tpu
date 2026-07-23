@@ -206,7 +206,6 @@ def worker_fn() -> None:
           preamble=f'step {i}',
       )
       logging.info('rank: %d, tpu_tp_output: %s', rank, y_pred_ref)
-    dist.destroy_process_group()
 
 
 if __name__ == '__main__':
