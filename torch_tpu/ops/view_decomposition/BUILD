@@ -14,7 +14,6 @@
 
 load(
     "//build_files:build_defs.bzl",
-    "oss_target",
     "torch_tpu_cc_library",
     "torch_tpu_cc_test",
     "torch_tpu_package_end",
@@ -69,7 +68,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nobuild_oss = "Use oss_view_primitive_error_utils_test instead in OSS CI",
+    requires_libtpu = True,
     deps = [
         ":reshape_primitive",
         ":strided_layout",
@@ -278,7 +277,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nobuild_oss = "Use oss_bitcast_primitive_test instead in OSS CI",
+    requires_libtpu = True,
     deps = [
         ":bitcast_primitive",
         ":strided_layout",
@@ -364,7 +363,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nobuild_oss = "Use oss_view_sequence_test instead in OSS CI",
+    requires_libtpu = True,
     deps = [
         ":bitcast_primitive",
         ":broadcast_primitive",
@@ -423,7 +422,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nobuild_oss = "Use oss_decomposition_test instead in OSS CI",
+    requires_libtpu = True,
     deps = [
         ":decomposition",
         ":strided_layout",
@@ -480,7 +479,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nobuild_oss = "Use oss_inversion_test instead in OSS CI",
+    requires_libtpu = True,
     deps = [
         ":bitcast_primitive",
         ":conj_primitive",
@@ -520,81 +519,6 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-oss_target(
-    sh_test,
-    name = "oss_view_primitive_error_utils_test",
-    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
-    args = ["$(location :view_primitive_error_utils_test)"],
-    data = [
-        ":view_primitive_error_utils_test",
-        "//shims/libtpu:pypi_libtpu_whl",
-    ],
-    tags = [
-        "requires-tpu",
-        "requires-tpu-v5lite",
-    ],
-)
-
-oss_target(
-    sh_test,
-    name = "oss_bitcast_primitive_test",
-    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
-    args = ["$(location :bitcast_primitive_test)"],
-    data = [
-        ":bitcast_primitive_test",
-        "//shims/libtpu:pypi_libtpu_whl",
-    ],
-    tags = [
-        "requires-tpu",
-        "requires-tpu-v5lite",
-    ],
-)
-
-oss_target(
-    sh_test,
-    name = "oss_view_sequence_test",
-    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
-    args = ["$(location :view_sequence_test)"],
-    data = [
-        ":view_sequence_test",
-        "//shims/libtpu:pypi_libtpu_whl",
-    ],
-    tags = [
-        "requires-tpu",
-        "requires-tpu-v5lite",
-    ],
-)
-
-oss_target(
-    sh_test,
-    name = "oss_decomposition_test",
-    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
-    args = ["$(location :decomposition_test)"],
-    data = [
-        ":decomposition_test",
-        "//shims/libtpu:pypi_libtpu_whl",
-    ],
-    tags = [
-        "requires-tpu",
-        "requires-tpu-v5lite",
-    ],
-)
-
-oss_target(
-    sh_test,
-    name = "oss_inversion_test",
-    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
-    args = ["$(location :inversion_test)"],
-    data = [
-        ":inversion_test",
-        "//shims/libtpu:pypi_libtpu_whl",
-    ],
-    tags = [
-        "requires-tpu",
-        "requires-tpu-v5lite",
     ],
 )
 

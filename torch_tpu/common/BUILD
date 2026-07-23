@@ -22,7 +22,6 @@ load(
 )
 load(
     "//build_files:build_defs.bzl",
-    "oss_target",
     "torch_tpu_cc_library",
     "torch_tpu_cc_test",
     "torch_tpu_package_end",
@@ -1063,8 +1062,6 @@ torch_tpu_cc_test(
     srcs = ["compilation_test.cc"],
     # go/cppdebugflags#increasing-your-size-limits
     exec_properties = {"cpp_link.mem": "16g"},  # multiline select
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
-    notest_oss = "Do not enable this in OSS, instead use `oss_compilation_test` to run tests in the OSS TPU CI.",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -1086,7 +1083,9 @@ torch_tpu_cc_test(
     srcs = ["compilation_cache_test.cc"],
     # go/cppdebugflags#increasing-your-size-limits
     exec_properties = {"cpp_link.mem": "16g"},  # multiline select
-    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    # TODO(b/538117859): Real failure on OSS
+    notest_oss = "Failing due to time zone difference and peak memory",
+    requires_libtpu = True,
     deps = [
         ":cache_key",
         ":compilation",
@@ -1127,7 +1126,7 @@ torch_tpu_cc_test(
     name = "compilation_thread_num_test",
     srcs = ["compilation_thread_num_test.cc"],
     exec_properties = {"cpp_link.mem": "16g"},  # multiline select
-    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    requires_libtpu = True,
     tags = [
         # Needs exclusive access to machine as we are testing hardware behavior. Without this,
         # `blaze test --runs_per_test` may fail.
@@ -1150,31 +1149,11 @@ exports_files([
     "contain.h",
 ])
 
-# TODO: b/479574836 - Using this test as a hack to run compilation_test.cc in TPU CI.
-# This test should be removed once either an equivalent C++ libtpu API is available or
-# compilation_test.cc is converted to a Python test.
-oss_target(
-    sh_test,
-    name = "oss_compilation_test",
-    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
-    args = ["$(location :compilation_test)"],
-    data = [
-        ":compilation_test",
-        "//shims/libtpu:pypi_libtpu_whl",
-    ],
-    tags = [
-        # This is normally added by the torch_tpu_... rules
-        "requires-tpu",
-        "requires-tpu-v5lite",
-    ],
-)
-
 torch_tpu_cc_test(
     name = "compilation_parse_xla_options_test",
     srcs = ["compilation_parse_xla_options_test.cc"],
     # go/cppdebugflags#increasing-your-size-limits
     exec_properties = {"cpp_link.mem": "16g"},  # multiline select
-    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -1198,7 +1177,6 @@ torch_tpu_cc_test(
     srcs = ["compile_options_key_test.cc"],
     # go/cppdebugflags#increasing-your-size-limits
     exec_properties = {"cpp_link.mem": "16g"},  # multiline select
-    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -1340,7 +1318,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    requires_libtpu = True,
     deps = [
         ":cache_key",
         ":dimension_types",

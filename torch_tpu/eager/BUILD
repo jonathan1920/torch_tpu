@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "oss_target", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -25,7 +25,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    notest_oss = "Fails due to TPU_LIBRARY_PATH not set.",
+    requires_libtpu = True,
     deps = [
         ":device_buffer",
         ":device_buffer_utils",
@@ -56,7 +56,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    notest_oss = "Fails due to TPU_LIBRARY_PATH not set.",
+    requires_libtpu = True,
     deps = [
         ":device_buffer",
         ":structured_log_buffer",
@@ -82,7 +82,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    requires_libtpu = True,
     deps = [
         ":device_buffer",
         ":device_buffer_utils",
@@ -123,7 +123,6 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -769,11 +768,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    # To initialize PjRt, we need to explicitly set environment variable
-    # TPU_LIBRARY_PATH to point to libtpu.so for C++ tests before starting
-    # running the tests, which is not needed for Python tests.
-    # TODO(b/497890629): Run this test in OSS CI instead of using the hack
-    nobuild_oss = "Use oss_split_utils_test instead in OSS CI",
+    requires_libtpu = True,
     deps = [
         ":device_buffer",
         ":split_utils",
@@ -867,7 +862,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nobuild_oss = "Use oss_events_queue_test instead in OSS CI",
+    requires_libtpu = True,
     deps = [
         ":device_buffer",
         ":device_buffer_utils",
@@ -898,38 +893,6 @@ torch_tpu_cc_library(
     hdrs = ["current_stream.h"],
     deps = [
         "@com_google_absl//absl/log:absl_check",
-    ],
-)
-
-oss_target(
-    sh_test,
-    name = "oss_split_utils_test",
-    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
-    args = ["$(location :split_utils_test)"],
-    data = [
-        ":split_utils_test",
-        "//shims/libtpu:pypi_libtpu_whl",
-    ],
-    tags = [
-        # This is normally added by the torch_tpu_... rules
-        "requires-tpu",
-        "requires-tpu-v5lite",
-    ],
-)
-
-oss_target(
-    sh_test,
-    name = "oss_events_queue_test",
-    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
-    args = ["$(location :events_queue_test)"],
-    data = [
-        ":events_queue_test",
-        "//shims/libtpu:pypi_libtpu_whl",
-    ],
-    tags = [
-        # This is normally added by the torch_tpu_... rules
-        "requires-tpu",
-        "requires-tpu-v5lite",
     ],
 )
 

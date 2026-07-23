@@ -329,7 +329,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    notest_oss = "Requires TPU PJRT plugin (transitively via eager:tensor_to_buffer -> pjrt:pjrt_state), which fails due to missing TPU_LIBRARY_PATH.",
+    requires_libtpu = True,
     deps = [
         ":dispatch_scan",
         "//shims/torch",
