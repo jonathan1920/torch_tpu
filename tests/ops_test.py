@@ -3293,7 +3293,10 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("nn.functional.gelu")
 
   def test_nn_functional_glu(self):
-    self.do_test_op("nn.functional.glu")
+    self.do_test_op(
+        "nn.functional.glu",
+        exclude_dtypes=(torch.bfloat16,),  # EXCLUDE_DTYPES_OK=b/538164008
+    )
 
   def test_nn_functional_hardsigmoid(self):
     self.do_test_op("nn.functional.hardsigmoid")
