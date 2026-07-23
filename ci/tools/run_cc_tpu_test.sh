@@ -23,6 +23,16 @@ fi
 TEST_BINARY="$1"
 shift # Remove the binary from the argument list so "$@" contains only test flags.
 
+# If TEST_BINARY does not end in _bin (e.g. wrapper target name was passed),
+# resolve to the underlying C++ binary ending in _bin.
+if [[ ! "$TEST_BINARY" =~ _bin$ ]] && [[ -f "${TEST_BINARY}_bin" ]]; then
+  TEST_BINARY="${TEST_BINARY}_bin"
+fi
+
+if [[ "$TEST_BINARY" != /* ]] && [[ "$TEST_BINARY" != ./* ]]; then
+  TEST_BINARY="./$TEST_BINARY"
+fi
+
 echo "INFO: Setting environment var TPU_LIBRARY_PATH."
 
 # 1. Find the .whl file in the Runfiles Root (..)
