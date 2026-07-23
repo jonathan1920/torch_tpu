@@ -619,12 +619,12 @@ TIER_OF_DTYPE: Final[Mapping[torch.dtype, int]] = {
     torch.bool: 1,  # Masks and logic ops.
     torch.float32: 1,  # Default FP type for PyTorch.
     torch.float4_e2m1fn_x2: 1,  # FP4 supported by TPU v8.
+    torch.float8_e4m3fn: 1,  # FP8 for weights/activations (higher precision).
+    torch.float8_e5m2: 1,  # FP8 for gradients (wider range).
     torch.int32: 1,  # Tensor dimensions, lighter indexing.
     torch.int4: 1,  # Quantized inference for vLLM.
     torch.int64: 1,  # Standard type for indexing.
     torch.float16: 2,  # Half precision for modern models.
-    torch.float8_e4m3fn: 2,  # FP8 for weights/activations (higher precision).
-    torch.float8_e5m2: 2,  # FP8 for gradients (wider range).
     torch.int8: 2,  # Quantized inference.
     torch.uint8: 2,  # Raw image.
     torch.complex64: 3,  # Signal processing.
