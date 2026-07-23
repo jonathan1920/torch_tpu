@@ -45,6 +45,7 @@ torch_tpu_py_library(
     deps = [
         ":compiler",
         ":torch_tpu_compiled_executable",
+        ":tpu_torch_compile",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/distributed:spmd_util",

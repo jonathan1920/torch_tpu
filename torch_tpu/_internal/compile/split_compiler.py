@@ -30,6 +30,7 @@ from torch._dynamo.utils import detect_fake_mode
 from torch._inductor.utils import InputType
 from torch.fx.passes.split_module import split_module
 from torch_tpu._internal.compile import compiler
+from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import CompiledArtifact
 
 # Required to register the SPMD safe region ops.
@@ -323,6 +324,10 @@ class SplitCompiler(compiler.Compiler):
     enter_target = torch.ops.torch_tpu.enter_spmd_safe_region.default
     exit_target = torch.ops.torch_tpu.exit_spmd_safe_region.default
 
+    materialize_collectives = (
+        tpu_torch_compile.get_materialize_collective_tensors_env_value()
+    )
+
     spmd_safe_depth = 0
     partition_id = 0
     partition_map = {}
@@ -367,7 +372,9 @@ class SplitCompiler(compiler.Compiler):
               "getitem of a collective producer not found in partition map."
           )
         partition_map[node] = partition_map[node.args[0]]
-      elif is_collective and not in_spmd_safe_region:
+      elif (
+          is_collective and not in_spmd_safe_region and materialize_collectives
+      ):
         # Make sure the collective doesn't end up in the previous partition.
         partition_id += 1
         partition_map[node] = partition_id

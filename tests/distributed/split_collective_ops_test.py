@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import dataclasses
+import os
 import pickle
 from typing import Any, Callable
+from unittest import mock
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -201,6 +203,34 @@ def run_compile_all_reduce_and_serdes_test():
   if isinstance(res_deserialized, (tuple, list)) and len(res_deserialized) == 1:
     res_deserialized = res_deserialized[0]
   utils.assert_close(res_deserialized.cpu(), expected)
+
+
+def run_compile_no_splits_when_env_zero_test():
+  backend = TpuBackend(debug=True)
+
+  def f(x):
+    y = x * 2
+    y = y + 5
+    dist.all_reduce(y)
+    z = y + 3
+    return z
+
+  compiled_f = torch.compile(f, backend=backend)
+
+  x = torch.ones((2, 2), device="tpu")
+  res = compiled_f(x)
+
+  expected = torch.full((2, 2), 31.0, device="cpu")
+  utils.assert_close(res.cpu(), expected)
+
+  assert (
+      len(backend._compiled_executables) == 1
+  ), f"Expected 1 compiled executable, got {len(backend._compiled_executables)}"
+
+  wrapper = backend._compiled_executables[0]
+  assert isinstance(
+      wrapper, TorchTpuCompiledExecutable
+  ), f"Expected TorchTpuCompiledExecutable, got {type(wrapper)}"
 
 
 def run_compile_two_collectives_test():
@@ -445,6 +475,18 @@ class SplitCollectiveOpsTest(parameterized.TestCase):
         ),
         test_fn=run_compile_all_reduce_and_serdes_test,
     )
+
+  def test_compile_no_splits_when_env_zero(self):
+    with mock.patch.dict(
+        os.environ, {"TORCH_TPU_INTERNAL_MATERIALIZE_COLLECTIVE_TENSORS": "0"}
+    ):
+      distributed_utils.dist_run(
+          nproc_per_node=self._world_size,
+          fn=singlehost_wrapper.tpu_env_wrapper(
+              _test_wrapper, world_size=self._world_size
+          ),
+          test_fn=run_compile_no_splits_when_env_zero_test,
+      )
 
   def test_compile_two_collectives(self):
     distributed_utils.dist_run(
