@@ -9170,6 +9170,24 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  def test_float4_e2m1fn_x2_sample_generation(self):
+    if self.golden_device_type != "cpu":
+      self.skipTest(
+          "Only need to verify sample generation in one mode (e.g. CPU)."
+      )
+
+    abs_op = next(op for op in op_db if op.name == "abs")
+    pairs = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float4_e2m1fn_x2,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+    )
+    self.assertGreater(len(pairs), 0)
+    for golden_input, _ in pairs:
+      self.assertEqual(golden_input.input_value.dtype, torch.float4_e2m1fn_x2)
+
 
 if __name__ == "__main__":
   absltest.main()

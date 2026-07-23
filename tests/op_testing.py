@@ -763,6 +763,7 @@ def _format_dtype(dtype: torch.dtype) -> str:
 EXTRA_NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
     torch.float8_e4m3fn,
     torch.float8_e5m2,
+    torch.float4_e2m1fn_x2,
 )
 
 
@@ -1026,6 +1027,72 @@ def _tensor_tree_map(
     )
 
   return _pytree.tree_map(leaf_func, x, is_leaf=is_leaf)
+
+
+def _convert_sample_dtype(
+    sample: SampleInput, from_dtype: torch.dtype, to_dtype: torch.dtype
+) -> SampleInput:
+  """Converts all tensors in sample with dtype == from_dtype to to_dtype."""
+
+  def transform_leaf(obj: Any) -> Any:
+    if isinstance(obj, torch.Tensor) and obj.dtype == from_dtype:
+      if obj.device.type == "cpu":
+        # Bypass the issue that CPU doesn't support all conversion for all
+        # dtypes.
+        return obj.to("tpu").to(to_dtype).to("cpu")
+      return obj.to(to_dtype)
+    return obj
+
+  sample.input = _tensor_tree_map(transform_leaf, sample.input)
+  sample.args = _tensor_tree_map(transform_leaf, sample.args)
+  sample.kwargs = _tensor_tree_map(transform_leaf, sample.kwargs)
+  return sample
+
+
+# Maps the desired sample dtype to the dtype to sample with.
+_DESIRED_DTYPE_TO_SAMPLE_DTYPE: Final[Mapping[torch.dtype, torch.dtype]] = {
+    # torch.testing doesn't support sampling with float4_e2m1fn_x2, so we
+    # sample with float8_e4m3fn and then convert to float4_e2m1fn_x2.
+    # Why torch.float8_e4m3fn:
+    # - it matches the finite floating-point encoding semantics (fn) of
+    #   torch.float4_e2m1fn_x2, and
+    # - it provides 3 mantissa bits for fine-grained quantization resolution
+    #   before casting down to FP4.
+    torch.float4_e2m1fn_x2: torch.float8_e4m3fn,
+}
+
+
+def _sample_inputs(
+    op: OpInfo,
+    device: torch.device,
+    dtype: torch.dtype,
+    *,
+    set_seed: bool = True,
+) -> list[SampleInput]:
+  """Generates sample inputs for an op on the given device.
+
+  Args:
+    op: The op to generate sample inputs for.
+    device: The device to generate sample inputs for.
+    dtype: The desired dtype of the sample inputs.
+    set_seed: If True, set the seed for the sample inputs.
+
+  Returns:
+    A list of sample inputs.
+  """
+
+  sample_dtype = _DESIRED_DTYPE_TO_SAMPLE_DTYPE.get(dtype, dtype)
+  samples = list(
+      op.sample_inputs(
+          device,
+          sample_dtype,
+          requires_grad=False,
+          set_seed=set_seed,
+      )
+  )
+  if sample_dtype != dtype:
+    samples = [_convert_sample_dtype(s, sample_dtype, dtype) for s in samples]
+  return samples
 
 
 def to(
@@ -1902,13 +1969,8 @@ class TorchTpuTestBase(TestCase):
 
     # Generate sample inputs on the golden device.
     try:
-      golden_samples = list(
-          op.sample_inputs(
-              self.golden_device,
-              dtype,
-              requires_grad=False,
-              set_seed=set_seed,
-          )
+      golden_samples = _sample_inputs(
+          op, self.golden_device, dtype, set_seed=set_seed
       )
     except Exception as e:  # pylint: disable=broad-except
       if _gen_gpu_golden_mode():
