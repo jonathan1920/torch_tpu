@@ -417,6 +417,7 @@ std::vector<at::Tensor> ExecuteCompiledModel(
   std::vector<at::Tensor> output_tensors;
   output_tensors.reserve(num_outputs);
   for (auto& result_buffer : result_buffer_refs) {
+    MarkStreamActive(result_buffer.GetReadyFuture());
     output_tensors.push_back(MakeTensor(std::move(result_buffer)));
   }
 
