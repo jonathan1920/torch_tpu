@@ -1,0 +1,97 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Llama model benchmark definition."""
+
+import torch
+from examples.benchmarks.e2e.harness import context as context_lib
+from examples.benchmarks.e2e.harness import registry as registry_lib
+from examples.benchmarks.e2e.harness import step_fn as step_fn_lib
+from examples.benchmarks.e2e.harness import torch_device_ops
+from tests import module_registry
+
+
+def _load_llama(ctx: context_lib.Context, model_name: str, is_training: bool):
+  """Loads the Llama model and generates sample inputs for benchmarking.
+
+  Args:
+    ctx: Benchmark execution context containing device and run scope options.
+    model_name: Name of the transformer model to retrieve from the registry.
+    is_training: Whether to generate training labels and configurations.
+
+  Returns:
+    A tuple of (model, inputs dictionary) ready for execution.
+  """
+  if ctx.run_scope == context_lib.RunScope.PRESUBMIT:
+    batch_size = 1
+    seq_len = 128
+  else:
+    batch_size = 1
+    seq_len = 2048
+
+  registry = module_registry.ModuleRegistry()
+
+  def modify_config_hook(config):
+    if ctx.run_scope == context_lib.RunScope.PRESUBMIT:
+      config.num_hidden_layers = 2
+    return config
+
+  module_spec = registry.get_module_spec(
+      "transformers",
+      model_name,
+      load_weights=False,
+      modify_config_hook=modify_config_hook,
+  )
+
+  dtype = torch_device_ops.get_torch_dtype(ctx.dtype)
+  model = module_spec.module_factory().to(ctx.device_kind, dtype=dtype)
+  _, inputs = module_spec.sample_inputs_factory(
+      (batch_size, seq_len), str(ctx.device_kind)
+  )
+  # Pop attention_mask to trigger transformers fully static causal attention
+  # mask fallback, avoiding control-flow tracing errors.
+  inputs.pop("attention_mask", None)
+
+  if is_training:
+    vocab_size = getattr(model.config, "vocab_size", 128256)
+    inputs["labels"] = torch.randint(
+        0,
+        vocab_size,
+        (batch_size, seq_len),
+        device=str(ctx.device_kind),
+        dtype=torch.long,
+        requires_grad=False,
+    )
+
+  return model, inputs
+
+
+@registry_lib.register_benchmark(step_fn=step_fn_lib.StepFn.FORWARD)
+def llama_1b_inference(ctx):
+  """Benchmark factory for Llama 3.2 1B inference."""
+  model, inputs = _load_llama(ctx, "meta-llama/Llama-3.2-1B", is_training=False)
+  return model, (), inputs, None
+
+
+@registry_lib.register_benchmark(
+    step_fn=step_fn_lib.StepFn.TRAINING,
+    step_fn_kwargs={"accum_steps": 8},
+)
+def llama_1b_train_accum8(ctx):
+  """Benchmark factory for Llama 3.2 1B training with 8 accumulation steps."""
+  model, inputs = _load_llama(ctx, "meta-llama/Llama-3.2-1B", is_training=True)
+  opt = torch.optim.AdamW(
+      model.parameters(), lr=1e-4, capturable=True, fused=True
+  )
+  return model, (), inputs, opt

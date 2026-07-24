@@ -27,6 +27,18 @@ class DeviceCountMismatch(RuntimeError):
   Raised at construction so a misconfigured run fails at startup.
   """
 
+_TORCH_DTYPE_MAP = {
+    target_lib.DType.BF16: torch.bfloat16,
+    target_lib.DType.FP32: torch.float32,
+}
+
+
+def get_torch_dtype(dtype: target_lib.DType) -> torch.dtype:
+  """Get the torch dtype for the given target dtype."""
+  if dtype not in _TORCH_DTYPE_MAP:
+    raise ValueError(f"Unsupported torch dtype: {dtype}")
+  return _TORCH_DTYPE_MAP[dtype]
+
 
 class TorchDeviceOps:
   """DeviceOps for the torch framework
@@ -35,11 +47,6 @@ class TorchDeviceOps:
   Target and validates the declared device count against the real host.
   """
 
-  _TORCH_DTYPE_MAP = {
-      target_lib.DType.BF16: torch.bfloat16,
-      target_lib.DType.FP32: torch.float32,
-  }
-
   def __init__(
       self,
       target: target_lib.Target,
@@ -47,15 +54,12 @@ class TorchDeviceOps:
     self.target = target
 
     self.device = self._materialise_device()
-    self.dtype = self._materialise_dtype()
+    self.dtype = get_torch_dtype(self.target.dtype)
     self._validate_device_count()
 
   def _materialise_device(self) -> torch.device:
-    kind = self.target.platform_spec.kind.value
+    kind = self.target.device_kind.value
     return torch.device(kind)
-
-  def _materialise_dtype(self) -> torch.dtype:
-    return self._TORCH_DTYPE_MAP[self.target.dtype]
 
   def _validate_device_count(self) -> None:
     """The declared-vs-actual check that replaces detection."""

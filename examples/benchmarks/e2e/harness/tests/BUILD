@@ -112,4 +112,27 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "context_test",
+    srcs = ["context_test.py"],
+    deps = [
+        "//examples/benchmarks/e2e/harness:context",
+        "//examples/benchmarks/e2e/harness:target",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "discovery_test",
+    srcs = ["discovery_test.py"],
+    deps = [
+        "//examples/benchmarks/e2e/harness:discovery",
+        "//examples/benchmarks/e2e/harness:registry",
+        "//shims/absl_py/testing:absltest",
+        "//torch_tpu",
+    ],
+)
+
 torch_tpu_package_end()

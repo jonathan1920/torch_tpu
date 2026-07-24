@@ -34,6 +34,11 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "discovery",
+    srcs = ["discovery.py"],
+)
+
+torch_tpu_py_library(
     name = "measure",
     srcs = ["measure.py"],
     deps = [
@@ -97,6 +102,15 @@ torch_tpu_py_library(
         ":target",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "context",
+    srcs = ["context.py"],
+    deps = [
+        ":target",
+        "//shims/absl_py/flags",
     ],
 )
 
