@@ -15,6 +15,7 @@
 load(
     "//build_files:build_defs.bzl",
     "if_oss",
+    "internal_target",
     "torch_tpu_package_end",
     "torch_tpu_py_test",
 )
@@ -133,7 +134,8 @@ torch_tpu_py_test(
     ],
 )
 
-pytype_strict_binary(
+internal_target(
+    pytype_strict_binary,
     name = "xm_launch_bd",
     srcs = ["xm_launch_bd.py"],
     deps = [
@@ -144,7 +146,8 @@ pytype_strict_binary(
     ],
 )
 
-pytype_strict_binary(
+internal_target(
+    pytype_strict_binary,
     name = "xm_launch_compile_bd",
     srcs = ["xm_launch_compile_bd.py"],
     deps = [

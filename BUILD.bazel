@@ -85,19 +85,25 @@ config_setting(
 
 filegroup(
     name = "torch_libs_mapped",
-    srcs = [
-        "@local_torch//:libc10_file",
-        "@local_torch//:libshm_file",
-        "@local_torch//:libtorch_cpu_file",
-        "@local_torch//:libtorch_file",
-        "@local_torch//:libtorch_global_deps_file",
-        "@local_torch//:libtorch_python_file",
-    ],
+    srcs = select({
+        "//ci/wheel:use_local_torch": [
+            "@local_torch//:libc10_file",
+            "@local_torch//:libshm_file",
+            "@local_torch//:libtorch_cpu_file",
+            "@local_torch//:libtorch_file",
+            "@local_torch//:libtorch_global_deps_file",
+            "@local_torch//:libtorch_python_file",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 filegroup(
     name = "torch_py_mapped",
-    srcs = ["@local_torch//:torch_py_files"],
+    srcs = select({
+        "//ci/wheel:use_local_torch": ["@local_torch//:torch_py_files"],
+        "//conditions:default": [],
+    }),
 )
 
 # 3. Assemble everything into the final zip using a robust procedural approach
