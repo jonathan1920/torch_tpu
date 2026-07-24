@@ -395,6 +395,21 @@ class SymIntArithmeticTest(absltest.TestCase):
     out1 = compiled(x1)
     utils.assert_close(out1, torch.tensor([1024], device="tpu"))
 
+  def test_symint_in_output(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.shape[1] * 2 + 1
+
+    tpu_backend = _backend.TpuBackend(dynamism=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.zeros(1, 4, device="tpu")
+    torch._dynamo.mark_dynamic(x1, 1, min=1, max=16)
+
+    out1 = compiled(x1)
+    utils.assert_close(out1, torch.tensor(9, device="tpu"))
+
 
 class DynamicReshapeTest(absltest.TestCase):
 

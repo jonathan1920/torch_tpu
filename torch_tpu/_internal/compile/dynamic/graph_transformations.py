@@ -182,14 +182,12 @@ class ScanInputsCreatePlaceholdersPass:
 
 
 class HandleSymIntUsagesPass:
-  """Usages of SymInt nodes in tensor operations transformation pass.
+  """Usages of SymInt nodes in tensor operations and graph outputs transformation pass.
 
   When a SymInt node (e.g., an input symbol representing a dynamic size) is
-  consumed by a standard data computational operator (like `aten.add.Tensor`),
-  we replace that usage with the corresponding runtime size placeholder tensor
-  node (e.g., `s0_size`). This ensures that runtime tensor arithmetic executes
-  with the actual active dynamic runtime value rather than specializing to the
-  static upper bound.
+  consumed by a standard data computational operator (like `aten.add.Tensor`) or
+  returned in the graph output node, we replace that usage with the
+  corresponding runtime size placeholder tensor node or expression tensor node.
   """
 
   def __init__(self, sym_shape_manager: SymShapeManager):
@@ -217,6 +215,39 @@ class HandleSymIntUsagesPass:
 
         if changed:
           node.args = tuple(new_args)
+
+      elif node.op == "output":
+        if node.args and isinstance(node.args[0], (tuple, list)):
+          new_ret_args = []
+          changed = False
+          for arg in node.args[0]:
+            if isinstance(arg, torch.fx.Node) and sym_utils.is_symint_node(arg):
+              tensor_node = self._sym_shape_manager.ensure_tensor(
+                  graph_module, arg, node
+              )
+              # Determine original target dtype from node metadata
+              val_meta = arg.meta.get("val")
+              target_dtype = getattr(val_meta, "dtype", torch.int64)
+              current_dtype = getattr(
+                  tensor_node.meta.get("val"), "dtype", None
+              )
+
+              if target_dtype is not None and current_dtype != target_dtype:
+                with graph_module.graph.inserting_before(node):
+                  cast_node = graph_module.graph.call_method(
+                      "to", args=(tensor_node,), kwargs={"dtype": target_dtype}
+                  )
+                  cast_node.meta = tensor_node.meta.copy()
+                  cast_node.meta["val"] = torch.empty((), dtype=target_dtype)
+                  tensor_node = cast_node
+
+              new_ret_args.append(tensor_node)
+              changed = True
+            else:
+              new_ret_args.append(arg)
+
+          if changed:
+            node.args = (type(node.args[0])(new_ret_args),)
 
 
 class DetectSymIntUsagesPass:
