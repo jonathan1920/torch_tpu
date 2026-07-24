@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import torch
 from torch import distributed as dist
 from torch_tpu._internal.compile import _backend
+from torch_tpu._internal.compile import collective_ops
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import split_compiler
 from torch_tpu._internal.compile import torch_tpu_compiled_executable
@@ -33,7 +34,7 @@ from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multi
 
 TpuBackend = _backend.TpuBackend
 _SplitCompiledExecutable = split_compiler._SplitCompiledExecutable
-_COLLECTIVE_OPS = split_compiler._COLLECTIVE_OPS
+_COLLECTIVE_OPS = collective_ops.COLLECTIVE_OPS
 SplitCompiler = split_compiler.SplitCompiler
 TorchTpuCompiledExecutable = (
     torch_tpu_compiled_executable.TorchTpuCompiledExecutable
@@ -454,6 +455,78 @@ def run_all_to_all_collectives_test():
     _check_all_to_all_op(op)
 
 
+def run_rank_variable_dead_collective_test():
+  backend = TpuBackend(debug=True)
+  rank = int(os.environ["RANK"])
+  world_size = dist.get_world_size()
+
+  def func(x):
+    y = x.clone()
+    dist.all_reduce(y, dist.ReduceOp.SUM)
+    if rank == 0:
+      return y
+    return x
+
+  x = torch.tensor([1.0], device="tpu")
+  compiled_f = torch.compile(func, backend=backend)
+  actual = compiled_f(x)
+  expected = (
+      torch.tensor([float(world_size)]) if rank == 0 else torch.tensor([1.0])
+  )
+  utils.assert_close(actual.cpu(), expected)
+
+  # Verify splitting in backend.
+  assert (
+      len(backend._compiled_executables) == 1
+  ), f"Expected 1 compiled executable, got {len(backend._compiled_executables)}"
+
+  wrapper = backend._compiled_executables[0]
+  assert isinstance(
+      wrapper, _SplitCompiledExecutable
+  ), f"Expected _SplitCompiledExecutable, got {type(wrapper)}"
+  split_gm = wrapper._split_gm
+
+  children = list(split_gm.children())
+  if rank == 0:
+    # The non-dead rank should have 3 submodules:
+    # 1. Clone before collective
+    # 2. Collective (all_reduce + wait_tensor)
+    # 3. Clone after collective
+    assert (
+        len(children) == 3
+    ), f"Expected exactly 3 submodules for rank 0, got {len(children)}"
+  else:
+    # The dead ranks should have 2 submodules:
+    # 1. Clone before collective
+    # 2. Collective (all_reduce + wait_tensor)
+    # without the third submodule (clone after collective) as it is dead.
+    assert (
+        len(children) == 2
+    ), f"Expected exactly 2 submodules for rank {rank}, got {len(children)}"
+
+  for i, child in enumerate(children):
+    assert isinstance(child.submod, TorchTpuCompiledExecutable), (
+        f"Expected submodule {i} to be TorchTpuCompiledExecutable, got"
+        f" {type(child.submod)}"
+    )
+
+  all_reduce_graph = children[1]  # We expect the second child to be all_reduce
+
+  assert "stablehlo.all_reduce" in all_reduce_graph.submod.mlir_text, (
+      "Expected all_reduce submodule to contain stablehlo.all_reduce, got"
+      f" {all_reduce_graph.submod.mlir_text}"
+  )
+
+  # We expect the all_reduce submodule to contain 3 StableHLO instructions:
+  # 1. stablehlo.all_reduce
+  # 2. stablehlo.add (reduction region)
+  # 3. stablehlo.return (reduction region)
+  assert stablehlo_instructions_count(all_reduce_graph.submod.mlir_text) == 3, (
+      "Expected all_reduce submodule to contain 3 StableHLO instructions,"
+      f" got {stablehlo_instructions_count(all_reduce_graph.submod.mlir_text)}"
+  )
+
+
 class DummyBaseCompiler(compiler.Compiler):
 
   def __init__(self):
@@ -551,6 +624,15 @@ class SplitCollectiveOpsTest(parameterized.TestCase):
     )
     self.assertEqual(set(all_grouped_ops), set(_COLLECTIVE_OPS))
     self.assertLen(all_grouped_ops, len(_COLLECTIVE_OPS))
+
+  def test_rank_variable_dead_collective(self):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            _test_wrapper, world_size=self._world_size
+        ),
+        test_fn=run_rank_variable_dead_collective_test,
+    )
 
 
 if __name__ == "__main__":

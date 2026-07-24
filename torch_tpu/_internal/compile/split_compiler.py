@@ -28,31 +28,16 @@ from absl import logging
 import torch
 from torch._dynamo.utils import detect_fake_mode
 from torch._inductor.utils import InputType
+from torch.fx.passes import graph_transform_observer
 from torch.fx.passes.split_module import split_module
+from torch_tpu._internal.compile import collective_ops
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.compile.fx_passes import force_collectives_output
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import CompiledArtifact
 
 # Required to register the SPMD safe region ops.
 from torch_tpu._internal.distributed import spmd_util as _spmd_util  # pylint: disable=unused-import
-
-# pylint: disable=protected-access
-_COLLECTIVE_OPS = (
-    torch.ops._c10d_functional.all_reduce,
-    torch.ops._c10d_functional.all_reduce_,
-    torch.ops._c10d_functional.all_reduce_coalesced,
-    torch.ops._c10d_functional.all_reduce_coalesced_,
-    torch.ops._c10d_functional.all_gather_into_tensor,
-    torch.ops._c10d_functional.all_gather_into_tensor_out,
-    torch.ops._c10d_functional.all_gather_into_tensor_coalesced,
-    torch.ops._c10d_functional.reduce_scatter_tensor,
-    torch.ops._c10d_functional.reduce_scatter_tensor_out,
-    torch.ops._c10d_functional.reduce_scatter_tensor_coalesced,
-    torch.ops._c10d_functional.all_to_all_single,
-    torch.ops._c10d_functional.broadcast,
-    torch.ops._c10d_functional.broadcast_,
-)
-# pylint: enable=protected-access
 
 
 def _get_unique_wait_tensor_producer(
@@ -112,7 +97,7 @@ def _get_unique_wait_tensor_producer(
     )
   if (
       getattr(producer.target, "overloadpacket", producer.target)
-      not in _COLLECTIVE_OPS
+      not in collective_ops.COLLECTIVE_OPS
   ):
     raise ValueError(
         f"Expected collective for wait_tensor producer, got {producer.target}"
@@ -142,7 +127,8 @@ def _is_getitem_of_collective(node: torch.fx.Node) -> bool:
       break
     curr = curr.args[0]
   if isinstance(curr, torch.fx.Node) and (
-      getattr(curr.target, "overloadpacket", curr.target) in _COLLECTIVE_OPS
+      getattr(curr.target, "overloadpacket", curr.target)
+      in collective_ops.COLLECTIVE_OPS
   ):
     return True
   return False
@@ -344,7 +330,8 @@ class SplitCompiler(compiler.Compiler):
 
       maybe_collective = getattr(node.target, "overloadpacket", node.target)
       is_collective = (
-          node.op == "call_function" and maybe_collective in _COLLECTIVE_OPS
+          node.op == "call_function"
+          and maybe_collective in collective_ops.COLLECTIVE_OPS
       )
 
       # `wait_tensor`` is a special case. It is a collective-related op, but it
@@ -401,6 +388,9 @@ class SplitCompiler(compiler.Compiler):
         None,  # type: ignore[arg-type]
         lambda node: partition_map[node],
     )
+    graph_transform_observer.GraphTransformObserver(
+        split_gm, "force_collectives_output"
+    ).apply_gm_pass(force_collectives_output.apply)
 
     fake_mode = detect_fake_mode(example_inputs)
     if fake_mode is None:

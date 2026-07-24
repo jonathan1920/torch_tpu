@@ -675,6 +675,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
+        "//torch_tpu/_internal/compile:collective_ops",
         "//torch_tpu/_internal/compile:compiler",
         "//torch_tpu/_internal/compile:split_compiler",
         "//torch_tpu/_internal/compile:torch_tpu_compiled_executable",
