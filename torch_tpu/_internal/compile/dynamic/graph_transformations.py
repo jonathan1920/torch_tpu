@@ -112,12 +112,9 @@ class HandleDynamicInputTensorPass:
 
     for dim in dynamic_dims:
       symint = node.meta["val"].shape[dim]
-      size_tensor_node = self._sym_shape_manager.symint_to_placeholder[
-          str(symint)
-      ]
-      assert (
-          size_tensor_node is not None
-      ), f"Could not find tensor node (placeholder) for symint {str(symint)}"
+      size_tensor_node = self._sym_shape_manager.ensure_tensor(
+          graph_module, symint, node
+      )
       set_dim_size_node = self._insert_set_dimension_logical_size_node(
           graph_module, current_tensor_node, size_tensor_node, dim, node.meta
       )

@@ -374,6 +374,28 @@ class CompileTest(absltest.TestCase):
     expected = torch.full((2, 2), 2.0, device="cpu")
     utils.assert_close(res.cpu(), expected)
 
+  def test_derived_dimension_placeholder(self):
+    class Model(torch.nn.Module):
+
+      # FX graph:
+      # (arg0_1: "Sym(s77)", arg1_1: "f32[s77, 3]", arg2_1: "f32[2*s77, 5]")
+      def forward(self, x, y):
+        if x.size(0) * 2 == y.size(0):
+          return x.sum() + y.sum()
+        return x.sum() - y.sum()
+
+    tpu_backend = _backend.TpuBackend(debug=True, dynamism=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.ones(4, 3, device="tpu")
+    y1 = torch.ones(8, 5, device="tpu")
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+    torch._dynamo.mark_dynamic(y1, 0, min=4, max=32)
+
+    out1 = compiled(x1, y1)
+    expected = x1.to("cpu").sum() + y1.to("cpu").sum()
+    utils.assert_close(out1.to("cpu"), expected)
+
 
 class SymIntArithmeticTest(absltest.TestCase):
 
