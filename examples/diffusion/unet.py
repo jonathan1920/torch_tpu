@@ -92,7 +92,6 @@ def main(argv):
       result_tpu,
       rtol=4e-3,
       atol=1e-4,
-      check_value=utils.CheckValueMode.LOOSE,
   )
 
 

@@ -2453,7 +2453,7 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_expm1(self):
-    self.do_test_op("_foreach_expm1", check_value=CheckValueMode.LOOSE)
+    self.do_test_op("_foreach_expm1")
 
   @category("foreach")
   def test_foreach_floor(self):
@@ -2467,7 +2467,7 @@ class TestOps(TorchTpuTestBase):
 
   @category("foreach")
   def test_foreach_frac(self):
-    self.do_test_op("_foreach_frac", check_value=CheckValueMode.LOOSE)
+    self.do_test_op("_foreach_frac")
 
   @category("foreach")
   def test_foreach_lerp(self):

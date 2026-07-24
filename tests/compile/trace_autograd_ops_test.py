@@ -88,7 +88,6 @@ def all_tensors_are_close_to_reference(
   utils.assert_close(
       tensor,
       reference_tensor,
-      check_value=utils.CheckValueMode.LOOSE,
       rtol=3e-2,
       atol=5e-5,
   )

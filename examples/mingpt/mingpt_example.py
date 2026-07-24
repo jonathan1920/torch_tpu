@@ -176,7 +176,6 @@ def main(argv):
       utils.assert_close(
           cpu_logits,
           logits_ref_cpu,
-          check_value=CheckValueMode.LOOSE,
           rtol=1e-3,
           atol=1e-4,
       )
@@ -203,7 +202,6 @@ def main(argv):
   utils.assert_close(
       actual=logits_tpu_to_cpu,
       expected=logits_ref_cpu,
-      check_value=CheckValueMode.LOOSE,
       rtol=1e-3,
       atol=1e-4,
       preamble="MiniGPT outputs",

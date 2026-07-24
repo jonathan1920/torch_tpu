@@ -1787,7 +1787,7 @@ class TorchTpuTestBase(TestCase):
       *,
       golden_result: Any,
       torch_tpu_result: Any,
-      check_value: CheckValueMode = CheckValueMode.LOOSE,
+      check_value: CheckValueMode | None = None,
       check_dtype: bool = True,
       rtol: float | None = None,
       atol: Tolerance | None = None,
@@ -1801,12 +1801,17 @@ class TorchTpuTestBase(TestCase):
     Args:
       golden_result: The golden result.
       torch_tpu_result: The TPU result.
-      check_value: The mode for checking the values.
+      check_value: The mode for checking the values. None (default) means LOOSE.
       check_dtype: Check if the dtypes are the same.
       rtol: The relative tolerance for checking the values.
       atol: The absolute tolerance for checking the values.
       preamble: Optional string to describe the objects being compared.
     """
+
+    if check_value == CheckValueMode.LOOSE:
+      raise ValueError(
+          "LOOSE mode is the default. Please omit the check_value argument."
+      )
 
     if _perf_mode():
       return
@@ -1846,7 +1851,7 @@ class TorchTpuTestBase(TestCase):
       self,
       tensor_from_device: Callable[[torch.device], torch.Tensor],
       *,
-      check_value: CheckValueMode = CheckValueMode.LOOSE,
+      check_value: CheckValueMode | None = None,
       check_dtype: bool = True,
       check_exception_type: bool = True,
       allow_failure: bool = False,
@@ -1861,7 +1866,7 @@ class TorchTpuTestBase(TestCase):
     Args:
       tensor_from_device: A function that takes a device and returns a tensor
         from that device.
-      check_value: The mode for checking the values.
+      check_value: The mode for checking the values. None (default) means LOOSE.
       check_dtype: Check if the dtypes are the same.
       check_exception_type: If True, check that the exception type is the same
         on both devices.
@@ -1869,6 +1874,11 @@ class TorchTpuTestBase(TestCase):
       rtol: The relative tolerance for checking the values.
       atol: The absolute tolerance for checking the values.
     """
+
+    if check_value == CheckValueMode.LOOSE:
+      raise ValueError(
+          "LOOSE mode is the default. Please omit the check_value argument."
+      )
 
     cpu_result = None
     cpu_thrown = None
@@ -2386,16 +2396,21 @@ class TorchTpuTestBase(TestCase):
       golden_result: Any,
       torch_tpu_result: Any,
       torch_tpu_printable_input: OpInput,
-      check_value: CheckValueMode | Iterable[CheckValueMode],
+      check_value: CheckValueMode | Iterable[CheckValueMode] | None,
       check_dtype: bool,
       skip_output_indices: Sequence[int],
       accuracy_override: Mapping[str, Tolerance],
   ) -> None:
     """Asserts that golden_result and torch_tpu_result, as tuples, are close."""
 
+    if check_value == CheckValueMode.LOOSE:
+      raise ValueError(
+          "LOOSE mode is the default. Please omit the check_value argument."
+      )
+
     golden_result_tuple = _to_tuple(golden_result)
     torch_tpu_result_tuple = _to_tuple(torch_tpu_result)
-    if isinstance(check_value, CheckValueMode):
+    if check_value is None or isinstance(check_value, CheckValueMode):
       check_value = [check_value] * len(torch_tpu_result_tuple)
 
     printable_input_str = str(torch_tpu_printable_input)
@@ -2430,13 +2445,19 @@ class TorchTpuTestBase(TestCase):
       golden_result: Any,
       check_device: bool,
       check_dynamism: bool,
-      check_value: CheckValueMode | Iterable[CheckValueMode],
+      check_value: CheckValueMode | Iterable[CheckValueMode] | None,
       check_dtype: bool,
       skip_output_indices: Sequence[int],
       compute_grad: bool,
       use_compiled: bool,
       out_variant_type: OutVariantType = OutVariantType.CORRECT,
   ) -> None:
+
+    if check_value == CheckValueMode.LOOSE:
+      raise ValueError(
+          "LOOSE mode is the default. Please omit the check_value argument."
+      )
+
     op_name = _op_name_for_logging(op, variant)
     print(f">>>> Testing {subtest_name} ...", flush=True)
     if _IGNORE_ACCURACY_OVERRIDES.value:
@@ -2518,7 +2539,7 @@ class TorchTpuTestBase(TestCase):
       *,
       compute_grad: bool,
       use_compiled: bool,
-      check_value: CheckValueMode | Iterable[CheckValueMode],
+      check_value: CheckValueMode | Iterable[CheckValueMode] | None,
       check_dtype: bool,
       check_device: bool,
       check_dynamism: bool,
@@ -2557,6 +2578,11 @@ class TorchTpuTestBase(TestCase):
         the --max_samples_per_op_dtype flag.
       out_variant_type: The type of out argument to test.
     """
+
+    if check_value == CheckValueMode.LOOSE:
+      raise ValueError(
+          "LOOSE mode is the default. Please omit the check_value argument."
+      )
 
     if dtype not in _dtypes_to_test():
       print(
@@ -2704,9 +2730,7 @@ class TorchTpuTestBase(TestCase):
       check_grad: bool = True,
       check_device: bool = True,
       check_dynamism: bool = True,
-      check_value: (
-          CheckValueMode | Iterable[CheckValueMode]
-      ) = CheckValueMode.LOOSE,
+      check_value: CheckValueMode | Iterable[CheckValueMode] | None = None,
       check_dtype: bool = True,
       check_op_failures: bool = True,
       check_inplace_op_failures: bool = True,
@@ -2741,7 +2765,7 @@ class TorchTpuTestBase(TestCase):
         dtype and shape will be checked. If an iterable is provided, it must
         have the same length as the op's output list, and the i-th element will
         determine whether to check the i-th output's values (this is useful for
-        ops that return multiple outputs).
+        ops that return multiple outputs). None (default) means LOOSE.
       check_dtype: Check if the dtypes are the same.
       check_op_failures: If True, check that the op fails on TorchTPU when it
         fails on the golden device. If False, the op will be skipped on TorchTPU
@@ -2762,6 +2786,11 @@ class TorchTpuTestBase(TestCase):
         available. If None, the base variant set, filtering only on the op_name,
         will be tested.
     """
+
+    if check_value == CheckValueMode.LOOSE:
+      raise ValueError(
+          "LOOSE mode is the default. Please omit the check_value argument."
+      )
 
     if exclude_out_variant_types is None:
       exclude_out_variant_types = set()

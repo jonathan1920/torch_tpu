@@ -79,7 +79,6 @@ def run_ragged_dot_local_test(compile_test: bool = False) -> None:
       expected,
       atol=5e-2,
       rtol=1e-1,
-      check_value=utils.CheckValueMode.LOOSE,
   )
 
   if dist.is_initialized():

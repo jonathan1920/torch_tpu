@@ -654,12 +654,12 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # If we override only atol to 2e-4, it should pass.
     # If we didn't support partial overrides, it would crash with ValueError
     # in LOOSE mode.
-    utils.assert_close(t1, t2, atol=2e-4, check_value=CheckValueMode.LOOSE)
+    utils.assert_close(t1, t2, atol=2e-4)
 
     # Similarly, override only rtol
     # rel diff is 1e-4 / 1 = 1e-4.
     # If we override only rtol to 2e-4, it should pass.
-    utils.assert_close(t1, t2, rtol=2e-4, check_value=CheckValueMode.LOOSE)
+    utils.assert_close(t1, t2, rtol=2e-4)
 
   def test_topk_sorted_false(self):
     """Tests torch.topk with sorted=False."""
@@ -814,9 +814,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       )
       return output
 
-    self.assert_close_tpu_vs_cpu(
-        compute, check_value=CheckValueMode.LOOSE, rtol=5e-1, atol=5e-1
-    )
+    self.assert_close_tpu_vs_cpu(compute, rtol=5e-1, atol=5e-1)
 
   @parameterized.product(
       batch_size=[1, 2],
@@ -870,9 +868,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       )
       return output
 
-    self.assert_close_tpu_vs_cpu(
-        compute, check_value=CheckValueMode.LOOSE, rtol=5e-1, atol=5e-1
-    )
+    self.assert_close_tpu_vs_cpu(compute, rtol=5e-1, atol=5e-1)
 
   @parameterized.product(
       input_dtype=[torch.int32, torch.int64],
@@ -3109,7 +3105,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         torch_tpu_result=mean_value.to("cpu"),
         atol=atol,
         rtol=0.0,
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_dropout_equal_to_zero_or_scaled_original(self):
@@ -3189,7 +3184,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           torch_tpu_result=mean_num_zeros.to("cpu"),
           atol=atol,
           rtol=0.0,
-          check_value=CheckValueMode.LOOSE,
       )
 
   def test_uniform_complex(self):
@@ -4557,9 +4551,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       return y, x.grad
 
     if dtype == torch.bfloat16:
-      self.assert_close_tpu_vs_cpu(
-          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
-      )
+      self.assert_close_tpu_vs_cpu(compute, atol=2e-2, rtol=1e-2)
     else:
       self.assert_close_tpu_vs_cpu(compute)
 
@@ -4574,9 +4566,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       return y, x
 
     if dtype == torch.bfloat16:
-      self.assert_close_tpu_vs_cpu(
-          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
-      )
+      self.assert_close_tpu_vs_cpu(compute, atol=2e-2, rtol=1e-2)
     else:
       self.assert_close_tpu_vs_cpu(compute)
 
@@ -4593,9 +4583,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       return out
 
     if dtype == torch.bfloat16:
-      self.assert_close_tpu_vs_cpu(
-          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
-      )
+      self.assert_close_tpu_vs_cpu(compute, atol=2e-2, rtol=1e-2)
     else:
       self.assert_close_tpu_vs_cpu(compute)
 
@@ -4622,9 +4610,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       return y, x.grad
 
     if dtype == torch.bfloat16:
-      self.assert_close_tpu_vs_cpu(
-          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
-      )
+      self.assert_close_tpu_vs_cpu(compute, atol=2e-2, rtol=1e-2)
     else:
       self.assert_close_tpu_vs_cpu(compute)
 
@@ -4639,9 +4625,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       return y, x
 
     if dtype == torch.bfloat16:
-      self.assert_close_tpu_vs_cpu(
-          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
-      )
+      self.assert_close_tpu_vs_cpu(compute, atol=2e-2, rtol=1e-2)
     else:
       self.assert_close_tpu_vs_cpu(compute)
 
@@ -4658,9 +4642,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       return out
 
     if dtype == torch.bfloat16:
-      self.assert_close_tpu_vs_cpu(
-          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
-      )
+      self.assert_close_tpu_vs_cpu(compute, atol=2e-2, rtol=1e-2)
     else:
       self.assert_close_tpu_vs_cpu(compute)
 
@@ -5597,7 +5579,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         torch_tpu_result=t.mean().cpu(),
         atol=atol,
         rtol=0.0,
-        check_value=CheckValueMode.LOOSE,
     )
 
   @parameterized.named_parameters(
@@ -6065,7 +6046,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         self.assert_close(
             golden_result=golden_result.cpu(),
             torch_tpu_result=tpu_result.cpu(),
-            check_value=CheckValueMode.LOOSE,
         )
 
   def test_fake_quantize_per_tensor_affine_cachemask(self):
@@ -6312,7 +6292,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(
         test_fn,
-        check_value=CheckValueMode.LOOSE,
         rtol=2e-2,
         atol=6e-3,
     )
@@ -6466,7 +6445,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       torch.linalg.qr(input_tensor.to(device), mode="reduced", out=(q, r))
       return q, r
 
-    self.assert_close_tpu_vs_cpu(run, check_value=CheckValueMode.LOOSE)
+    self.assert_close_tpu_vs_cpu(run)
 
   def test_geqrf_out(self):
     input_tensor = torch.randn(8, 4)
@@ -6489,7 +6468,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             torch.tensor(x_data, device=device).to(device),
             torch.tensor(y_data, device=device).to(device),
         ),
-        check_value=CheckValueMode.LOOSE,
         rtol=5.7e-05,
         atol=6.3e-05,
     )
@@ -7219,7 +7197,6 @@ module {
         lambda device, t1=t1, t2=t2, offs=offs: torch.ops.aten._grouped_mm(
             t1.to(device), t2.to(device), offs=offs.to(device)
         ),
-        check_value=CheckValueMode.LOOSE,
         rtol=2e-1,
         atol=2e-1,
     )
@@ -7236,7 +7213,6 @@ module {
         lambda device, t1=t1, t2=t2, offs=offs: torch.ops.aten._grouped_mm(
             t1.to(device), t2.to(device), offs=offs.to(device)
         ),
-        check_value=CheckValueMode.LOOSE,
         rtol=2e-1,
         atol=2e-1,
     )
@@ -7253,7 +7229,6 @@ module {
         lambda device, t1=t1, t2=t2, offs=offs: torch.ops.aten._grouped_mm(
             t1.to(device), t2.to(device), offs=offs.to(device)
         ),
-        check_value=CheckValueMode.LOOSE,
         rtol=2e-1,
         atol=2e-1,
     )
@@ -7269,7 +7244,6 @@ module {
         lambda device, t1=t1, t2=t2: torch.ops.aten._grouped_mm(
             t1.to(device), t2.to(device), offs=None
         ),
-        check_value=CheckValueMode.LOOSE,
         rtol=2e-1,
         atol=2e-1,
     )
@@ -8729,7 +8703,6 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           torch_tpu_result=tpu,
           rtol=rtol,
           atol=atol,
-          check_value=utils.CheckValueMode.LOOSE,
       )
 
     for key in cpu_results:

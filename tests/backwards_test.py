@@ -64,7 +64,6 @@ class BackwardsTest(parameterized.TestCase):
         query_tpu.grad.cpu(),
         rtol=7.7e-3,
         atol=0.3,
-        check_value=utils.CheckValueMode.LOOSE,
     )
 
     self.assertIsNotNone(key_cpu.grad)
@@ -74,7 +73,6 @@ class BackwardsTest(parameterized.TestCase):
         key_tpu.grad.cpu(),
         rtol=7e-3,
         atol=2e-2,
-        check_value=utils.CheckValueMode.LOOSE,
     )
 
     self.assertIsNotNone(value_cpu.grad)
@@ -135,7 +133,6 @@ class BackwardsTest(parameterized.TestCase):
         query_cpu.grad,
         rtol=1e-2,
         atol=3e-2,
-        check_value=utils.CheckValueMode.LOOSE,
     )
 
     utils.assert_close(
@@ -143,14 +140,12 @@ class BackwardsTest(parameterized.TestCase):
         key_cpu.grad,
         rtol=1e-2,
         atol=3e-2,
-        check_value=utils.CheckValueMode.LOOSE,
     )
     utils.assert_close(
         value_tpu.grad.cpu(),
         value_cpu.grad,
         rtol=1e-2,
         atol=2e-2,
-        check_value=utils.CheckValueMode.LOOSE,
     )
 
   @absltest.skip(

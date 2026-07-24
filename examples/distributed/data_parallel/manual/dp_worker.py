@@ -121,7 +121,6 @@ def worker_fn() -> None:
         expected=cpu_final_weight,
         rtol=1e-4,
         atol=7e-2,
-        check_value=utils.CheckValueMode.LOOSE,
     )
 
   dist.destroy_process_group()

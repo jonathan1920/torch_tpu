@@ -70,7 +70,6 @@ def main(argv):
     utils.assert_close(
         logits_tpu,
         logits,
-        check_value=CheckValueMode.LOOSE,
         rtol=1e-3,
         atol=1e-5,
     )

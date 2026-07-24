@@ -304,9 +304,7 @@ class SingleAcceleratorTest(parameterized.TestCase):
     acc_output = acc_layer(acc_x)
 
     # Assert
-    utils.assert_close(
-        acc_output.to("cpu"), cpu_output, check_value=CheckValueMode.LOOSE
-    )
+    utils.assert_close(acc_output.to("cpu"), cpu_output)
 
   # TODO: b/432774613 - Design FP8 tests once Ironwood is available.
 
@@ -393,7 +391,6 @@ class SingleAcceleratorTest(parameterized.TestCase):
       utils.assert_close(
           actual=acc_result.cpu(),
           expected=cpu_result,
-          check_value=CheckValueMode.LOOSE,
           atol=0.0,
           rtol=torch.finfo(torch.bfloat16).eps,
       )
@@ -505,7 +502,6 @@ class SingleAcceleratorTest(parameterized.TestCase):
       utils.assert_close(
           acc_output_weights.to("cpu"),
           cpu_output_weights,
-          check_value=CheckValueMode.LOOSE,
       )
 
     finally:
@@ -576,7 +572,6 @@ class SingleAcceleratorTest(parameterized.TestCase):
     utils.assert_close(
         actual=acc_output.to("cpu"),
         expected=cpu_output,
-        check_value=CheckValueMode.LOOSE,
         rtol=torch.finfo(torch.bfloat16).eps,
         atol=torch.finfo(torch.bfloat16).eps,
     )

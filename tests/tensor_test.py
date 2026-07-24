@@ -464,7 +464,6 @@ class TensorTest(torch_test_utils.TestCase):
         utils.assert_close(
             actual=tpu_result_cpu,
             expected=cpu_result,
-            check_value=CheckValueMode.LOOSE,
             **tolerance,
         )
       elif isinstance(tpu_result, tuple):

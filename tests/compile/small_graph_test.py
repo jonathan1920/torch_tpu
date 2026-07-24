@@ -1051,7 +1051,6 @@ class ModuleTest(absltest.TestCase):
         rtol=1e-2,
         atol=2e-2,
         check_dtype=False,
-        check_value=utils.CheckValueMode.LOOSE,
     )
 
   def test_geqrf_empty(self):

@@ -186,7 +186,6 @@ def main(argv: list[str]) -> None:
       preamble="Inception output",
       rtol=5e-2,
       atol=6.1e-1,
-      check_value=utils.CheckValueMode.LOOSE,
   )
   print(f"TPU: {output_tpu}")
 

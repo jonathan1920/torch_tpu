@@ -152,7 +152,6 @@ class ResNet50TVTest(absltest.TestCase):
             cpu_event["output"],
             atol=1e-4,
             rtol=1e-2,
-            check_value=utils.CheckValueMode.LOOSE,
         )
       except AssertionError as e:
         raise AssertionError(

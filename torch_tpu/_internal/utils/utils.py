@@ -96,7 +96,7 @@ def assert_close(
     rtol: float | None = None,
     atol: Tolerance | None = None,
     preamble: str | None = None,
-    check_value: CheckValueMode = CheckValueMode.LOOSE,
+    check_value: CheckValueMode | None = None,
     check_dtype: bool = True,
 ) -> None:
   """Assert that `actual` and `expectec` are sufficiently close.
@@ -117,11 +117,16 @@ def assert_close(
       the value range (e.g. we might need higher precisions for certain ranges).
       If omitted, a default value is determined based on the dtype.
     preamble: Optional string to describe the objects being compared.
-    check_value: The mode for checking the values.
+    check_value: The mode for checking the values. None (default) means LOOSE.
     check_dtype: Check if the dtypes are the same. Use sparsingly, only when
       dtypes are different due to PyTorch inconsistency between their CPU and
       GPU backend.
   """
+
+  if check_value == CheckValueMode.LOOSE:
+    raise ValueError(
+        "LOOSE mode is the default. Please omit the check_value argument."
+    )
 
   if actual is None or expected is None:
     assert actual is None and expected is None, (
@@ -504,7 +509,7 @@ def _assert_tensor_close(
     rtol: float | None = None,
     atol: Tolerance | None = None,
     preamble: str | None = None,
-    check_value: CheckValueMode = CheckValueMode.LOOSE,
+    check_value: CheckValueMode | None = None,
 ) -> None:
   """Single-tensor assert_close implementation.
 
@@ -523,8 +528,13 @@ def _assert_tensor_close(
       the value range (e.g. we might need higher precisions for certain ranges).
       If omitted, a default value is determined based on the dtype.
     preamble: Optional string to describe the objects being compared.
-    check_value: The mode for checking the values.
+    check_value: The mode for checking the values. None (default) means LOOSE.
   """
+
+  if check_value == CheckValueMode.LOOSE:
+    raise ValueError(
+        "LOOSE mode is the default. Please omit the check_value argument."
+    )
 
   if not preamble:
     preamble = ""
@@ -628,7 +638,11 @@ def _assert_tensor_close(
 
   # If atol is a callable, we don't check the relative tolerance, so we always
   # use the loose mode.
-  if check_value == CheckValueMode.LOOSE or callable(atol):
+  if (
+      check_value is None
+      or check_value == CheckValueMode.LOOSE
+      or callable(atol)
+  ):
 
     def msg_handler(msg: str) -> str:
       return _add_tolerance_suggestions(

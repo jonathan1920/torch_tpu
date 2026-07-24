@@ -116,11 +116,17 @@ class AllTest(absltest.TestCase):
           t_cpu,
           rtol=1e-6,
           atol=1e-6,
-          check_value=utils.CheckValueMode.LOOSE,
       )
     self.assertIn("Tolerance Suggestions:", str(cm.exception))
     self.assertIn("Optimal tight tolerances", str(cm.exception))
     self.assertIn("atol >= 0.0 (0.0e+00)", str(cm.exception))
+
+  def test_check_value_loose_mode_raises_value_error(self):
+    t_tpu = torch.arange(8).reshape((4, 2)).to(torch.float32)
+    t_cpu = torch.arange(8).reshape((4, 2)).to(torch.float32)
+    with self.assertRaises(ValueError) as cm:  # pylint: disable=g-error-prone-assert-raises
+      utils.assert_close(t_tpu, t_cpu, check_value=utils.CheckValueMode.LOOSE)
+    self.assertIn("LOOSE mode is the default", str(cm.exception))
 
   def test_compute_optimal_tolerances_case1_expected_le_1(self):
     # |e| <= 1: atol = |a - e| * 1.2, rtol = 0.0

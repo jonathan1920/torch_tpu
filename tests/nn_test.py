@@ -265,7 +265,6 @@ class TestNn(TestCase):
         utils.assert_close(
             cpu_result,
             tpu_result_to_cpu,
-            check_value=CheckValueMode.LOOSE,
             **tolerance,
         )
       elif isinstance(tpu_result, tuple):
@@ -277,7 +276,6 @@ class TestNn(TestCase):
           utils.assert_close(
               cpu_result_i,
               tpu_result_to_cpu_i,
-              check_value=CheckValueMode.LOOSE,
               **tolerance,
           )
 

@@ -74,7 +74,6 @@ def main(argv):
         preamble="Resnet output",
         rtol=2.1e-4,
         atol=3.4e-1,
-        check_value=utils.CheckValueMode.LOOSE,
     )
 
 

@@ -200,7 +200,6 @@ def worker_fn() -> None:
       utils.assert_close(
           actual=y_pred_ref[: fsdp_tp_worker.BATCH_SIZE],
           expected=y_pred_history[i],
-          check_value=utils.CheckValueMode.LOOSE,
           rtol=1e-3,
           atol=3e-3,
           preamble=f'step {i}',

@@ -249,7 +249,6 @@ class ModelCoverageTimmTest(parameterized.TestCase):
         rtol=rtol,
         atol=atol,
         preamble="Timm Model TPU vs CPU Training Loss",
-        check_value=utils.CheckValueMode.LOOSE,
     )
 
   @parameterized.named_parameters(
@@ -298,7 +297,6 @@ class ModelCoverageTimmTest(parameterized.TestCase):
         rtol=rtol,
         atol=atol,
         preamble=f"Timm Model {module_name} TPU vs CPU Inference Logits",
-        check_value=utils.CheckValueMode.LOOSE,
     )
 
   @parameterized.named_parameters(
@@ -380,7 +378,6 @@ class ModelCoverageTimmTest(parameterized.TestCase):
           rtol=rtol,
           atol=atol,
           preamble=f"Model {module_name}: Logits Mismatch",
-          check_value=utils.CheckValueMode.LOOSE,
       )
 
     with self.subTest("rmse_check"):
@@ -465,7 +462,6 @@ class ModelCoverageTimmTest(parameterized.TestCase):
           rtol=rtol,
           atol=atol,
           preamble=f"Model {module_name}: Logits Mismatch",
-          check_value=utils.CheckValueMode.LOOSE,
       )
 
     with self.subTest("rmse_check"):

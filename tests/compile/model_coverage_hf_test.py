@@ -233,7 +233,6 @@ class ModelCoverageHFTest(parameterized.TestCase):
           rtol=rtol,
           atol=atol,
           preamble="TPU vs CPU loss",
-          check_value=utils.CheckValueMode.LOOSE,
       )
 
   @parameterized.named_parameters(
@@ -323,7 +322,6 @@ class ModelCoverageHFTest(parameterized.TestCase):
         rtol=rtol,
         atol=atol,
         preamble="TPU vs CPU perplexity",
-        check_value=utils.CheckValueMode.LOOSE,
     )
 
 

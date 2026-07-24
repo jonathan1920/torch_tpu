@@ -151,7 +151,6 @@ class TestModel(absltest.TestCase):
           preamble=f"{idx=}: output of {hf_name=} vs {custom_name=}",
           rtol=1.0,
           atol=0.2,
-          check_value=utils.CheckValueMode.LOOSE,
       )
 
       # If we made it here, the assert passed.

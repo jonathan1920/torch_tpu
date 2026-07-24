@@ -67,7 +67,6 @@ def main(argv):
   utils.assert_close(
       actual=output_tpu,
       expected=output_cpu,
-      check_value=CheckValueMode.LOOSE,
       rtol=1e-3,
       atol=6.6e-3,
       preamble="Comparing CPU and TPU",
@@ -76,7 +75,6 @@ def main(argv):
   utils.assert_close(
       actual=aot_compiled_output_tpu,
       expected=output_cpu,
-      check_value=CheckValueMode.LOOSE,
       rtol=1e-3,
       # TODO: debug why AOT version produces result with larger difference.
       atol=6.6e-3,
