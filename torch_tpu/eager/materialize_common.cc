@@ -29,7 +29,6 @@
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/flags/declare.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
@@ -57,8 +56,6 @@
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/xla_data.pb.h"
-
-ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
 
