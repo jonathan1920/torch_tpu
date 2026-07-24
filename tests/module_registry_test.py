@@ -111,6 +111,15 @@ class ModuleRegistryTest(absltest.TestCase):
       self.assertIn("meta-llama/Llama-3.2-3B", modules)
       self.assertIn("google/gemma-3-270m", modules)
 
+  def test_sentence_transformers_alias(self):
+    with tempfile.TemporaryDirectory() as temp_dir:
+      registry = self._create_mock_registry(temp_dir)
+      modules = registry.list_modules("sentence-transformers")
+
+      self.assertIn("openai/gpt-oss-120b", modules)
+      self.assertIn("meta-llama/Llama-3.2-3B", modules)
+      self.assertIn("google/gemma-3-270m", modules)
+
   def test_torchvision_get_module_spec(self):
     module_spec = self.module_registry.get_module_spec(
         "torchvision", "convnext_small"

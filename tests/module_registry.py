@@ -122,6 +122,10 @@ _WEIGHTS_BASE_PATH = flags.DEFINE_string(
     "Default base location of model configs and weights.",
 )
 
+_PROVIDER_ALIASES: dict[str, str] = {
+    "sentence-transformers": "transformers",
+}
+
 
 class Modality(enum.Enum):
   MULTIMODAL = "multimodal"
@@ -1249,6 +1253,12 @@ class ModuleRegistry:
         modules.append(f"{key}/{m}")
     return modules
 
+  def _get_provider(self, source: str) -> BaseProvider:
+    canonical_source = _PROVIDER_ALIASES.get(source, source)
+    if canonical_source not in self._providers:
+      raise ValueError(f"Source '{source}' not supported.")
+    return self._providers[canonical_source]
+
   def list_modules(self, source: str) -> list[str]:
     """Lists available models for a specific source.
 
@@ -1261,9 +1271,7 @@ class ModuleRegistry:
     Raises:
       ValueError: If the source is not found in the registry.
     """
-    if source not in self._providers:
-      raise ValueError(f"Source '{source}' not supported.")
-    return self._providers[source].list_modules()
+    return self._get_provider(source).list_modules()
 
   def get_module_spec(
       self,
@@ -1291,10 +1299,7 @@ class ModuleRegistry:
     Raises:
       ValueError: If the source is not found in the registry.
     """
-    if source not in self._providers:
-      raise ValueError(f"Source '{source}' not supported.")
-
-    provider = self._providers[source]
+    provider = self._get_provider(source)
     return provider.get_module_spec(
         name,
         load_weights=load_weights,
