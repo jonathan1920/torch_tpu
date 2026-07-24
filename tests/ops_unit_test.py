@@ -26,6 +26,7 @@ import tempfile
 import threading
 import time
 from typing import Any
+import unittest
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -1856,6 +1857,56 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # Loose FP8 tolerance: the TPU FP8 dot does not bit-match the CPU F32
     # reference, and per-element relative error is large near zero.
     self.assert_close_tpu_vs_cpu(compute, rtol=5e-1, atol=5e-1)
+
+  @parameterized.product(
+      m=[16, 32],
+      n=[16, 32],
+      k=[16, 32],
+      out_dtype=[torch.bfloat16, torch.float32, torch.float4_e2m1fn_x2],
+  )
+  def test_scaled_mm_fp4_numeric(self, m, n, k, out_dtype):
+    """Tests torch._scaled_mm with FP4 inputs."""
+
+    if "TPU_NAME" not in os.environ:
+      raise unittest.SkipTest(
+          "FP4 scaled_mm test requires TPU hardware to avoid PyTorch OpMathType"
+          " CPU fallback crash."
+      )
+
+    device = "tpu"
+    self_float_tpu = torch.randn(m, k, dtype=torch.float32).to(device)
+    mat2_float_tpu = torch.randn(k, n, dtype=torch.float32).to(device)
+
+    self_fp4_tpu = self_float_tpu.to(torch.float4_e2m1fn_x2)
+    mat2_fp4_tpu = mat2_float_tpu.to(torch.float4_e2m1fn_x2)
+
+    scale_a = torch.tensor([1.5], dtype=torch.float32).to(device)
+    scale_b = torch.tensor([2.0], dtype=torch.float32).to(device)
+
+    out = torch._scaled_mm(
+        self_fp4_tpu,
+        mat2_fp4_tpu,
+        scale_a,
+        scale_b,
+        out_dtype=out_dtype,
+    )
+    expected_shape = torch.Size([m, n])
+    self.assertEqual(out.shape, expected_shape)
+    self.assertEqual(out.dtype, out_dtype)
+    self.assertEqual(out.device.type, "tpu")
+
+    # Verify numeric correctness by dequantizing and running float32 matmul
+    self_float_dequant = self_fp4_tpu.to(torch.float32)
+    mat2_float_dequant = mat2_fp4_tpu.to(torch.float32)
+    expected_out = (
+        torch.matmul(self_float_dequant, mat2_float_dequant) * scale_a * scale_b
+    ).to(out_dtype)
+    torch.testing.assert_close(  # TORCH_ASSERT_CLOSE_OK=fp4
+        out.to(torch.float32),
+        expected_out.to(torch.float32),
+        atol=1e-2,
+        rtol=1e-2,
+    )
 
   def test_col2im_fold(self):
     """Tests col2im via torch.nn.Fold.

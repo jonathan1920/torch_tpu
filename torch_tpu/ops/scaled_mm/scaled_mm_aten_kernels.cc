@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/scaled_mm/scaled_mm_aten_kernels.h"
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -45,7 +46,6 @@
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
-#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/precision_context.h"
@@ -200,22 +200,14 @@ absl::Status CheckScaledMmInputs(const at::Tensor& self, const at::Tensor& mat2,
 
   TT_RETURN_IF_ERROR(CheckIsMatrix(self, "self"));
   TT_RETURN_IF_ERROR(CheckIsMatrix(mat2, "mat2"));
-  TT_RET_CHECK(self.size(1) == mat2.size(0), error::kInvalidArgument)
+
+  const int64_t k_a = self.size(1);
+  const int64_t k_b = mat2.size(0);
+  TT_RET_CHECK(k_a == k_b, error::kInvalidArgument)
       << "expected column size of first matrix to match row size of second "
          "matrix, got shapes "
       << ToString(self.sizes()) << " and " << ToString(mat2.sizes());
 
-  // No dimension-alignment requirement. XLA pads M, K, and N up to the MXU tile
-  // multiple internally, so ragged shapes -- decode M=1, or unaligned K/N --
-  // lower correctly; unaligned dims only cost extra MXU passes, they never
-  // error. Verified empirically. See
-  // https://github.com/google-pytorch/torch_tpu/issues/1823.
-
-  // Support tensorwise (scalar) scales, row-wise scale_a ([M, 1] / [M],
-  // per-token), and per-channel scale_b ([1, N] / [N], per-output-channel).
-  // BuildScaledMmShlo() reshapes them to [M, 1] / [1, N] and broadcasts against
-  // the [M, N] result. See
-  // https://github.com/google-pytorch/torch_tpu/issues/1820.
   const int64_t m_dim = self.size(0);
   const int64_t n_dim = mat2.size(1);
   TT_RET_CHECK(scale_a.numel() == 1 || scale_a.numel() == m_dim,
@@ -343,8 +335,9 @@ at::Tensor AtenScaledMm(const at::Tensor& self, const at::Tensor& mat2,
       {
         at::ScalarType target_scalar_type =
             out_dtype.has_value() ? *out_dtype : self.scalar_type();
+        const int64_t n = mat2.size(1);
         TT_ASSIGN_OR_THROW(at::Tensor out,
-                           MakeEmptyTensor({self.size(0), mat2.size(1)},
+                           MakeEmptyTensor({self.size(0), n},
                                            target_scalar_type, self.device()));
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
