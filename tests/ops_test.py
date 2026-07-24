@@ -20,6 +20,8 @@ device (either CPU or GPU, depending on the test mode).
 
 import collections.abc
 import copy
+import os
+import sys
 from typing import Any
 
 from absl import flags
@@ -42,7 +44,10 @@ _TEST_CATEGORIES = flags.DEFINE_list(
         " If any categories are included, a test must belong to at least one"
         " included category to run. Exclusions take precedence over"
         " inclusions. E.g., --test_categories=foreach or"
-        " --test_categories=-foreach"
+        " --test_categories=-foreach."
+        " This flag is ignored if --test_filter is specified on the bazel"
+        " command-line, in order to respect the user's intent to run the"
+        " specific tests."
     ),
 )
 
@@ -55,6 +60,41 @@ def category(*names):
     return func
 
   return decorator
+
+
+def _has_test_filter() -> bool:
+  """Returns True if a test filter was specified on the command-line or env.
+
+  How Bazel and Blaze handle --test_filter:
+  Per the Bazel Test Encyclopedia
+  (https://bazel.build/reference/test-encyclopedia#initial-environment):
+  - '--test_filter' is a build-tool flag for Blaze and Bazel, not a binary flag.
+  - When 'blaze test --test_filter=<filter>' or 'bazel test --test_filter=...'
+    is executed, Bazel/Blaze passes the filter string to the test executable
+    via the 'TESTBRIDGE_TEST_ONLY' environment variable.
+  - Python's absltest framework inspects 'TESTBRIDGE_TEST_ONLY' during main()
+    initialization and converts it into '-k=<filter>' arguments in sys.argv.
+  - If the test binary is executed directly (outside Bazel/Blaze), filters may
+    also be passed via sys.argv flags ('-k', '--test_filter',
+    '--default_filter').
+  """
+  # 1. Check for TESTBRIDGE_TEST_ONLY env var set by Bazel or Blaze.
+  if os.environ.get("TESTBRIDGE_TEST_ONLY"):
+    return True
+
+  # 2. Check for absl flags if registered.
+  if hasattr(flags.FLAGS, "test_filter") and flags.FLAGS["test_filter"].present:
+    return True
+
+  # 3. Check for specific filter flags passed in sys.argv (-k, --test_filter,
+  #    --default_filter).
+  for arg in sys.argv[1:]:
+    if arg in ("--test_filter", "--default_filter", "-k") or arg.startswith(
+        ("--test_filter=", "--default_filter=", "-k=")
+    ):
+      return True
+
+  return False
 
 
 # In this file, we use the following naming convention for variables:
@@ -1714,7 +1754,11 @@ class TestOps(TorchTpuTestBase):
   def setUp(self):
     super().setUp()
 
-    if _TEST_CATEGORIES.value:
+    # Filter the tests by --test_categories only if --test_filter is not on
+    # the bazel command line. If --test_filter is specified, we should respect
+    # the user's intent and not apply any additional filtering based on
+    # --test_categories.
+    if not _has_test_filter() and _TEST_CATEGORIES.value:
       exclusions = {c[1:] for c in _TEST_CATEGORIES.value if c.startswith("-")}
       inclusions = {c for c in _TEST_CATEGORIES.value if not c.startswith("-")}
 
