@@ -34,9 +34,9 @@ from examples.benchmarks.e2e.harness import target as target_lib
 
 class CompileConfigTest(absltest.TestCase):
 
-  def test_defaults_are_model_scope(self):
+  def test_default_is_step_scope(self):
     cfg = compile_lib.CompileConfig()
-    self.assertEqual(cfg.scope, compile_lib.Scope.MODEL)
+    self.assertEqual(cfg.scope, compile_lib.Scope.STEP)
     self.assertIsNone(cfg.dynamic)
     self.assertFalse(cfg.fullgraph)
 

@@ -55,9 +55,17 @@ def _load_llama(ctx: context_lib.Context, model_name: str, is_training: bool):
   )
 
   dtype = torch_device_ops.get_torch_dtype(ctx.dtype)
-  model = module_spec.module_factory().to(ctx.device_kind, dtype=dtype)
+  device_str = ctx.device_kind.value
+  with torch.device(device_str):
+    model = module_spec.module_factory().to(dtype=dtype)
+
+  if is_training:
+    model.train()
+  else:
+    model.eval()
+
   _, inputs = module_spec.sample_inputs_factory(
-      (batch_size, seq_len), str(ctx.device_kind)
+      (batch_size, seq_len), device_str
   )
   # Pop attention_mask to trigger transformers fully static causal attention
   # mask fallback, avoiding control-flow tracing errors.
@@ -69,7 +77,7 @@ def _load_llama(ctx: context_lib.Context, model_name: str, is_training: bool):
         0,
         vocab_size,
         (batch_size, seq_len),
-        device=str(ctx.device_kind),
+        device=device_str,
         dtype=torch.long,
         requires_grad=False,
     )
@@ -92,6 +100,9 @@ def llama_1b_train_accum8(ctx):
   """Benchmark factory for Llama 3.2 1B training with 8 accumulation steps."""
   model, inputs = _load_llama(ctx, "meta-llama/Llama-3.2-1B", is_training=True)
   opt = torch.optim.AdamW(
-      model.parameters(), lr=1e-4, capturable=True, fused=True
+      model.parameters(),
+      lr=1e-4,
+      capturable=True,
+      fused=True,
   )
   return model, (), inputs, opt

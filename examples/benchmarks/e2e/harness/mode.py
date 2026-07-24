@@ -75,7 +75,9 @@ def modes_for(
         common.RunMode.EAGER_OPTIMIZED,
         common.RunMode.COMPILED,
     ]
-  # torch on cuda or cpu.
+  if device_kind is target_lib.DeviceKind.CPU:
+    return [common.RunMode.EAGER_DEFAULT]
+  # torch on cuda.
   return [
       common.RunMode.EAGER_DEFAULT,
       common.RunMode.COMPILED,

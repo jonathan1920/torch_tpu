@@ -69,7 +69,7 @@ def forward():
 
   def step(model, input_args, input_kwargs, optimizer=None):
     del optimizer  # unused
-    with torch.inference_mode():
+    with torch.no_grad():
       return model(*input_args, **input_kwargs)
 
   return step
@@ -91,16 +91,16 @@ def real_loss(model, input_args, input_kwargs) -> torch.Tensor:
   out = model(*input_args, **input_kwargs)
 
   if hasattr(out, "loss") and out.loss is not None:
-    logging.info("real_loss: extracted from out.loss")
+    loss_method = "out.loss"
     loss = out.loss
   elif isinstance(out, dict) and "loss" in out:
-    logging.info("real_loss: extracted from out['loss']")
+    loss_method = "out['loss']"
     loss = out["loss"]
   elif isinstance(out, (tuple, list)) and out and torch.is_tensor(out[0]):
-    logging.info("real_loss: extracted from out[0]")
+    loss_method = "out[0]"
     loss = out[0]
   elif torch.is_tensor(out):
-    logging.info("real_loss: out is directly a tensor")
+    loss_method = "out tensor directly"
     loss = out
   else:
     raise TypeError(
@@ -112,10 +112,24 @@ def real_loss(model, input_args, input_kwargs) -> torch.Tensor:
   if not torch.is_tensor(loss):
     raise TypeError(f"real_loss: loss is {type(loss).__name__}, not a Tensor")
 
+  model_name = type(model).__name__
+  logging.log_first_n(
+      logging.INFO,
+      "real_loss: out is extracted from %s for model %s",
+      1,
+      loss_method,
+      model_name,
+  )
   if loss.ndim == 0:
     return loss
   else:
-    logging.info(f"real_loss: Taking mean of loss with shape {loss.shape}")
+    logging.log_first_n(
+        logging.INFO,
+        "real_loss: Taking mean of loss with shape %s for %s",
+        1,
+        loss.shape,
+        model_name,
+    )
     return loss.mean()
 
 
@@ -132,19 +146,17 @@ def training(accum_steps: int = 1, compute_loss=real_loss):
   """
   if accum_steps < 1:
     raise ValueError(f"accum_steps must be >= 1, got {accum_steps}")
-  compute = compute_loss or real_loss
 
   def step(model, input_args, input_kwargs, optimizer):
     if optimizer is None:
       raise ValueError("training step requires an optimizer")
     optimizer.zero_grad(set_to_none=True)
-    loss = None
     for _ in range(accum_steps):
       # Scale by accum_steps: backward sums gradients across micro-batches, so
       # without this the gradient is silently scaled by accum_steps.
-      loss = compute(model, input_args, input_kwargs) / accum_steps
+      loss = compute_loss(model, input_args, input_kwargs) / accum_steps
       loss.backward()
     optimizer.step()
-    return loss
+    return
 
   return step

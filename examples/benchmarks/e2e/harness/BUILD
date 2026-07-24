@@ -16,6 +16,7 @@ load(
     "//build_files:build_defs.bzl",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
+    "torch_tpu_py_test",
 )
 
 package(
@@ -111,6 +112,44 @@ torch_tpu_py_library(
     deps = [
         ":target",
         "//shims/absl_py/flags",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "torch_benchmark_test",
+    timeout = "long",
+    srcs = ["torch_benchmark_test.py"],
+    args = [
+        "--run_scope=presubmit",
+        "--min_warmup_steps=1",
+        "--max_warmup_steps=1",
+        "--post_warmup_steps=0",
+    ],
+    env = {
+        "BENCHMARK_PLATFORM": "v5e_1x1",
+    },
+    notest_oss = "requires huggingface configs from internal infra",
+    tags = [
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":compile",
+        ":context",
+        ":discovery",
+        ":measure",
+        ":metrics",
+        ":mode",
+        ":registry",
+        ":step_fn",
+        ":target",
+        ":torch_device_ops",
+        "//examples/benchmarks/e2e:common",
+        "//examples/benchmarks/e2e/harness/models",
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//torch_tpu",
     ],
 )
 

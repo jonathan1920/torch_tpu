@@ -24,8 +24,12 @@ package(
 )
 
 torch_tpu_py_library(
-    name = "llama",
-    srcs = ["llama.py"],
+    name = "models",
+    srcs = [
+        "__init__.py",
+        "llama.py",
+    ],
+    allow_multiple_srcs = True,
     deps = [
         "//examples/benchmarks/e2e/harness:context",
         "//examples/benchmarks/e2e/harness:registry",

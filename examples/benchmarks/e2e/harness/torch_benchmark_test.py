@@ -1,0 +1,143 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Torch benchmark binary.
+
+Runs every registered single-host benchmark, once per applicable execution
+mode, on the platform named by BENCHMARK_PLATFORM. This assembles a step
+function according to the benchmark spec, resolves the run-scope, and
+calls measure on the step function to get metrics.
+
+Environment & Flags:
+  BENCHMARK_PLATFORM   cpu | b200_1 | b200_8 | v6e_1x1 | ...   (default: cpu)
+  --run_scope          full | presubmit                        (default: full)
+"""
+
+from typing import Iterator, Tuple
+from absl import logging
+from absl.testing import absltest
+from absl.testing import parameterized
+from examples.benchmarks.e2e import common
+from examples.benchmarks.e2e.harness import compile as compile_lib
+from examples.benchmarks.e2e.harness import context as context_lib
+from examples.benchmarks.e2e.harness import discovery as discovery_lib
+from examples.benchmarks.e2e.harness import measure as measure_lib
+from examples.benchmarks.e2e.harness import metrics as metrics_lib
+from examples.benchmarks.e2e.harness import mode as mode_lib
+from examples.benchmarks.e2e.harness import models
+from examples.benchmarks.e2e.harness import registry as registry_lib
+from examples.benchmarks.e2e.harness import step_fn as step_fn_lib
+from examples.benchmarks.e2e.harness import target as target_lib
+from examples.benchmarks.e2e.harness import torch_device_ops
+
+# This binary IS the torch run. Not a flag -- see module docstring.
+_FRAMEWORK = mode_lib.Framework.TORCH
+
+# Resolved once at import/collection time without acquiring device handles.
+_PLATFORM = target_lib.platform_from_env()
+
+
+# Import all models and trigger registration of benchmarks.
+failures = discovery_lib.import_submodules(models)
+
+
+def _cases() -> (
+    Iterator[Tuple[str, registry_lib.BenchmarkSpec, common.RunMode]]
+):
+  """One case per (benchmark, applicable mode).
+
+  The mode matrix is resolved here, at collection, so generated cases match the
+  cell exactly: a CPU run never emits an eager_optimized case just to skip it.
+  """
+  target_kind = target_lib.make_target(_PLATFORM).device_kind
+  for name in sorted(registry_lib.REGISTRY):
+    spec = registry_lib.REGISTRY[name]
+    for mode in mode_lib.modes_for(_FRAMEWORK, target_kind):
+      yield f"{spec.name}_{mode.value}", spec, mode
+
+
+def _make_run_step(
+    spec: registry_lib.BenchmarkSpec,
+    ctx: context_lib.Context,
+    mode: common.RunMode,
+) -> measure_lib.RunStep:
+  """Collapse every axis into one bound zero-arg callable.
+
+  Seeding lives here before construction so deterministic init is a harness
+  guarantee. Everything the runner shouldn't know about is closed over rather
+  than passed through.
+  """
+  common.seed_rngs()
+  model, input_args, input_kwargs, optimizer = spec.factory(ctx)
+  step = step_fn_lib.resolve_step_fn(spec.step_fn, **spec.step_fn_kwargs)
+
+  if common.is_torch_compile(mode):
+    compile_config = spec.compile_config or compile_lib.CompileConfig()
+    if compile_config.scope == compile_lib.Scope.MODEL:
+      model = compile_config.apply(model, ctx.target)
+    elif compile_config.scope == compile_lib.Scope.STEP:
+      step = compile_config.apply(step, ctx.target)
+    else:
+      raise ValueError(f"Unsupported compile scope: {compile_config.scope}")
+
+  return lambda: step(model, input_args, input_kwargs, optimizer)
+
+
+class BenchmarkTest(parameterized.TestCase):
+  """One test method, parameterised over the registry x mode matrix."""
+
+  def setUp(self):
+    super().setUp()
+    logging._log_counter_per_token.clear()  # pylint: disable=protected-access
+
+  def test_benchmark_imports(self):
+    if failures:
+      self.fail(
+          "benchmark module(s) failed to import:\n  "
+          + "\n  ".join(str(f) for f in failures)
+      )
+
+  @parameterized.named_parameters(*_cases())
+  def test_benchmark(
+      self, spec: registry_lib.BenchmarkSpec, mode: common.RunMode
+  ):
+    target = target_lib.make_target(_PLATFORM, dtype=spec.dtype)
+    device_ops = torch_device_ops.TorchDeviceOps(target)
+    ctx = context_lib.Context(
+        target=target, run_scope=context_lib.RUN_SCOPE.value
+    )
+
+    try:
+      with mode_lib.run_mode_context(mode, target):
+        run_step = _make_run_step(spec, ctx, mode)
+        metrics = measure_lib.measure(
+            run_step,
+            device_ops,
+            name=f"{spec.name}_{mode.value}",
+        )
+    except target_lib.UnsupportedBenchmark as e:
+      self.skipTest(f"{spec.name}: {e}")
+
+    logging.info("Metrics for %s_%s:\n%s", spec.name, mode.value, metrics)
+    self._assert_measured(metrics)
+
+  def _assert_measured(self, metrics: metrics_lib.PerformanceMetrics) -> None:
+    self.assertGreater(metrics.e2e_wall_time_seconds, 0.0)
+    self.assertGreater(metrics.first_step_time_seconds, 0.0)
+    if measure_lib.POST_WARMUP_STEPS.value > 0:
+      self.assertGreater(metrics.post_warmup_step_time_seconds, 0.0)
+
+
+if __name__ == "__main__":
+  absltest.main()

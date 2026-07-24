@@ -696,18 +696,19 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def torch_tpu_py_library(name, srcs = [], **kwargs):
+def torch_tpu_py_library(name, srcs = [], allow_multiple_srcs = False, **kwargs):
     """Creates a pytype_strict_library for torch_tpu.
 
     Also creates a build_test for the library to ensure it is buildable.
 
     Args:
         name: The name of the library.
-        srcs: The source files for the library. Must contain at most one .py file.
+        srcs: The source files for the library. Must contain at most one .py file unless allow_multiple_srcs is True.
+        allow_multiple_srcs: Whether to allow multiple srcs files.
         **kwargs: Any additional arguments.
     """
 
-    if len(srcs) > 1:
+    if len(srcs) > 1 and not allow_multiple_srcs:
         fail("torch_tpu_py_library must contain at most one srcs file. This prevents build bloat " +
              "and circular dependencies between files.")
 

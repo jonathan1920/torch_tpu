@@ -43,9 +43,9 @@ class Scope(enum.Enum):
 
 @dataclasses.dataclass(frozen=True)
 class CompileConfig:
-  """Settings for the compiled mode. Defaults to model-scope inductor."""
+  """Settings for the compiled mode. Defaults to step-scope"""
 
-  scope: Scope = Scope.MODEL
+  scope: Scope = Scope.STEP
   dynamic: bool | None = None
   fullgraph: bool = False
 

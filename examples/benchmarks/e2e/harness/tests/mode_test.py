@@ -56,7 +56,7 @@ class ModeEnumTest(absltest.TestCase):
   def test_torch_cpu_modes(self):
     self.assertEqual(
         mode_lib.modes_for(mode_lib.Framework.TORCH, target_lib.DeviceKind.CPU),
-        [common.RunMode.EAGER_DEFAULT, common.RunMode.COMPILED],
+        [common.RunMode.EAGER_DEFAULT],
     )
 
   def test_torchax_tpu_modes(self):
@@ -91,7 +91,7 @@ class ModeEnumTest(absltest.TestCase):
   def test_modes_for_accepts_strings(self):
     self.assertEqual(
         mode_lib.modes_for("torch", "cpu"),
-        [common.RunMode.EAGER_DEFAULT, common.RunMode.COMPILED],
+        [common.RunMode.EAGER_DEFAULT],
     )
     self.assertEqual(
         mode_lib.modes_for("torchax", "tpu"), [common.RunMode.COMPILED]
