@@ -15,6 +15,9 @@
 name: CI - Postsubmit
 
 on:
+  schedule:
+    # Run periodic heavy evaluations every 4 hours
+    - cron: '0 */4 * * *'
   # Enable remote connections. Add a workflow dispatch to enable halting.
   # See go/ml-github-actions:connect#enable-workflow-dispatch.
   workflow_dispatch:
@@ -38,21 +41,21 @@ permissions:
   contents: read
   pull-requests: read
   issues: write
-  actions: read
+  actions: write
 
 # Concurrency for postsubmit:
-# We generally want to run every postsubmit to ensure a clean history,
-# but if multiple merges happen rapidly, older runs will be cancelled.
+# Differentiate push runs from schedule runs so heavy 4-hour benchmark runs don't block push postsubmits.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   run_tests:
     name: "Postsubmit on ${{ matrix.job_info.name || matrix.job_info.runner }}"
     if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'ci:postsubmit')
+      (github.event_name == 'push' && github.ref_name == 'main') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:postsubmit'))
     strategy:
       fail-fast: false
       matrix:
@@ -91,6 +94,21 @@ jobs:
       # accessible for workflow to use. Otherwise, the workflow cannot find the files (e.g. ls -lR
       # will return "total 0").
       - uses: actions/checkout@v5
+      # Skip execution on outdated intermediate push events if a newer commit has landed on main.
+      - name: Cancel if superseded by newer main HEAD
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch origin main --quiet
+          LATEST_SHA=$(git rev-parse origin/main)
+          if [ "$GITHUB_SHA" != "$LATEST_SHA" ]; then
+            echo "::warning::Commit $GITHUB_SHA is superseded by latest main HEAD ($LATEST_SHA). Cancelling run on ${{ matrix.job_info.runner }} to process latest HEAD."
+            gh run cancel ${{ github.run_id }} || true
+            # Allow 5s for GHA server-side cancel signal to propagate so status is logged as 'cancelled' (not 'failed')
+            sleep 5
+            exit 1
+          fi
       # Enable remote connections. Add a waiting step.
       # See go/ml-github-actions:connect#add-waiting-step.
       - name: Wait For Connection
@@ -111,6 +129,7 @@ jobs:
           retention-days: 7
 
   build_wheels:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: linux-x86-n4-16
     container:
       image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
@@ -127,11 +146,10 @@ jobs:
         with:
           python_version: "3.12"
 
-
   vllm_perf_eval:
     name: "vLLM Perf Eval"
     needs: [build_wheels]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: linux-x86-tpu7x-224-4tpu
     container:
       image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
