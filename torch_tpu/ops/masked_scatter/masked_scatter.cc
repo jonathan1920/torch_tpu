@@ -42,7 +42,7 @@ absl::StatusOr<mlir::MlirOp> BuildMaskedScatterShlo(mlir::MlirOp input,
   const auto source_type = GetTensorTypeOrDie(source);
 
   int64_t numel = input_type.getNumElements();
-  mlir::Type i64_type = builder.getOpBuilder().getI64Type();
+  mlir::Type i32_type = builder.getOpBuilder().getI32Type();
 
   // 1. Flatten all input tensors to 1D
   mlir::MlirOp flat_input = mlir::stablehlo::Reshape(
@@ -58,17 +58,19 @@ absl::StatusOr<mlir::MlirOp> BuildMaskedScatterShlo(mlir::MlirOp input,
                            source_type.getElementType()),
       source);
 
-  // 2. Convert flat_mask from bool to i64
-  mlir::MlirOp mask_i64 =
-      mlir::stablehlo::ConvertElementType(flat_mask, i64_type);
+  // 2. Convert flat_mask from bool to i32. Keep the source offsets in i32:
+  // TPU vector registers cannot materialize the i64 values with
+  // `Unsupported conversion from vmreg/vreg to U64`.
+  mlir::MlirOp mask_i32 =
+      mlir::stablehlo::ConvertElementType(flat_mask, i32_type);
 
   // 3. Compute prefix sum (cumsum) of mask values on device
   TT_ASSIGN_OR_RETURN(mlir::MlirOp prefix_sum,
-                      BuildCumsumShlo(0, std::nullopt, mask_i64));
+                      BuildCumsumShlo(0, mlir::ElementType::I32, mask_i32));
 
   // 4. Compute indices for gather: gather_indices = prefix_sum - 1
   mlir::MlirOp constant_1 =
-      MakeScalarConstant(builder, static_cast<int64_t>(1), i64_type);
+      MakeScalarConstant(builder, static_cast<int32_t>(1), i32_type);
   // Broadcast constant_1 to match prefix_sum rank/size: broadcast to shape
   // {numel}
   mlir::MlirOp broadcasted_1 =

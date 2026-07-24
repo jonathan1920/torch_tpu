@@ -16,6 +16,8 @@
 
 #include "torch_tpu/ops/masked_scatter/masked_scatter_aten_kernels.h"
 
+#include <cstdint>
+#include <limits>
 #include <utility>
 
 #include "ATen/core/TensorBody.h"
@@ -58,6 +60,14 @@ at::Tensor& AtenMaskedScatter_(at::Tensor& self, const at::Tensor& mask,
     auto broadcasted = at::broadcast_tensors({mask, self});
     at::Tensor mask_broadcasted = broadcasted[0];
     at::Tensor self_broadcasted = broadcasted[1];
+
+    TT_CHECK_THROW(
+        self_broadcasted.numel() <= std::numeric_limits<int32_t>::max(),
+        error::kPythonNotImplementedError)
+        << "expected the broadcasted input to contain at most "
+        << std::numeric_limits<int32_t>::max()
+        << " elements because masked_scatter_ uses int32 source offsets, got "
+        << self_broadcasted.numel();
 
     TT_ASSIGN_OR_THROW(auto param_keys, *OpParamCacheKeysBuilder());
     Dimensions out_dims = CopyIntVector(self.sizes());
