@@ -315,19 +315,15 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
         continue
 
       if isinstance(arg, torch.SymInt):
-        if idx in self.sym_shape_manager.dynamic_scalar_indices:
-          self._dynamic_scalar_map.append((idx, target_idx))
-          target_idx += 1
-        continue
-
-      if isinstance(arg, torch.Tensor):
+        self._dynamic_scalar_map.append((idx, target_idx))
+      elif isinstance(arg, torch.Tensor):
         if self.sym_shape_manager.get_num_dynamic_dims(idx) > 0:
           self._dynamic_tensor_map.append((pad_idx, target_idx))
           pad_idx += 1
-          target_idx += 1
         else:
           self._static_tensor_map.append((idx, target_idx))
-          target_idx += 1
+
+      target_idx += 1
 
     self._model_inputs_template_length = target_idx
 

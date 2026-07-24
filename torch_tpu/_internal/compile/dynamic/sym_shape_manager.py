@@ -218,11 +218,6 @@ class SymShapeManager:
       ops).
     symint_node_to_tensor_node: Maps scalar nodes representing expressions to
       tensor nodes.
-    dynamic_scalar_indices: Set of indices of dynamic scalars in the example
-      inputs.
-    symint_to_arg_idx: Maps symint string to its input argument index.
-    symint_to_tensor_and_dim_idx: Maps symint string to its input tensor and
-      dimension index.
     _sym_str_to_tensor_node: Internal cache mapping symint string to the created
       tensor node.
   """
@@ -249,15 +244,6 @@ class SymShapeManager:
   # Mapping of SymInt string representation to the created tensor node.
   _sym_str_to_tensor_node: dict[str, torch.fx.Node]
 
-  # Set of indices of dynamic scalars in the example inputs.
-  dynamic_scalar_indices: set[int]
-
-  # Mapping of symint string to its input argument index.
-  symint_to_arg_idx: dict[str, int]
-
-  # Mapping of symint string to its input tensor and dimension index.
-  symint_to_tensor_and_dim_idx: dict[str, tuple[int, int]]
-
   def __init__(
       self,
       graph_module: torch.fx.GraphModule,
@@ -268,48 +254,13 @@ class SymShapeManager:
     self.symint_to_placeholder = {}
     self.symint_node_to_tensor_node = {}
     self._sym_str_to_tensor_node = {}
-    self.symint_to_tensor_and_dim_idx = {}
-    self.symint_to_arg_idx = {}
     self._create_outputs_sym_shape()
     self._populate_input_tensors_metadata()
-
-    self._compute_dynamic_scalar_indices()
-    self._extract_symint_locations()
 
   @property
   def example_inputs(self) -> Sequence[torch.Tensor | int]:
     """The example inputs used to create the SymShapeManager."""
     return self._example_inputs
-
-  def _extract_symint_locations(self) -> None:
-    """Maps symint strings (e.g., 's0') to their input argument/tensor indices.
-
-    This method populates mappings that allow us to extract the concrete values
-    of dynamic shape symbols at runtime, which are needed to evaluate the exact
-    mathematical output shapes of the slice module during precompilation.
-    """
-    self.symint_to_tensor_and_dim_idx = {}
-    self.symint_to_arg_idx = {}
-    for idx, arg in enumerate(self.example_inputs):
-      if arg is None:
-        continue
-      if isinstance(arg, torch.SymInt):
-        if idx not in self.dynamic_scalar_indices:
-          self.symint_to_arg_idx[str(arg)] = idx
-        continue
-      assert isinstance(arg, torch.Tensor)
-      for dim_idx, dim in enumerate(arg.shape):
-        if isinstance(dim, torch.SymInt):
-          sym_str = str(dim)
-          if sym_str not in self.symint_to_tensor_and_dim_idx:
-            self.symint_to_tensor_and_dim_idx[sym_str] = (idx, dim_idx)
-
-  def _compute_dynamic_scalar_indices(self) -> None:
-    """Computes the indices of dynamic scalars in the example inputs."""
-    self.dynamic_scalar_indices = set()
-    for idx, arg in enumerate(self._example_inputs):
-      if isinstance(arg, torch.SymInt):
-        self.dynamic_scalar_indices.add(idx)
 
   def _populate_input_tensors_metadata(self) -> None:
     """Populates metadata for input tensors."""

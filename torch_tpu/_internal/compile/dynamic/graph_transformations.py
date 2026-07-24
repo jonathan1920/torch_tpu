@@ -167,7 +167,10 @@ class ScanInputsCreatePlaceholdersPass:
         # Create a new placeholder next to it (always create to keep
         # signature match).
         with graph_module.graph.inserting_after(node):
-          size_ph = graph_module.graph.placeholder(f"{sym_str}_size")
+          size_ph = graph_module.graph.placeholder(
+              f"{sym_str}_size", type_expr=torch.Tensor
+          )
+          size_ph.meta["val"] = torch.empty((), dtype=torch.int32)
 
         # Store the first placeholder encountered for this sym_str.
         first_size_ph = (
