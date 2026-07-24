@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 from collections.abc import Sequence
+import operator
 from typing import Any
 import torch
 from torch.fx.passes import graph_transform_observer
@@ -161,14 +162,19 @@ class ScanInputsCreatePlaceholdersPass:
 
   def __call__(self, graph_module: torch.fx.GraphModule) -> None:
     """Runs the create placeholders pass."""
+    seen_counts: dict[str, int] = {}
     for node in self._placeholders:
       if sym_utils.is_symint_node(node):
         sym_str = str(node.meta["val"])
+        count = seen_counts.get(sym_str, 0)
+        seen_counts[sym_str] = count + 1
+        ph_name = f"{sym_str}_size" if count == 0 else f"{sym_str}_size_{count}"
+
         # Create a new placeholder next to it (always create to keep
         # signature match).
         with graph_module.graph.inserting_after(node):
           size_ph = graph_module.graph.placeholder(
-              f"{sym_str}_size", type_expr=torch.Tensor
+              ph_name, type_expr=torch.Tensor
           )
           size_ph.meta["val"] = torch.empty((), dtype=torch.int32)
 
@@ -250,11 +256,32 @@ class HandleSymIntUsagesPass:
             node.args = (type(node.args[0])(new_ret_args),)
 
 
+_PYTHON_COMPARISON_BUILTINS = {
+    operator.eq,
+    operator.ne,
+    operator.lt,
+    operator.gt,
+    operator.le,
+    operator.ge,
+}
+
+
+def _is_assertion_or_check_node(node: torch.fx.Node) -> bool:
+  if node.op == "call_function":
+    if node.target in _PYTHON_COMPARISON_BUILTINS:
+      return True
+    target_str = str(node.target)
+    if "_assert" in target_str or "sym_constrain" in target_str:
+      return True
+  return False
+
+
 class DetectSymIntUsagesPass:
   """Pass to detect any remaining SymInt usages in the graph after transformations.
 
   If any FX node in the graph still consumes a SymInt input argument, this pass
-  returns a list of unhandled (node, symint_arg) usages.
+  returns a list of unhandled (node, symint_arg) usages. Assertion and check
+  nodes (e.g., inserted by torch._check) are excluded.
   """
 
   def __call__(
@@ -262,6 +289,8 @@ class DetectSymIntUsagesPass:
   ) -> list[tuple[torch.fx.Node, Any]]:
     unhandled_usages = []
     for node in graph_module.graph.nodes:
+      if _is_assertion_or_check_node(node):
+        continue
       flat_args, _ = _pytree.tree_flatten((node.args, node.kwargs))
       for arg in flat_args:
         if isinstance(arg, torch.SymInt) or (

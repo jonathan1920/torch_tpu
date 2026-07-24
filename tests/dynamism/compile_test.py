@@ -356,6 +356,24 @@ class CompileTest(absltest.TestCase):
     metrics = self.call_and_compare(arange_func, test_inputs, None)
     self.assertEqual(metrics["bounded_compile_events"], 1)
 
+  def test_duplicate_symint_in_placeholder(self):
+    backend = _backend.TpuBackend(debug=True, dynamism=True)
+
+    def f(x):
+      torch._check(x.shape[0] == x.shape[1])
+      return x * 2
+
+    compiled_f = torch.compile(f, backend=backend)
+
+    x = torch.ones((2, 2), device="tpu")
+    torch._dynamo.mark_dynamic(x, 0, min=2, max=8)
+    torch._dynamo.mark_dynamic(x, 1, min=2, max=8)
+
+    res = compiled_f(x)
+
+    expected = torch.full((2, 2), 2.0, device="cpu")
+    utils.assert_close(res.cpu(), expected)
+
 
 class SymIntArithmeticTest(absltest.TestCase):
 
