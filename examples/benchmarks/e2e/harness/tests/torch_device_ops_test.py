@@ -89,6 +89,16 @@ class TorchDeviceOpsTest(absltest.TestCase):
 
     self.assertEqual(count, 42)
 
+  def test_compile_count_dynamo_real_compile(self):
+    target = target_lib.make_target(platform=target_lib.Platform.CPU)
+
+    ops = torch_device_ops.TorchDeviceOps(target)
+    model = torch.nn.Linear(2, 2)
+    compiled_model = torch.compile(model, backend="inductor")
+    _ = compiled_model(torch.randn(2, 2))
+
+    self.assertGreater(ops.compile_count(), 0)
+
   def test_compile_count_dynamo_none(self):
     target = target_lib.make_target(platform=target_lib.Platform.B200_1)
 

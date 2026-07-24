@@ -32,6 +32,7 @@ for torchax, eager/eager_optimized/compiled for TorchTPU.
 import dataclasses
 from typing import Any, Callable, Dict, Mapping, Sequence, Tuple
 
+from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import step_fn as step_fn_lib
 from examples.benchmarks.e2e.harness import target as target_lib
 
@@ -53,6 +54,7 @@ class BenchmarkSpec:
   step_fn: step_fn_lib.StepFn
   step_fn_kwargs: Mapping[str, Any] = dataclasses.field(default_factory=dict)
   dtype: target_lib.DType = target_lib.DType.BF16
+  compile_config: compile_lib.CompileConfig | None = None
 
 
 REGISTRY: Dict[str, BenchmarkSpec] = {}
@@ -62,6 +64,7 @@ def register_benchmark(
     step_fn: step_fn_lib.StepFn,
     step_fn_kwargs: Mapping[str, Any] | None = None,
     dtype: target_lib.DType = target_lib.DType.BF16,
+    compile_config: compile_lib.CompileConfig | None = None,
 ) -> Callable[[Factory], Factory]:
   """Decorator to wrap a benchmark factory and add its spec to REGISTRY.
 
@@ -69,6 +72,7 @@ def register_benchmark(
     step_fn: The step function type to use for this benchmark.
     step_fn_kwargs: Optional keyword arguments to pass when resolving step_fn.
     dtype: The data type for running the benchmark (defaults to BF16).
+    compile_config: Optional compile configuration (defaults to None).
 
   Returns:
     A decorator that registers the factory function and returns it unchanged.
@@ -89,6 +93,7 @@ def register_benchmark(
         step_fn=step_fn,
         step_fn_kwargs=dict(step_fn_kwargs),
         dtype=dtype,
+        compile_config=compile_config,
     )
     return factory
 

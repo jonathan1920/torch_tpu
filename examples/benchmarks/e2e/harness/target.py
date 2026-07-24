@@ -172,8 +172,8 @@ class Target:
   dtype: DType
 
   @property
-  def device_kind(self) -> str:
-    return self.platform_spec.kind.value
+  def device_kind(self) -> DeviceKind:
+    return self.platform_spec.kind
 
 
 def platform_from_env(env: Mapping[str, str] = os.environ) -> Platform:

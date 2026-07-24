@@ -18,6 +18,7 @@ import dataclasses
 from typing import Any, Mapping, Sequence, Tuple
 
 from absl.testing import absltest
+from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import registry as registry_lib
 from examples.benchmarks.e2e.harness import step_fn as step_fn_lib
 
@@ -86,6 +87,17 @@ class RegisterTest(absltest.TestCase):
     )
     spec = registry_lib.REGISTRY["_factory"]
     self.assertEqual(spec.step_fn_kwargs, {})
+    self.assertIsNone(spec.compile_config)
+
+  def test_register_with_compile_config(self):
+    cfg = compile_lib.CompileConfig(
+        scope=compile_lib.Scope.STEP, dynamic=True, fullgraph=True
+    )
+    registry_lib.register_benchmark(
+        step_fn=step_fn_lib.StepFn.FORWARD, compile_config=cfg
+    )(_factory)
+    spec = registry_lib.REGISTRY["_factory"]
+    self.assertEqual(spec.compile_config, cfg)
 
   def test_registered_entry_frozen(self):
     registry_lib.register_benchmark(step_fn=step_fn_lib.StepFn.FORWARD)(

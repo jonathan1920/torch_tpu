@@ -36,9 +36,23 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "mode_test",
+    srcs = ["mode_test.py"],
+    deps = [
+        "//examples/benchmarks/e2e:common",
+        "//examples/benchmarks/e2e/harness:mode",
+        "//examples/benchmarks/e2e/harness:target",
+        "//shims/absl_py/testing:absltest",
+        "//torch_tpu",
+        "//torch_tpu/_internal/execution_mode",
+    ],
+)
+
+torch_tpu_py_test(
     name = "registry_test",
     srcs = ["registry_test.py"],
     deps = [
+        "//examples/benchmarks/e2e/harness:compile",
         "//examples/benchmarks/e2e/harness:registry",
         "//examples/benchmarks/e2e/harness:step_fn",
         "//shims/absl_py/testing:absltest",
@@ -80,6 +94,18 @@ torch_tpu_py_test(
     deps = [
         "//examples/benchmarks/e2e/harness:target",
         "//examples/benchmarks/e2e/harness:torch_device_ops",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "compile_test",
+    srcs = ["compile_test.py"],
+    deps = [
+        "//examples/benchmarks/e2e/harness:compile",
+        "//examples/benchmarks/e2e/harness:target",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",

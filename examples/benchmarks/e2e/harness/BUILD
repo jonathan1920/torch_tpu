@@ -46,9 +46,21 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "mode",
+    srcs = ["mode.py"],
+    deps = [
+        ":target",
+        "//examples/benchmarks/e2e:common",
+        "//torch_tpu",
+        "//torch_tpu/_internal/execution_mode",
+    ],
+)
+
+torch_tpu_py_library(
     name = "registry",
     srcs = ["registry.py"],
     deps = [
+        ":compile",
         ":step_fn",
         ":target",
     ],
@@ -75,6 +87,16 @@ torch_tpu_py_library(
         ":target",
         "//shims/torch:pytorch",
         "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "compile",
+    srcs = ["compile.py"],
+    deps = [
+        ":target",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile",
     ],
 )
 

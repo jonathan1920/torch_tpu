@@ -112,7 +112,7 @@ class MakeTargetTest(parameterized.TestCase):
     target = target_lib.make_target(platform=platform, dtype=dtype)
     self.assertEqual(target.platform, platform)
     self.assertEqual(target.dtype, dtype)
-    self.assertEqual(target.device_kind, kind.value)
+    self.assertEqual(target.device_kind, kind)
     self.assertEqual(target.platform_spec.kind, kind)
     self.assertEqual(target.platform_spec.topology.nnodes, nnodes)
     self.assertEqual(target.platform_spec.topology.nprocs_per_node, nprocs)
@@ -136,7 +136,7 @@ class TargetIsFrameworkAgnosticTest(absltest.TestCase):
     This is what lets harness/target.py import neither framework.
     """
     t = target_lib.make_target(target_lib.Platform.B200_1)
-    self.assertEqual(t.device_kind, target_lib.DeviceKind.CUDA.value)
+    self.assertEqual(t.device_kind, target_lib.DeviceKind.CUDA)
     self.assertIsInstance(t.platform, target_lib.Platform)
     self.assertIsInstance(t.dtype, target_lib.DType)
     self.assertFalse(type(t.dtype).__module__.startswith("torch."))
