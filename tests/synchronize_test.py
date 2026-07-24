@@ -201,6 +201,32 @@ class SynchronizeTest(absltest.TestCase):
       for future in concurrent.futures.as_completed(futures):
         future.result()
 
+  def test_synchronize_compiled_mode(self):
+    def func(lhs, rhs):
+      return lhs.mm(rhs)
+
+    compiled = torch.compile(func, backend='tpu')
+
+    x = torch.ones(256, 256, dtype=torch.float32, device='tpu')
+    y = compiled(x, x)
+    torch.tpu.synchronize()
+    self.assertTrue(sync.is_materialized(y))
+    expected = torch.full((256, 256), 256.0, dtype=torch.float32, device='cpu')
+    utils.assert_close(y.cpu(), expected)
+
+  def test_accelerator_synchronize_compiled_mode(self):
+    def func(lhs, rhs):
+      return lhs.mm(rhs)
+
+    compiled = torch.compile(func, backend='tpu')
+
+    x = torch.ones(256, 256, dtype=torch.float32, device='tpu')
+    y = compiled(x, x)
+    torch.accelerator.synchronize()
+    self.assertTrue(sync.is_materialized(y))
+    expected = torch.full((256, 256), 256.0, dtype=torch.float32, device='cpu')
+    utils.assert_close(y.cpu(), expected)
+
 
 if __name__ == '__main__':
   absltest.main()
