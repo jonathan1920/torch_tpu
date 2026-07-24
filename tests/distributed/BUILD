@@ -593,6 +593,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "ragged_all_to_all_test",
     srcs = ["ragged_all_to_all_test.py"],
+    nonightly_oss = "This test requires TPU v7. Exclude this test from workflow nightly_tpu.yml running on TPU v6.",
     nopresubmit = "Requires 4 tpu v7x chips.",
     tags = [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
