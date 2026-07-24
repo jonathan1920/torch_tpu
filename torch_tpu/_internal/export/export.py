@@ -275,10 +275,7 @@ def _reconstruct_fx_outputs(
 
       # Force the contiguous output to have the expected layout.
       # b/514662948: avoid the copy/slice for broadcasted return values
-      is_dynamic = tpu_torch_compile.is_device_shape_dynamic(
-          contiguous_output_tensor
-      )
-      if is_dynamic or expected_layout.matches_tensor(contiguous_output_tensor):
+      if expected_layout.matches_tensor(contiguous_output_tensor):
         reconstructed_flat.append(contiguous_output_tensor)
       else:
         reconstructed_flat.append(
