@@ -1083,8 +1083,6 @@ torch_tpu_cc_test(
     srcs = ["compilation_cache_test.cc"],
     # go/cppdebugflags#increasing-your-size-limits
     exec_properties = {"cpp_link.mem": "16g"},  # multiline select
-    # TODO(b/538117859): Real failure on OSS
-    notest_oss = "Failing due to time zone difference and peak memory",
     requires_libtpu = True,
     deps = [
         ":cache_key",
@@ -1096,6 +1094,7 @@ torch_tpu_cc_test(
         ":error_utils",
         ":flags",
         ":shape",
+        ":utils",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:contain",
         "//torch_tpu/ops:op_builder_utils",
