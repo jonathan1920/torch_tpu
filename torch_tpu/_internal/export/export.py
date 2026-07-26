@@ -254,6 +254,7 @@ def _reconstruct_fx_outputs(
     expected_layouts: Sequence[_TensorLayout],
     output_map: Sequence[_DedupedTensorOutput | _NonTensorPassthrough | None],
     spec: pytree.TreeSpec,
+    dynamic_outputs: Sequence[bool] | None = None,
 ) -> Any:
   """Restores the original FX output structure from flattened MLIR outputs."""
   reconstructed_flat: list[Any] = []
@@ -273,9 +274,15 @@ def _reconstruct_fx_outputs(
         contiguous_output_tensor = deduped_outputs[idx]
         output_used[idx] = True
 
+      is_dynamic = (
+          dynamic_outputs[idx]
+          if dynamic_outputs is not None and idx < len(dynamic_outputs)
+          else False
+      )
+
       # Force the contiguous output to have the expected layout.
       # b/514662948: avoid the copy/slice for broadcasted return values
-      if expected_layout.matches_tensor(contiguous_output_tensor):
+      if expected_layout.matches_tensor(contiguous_output_tensor) or is_dynamic:
         reconstructed_flat.append(contiguous_output_tensor)
       else:
         reconstructed_flat.append(
@@ -365,6 +372,7 @@ class _TensorDedupeKey:
 def _process_fx_outputs(
     gm: torch.fx.GraphModule,
     outputs: Any,
+    dynamic_outputs: Sequence[bool] | None = None,
 ) -> tuple[
     list[torch.Tensor],
     Callable[[Sequence[Any], Sequence[torch.Tensor]], Any],
@@ -382,6 +390,7 @@ def _process_fx_outputs(
   Args:
     gm: The original torch.fx.GraphModule instance.
     outputs: The outputs of the graph.
+    dynamic_outputs: Optional sequence of booleans indicating dynamic outputs.
 
   Returns:
     A tuple containing a list of result tensors and a function to reconstruct
@@ -395,6 +404,7 @@ def _process_fx_outputs(
   flat_outputs, spec = pytree.tree_flatten(outputs)
   deduped_outputs: list[torch.Tensor] = []
   expected_layouts: list[_TensorLayout] = []
+  deduped_dynamic_outputs: list[bool] = []
   output_map: list[_DedupedTensorOutput | _NonTensorPassthrough | None] = []
   index_by_dedupe_key: dict[_TensorDedupeKey, int] = {}
 
@@ -407,6 +417,12 @@ def _process_fx_outputs(
         index_by_dedupe_key[key] = len(deduped_outputs)
         deduped_outputs.append(item)
         expected_layouts.append(key.layout)
+        is_dyn = (
+            dynamic_outputs[idx]
+            if dynamic_outputs is not None and idx < len(dynamic_outputs)
+            else False
+        )
+        deduped_dynamic_outputs.append(is_dyn)
       output_map.append(_DedupedTensorOutput(index_by_dedupe_key[key]))
     elif idx in output_to_input_map:
       output_map.append(_NonTensorPassthrough(output_to_input_map[idx]))
@@ -421,6 +437,7 @@ def _process_fx_outputs(
       output_map=output_map,
       expected_layouts=expected_layouts,
       spec=spec,
+      dynamic_outputs=deduped_dynamic_outputs,
   )
 
 
@@ -445,6 +462,7 @@ def fx_to_mlir(
     build_mlir_module: bool = True,
     use_stablehlo_bounds: bool = False,
     argument_layouts: list[list[int]] | None = None,
+    dynamic_outputs: Sequence[bool] | None = None,
 ) -> ExportedMlir:
   """Converts an FX graph module to MLIR using TorchTPU's defer mode.
 
@@ -462,6 +480,8 @@ def fx_to_mlir(
       result.
     use_stablehlo_bounds: Whether to use StableHLO bounds.
     argument_layouts: A list of forced layouts for input arguments.
+    dynamic_outputs: A list of booleans indicating whether the corresponding
+      output is dynamic.
 
   Returns:
     An `ExportedMlir` object containing the MLIR representation of the graph and
@@ -517,7 +537,7 @@ def fx_to_mlir(
       fx_outputs = EagerLikeFxInterpreter(module).run(*cloned_args)
 
     result_tensors, reconstruct_fx_outputs_fn = _process_fx_outputs(
-        module, fx_outputs
+        module, fx_outputs, dynamic_outputs=dynamic_outputs
     )
 
     # Plumb the final state tensor as the last output of the graph so that

@@ -558,10 +558,6 @@ class DynamicReshapeTest(absltest.TestCase):
     )
     utils.assert_close(out1, expected)
 
-  @absltest.skip(
-      "b/533811339: is_device_shape_dynamic causes perf regression, removed"
-      " it. Provide an improved detection logic and re-enable the test"
-  )
   def test_collapse_reshape(self):
     class Model(torch.nn.Module):
 
@@ -666,10 +662,6 @@ class DynamicReshapeTest(absltest.TestCase):
     )
     utils.assert_close(out1, expected)
 
-  @absltest.skip(
-      "b/533811339: is_device_shape_dynamic causes perf regression, removed"
-      " it. Provide an improved detection logic and re-enable the test"
-  )
   def test_multi_dynamic_reshape_unambiguous(self):
     class Model(torch.nn.Module):
 

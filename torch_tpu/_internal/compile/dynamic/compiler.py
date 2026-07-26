@@ -527,12 +527,18 @@ class DynamicCompiler(compiler.Compiler):
         aligned_bounds,
     )
 
+    dynamic_outputs = [
+        any(isinstance(dim, dict) for dim in out_shape.output_sym_shape)
+        for out_shape in sym_shape_manager.outputs_sym_shape
+    ]
+
     # Create a model executable using the provided example inputs and bounds.
     default_executable = self.static_compiler(
         graph_module,
         model_example_inputs,
         is_fwd=is_fwd,
         bounds=aligned_bounds,
+        dynamic_outputs=dynamic_outputs,
     )
 
     logging.debug(

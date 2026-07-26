@@ -179,6 +179,7 @@ class StaticCompiler(Compiler):
       is_fwd: bool = True,
       bounds: Sequence[Any] | None = None,
       argument_layouts: Sequence[Sequence[int]] | None = None,
+      dynamic_outputs: Sequence[bool] | None = None,
   ) -> CompiledArtifact:
     """Compiles the FX graph module for static shapes.
 
@@ -204,6 +205,7 @@ class StaticCompiler(Compiler):
       is_fwd: Indicates whether the forward or backward pass is being compiled.
       bounds: Optional sequence of TensorBounds for dynamic inputs.
       argument_layouts: Optional sequence of argument layouts for inputs.
+      dynamic_outputs: Optional sequence of booleans indicating dynamic outputs.
 
     Returns:
       A _TorchTpuCompiledExecutable object, which can be called to execute
@@ -279,6 +281,7 @@ class StaticCompiler(Compiler):
             build_mlir_module=(tracing_enabled or self._debug),
             use_stablehlo_bounds=self._use_stablehlo_bounds,
             argument_layouts=argument_layouts,
+            dynamic_outputs=dynamic_outputs,
         )
 
     if exported_mlir.is_noop:
