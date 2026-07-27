@@ -174,15 +174,40 @@ def intermediate_patch_abi(session: nox.Session, torch_version: str) -> None:
       _TORCH_INDEXES["cpu"],
   )
 
+def _smoke_test_files(device: str) -> Sequence[str]:
+  """The test files each smoke session runs against the installed wheel.
+
+  These are a few tests that are supposed to run relatively quickly but will
+  exercise the compile pipeline just to find any *obvious* ABI compatibility
+  issues.
+
+  Args:
+    device: The device that the tests are running on (e.g. "cpu", "tpu")
+
+  Returns:
+    A sequence of paths to test files, which can be passed to pytest
+  """
+  smoke_test_files : Mapping[str, Sequence[str]] = {
+    "common": (
+        f"tests/autoload_{device}_test.py",
+        "tests/execution_mode_test.py",
+    ),
+    "tpu": (
+        # A test that runs quickly and does something useful with a TPU
+        "tests/internal_sync_test.py",
+    ),
+  }
+
+  return (*smoke_test_files["common"], *smoke_test_files.get(device, ()))
 
 def _install_and_run_smoke_tests(
     session: nox.Session, device: str, *install_args: str
 ) -> None:
-  """Install the dist/ wheel plus install_args, then run the autoload tests."""
+  """Install the dist/ wheel plus install_args, then run the smoke tests."""
   session.install(str(_dist_wheel(session)), "pytest>=9", *install_args)
   # Mirrors the env of the corresponding bazel target in tests/BUILD: the
   # xla_cpu backend only registers when explicitly allowed.
   env = {"TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1"} if device == "cpu" else {}
   session.run(
-      "pytest", f"tests/autoload_{device}_test.py", *session.posargs, env=env
+      "pytest", *_smoke_test_files(device), *session.posargs, env=env
   )
