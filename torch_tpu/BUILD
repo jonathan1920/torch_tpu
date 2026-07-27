@@ -87,10 +87,11 @@ py_library_providing_imports_info(
     # used by the user. This tag prevents build_cleaner from removing the dependency.
     tags = ["keep_dep"],
     visibility = [
-        "//:__subpackages__",
-        "//shims/torchtitan:__subpackages__",
         "@pypi//helion:__subpackages__",
         "@pypi//tokamax:__subpackages__",
+        "//:__subpackages__",
+        # copybara:uncomment "@pypi//torch_tpu_embedding:__subpackages__",
+        "//shims/torchtitan:__subpackages__",
     ] + TT_FRIENDS,
     deps = if_oss(
         ["//shims/libtpu"],
