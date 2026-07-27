@@ -289,13 +289,12 @@ at::Tensor& AtenAddmmOut(const at::Tensor& self, const at::Tensor& mat1,
             auto result_buffer,
             AddMm(self, mat1, mat2, std::move(promoted_beta),
                   std::move(promoted_alpha), out.scalar_type(), param_keys));
-        at::IntArrayRef output_sizes_array_ref(result_buffer.dimensions());
         ABSL_VLOG(3)
             << "calling ResizeTensorIfShapeDiffers for out tensor with "
                "target shape: ["
-            << absl::StrJoin(output_sizes_array_ref, ", ") << "]";
+            << absl::StrJoin(result_buffer.dimensions(), ", ") << "]";
         TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(out, output_sizes_array_ref));
+            ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
         TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=No user triggerable errors.
             AssignBufferToAtTensor(std::move(result_buffer), out));
         return out;
@@ -324,13 +323,12 @@ at::Tensor& AtenAddmmActivationOut(const at::Tensor& self,
             AddMmActivation(self, mat1, mat2, std::move(promoted_beta),
                             std::move(promoted_alpha), use_gelu,
                             out.scalar_type(), param_keys));
-        at::IntArrayRef output_sizes_array_ref(result_buffer.dimensions());
         ABSL_VLOG(3)
             << "calling ResizeTensorIfShapeDiffers for out tensor with "
                "target shape: ["
-            << absl::StrJoin(output_sizes_array_ref, ", ") << "]";
+            << absl::StrJoin(result_buffer.dimensions(), ", ") << "]";
         TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(out, output_sizes_array_ref));
+            ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
         TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=No user triggerable errors.
             AssignBufferToAtTensor(std::move(result_buffer), out));
         return out;
