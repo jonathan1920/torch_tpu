@@ -520,8 +520,11 @@ absl::StatusOr<mlir::MlirOp> BuildUpsampleBilinearBackwardShlo(
     at::IntArrayRef grad_input_shape, bool align_corners,
     const ScaleVector& scales_opt) {
   mlir::MlirBuilder& builder = grad_output.getBuilder();
-  at::IntArrayRef grad_output_shape =
-      GetTensorTypeOrDie(grad_output).getShape();
+  // GetTensorTypeOrDie returns a temporary by value, whose .getShape() span
+  // would dangle if bound to an IntArrayRef. Use CopyIntVector to own the
+  // shape.
+  const Dimensions grad_output_shape =
+      CopyIntVector(GetTensorTypeOrDie(grad_output).getShape());
   const int64_t spatial_dim_size = num_dimensions;
   const int64_t offset_dim_size = grad_output_shape.size() - spatial_dim_size;
 
@@ -672,8 +675,8 @@ absl::StatusOr<mlir::MlirOp> BuildUpsampleNearestBackwardIndexTensor(
     at::IntArrayRef grad_input_shape,
     const MlirOpVector& inverse_scale_factor_array,
     UpsampleMode upsample_mode) {
-  at::IntArrayRef grad_output_shape =
-      GetTensorTypeOrDie(grad_output).getShape();
+  Dimensions grad_output_shape =
+      CopyIntVector(GetTensorTypeOrDie(grad_output).getShape());
   int64_t rank = grad_output_shape.size();
   auto broadcast_to_indices_type = mlir::RankedTensorType::get(
       grad_output_shape, builder.getOpBuilder().getI32Type());
@@ -690,7 +693,8 @@ absl::StatusOr<mlir::MlirOp> BuildUpsampleNearestBackwardIndexTensor(
     auto broadcast_indices = mlir::stablehlo::BroadcastInDim(
         broadcast_to_indices_type, index_tensor, {i + 2});
 
-    SmallInt64Vector reshape_dims = CopyIntVector(grad_output_shape);
+    SmallInt64Vector reshape_dims(grad_output_shape.begin(),
+                                  grad_output_shape.end());
     reshape_dims.push_back(1);
     auto reshape_type = mlir::RankedTensorType::get(
         reshape_dims, builder.getOpBuilder().getI32Type());
