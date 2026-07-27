@@ -30,6 +30,8 @@ namespace torch_tpu {
  * The sparse matrix inputs are expected in a specific layout optimized for
  * SparseCore distribution, which can be found at
  * https://jax-tpu-embedding.readthedocs.io/en/latest/input_processing.html
+ * (Note: Despite residing in the jax_tpu_embedding package, the core C++
+ * SparseCore preprocessing and input layout are framework-independent.)
  *
  * @param row_pointers Integer 1D tensor containing indices that represent row
  * pointers in CSR format.

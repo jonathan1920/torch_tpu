@@ -39,15 +39,22 @@
 #include "torch_tpu/ops/experimental/sparse_dense_matmul/preprocessing_config.pb.h"
 
 // JAX input preprocessing library
+// Note: Despite the jax_* prefix in paths and namespaces, the core C++
+// preprocessing library is independent of JAX and framework-agnostic.
 #include "jax_tpu_embedding/sparsecore/lib/core/abstract_input_batch.h"
 #include "jax_tpu_embedding/sparsecore/lib/core/input_preprocessing.h"
 #include "jax_tpu_embedding/sparsecore/lib/core/input_preprocessing_util.h"
 #include "jax_tpu_embedding/sparsecore/lib/core/ragged_tensor_input_batch.h"
 
 namespace torch_tpu {
+namespace {
+
+namespace sc_preprocessing = jax_sc_embedding;
+
+}  // namespace
 
 // TT_KERNEL is not required because this is a wrapper on the input
-// preprocessing from jax_tpu_embedding.
+// preprocessing from jax_tpu_embedding (which is framework-independent).
 TORCH_LIBRARY_FRAGMENT(tpu, m) {
   auto func = [](c10::Dict<std::string, c10::List<at::Tensor>> input_indices,
                  c10::Dict<std::string, c10::List<at::Tensor>> input_offsets,
@@ -61,9 +68,9 @@ TORCH_LIBRARY_FRAGMENT(tpu, m) {
         << "failed to parse StackedTablesConfig proto";
 
     absl::flat_hash_map<std::string,
-                        std::vector<jax_sc_embedding::FeatureMetadataInStack>>
-        jax_stacked_tables;
-    std::vector<std::unique_ptr<jax_sc_embedding::AbstractInputBatch>>
+                        std::vector<sc_preprocessing::FeatureMetadataInStack>>
+        sc_stacked_tables;
+    std::vector<std::unique_ptr<sc_preprocessing::AbstractInputBatch>>
         input_batches;
     std::vector<at::Tensor> contiguous_tensors_holder;
 
@@ -96,12 +103,12 @@ TORCH_LIBRARY_FRAGMENT(tpu, m) {
                      error::kInvalidArgument)
           << "offsets list size mismatch for table " << table_name;
 
-      jax_stacked_tables[table_name].reserve(meta_list.size());
+      sc_stacked_tables[table_name].reserve(meta_list.size());
 
       for (size_t i = 0; i < meta_list.size(); ++i) {
         const auto& f = meta_list[i];
-        jax_stacked_tables[table_name].push_back(
-            jax_sc_embedding::FeatureMetadataInStack(
+        sc_stacked_tables[table_name].push_back(
+            sc_preprocessing::FeatureMetadataInStack(
                 f.name(), global_feat_idx++,
                 static_cast<int>(f.max_ids_per_partition()),
                 static_cast<int>(f.max_unique_ids_per_partition()),
@@ -112,7 +119,7 @@ TORCH_LIBRARY_FRAGMENT(tpu, m) {
                     ? std::make_optional(static_cast<int>(
                           f.suggested_coo_buffer_size_per_device()))
                     : std::nullopt,
-                jax_sc_embedding::GetRowCombiner(f.combiner())));
+                sc_preprocessing::GetRowCombiner(f.combiner())));
 
         const at::Tensor& indices = indices_list[i];
         const at::Tensor& offsets = offsets_list[i];
@@ -133,24 +140,24 @@ TORCH_LIBRARY_FRAGMENT(tpu, m) {
             contiguous_offsets.data_ptr<int32_t>(), contiguous_offsets.numel());
 
         input_batches.push_back(
-            std::make_unique<jax_sc_embedding::RaggedTensorInputBatch<
+            std::make_unique<sc_preprocessing::RaggedTensorInputBatch<
                 absl::Span<const int32_t>, absl::Span<const int32_t>>>(
                 val_span, off_span, table_name));
       }
     }
 
     c10::Dict<std::string, c10::Dict<std::string, at::Tensor>> outputs;
-    jax_sc_embedding::OutputCsrArrays jax_output_buffers;
+    sc_preprocessing::OutputCsrArrays sc_output_buffers;
 
-    jax_sc_embedding::PreprocessSparseDenseMatmulInputOptions jax_options{
+    sc_preprocessing::PreprocessSparseDenseMatmulInputOptions sc_options{
         .local_device_count = static_cast<int>(local_device_count),
         .global_device_count = static_cast<int>(global_device_count),
         .num_sc_per_device = static_cast<int>(num_sc_per_device),
-        .sharding_strategy = jax_sc_embedding::ShardingStrategy::kMod,
+        .sharding_strategy = sc_preprocessing::ShardingStrategy::kMod,
         .allow_id_dropping = allow_id_dropping,
     };
     const int row_pointers_size_per_device =
-        jax_options.GetRowPointersSizePerDevice();
+        sc_options.GetRowPointersSizePerDevice();
 
     for (const auto& [table_name, feature_list] : config_proto.tables()) {
       const auto& meta_list = feature_list.features();
@@ -172,23 +179,23 @@ TORCH_LIBRARY_FRAGMENT(tpu, m) {
       at::Tensor gains = at::empty({total_coo_buffer_size}, at::kFloat);
 
       // Wrap PyTorch data tensors DIRECTLY
-      Eigen::Map<jax_sc_embedding::MatrixXi> row_pointers_map(
+      Eigen::Map<sc_preprocessing::MatrixXi> row_pointers_map(
           row_pointers.data_ptr<int32_t>(), local_device_count,
           row_pointers_size_per_device);
-      Eigen::Map<jax_sc_embedding::MatrixXi> embedding_ids_map(
+      Eigen::Map<sc_preprocessing::MatrixXi> embedding_ids_map(
           embedding_ids.data_ptr<int32_t>(), local_device_count,
           required_buffer_size);
-      Eigen::Map<jax_sc_embedding::MatrixXi> sample_ids_map(
+      Eigen::Map<sc_preprocessing::MatrixXi> sample_ids_map(
           sample_ids.data_ptr<int32_t>(), local_device_count,
           required_buffer_size);
-      Eigen::Map<jax_sc_embedding::MatrixXf> gains_map(
+      Eigen::Map<sc_preprocessing::MatrixXf> gains_map(
           gains.data_ptr<float>(), local_device_count, required_buffer_size);
 
-      jax_output_buffers.lhs_row_pointers.emplace(table_name, row_pointers_map);
-      jax_output_buffers.lhs_embedding_ids.emplace(table_name,
-                                                   embedding_ids_map);
-      jax_output_buffers.lhs_sample_ids.emplace(table_name, sample_ids_map);
-      jax_output_buffers.lhs_gains.emplace(table_name, gains_map);
+      sc_output_buffers.lhs_row_pointers.emplace(table_name, row_pointers_map);
+      sc_output_buffers.lhs_embedding_ids.emplace(table_name,
+                                                  embedding_ids_map);
+      sc_output_buffers.lhs_sample_ids.emplace(table_name, sample_ids_map);
+      sc_output_buffers.lhs_gains.emplace(table_name, gains_map);
 
       c10::Dict<std::string, at::Tensor> table_dict;
       table_dict.insert("row_pointers", row_pointers);
@@ -199,9 +206,9 @@ TORCH_LIBRARY_FRAGMENT(tpu, m) {
       outputs.insert(table_name, table_dict);
     }
 
-    auto result = jax_sc_embedding::PreprocessSparseDenseMatmulInput(
-        absl::MakeSpan(input_batches), jax_stacked_tables, jax_options,
-        &jax_output_buffers);
+    auto result = sc_preprocessing::PreprocessSparseDenseMatmulInput(
+        absl::MakeSpan(input_batches), sc_stacked_tables, sc_options,
+        &sc_output_buffers);
 
     TT_CHECK_THROW(result.ok(), result.status().code())
         << result.status().message();

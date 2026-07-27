@@ -11,7 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Adding dependency for input_preprocessing library within jax_tpu_embedding."""
+"""Adding dependency for input_preprocessing library within jax_tpu_embedding.
+
+Note: Despite residing within jax_tpu_embedding, the core C++ SparseCore
+preprocessing library is framework-independent.
+"""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
