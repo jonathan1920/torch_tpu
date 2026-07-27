@@ -71,10 +71,11 @@ def pybind_extension(name, **kwargs):
 
     # A plain cc_library mirroring this extension's deps, used only to feed the
     # shared-XLA-base filter. Under the filter's sentinel config its backend deps
-    # (pinned via xla_fixed) share linker-input identity with the glues' backend,
-    # so aggregating these probes captures exactly the shared XLA/MLIR to factor
-    # out of every per-version common. Its torch_tpu object code is compiled under
-    # the sentinel torch_version and matches no glue, so it is ignored.
+    # (pinned via reset_torch_config) share linker-input identity with the
+    # glues' backend, so aggregating these probes captures exactly the shared
+    # XLA/MLIR to factor out of every per-version common. Its torch_tpu object
+    # code is compiled under the sentinel torch_version and matches no glue, so
+    # it is ignored.
     cc_library(
         name = "{}_backend_probe".format(name),
         deps = pin_glue_backend_deps("{}_probe".format(name), raw_deps),

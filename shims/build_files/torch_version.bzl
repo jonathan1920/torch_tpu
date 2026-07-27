@@ -17,8 +17,8 @@
 The `//:_torch_version` flag reconfigures the whole build graph, including the
 XLA/MLIR backend that does not actually depend on PyTorch. To keep the shared
 backend in a single configuration (so pywrap factors it into one common library
-instead of one copy per PyTorch version), `xla_fixed` re-exports a target under
-a transition that pins `//:_torch_version` to a canonical value.
+instead of one copy per PyTorch version), `reset_torch_config` re-exports a
+target under a transition that pins `//:_torch_version` to a canonical value.
 
 `torch_version_glue` is the dual: it re-exports a `pybind_extension` under a
 transition that *sets* `//:_torch_version` to a specific value, so the same
@@ -96,12 +96,12 @@ _FORWARDED_PROVIDERS = [
     CcSharedLibraryInfo,
 ]
 
-def _xla_fixed_impl(ctx):
+def _reset_torch_config_impl(ctx):
     dep = ctx.attr.dep[0]
     return [dep[DefaultInfo]] + [dep[p] for p in _FORWARDED_PROVIDERS if p in dep]
 
-xla_fixed = rule(
-    implementation = _xla_fixed_impl,
+reset_torch_config = rule(
+    implementation = _reset_torch_config_impl,
     attrs = {
         "dep": attr.label(cfg = _fix_torch_version, mandatory = True),
         "_allowlist_function_transition": attr.label(
@@ -200,8 +200,9 @@ def pin_glue_backend_deps(name, deps):
     code that a glue depends on directly (e.g. `@com_google_absl//...`). Left
     alone, each version's copy lands in the shared common library under a
     distinct config and collides at link time ("duplicate symbol ... built in a
-    different configuration"). Routing those deps through `xla_fixed` resets them
-    to the canonical config so pywrap factors them into one common library.
+    different configuration"). Routing those deps through `reset_torch_config`
+    resets them to the canonical config so pywrap factors them into one common
+    library.
 
     torch_tpu_cc_library deps already self-route; this covers the glue's own
     direct backend deps. `//`-deps and torch headers are left untouched.
@@ -218,10 +219,10 @@ def pin_glue_backend_deps(name, deps):
         # A non-list deps value -- a bare select(), or a `[...] + select({...})`
         # SelectorList -- is opaque to Starlark: it cannot be iterated or
         # decomposed, so a backend @-dep hidden inside it cannot be discovered
-        # and routed through xla_fixed. Passing it through would let such a dep
-        # silently escape pinning and fragment the shared XLA base, so refuse the
-        # shape outright rather than miscompile. Keep every glue dep in a plain
-        # list; select() is not supported here.
+        # and routed through reset_torch_config. Passing it through would let
+        # such a dep silently escape pinning and fragment the shared XLA base,
+        # so refuse the shape outright rather than miscompile. Keep every glue
+        # dep in a plain list; select() is not supported here.
         fail(
             ("pin_glue_backend_deps {}: `deps` must be a plain list so backend " +
              "@-deps can be routed to the shared XLA base, but got a select(). " +
@@ -233,7 +234,7 @@ def pin_glue_backend_deps(name, deps):
     for dep in deps:
         if is_backend_dep(dep):
             fixed_name = "_{}_glue_backend_fixed_{}".format(name, fixed_index)
-            xla_fixed(
+            reset_torch_config(
                 name = fixed_name,
                 dep = dep,
                 visibility = ["//visibility:private"],
@@ -246,9 +247,9 @@ def pin_glue_backend_deps(name, deps):
 
 def _xla_base_config_impl(_settings, _attr):
     # The filter builds under the canonical pinned config: its backend deps --
-    # routed through xla_fixed, exactly like the glues' -- share linker-input
-    # identity with the glues' pinned backend, so the shared XLA/MLIR is
-    # captured. Its own torch_tpu object code must match NO glue, so pywrap
+    # routed through reset_torch_config, exactly like the glues' -- share
+    # linker-input identity with the glues' pinned backend, so the shared
+    # XLA/MLIR is captured. Its own torch_tpu object code must match NO glue, so pywrap
     # drops it: the extra versions differ on torch_version (the sentinel never
     # appears in WHEEL_TORCH_VERSIONS), and the default version's glue -- which
     # also builds at the sentinel -- differs on torch_headers_only, which is
@@ -256,9 +257,10 @@ def _xla_base_config_impl(_settings, _attr):
     return {
         _TORCH_VERSION: SENTINEL_TORCH_VERSION,
         # headers-only so no real torch is pulled into the shared XLA base. The
-        # glues themselves link real torch (headers_only=False), but xla_fixed
-        # canonicalizes both torch_version and torch_headers_only, so the backend
-        # linker inputs captured here still match the glues' pinned backend.
+        # glues themselves link real torch (headers_only=False), but
+        # reset_torch_config canonicalizes both torch_version and
+        # torch_headers_only, so the backend linker inputs captured here still
+        # match the glues' pinned backend.
         _TORCH_HEADERS_ONLY: True,
     }
 
