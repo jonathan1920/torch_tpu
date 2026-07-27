@@ -18,6 +18,7 @@ load(
     "torch_tpu_package_end",
     "torch_tpu_py_library",
 )
+load("//shims/build_files:build_defs.bzl", "TT_FRIENDS")
 load("//shims/py_rules:strict.bzl", "py_library_providing_imports_info")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
@@ -26,7 +27,7 @@ package(
     default_visibility = [
         "//:__subpackages__",
         "//shims/torchtitan:__subpackages__",
-    ],
+    ] + TT_FRIENDS,
 )
 
 torch_tpu_py_library(
