@@ -39,7 +39,7 @@ std::string ToString(const Shape& s) {
   for (auto d : s.dimensions()) {
     os << d << "x";
   }
-  os << ToShortString(s.dtype());
+  os << ToString(s.dtype());
   if (!s.dynamic_dimensions().empty()) {
     os << "[";
     for (auto d : s.dynamic_dimensions()) {

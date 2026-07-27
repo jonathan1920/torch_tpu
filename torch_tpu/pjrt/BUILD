@@ -123,6 +123,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:env_vars",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:to_string",
         "//torch_tpu/eager:device_buffer",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",

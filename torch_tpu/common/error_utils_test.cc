@@ -1332,6 +1332,11 @@ TEST(ErrorMessageGuidelinesDeathTest, NoSpaceSurroundingXlaErrorSentinel) {
       HasSubstr("spaces after the XLA compiler error sentinel"));
 }
 
+TEST(ErrorMessageGuidelinesDeathTest, ContainsStableHloTypeName) {
+  EXPECT_DEATH(ThrowWithMessage("unsupported type f32"),
+               HasSubstr("StableHLO type names"));
+}
+
 struct TestLogSink : public absl::LogSink {
   void Send(const absl::LogEntry& entry) override {
     if (entry.log_severity() == absl::LogSeverity::kWarning) {
@@ -1372,16 +1377,6 @@ TEST(ErrorMessageGuidelinesWarningTest, InvalidExpectedGotFormat) {
 
   ASSERT_EQ(sink.warnings.size(), 1);
   EXPECT_THAT(sink.warnings[0], HasSubstr("expected ..., got ..."));
-}
-
-TEST(ErrorMessageGuidelinesWarningTest, HasStableHLOTypeName) {
-  TestLogSink sink;
-  ScopedLogSink scoped_sink(&sink);
-
-  EXPECT_THROW(ThrowWithMessage("the dtype cannot be f32"), c10::Error);
-
-  ASSERT_EQ(sink.warnings.size(), 1);
-  EXPECT_THAT(sink.warnings[0], HasSubstr("StableHLO type names"));
 }
 
 void ThrowWithContextForXlaError(const std::string_view context,

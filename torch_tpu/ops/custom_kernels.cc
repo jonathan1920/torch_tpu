@@ -510,10 +510,7 @@ class CustomKernelRegistry {
           registry_.find(CustomKernelIdRef{.name = name, .kwargs = kernel_key});
       TT_RET_CHECK(it != registry_.end(), error::kNotFound)
           << "unknown custom kernel; call torch_tpu._internal.pallas."
-             "tpu_torch_pallas.register_custom_kernel"
-             "(\""
-          << name << "\", \"" << kernel_key
-          << "\", ...)"
+             "tpu_torch_pallas.register_custom_kernel()"
              " to register the kernel before calling it";
       mlir_module_string = it->second;
     }

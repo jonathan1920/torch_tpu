@@ -982,11 +982,11 @@ SharedLoadedExecutableWithMetadata PyLoadSerializedExecutable(
   TT_CHECK_THROW(client != nullptr, error::kFailedPrecondition)
       << "PjRtClient must be initialized before loading a serialized "
          "executable.";
-  TT_ASSIGN_OR_THROW(std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_executable,
-                     client->LoadSerializedExecutable(
-                         data, /*options=*/std::nullopt, xla::LoadOptions()),
-                     _.SetPrepend()
-                         << "Failed to load serialized executable: ");
+  TT_ASSIGN_OR_THROW(
+      std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_executable,
+      AdaptXlaError(client->LoadSerializedExecutable(
+                        data, /* options= */ std::nullopt, xla::LoadOptions()),
+                    /* context= */ "failed to load serialized executable"));
   TT_ASSIGN_OR_THROW(
       SharedLoadedExecutableWithMetadata executable,
       LoadedExecutableWithMetadata::MakeShared(std::move(pjrt_executable)),

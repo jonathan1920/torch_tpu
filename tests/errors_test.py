@@ -1028,7 +1028,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         gpu="""Storage size calculation overflowed with sizes=[2147483648, 2147483648]""",
-        tpu="""empty(): product of dimension sizes [2147483648, 2147483648] and size of f32 (4 bytes) overflows as int64""",
+        tpu="""empty(): product of dimension sizes [2147483648, 2147483648] and size of float32 (4 bytes) overflows as int64""",
     ):
       # The product of the dimensions is 2 ** 62, which doesn't cause an
       # overflow in XLA. However, the byte size is 2 ** 64, which overflows

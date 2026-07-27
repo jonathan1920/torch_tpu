@@ -661,7 +661,7 @@ absl::StatusOr<int64_t> ValidateTensorByteSize(at::IntArrayRef size,
                    xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_primitive_type)),
       _.SetOverride() << "product of dimension sizes ["
                       << absl::StrJoin(size, ", ") << "] and size of "
-                      << ToShortString(element_type) << " ("
+                      << ToString(element_type) << " ("
                       << xla::ShapeUtil::ByteSizeOfPrimitiveType(
                              xla_primitive_type)
                       << " bytes) overflows as int64");

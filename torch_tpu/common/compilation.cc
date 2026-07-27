@@ -147,11 +147,12 @@ MlirComputationBuilderToExecutableBuilder(
   TT_ASSIGN_OR_RETURN(ContextedModule contexted_module,
                       ContextedModule::Make(computation_builder));
   return [contexted_module = std::move(contexted_module)](
-             xla::PjRtClient& client, UniqueCompileOptions options) mutable
-             -> absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> {
-    return client.CompileAndLoad(
-        std::move(contexted_module).ToMaybeOwningMlirModule(),
-        std::move(*options));
+             xla::PjRtClient& client, UniqueCompileOptions options) mutable {
+    return AdaptXlaError(
+        client.CompileAndLoad(
+            std::move(contexted_module).ToMaybeOwningMlirModule(),
+            std::move(*options)),
+        /* context= */ "failed to compile MLIR module");
   };
 }
 

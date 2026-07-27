@@ -35,6 +35,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "c10/core/TensorImpl.h"
@@ -50,6 +51,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -132,6 +134,18 @@ void ValidateFp4Dimensions(absl::Span<const int64_t> dimensions) {
 absl::Status TpuMemcpyDtoHFP4(xla::PjRtBuffer* absl_nonnull buffer,
                               absl::Span<const int64_t> buffer_expected_dims,
                               at::Tensor& cpu_tensor_receiver) {
+  const at::ScalarType kScalarType =
+      ConvertTo<at::ScalarType>(mlir::ElementType::F4E2M1FN);
+
+  ABSL_CHECK(  // CRASH_OK
+      buffer->element_type() == xla::PrimitiveType::F4E2M1FN)
+      << "TpuMemcpyDtoHFP4() buffer dtype must be " << ToString(kScalarType)
+      << ", got " << ToString(buffer->element_type());
+  ABSL_CHECK_EQ(  // CRASH_OK
+      cpu_tensor_receiver.scalar_type(), kScalarType)
+      << "TpuMemcpyDtoHFP4() tensor receiver dtype must be "
+      << ToString(kScalarType) << ", got " << ToString(buffer->element_type());
+
   // XLA's default layout for sub-byte types (like FP4) in host memory
   // literals is unpacked (1 byte per element). We allocate a
   // 1-byte-per-element temporary buffer to receive the unpacked elements from
@@ -147,7 +161,10 @@ absl::Status TpuMemcpyDtoHFP4(xla::PjRtBuffer* absl_nonnull buffer,
   auto future = buffer->ToLiteral(literal.get());
   {
     tsl::profiler::TraceMe trace_await("TpuMemcpyDtoHFP4::Await");
-    TT_RETURN_IF_ERROR(AdaptXlaError(future.Await()));
+    TT_RETURN_IF_ERROR(AdaptXlaError(
+        future.Await(),
+        /* context= */ absl::StrCat("failed to copy ", ToString(kScalarType),
+                                    " buffer from device to host")));
   }
 
   // Pack the data back into cpu_tensor_receiver
@@ -254,18 +271,19 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
 
   TT_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtBuffer> buffer,
-      AdaptXlaError(client->BufferFromHostBuffer(
-          effective_host_data,
-
-          type, dimensions, std::nullopt, semantics,
-          [backing_tensor = std::move(backing_tensor),
-           temp_unpacked = std::move(temp_unpacked_data)]() mutable {
-            // This lambda ensures that the backing tensor and the temporary
-            // unpacked FP4 buffer are kept alive until the transfer completes.
-            backing_tensor.reset();
-            temp_unpacked = std::vector<uint8_t>();
-          },
-          memory_space, layout_ptr)));
+      AdaptXlaError(
+          client->BufferFromHostBuffer(
+              effective_host_data, type, dimensions, std::nullopt, semantics,
+              [backing_tensor = std::move(backing_tensor),
+               temp_unpacked = std::move(temp_unpacked_data)]() mutable {
+                // This lambda ensures that the backing tensor and the temporary
+                // unpacked FP4 buffer are kept alive until the transfer
+                // completes.
+                backing_tensor.reset();
+                temp_unpacked = std::vector<uint8_t>();
+              },
+              memory_space, layout_ptr),
+          /* context= */ "failed to start copy of buffer from host to device"));
 
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] "
                   "client->BufferFromHostBuffer SUCCEEDED.";
@@ -277,7 +295,9 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   if (!keep_host_data_alive) {
     ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] No backing tensor, "
                     "blocking on future.";
-    TT_RETURN_IF_ERROR(AdaptXlaError(future.Await()));
+    TT_RETURN_IF_ERROR(AdaptXlaError(
+        future.Await(),
+        /* context= */ "failed to copy buffer from host to device"));
   } else {
     ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Backing tensor present, "
                     "creating DeviceBufferRef and marking stream active.";
@@ -349,7 +369,9 @@ absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref,
   auto future = buffer->ToLiteral(literal.get());
   {
     tsl::profiler::TraceMe trace_await("TpuMemcpyDtoH::Await");
-    TT_RETURN_IF_ERROR(AdaptXlaError(future.Await()));
+    TT_RETURN_IF_ERROR(AdaptXlaError(
+        future.Await(),
+        /* context= */ "failed to copy buffer from device to host"));
   }
   return cpu_tensor_receiver;
 }
@@ -385,9 +407,10 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
     });
     MarkStreamActive(future);
     return absl::OkStatus();
-  } else {
-    return AdaptXlaError(future.Await());
   }
+  return AdaptXlaError(
+      future.Await(),
+      /* context= */ "failed to copy buffer from device into host buffer");
 }
 
 bool HloModuleContainsCollective(const xla::HloModule* hlo_module) {
@@ -433,7 +456,8 @@ absl::StatusOr<PjRtBufferPointers> Execute(
   TT_ASSIGN_OR_RETURN(std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>
                           results_per_device,
                       AdaptXlaError(executable->GetLoadedExecutable()->Execute(
-                          execution_arguments, execute_options)));
+                                        execution_arguments, execute_options),
+                                    /* context= */ "failed to run executable"));
 
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=XLA execution contracts guarantee
                  // non-empty results on successful execution.

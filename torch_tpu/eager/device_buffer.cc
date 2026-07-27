@@ -323,7 +323,9 @@ absl::Status DeviceBufferList::Synchronize() const {
   for (auto i = 0; i < size(); ++i) {
     TT_ASSIGN_OR_RETURN(auto* buffer, AwaitBuffer(i));
     auto future = buffer->GetReadyFuture();
-    TT_RETURN_IF_ERROR(AdaptXlaError(future.Await()));
+    TT_RETURN_IF_ERROR(
+        AdaptXlaError(future.Await(),
+                      /* context= */ "failed to synchronize device buffer"));
   }
   return absl::OkStatus();
 }

@@ -151,18 +151,32 @@ void CheckDeviceIsTpu(c10::optional<at::Device> device_opt,
 // TODO(wan): use a more robust mechanism to detect XLA OOM errors.
 [[nodiscard]] bool IsXlaOomError(const absl::Status& status);
 
-// Adapts an OpenXLA error status by checking if its error message ends with a
-// trailing period, and removing it if so. Returns the adapted status.
-absl::Status AdaptXlaError(const absl::Status& status);
+// Adapts an external error from OpenXLA to comply to TorchTPU error guidelines.
+//
+// If `status` is OK, returns it unchanged.
+//
+// If `status` contains an error:
+//   1. Cleans the original error message using `AdaptExternalErrorMessage`.
+//   2. Prepends the error message with `context` and `kXlaCompilerFailedWith`.
+//   3. Returns a new status with the formatted message, preserving the original
+//      status code and any payloads (metadata).
+//
+// Example:
+//   TT_ASSIGN_OR_RETURN(
+//       auto executable,
+//       AdaptXlaError(client.CompileAndLoad(module, options),
+//                     /* context= */ "failed to compile MLIR module"));
+//
+absl::Status AdaptXlaError(const absl::Status& status,
+                           std::string_view context);
 
-// Overload for adapting an absl::StatusOr containing an OpenXLA function
-// result.
 template <typename T>
-absl::StatusOr<T> AdaptXlaError(absl::StatusOr<T> status_or) {
+absl::StatusOr<T> AdaptXlaError(absl::StatusOr<T> status_or,
+                                const std::string_view context) {
   if (status_or.ok()) {
     return status_or;
   }
-  return AdaptXlaError(std::move(status_or).status());
+  return AdaptXlaError(std::move(status_or).status(), context);
 }
 
 // Adapts an external error message to conform to guidelines.

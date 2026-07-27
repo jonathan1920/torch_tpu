@@ -492,7 +492,7 @@ ErrorMessageChecksResult GetErrorMessageChecksResult(
 
   for (const auto& pair : type_name_pairs) {
     handle_check(DoesNotContainStableHloTypeName(message, pair),
-                 CheckKind::kWarn);
+                 CheckKind::kEnforce);
   }
 
   // The subsequent checks require, as pre-condition, the message to be trimmed.
@@ -668,15 +668,15 @@ bool IsXlaOomError(const absl::Status& status) {
           absl::StrContains(status.message(), "allocation_size"));
 }
 
-absl::Status AdaptXlaError(const absl::Status& status) {
+absl::Status AdaptXlaError(const absl::Status& status,
+                           const std::string_view context) {
   if (status.ok()) {
     return status;
   }
 
   const std::string adapted = AdaptExternalErrorMessage(status.message());
-  return (adapted == status.message())
-             ? status
-             : StatusBuilder(std::move(status)).SetOverride() << adapted;
+  return StatusBuilder(std::move(status)).SetOverride()
+         << absl::StrCat(context, kXlaCompilerFailedWith, adapted);
 }
 
 enum class ExceptionType {

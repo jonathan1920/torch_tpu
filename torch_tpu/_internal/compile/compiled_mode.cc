@@ -322,8 +322,9 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
       [module = std::move(module)](
           xla::PjRtClient& client,
           UniqueCompileOptions compile_options) mutable {
-        return client.CompileAndLoad(std::move(module),
-                                     std::move(*compile_options));
+        return AdaptXlaError(client.CompileAndLoad(std::move(module),
+                                                   std::move(*compile_options)),
+                             /* context= */ "failed to compile MLIR module");
       };
   return Compile(*client, std::move(executable_builder),
                  std::move(compile_options));

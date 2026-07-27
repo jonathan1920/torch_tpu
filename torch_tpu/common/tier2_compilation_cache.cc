@@ -280,13 +280,14 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> LoadSerializedExecutable(
       << " cache";
   TT_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_executable,
-      client->LoadSerializedExecutable(data,
-                                       /*options=*/std::nullopt,
-                                       xla::LoadOptions()),
-      _.SetPrepend() << "failed to load serialized executable from the " << tier
-                     << " cache for key " << key
-                     << ", where the serialized data has " << data.size()
-                     << " bytes:\n");
+      AdaptXlaError(
+          client->LoadSerializedExecutable(data,
+                                           /* options= */ std::nullopt,
+                                           xla::LoadOptions()),
+          /* context =*/absl::StrCat(
+              "failed to load serialized executable from the ", tier,
+              " cache for key ", key, ", where the serialized data has ",
+              data.size(), " bytes")));
   return LoadedExecutableWithMetadata::MakeShared(std::move(pjrt_executable));
 }
 
