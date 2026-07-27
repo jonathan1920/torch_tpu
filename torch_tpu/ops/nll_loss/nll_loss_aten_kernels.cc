@@ -322,7 +322,6 @@ at::Tensor& AtenNllLossBackwardGradInput(
             (DispatchOp<kDynamicSize, 1>(std::move(op_builder), inputs,
                                          std::move(options))));
 
-        at::IntArrayRef output_sizes_array_ref(grad_input_buf.dimensions());
         at::native::resize_output(grad_input, grad_input_buf.dimensions());
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(grad_input_buf), grad_input));
