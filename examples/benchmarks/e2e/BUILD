@@ -88,6 +88,7 @@ torch_tpu_py_library(
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/optim",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
         "@pypi//tensorboardx",
     ],

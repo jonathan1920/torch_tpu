@@ -313,14 +313,18 @@ def get_peak_host_compilation_memory_mb(device: str) -> float | None:
 
 
 def torch_compile(
-    func: Callable[..., Any], device: str, dynamic: bool = False
+    func: Callable[..., Any],
+    device: str,
+    dynamic: bool = False,
+    fullgraph: bool = False,
 ) -> Callable[..., Any]:
   """Wraps a callable with `torch.compile` based on the specified device.
 
   Args:
     func: The callable to be compiled.
     device: The device type ('cuda', 'tpu', 'xla_cuda', 'xla_cpu').
-    dynamic: Whether to use dynamic shapes in compilation. Defaults to False.
+    dynamic: Whether to use dynamic shapes in compilation.
+    fullgraph: Whether to require compiling the full graph without breaks.
 
   Returns:
     The compiled callable.
@@ -329,7 +333,7 @@ def torch_compile(
     ValueError: If the device is not supported.
   """
   if device in ('cuda', 'cpu'):
-    func = torch.compile(func, backend='inductor')
+    func = torch.compile(func, backend='inductor', fullgraph=fullgraph)
   elif device in ('tpu', 'xla_cuda', 'xla_cpu'):
     if dynamic:
       func = torch.compile(
@@ -339,10 +343,14 @@ def torch_compile(
           # much dynamism as possible.
           dynamic=None,
           backend=torch_tpu_compile.TpuBackend(dynamism=True),
+          fullgraph=fullgraph,
       )
     else:
       func = torch.compile(
-          func, dynamic=False, backend=torch_tpu_compile.TpuBackend()
+          func,
+          dynamic=False,
+          backend=torch_tpu_compile.TpuBackend(),
+          fullgraph=fullgraph,
       )
   else:
     raise ValueError(f'Unsupported device: {device}')

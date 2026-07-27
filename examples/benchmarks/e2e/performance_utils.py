@@ -27,6 +27,7 @@ from absl import logging
 from tensorboardX import writer
 import torch
 from torch_tpu._internal import execution_mode
+from torch_tpu._internal import optim
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from examples.benchmarks.e2e import benchmark_utils
@@ -58,6 +59,28 @@ BOUNDED_DYNAMIC = flags.DEFINE_bool(
     "bounded_dynamic",
     False,
     "Whether to run the E2E benchmarks with bounded dynamic shapes.",
+)
+
+OPTIM = flags.DEFINE_enum(
+    "optim",
+    None,
+    ["tpu_adamw", "adamw", "adam"],
+    "Override the optimizer to use. If not specified, the per-benchmark config"
+    " setting will be used.",
+)
+
+
+PATCH_OPTIMIZER_GRAPH_BREAKS = flags.DEFINE_bool(
+    "patch_optimizer_graph_breaks",
+    False,
+    "Whether to patch PyTorch optimizer classes directly to eliminate graph"
+    " breaks prior to compilation.",
+)
+
+FORCE_FULLGRAPH = flags.DEFINE_bool(
+    "force_fullgraph",
+    False,
+    "Whether to force fullgraph=True for torch.compile across all benchmarks.",
 )
 
 DISTRIBUTED_PLATFORMS = (
@@ -119,6 +142,10 @@ class PerformanceBenchmarkConfig:
       timing loops.
     train_factory: Optional factory to create the training benchmark function.
     eval_factory: Optional factory to create the inference benchmark function.
+    use_fused_optim: Whether to use fused optimizer.
+    optim: The optimizer to use for training ("adamw", "tpu_adamw", "adam").
+    fullgraph: Whether to pass fullgraph=True to torch.compile for this
+      benchmark.
   """
 
   supported_platforms: Sequence[common.Platform]
@@ -131,6 +158,8 @@ class PerformanceBenchmarkConfig:
   train_factory: Optional[Callable[[], Callable[..., Any]]] = None
   eval_factory: Optional[Callable[[], Callable[..., Any]]] = None
   use_fused_optim: bool = True
+  optim: str = "adamw"
+  fullgraph: bool = False
 
 
 # LINT.ThenChange(../../../g3doc/benchmarking.md)
@@ -298,21 +327,37 @@ def run_single_process_benchmark(
       is_training=config.is_training,
   )
 
-  if use_torch_compile:
-    if config.is_training:
-      func = device_utils.torch_compile(
-          func, device.type, dynamic=BOUNDED_DYNAMIC.value
-      )
-    else:
-      model_and_input.model = device_utils.torch_compile(
-          model_and_input.model, device.type, dynamic=BOUNDED_DYNAMIC.value
-      )
+  # Patch standard PyTorch optimizer classes (e.g. torch.optim.AdamW) to
+  # eliminate internal graph breaks (such as state initialization control flow)
+  # during torch.compile tracing.
+  if PATCH_OPTIMIZER_GRAPH_BREAKS.value:
+    optim.patch_optimizer_graph_breaks()
+
+  optim_type = OPTIM.value if OPTIM.value is not None else config.optim
   optimizer = _get_optimizer(
       model_and_input.model,
       is_training=config.is_training,
       use_torch_compile=common.is_torch_compile(config.run_mode),
       use_fused_optim=config.use_fused_optim,
+      optim_type=optim_type,
   )
+
+  fullgraph = FORCE_FULLGRAPH.value or config.fullgraph
+  if use_torch_compile:
+    if config.is_training:
+      func = device_utils.torch_compile(
+          func,
+          device.type,
+          dynamic=BOUNDED_DYNAMIC.value,
+          fullgraph=fullgraph,
+      )
+    else:
+      model_and_input.model = device_utils.torch_compile(
+          model_and_input.model,
+          device.type,
+          dynamic=BOUNDED_DYNAMIC.value,
+          fullgraph=fullgraph,
+      )
   # Only enable xprof for rank 0 process.
   enable_xprof = ENABLE_XPROF.value and rank == 0
 
@@ -543,17 +588,26 @@ def _get_optimizer(
     is_training: bool,
     use_torch_compile: bool,
     use_fused_optim: bool = True,
+    optim_type: str = "adamw",
 ) -> torch.optim.Optimizer | None:
   """Returns optimizer for training, or None for inference."""
   # Model parameters can be empty for some layers, e.g. Dropout.
   if not is_training or not list(model.parameters()):
     return None
-  return torch.optim.AdamW(
+
+  if optim_type == "tpu_adamw":
+    optimizer = optim.AdamW
+  elif optim_type == "adamw":
+    optimizer = torch.optim.AdamW
+  elif optim_type == "adam":
+    optimizer = torch.optim.Adam
+  else:
+    raise ValueError(f"Unsupported optimizer type: {optim_type}")
+
+  return optimizer(
       model.parameters(),
       lr=0.1,  # Gigantic LR for testing.
       capturable=use_torch_compile,
-      # Using native 'aten::_fused_adamw_' kernel improves both compilation
-      # time and runtime throughput over non-fused foreach loop expansion.
       fused=use_fused_optim,
   )
 
