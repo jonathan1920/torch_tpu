@@ -595,7 +595,7 @@ def _assert_tensor_close(
     # Parses scalar vs tensor error messages from torch.testing.assert_close
     # to extract failure indices and display detailed actual/expected element
     # values.
-    details = ""
+    details = []
     if _RE_SCALAR_COMP_FAILURE.search(msg):
       atol_str = "None"
       rtol_str = "None"
@@ -616,22 +616,22 @@ def _assert_tensor_close(
         rtol_str = f"{display_rtol:.3g}"
       elif display_rtol is not None:
         rtol_str = str(display_rtol)
-      details += f"\nAbsolute difference allowed: up to {atol_str}\n"
-      details += f"Relative difference allowed: up to {rtol_str}\n"
+      details.append(f"\nAbsolute difference allowed: up to {atol_str}\n")
+      details.append(f"Relative difference allowed: up to {rtol_str}\n")
     else:
       for index in get_indices(msg):
         golden_elem = expected[index]
         torch_tpu_elem = actual[index]
         diff = abs(golden_elem - torch_tpu_elem)
         rel_diff = 1 if golden_elem == 0 else diff / abs(golden_elem)
-        details += (
+        details.append(
             f"    at index {index}, expected={golden_elem},"
             f" actual={torch_tpu_elem},"
             f" relative diff={rel_diff},"
             f" diff={diff}\n"
         )
     return (
-        f"{preamble}{msg}\n{details}\n"
+        f"{preamble}{msg}\n{''.join(details)}\n"
         f"Expected tensor:\n{expected}\n\n"
         f"Actual tensor:\n{actual}"
     )
