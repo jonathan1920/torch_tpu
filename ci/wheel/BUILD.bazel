@@ -21,8 +21,8 @@ load("//bazel:pytorch_versions.bzl", "WHEEL_TORCH_VERSIONS")
 load("//bazel:supported_python_versions.bzl", "SUPPORTED_PYTHON_VERSIONS")
 load("//build_files:build_defs.bzl", "torch_tpu_py_test")
 load("//build_files:entry_points.bzl", "ENTRY_POINTS")
-load("//build_files:torch_version.bzl", "version_suffix")
 load("//ci/wheel:pywrap_mapper.bzl", "remap_pywrap_binaries")
+load("//shims/build_files:torch_version.bzl", "version_suffix")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
 
 package(

@@ -25,35 +25,44 @@ package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
 # single source of truth in //bazel:pytorch_versions.bzl.
 alias(
     name = "libc10",
-    actual = select(torch_lib_select("libc10", {
-        "//:wheel_test_3_11": "@pypi_torch_311//:libc10",
-        "//:wheel_test_3_12": "@pypi_torch_312//:libc10",
-        "//:wheel_test_3_13": "@pypi_torch_313//:libc10",
-        "//:wheel_test_3_14": "@pypi_torch_314//:libc10",
-        "//conditions:default": "@pypi_torch_312//:libc10",
-    })),
+    actual = select(torch_lib_select(
+        "libc10",
+        {
+            "//:wheel_test_3_11": "@pypi_torch_311//:libc10",
+            "//:wheel_test_3_12": "@pypi_torch_312//:libc10",
+            "//:wheel_test_3_13": "@pypi_torch_313//:libc10",
+            "//:wheel_test_3_14": "@pypi_torch_314//:libc10",
+            "//conditions:default": "@pypi_torch_312//:libc10",
+        },
+    )),
 )
 
 alias(
     name = "libtorch_cpu",
-    actual = select(torch_lib_select("libtorch_cpu", {
-        "//:wheel_test_3_11": "@pypi_torch_311//:libtorch_cpu",
-        "//:wheel_test_3_12": "@pypi_torch_312//:libtorch_cpu",
-        "//:wheel_test_3_13": "@pypi_torch_313//:libtorch_cpu",
-        "//:wheel_test_3_14": "@pypi_torch_314//:libtorch_cpu",
-        "//conditions:default": "@pypi_torch_312//:libtorch_cpu",
-    })),
+    actual = select(torch_lib_select(
+        "libtorch_cpu",
+        {
+            "//:wheel_test_3_11": "@pypi_torch_311//:libtorch_cpu",
+            "//:wheel_test_3_12": "@pypi_torch_312//:libtorch_cpu",
+            "//:wheel_test_3_13": "@pypi_torch_313//:libtorch_cpu",
+            "//:wheel_test_3_14": "@pypi_torch_314//:libtorch_cpu",
+            "//conditions:default": "@pypi_torch_312//:libtorch_cpu",
+        },
+    )),
 )
 
 alias(
     name = "libtorch_python",
-    actual = select(torch_lib_select("libtorch_python", {
-        "//:wheel_test_3_11": "@pypi_torch_311//:libtorch_python",
-        "//:wheel_test_3_12": "@pypi_torch_312//:libtorch_python",
-        "//:wheel_test_3_13": "@pypi_torch_313//:libtorch_python",
-        "//:wheel_test_3_14": "@pypi_torch_314//:libtorch_python",
-        "//conditions:default": "@pypi_torch_312//:libtorch_python",
-    })),
+    actual = select(torch_lib_select(
+        "libtorch_python",
+        {
+            "//:wheel_test_3_11": "@pypi_torch_311//:libtorch_python",
+            "//:wheel_test_3_12": "@pypi_torch_312//:libtorch_python",
+            "//:wheel_test_3_13": "@pypi_torch_313//:libtorch_python",
+            "//:wheel_test_3_14": "@pypi_torch_314//:libtorch_python",
+            "//conditions:default": "@pypi_torch_312//:libtorch_python",
+        },
+    )),
 )
 
 # Config setting to toggle local torch mode.

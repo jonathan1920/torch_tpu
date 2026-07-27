@@ -82,7 +82,7 @@ string_flag(
 
 # Collapses the torch shims to headers-only: no libc10/libtorch_cpu is linked
 # where this is True. Set by the backend-pinning transitions in
-# build_files/torch_version.bzl for everything routed into the shared XLA
+# shims/build_files/torch_version.bzl for everything routed into the shared XLA
 # common library, which must never pull real torch -- a stray torch reference
 # there would bind one version's ABI into the library every glue shares. The
 # glues and their per-version torch commons leave it False and link the real

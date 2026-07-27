@@ -26,8 +26,8 @@ line), which is convenient for a shell `for` loop.
 """
 
 import argparse
-import pathlib
 from collections.abc import Sequence, Set
+import pathlib
 from typing import Final
 
 # The canonical Starlark file sits next to this script under the same stem.

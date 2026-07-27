@@ -27,7 +27,10 @@ extension source is compiled once per supported PyTorch version. The versioned
 library produced under the pinned config above.
 """
 
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
+load("@rules_cc//cc/common:cc_shared_library_info.bzl", "CcSharedLibraryInfo")
 load("@rules_ml_toolchain//py/rules_pywrap:pywrap.impl.bzl", "PywrapInfo")
+load("@rules_python//python:py_info.bzl", "PyInfo")
 load(
     "//bazel:pytorch_versions.bzl",
     "DEFAULT_TORCH_VERSION",
@@ -69,7 +72,7 @@ def version_suffix(version):
     """Turns a PyTorch version like "2.12.1" into a target/file suffix "2_12_1"."""
     return version.replace(".", "_")
 
-def _fix_torch_version_impl(settings, attr):
+def _fix_torch_version_impl(_settings, _attr):
     return {
         _TORCH_VERSION: _FIXED_TORCH_VERSION,
         _TORCH_HEADERS_ONLY: _FIXED_TORCH_HEADERS_ONLY,
@@ -114,8 +117,6 @@ xla_fixed = rule(
 # matched specifically rather than the whole repo. Keep in sync with the torch
 # pip hubs declared in MODULE.bazel.
 _TORCH_DEP_PREFIXES = (
-    "@pypi//torch:",
-    "@pypi//torch/",
     "@pypi_torch_",
     "@local_torch//",
 )
@@ -127,8 +128,14 @@ def is_backend_dep(dep):
     protobuf, gRPC, TSL, RE2, Python/numpy headers, etc. -- that compile the same
     regardless of the PyTorch version, so they can be pinned to one config. Only
     @-deps qualify, and our known PyTorch sources (_TORCH_DEP_PREFIXES) are
-    excluded so they stay per-version. torch_tpu's own code and PyTorch reached
-    through //shims/torch are not @-deps, so they are never pinned.
+    Excluded so they stay per-version. torch_tpu's own code is not an @-dep,
+    so it is never pinned.
+
+    Args:
+      dep: String representing a bazel label.
+
+    Returns:
+      True if the dep is a version-independent backend dep, False otherwise.
     """
     if type(dep) != "string" or not dep.startswith("@"):
         return False
@@ -137,7 +144,7 @@ def is_backend_dep(dep):
             return False
     return True
 
-def _set_torch_version_impl(settings, attr):
+def _set_torch_version_impl(_settings, attr):
     # Only the torch_version is set: the glue links real torch (headers_only stays
     # at its default False), so its per-version common carries a DT_NEEDED on
     # libc10/libtorch_cpu resolved from the user's install at load. Just the
@@ -198,6 +205,14 @@ def pin_glue_backend_deps(name, deps):
 
     torch_tpu_cc_library deps already self-route; this covers the glue's own
     direct backend deps. `//`-deps and torch headers are left untouched.
+
+    Args:
+      name: The name of the target being defined.
+      deps: The original list of dependencies.
+
+    Returns:
+      A list of dependencies with backend deps routed through the fixed
+      torch_version transition.
     """
     if type(deps) != "list":
         # A non-list deps value -- a bare select(), or a `[...] + select({...})`
@@ -229,7 +244,7 @@ def pin_glue_backend_deps(name, deps):
             result.append(dep)
     return result
 
-def _xla_base_config_impl(settings, attr):
+def _xla_base_config_impl(_settings, _attr):
     # The filter builds under the canonical pinned config: its backend deps --
     # routed through xla_fixed, exactly like the glues' -- share linker-input
     # identity with the glues' pinned backend, so the shared XLA/MLIR is

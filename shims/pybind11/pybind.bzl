@@ -33,14 +33,14 @@ are unaffected (they use `//torch_tpu/common:pywrap_torch_tpu`).
 """
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//third_party/py/rules_pywrap:pywrap.default.bzl", _pybind_extension = "pybind_extension")
 load(
-    "//build_files:torch_version.bzl",
+    "//shims/build_files:torch_version.bzl",
     "WHEEL_TORCH_VERSIONS",
     "pin_glue_backend_deps",
     "torch_version_glue",
     "version_suffix",
 )
-load("@xla//third_party/py/rules_pywrap:pywrap.default.bzl", _pybind_extension = "pybind_extension")
 
 # Package of the shared XLA base common library (libxla_base.so). Every
 # per-version pywrap_library factors the backend into this one wheel location.
@@ -94,6 +94,7 @@ def pybind_extension(name, **kwargs):
     for version in WHEEL_TORCH_VERSIONS:
         versioned_name = "{}_{}".format(name, version_suffix(version))
         per_version_kwargs = dict(versioned_kwargs)
+
         # Pin the glue's own external backend deps to the canonical config so the
         # shared XLA base is built once (see pin_glue_backend_deps). torch_python
         # is added for the libtorch_python symbols (e.g. THPDtypeType) some
@@ -103,6 +104,7 @@ def pybind_extension(name, **kwargs):
             versioned_name,
             raw_deps,
         ) + ["//shims/torch:torch_python"]
+
         # The glue links two common libs: the shared XLA base and this version's
         # torch common. common_lib_packages drives the glue's rpath to both.
         per_version_kwargs["common_lib_packages"] = [

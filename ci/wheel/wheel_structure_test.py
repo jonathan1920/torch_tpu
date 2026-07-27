@@ -26,7 +26,7 @@ versions. This test opens the built wheel (`WHEEL_PATH`) and asserts:
   * no libtorch/libc10 is bundled (torch is resolved from the user's install).
 """
 
-from collections.abc import Set, Sequence
+from collections.abc import Sequence, Set
 import functools
 import os
 import pathlib
@@ -71,7 +71,10 @@ def _demangle(names: Sequence[str]) -> Sequence[str]:
   if not names:
     return []
   out = subprocess.run(
-      ["c++filt"], input="\n".join(names), capture_output=True, text=True,
+      ["c++filt"],
+      input="\n".join(names),
+      capture_output=True,
+      text=True,
       check=True,
   ).stdout
   return out.splitlines()
@@ -80,7 +83,9 @@ def _demangle(names: Sequence[str]) -> Sequence[str]:
 def _strong_defined_symbols(so: pathlib.Path) -> Sequence[str]:
   out = subprocess.run(
       ["nm", "-D", "--defined-only", str(so)],
-      capture_output=True, text=True, check=True,
+      capture_output=True,
+      text=True,
+      check=True,
   ).stdout
   mangled = []
   for line in out.splitlines():
@@ -93,7 +98,10 @@ def _strong_defined_symbols(so: pathlib.Path) -> Sequence[str]:
 
 def _dt_needed(so: pathlib.Path) -> Sequence[str]:
   out = subprocess.run(
-      ["readelf", "-d", str(so)], capture_output=True, text=True, check=True,
+      ["readelf", "-d", str(so)],
+      capture_output=True,
+      text=True,
+      check=True,
   ).stdout
   return re.findall(r"\(NEEDED\)\s+Shared library: \[([^\]]+)\]", out)
 
@@ -106,7 +114,9 @@ class WheelStructureTest(absltest.TestCase):
     # The wheel is large (for non-optimized builds, the base alone is ~1.8 GB),
     # so unzip it once for the whole class. We cannot use create_tempdir
     # because there is no classmethod version of it.
-    cls._wheel_root = pathlib.Path(cls.enter_context(tempfile.TemporaryDirectory()))
+    cls._wheel_root = pathlib.Path(
+        cls.enter_context(tempfile.TemporaryDirectory())
+    )
 
     with zipfile.ZipFile(_wheel_path()) as z:
       z.extractall(cls._wheel_root)
@@ -138,7 +148,8 @@ class WheelStructureTest(absltest.TestCase):
   def test_exactly_one_shared_xla_base(self):
     bases = [n for n in self._names if n == _XLA_BASE]
     self.assertLen(
-        bases, 1,
+        bases,
+        1,
         f"Expected exactly one {_XLA_BASE}; found: {bases}",
     )
 
@@ -154,17 +165,21 @@ class WheelStructureTest(absltest.TestCase):
     for version in versions:
       # The env extension is present in every build; use it as a representative.
       self.assertIn(
-          f"torch_tpu/_internal/env_{version}.so", self._names,
+          f"torch_tpu/_internal/env_{version}.so",
+          self._names,
           f"Missing env glue for version {version}",
       )
       self.assertIn(
-          version, torch_commons,
-          f"Missing per-version torch common for {version}; found {torch_commons}",
+          version,
+          torch_commons,
+          f"Missing per-version torch common for {version}; found"
+          f" {torch_commons}",
       )
 
   def test_no_libtorch_bundled(self):
     bundled = [
-        n for n in self._names
+        n
+        for n in self._names
         if re.search(r"(^|/)(libc10|libtorch)", pathlib.PurePosixPath(n).name)
     ]
     self.assertEmpty(

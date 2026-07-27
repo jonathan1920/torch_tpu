@@ -20,6 +20,7 @@ load(
     "pywrap_binaries",
     "pywrap_library",
 )
+load("//bazel:pywrap_extensions.bzl", "PYWRAP_EXTENSIONS")
 load(
     "//build_files:build_defs.bzl",
     "torch_tpu_cc_library",
@@ -27,18 +28,17 @@ load(
     "torch_tpu_package_end",
 )
 load(
-    "//build_files:torch_version.bzl",
-    "xla_base_filter",
-)
-load(
     "//shims/build_files:build_defs.bzl",
     "add_internal_filesystem_dependencies",
+)
+load(
+    "//shims/build_files:torch_version.bzl",
+    "xla_base_filter",
 )
 load(
     "//shims/pybind11:pybind.bzl",
     "backend_probe_labels",
 )
-load("//bazel:pywrap_extensions.bzl", "PYWRAP_EXTENSIONS")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -845,8 +845,8 @@ pywrap_binaries(
 # XLA/MLIR/absl backend into a single libxla_base.so.
 cc_library(
     name = "_xla_base_agg",
-    deps = backend_probe_labels(PYWRAP_EXTENSIONS),
     visibility = ["//visibility:private"],
+    deps = backend_probe_labels(PYWRAP_EXTENSIONS),
 )
 
 xla_base_filter(

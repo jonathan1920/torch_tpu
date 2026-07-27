@@ -27,9 +27,11 @@ def main():
       "--manifest",
       required=True,
       action="append",
-      help="Path to a .json mapping of pywrap binaries. May be repeated (one "
-      "per pywrap_library) for the multi-version wheel; the per-version common "
-      "libraries share the single libxla_base.so.",
+      help=(
+          "Path to a .json mapping of pywrap binaries. May be repeated (one per"
+          " pywrap_library) for the multi-version wheel; the per-version common"
+          " libraries share the single libxla_base.so."
+      ),
   )
   parser.add_argument("--out_dir", required=True)
   parser.add_argument("binaries", nargs="+")
@@ -61,7 +63,7 @@ def main():
       # spells it "external/<repo>/", so the split never matches and the "root"
       # degenerates to the binary's entire path -- which is also this mapping's
       # key. The intended "<package>/<basename>" tail survives after it.
-      clean_dest_path = dest_full_path[len(original_path):].lstrip("/")
+      clean_dest_path = dest_full_path[len(original_path) :].lstrip("/")
     else:
       clean_dest_path = re.sub(r"^.*?/bin/", "", dest_full_path)
 

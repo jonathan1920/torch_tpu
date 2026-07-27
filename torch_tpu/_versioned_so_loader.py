@@ -140,8 +140,8 @@ def resolve_suffix(
   running PyTorch.
 
   Args:
-    running: the installed PyTorch's version suffix (e.g. `2_12_0`), or None
-      if it could not be determined.
+    running: the installed PyTorch's version suffix (e.g. `2_12_0`), or None if
+      it could not be determined.
     built: the version suffixes of the glues bundled in the wheel.
 
   Returns:
@@ -233,7 +233,9 @@ class VersionDispatchFinder(importlib.abc.MetaPathFinder):
       return None
 
     versioned_name = f"{fullname}_{_VERSION_SUFFIX}"
-    spec = importlib.machinery.PathFinder.find_spec(versioned_name, path, target)
+    spec = importlib.machinery.PathFinder.find_spec(
+        versioned_name, path, target
+    )
     if spec is None:
       # No versioned artifact for this name (e.g. a pure-Python submodule);
       # let the normal finders resolve it.

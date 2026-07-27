@@ -92,9 +92,7 @@ _INTERMEDIATE_PATCH_VERSIONS: Final[Sequence[str]] = _PYTORCH_VERSIONS[
 
 def _newest_supported_torch() -> str:
   """Return the newest PyTorch version the wheel ships a glue for."""
-  return max(
-      _WHEEL_TORCH_VERSIONS, key=lambda v: tuple(map(int, v.split(".")))
-  )
+  return max(_WHEEL_TORCH_VERSIONS, key=lambda v: tuple(map(int, v.split("."))))
 
 
 def _dist_wheel(session: nox.Session) -> pathlib.Path:

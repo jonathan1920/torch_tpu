@@ -25,9 +25,9 @@ load(
 load("//bazel:supported_python_versions.bzl", "SUPPORTED_PYTHON_VERSIONS")
 load("//shims/build_cleaner:build_defs.bzl", "register_extension_info")
 load("//shims/build_files:build_defs.bzl", "process_accelerator_tags")
+load("//shims/build_files:torch_version.bzl", "is_backend_dep", "xla_fixed")
 load("//shims/py_platform_test:py_platform_test.bzl", "py_platform_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
-load("//build_files:torch_version.bzl", "is_backend_dep", "xla_fixed")
 
 # This file is torch_tpu implementation details and should not be imported by
 # other projects.
@@ -124,7 +124,9 @@ def adjust_cc_options(copts, features):
     return copts, features
 
 def _route_backend_deps_through_fixed(name, deps):
-    """In a wheel build, routes external backend deps through the xla_fixed
+    """Routes external backend deps through the xla_fixed transition.
+
+    In a wheel build, routes external backend deps through the xla_fixed
     torch_version-reset transition, so the backend is built in a single
     configuration and pywrap factors it into one shared library instead of one
     copy per PyTorch version. A bazel-only build keeps the deps unchanged.

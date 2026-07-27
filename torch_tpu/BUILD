@@ -5,7 +5,6 @@ load(
     "if_oss",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
-    "torch_tpu_py_test",
 )
 load("//build_files:entry_points.bzl", "ENTRY_POINTS")
 load("//build_files:py_dist_info.bzl", "py_dist_info")

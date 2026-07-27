@@ -25,7 +25,7 @@ INTERMEDIATE_PATCH_VERSIONS starts failing them, it broke ABI and must move
 into this list.
 
 This file is deliberately data-only (plain assignments, no `load()`): it is
-loaded by Starlark (`build_files/torch_version.bzl`, and thence
+loaded by Starlark (`shims/build_files/torch_version.bzl`, and thence
 `shims/pybind11/pybind.bzl`) and also parsed as Python by
 `requirements/lock_environments.sh`, which regenerates the per-version torch
 locks. `MODULE.bazel` cannot `load()`, so its `EXTRA_PYTORCH_VERSIONS` is kept

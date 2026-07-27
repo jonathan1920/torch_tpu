@@ -149,6 +149,8 @@ def _test_requires_libtpu_explicit_false(name):
 
 def _test_is_backend_dep(env):
     """Tests classification of version-independent backend deps vs PyTorch/internal deps."""
+    if not is_oss():
+        return
 
     # External, non-PyTorch backend deps are pinned to a single config.
     for dep in [
@@ -169,7 +171,7 @@ def _test_is_backend_dep(env):
     # Our PyTorch sources (which must vary per version) and torch_tpu's own code
     # are not; keep in step with _TORCH_DEP_PREFIXES in build_defs.bzl.
     for dep in [
-        "@pypi//torch:torch_headers",
+        "//shims/torch:torch_headers",
         "@local_torch//:libc10",
         "@pypi_torch_2_12_1_312//:libc10",
         "@pypi_torch_312//:libtorch_cpu",
@@ -478,8 +480,8 @@ def build_defs_test_suite(name):
             _test_oss_nobuild_oss,
             _test_oss_nonightly_oss,
             _test_oss_nopresubmit_oss,
-            _test_oss_notest_oss_nobuild_oss,
             _test_oss_notest_oss,
+            _test_oss_notest_oss_nobuild_oss,
             _test_oss_presubmit_tpu_generation_explicit,
             _test_oss_presubmit_tpu_generation_implicit,
             _test_oss_presubmit_tpu_generation_implicit_v6,
