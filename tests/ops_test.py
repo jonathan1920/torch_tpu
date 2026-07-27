@@ -1975,7 +1975,18 @@ class TestOps(TorchTpuTestBase):
         # Excluded because they are not supported as input to bincount and
         # because the op_testing code fails to generate random inputs when
         # these types are enabled.
-        exclude_dtypes=COMPLEX_DTYPES + FLOAT_DTYPES + (torch.bool,),
+        exclude_dtypes={  # EXCLUDE_DTYPES_OK=failed to generate random inputs
+            "cpu": COMPLEX_DTYPES + FLOAT_DTYPES + (torch.bool,),
+            "gpu": (
+                COMPLEX_DTYPES
+                + (
+                    torch.float64,
+                    torch.float32,
+                    torch.float16,
+                )
+                + (torch.bool,)
+            ),
+        },
     )
 
   def test_bitwise_and(self):
@@ -3105,8 +3116,7 @@ class TestOps(TorchTpuTestBase):
         + (torch.complex64,)
         + (torch.float16,)
         + (torch.float32,)
-        + (torch.float64,)
-        + (torch.bfloat16,),
+        + (torch.float64,),
     )
 
   # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
@@ -3380,7 +3390,7 @@ class TestOps(TorchTpuTestBase):
         # should fail).
         exclude_dtypes=INTEGRAL_DTYPES
         + COMPLEX_DTYPES
-        + (torch.float64, torch.float16, torch.bfloat16),
+        + (torch.float64, torch.float16),
     )
 
   def test_polygamma(self):
@@ -3705,8 +3715,7 @@ class TestOps(TorchTpuTestBase):
         # XLA only allows creating complex dtypes from f32 and f64.
         # TODO: However, the lowering for converting f64 to complex<f64> isn't
         # implemented yet, which needs further investigation.
-        exclude_dtypes=(
-            torch.bfloat16,
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=unsupported by XLA
             torch.float16,
             torch.float64,
         ),
