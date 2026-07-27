@@ -31,6 +31,7 @@
 #include "absl/base/nullability.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -47,16 +48,21 @@
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/future.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
@@ -384,6 +390,17 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
   }
 }
 
+bool HloModuleContainsCollective(const xla::HloModule* hlo_module) {
+  for (const xla::HloComputation* computation : hlo_module->computations()) {
+    for (const xla::HloInstruction* instruction : computation->instructions()) {
+      if (xla::IsCollective(instruction)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 absl::StatusOr<PjRtBufferPointers> Execute(
     const SharedLoadedExecutableWithMetadata& executable,
     std::vector<xla::PjRtBuffer* absl_nullable> argument_buffers) {
@@ -393,6 +410,25 @@ absl::StatusOr<PjRtBufferPointers> Execute(
   std::vector<std::vector<xla::PjRtBuffer*>> execution_arguments;
   execution_arguments.reserve(1);
   execution_arguments.push_back(std::move(argument_buffers));
+
+  if (ABSL_VLOG_IS_ON(8)) {
+    TT_ASSIGN_OR_RETURN(const auto hlo_modules,
+                        executable->GetLoadedExecutable()->GetHloModules());
+    ABSL_CHECK_EQ(hlo_modules.size(), 1);  // CRASH_OK
+    const auto& hlo_module = hlo_modules[0];
+
+    if (HloModuleContainsCollective(hlo_module.get())) {
+      TT_ASSIGN_OR_RETURN(
+          const std::string fingerprint,
+          executable->GetLoadedExecutable()->FingerprintExecutable());
+      const std::optional<std::string>& rank = GetEnvOnce<kRankEnvVar>();
+      ABSL_VLOG(8) << "Executable with collectives on rank "
+                   << (rank.has_value() ? *rank : "<unknown_rank>")
+                   << " has PjRT executable fingerprint: " << fingerprint
+                   << " and HLO module fingerprint: "
+                   << hlo_module->GetFingerprint128();
+    }
+  }
 
   TT_ASSIGN_OR_RETURN(std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>
                           results_per_device,
