@@ -184,6 +184,11 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
 
   auto slice_sizes =
       std::vector<int64_t>(self_type.getRank(), 1);  // INT_VEC_OK
+  for (int64_t d = 0; d < self_type.getRank(); ++d) {
+    if (self_type.getShape()[d] == 0) {
+      slice_sizes[d] = 0;
+    }
+  }
   auto result = stablehlo::Gather(self, gather_indices,
                                   gather_dimension_numbers, slice_sizes,
                                   /*indices_are_sorted=*/false);

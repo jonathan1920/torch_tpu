@@ -769,6 +769,14 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     expected_grad = torch.tensor([2.0])
     utils.assert_close(self_tpu.grad.cpu(), expected_grad)
 
+  def test_gather_empty_dim(self):
+    def test_fn(device):
+      self_tensor = torch.randn(0, 7, device=device)
+      index = torch.empty(0, 7, dtype=torch.long, device=device)
+      return torch.gather(self_tensor, 0, index)
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
   @parameterized.product(
       batch_size=[1, 2],
       in_channels=[4],
