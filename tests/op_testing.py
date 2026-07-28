@@ -23,6 +23,7 @@ import copy
 import enum
 import functools
 import gzip
+import importlib
 import logging  # PYTHON_LOGGING_OK=Setting module log level for compile testing
 import os
 import pathlib
@@ -1206,6 +1207,12 @@ def is_compiled_mode() -> bool:
   return _USE_COMPILED.value
 
 
+def _is_enum(obj: Any) -> bool:
+  """Returns True if obj is a Python enum or a pybind11 enum object."""
+  cls = obj if isinstance(obj, type) else type(obj)
+  return issubclass(cls, enum.Enum) or hasattr(cls, "__entries")
+
+
 def _to_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
   """Converts values in the PyTree to values that plistlib can handle.
 
@@ -1219,6 +1226,7 @@ def _to_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
     - A torch.device is converted to a {"$$device": device_name} dict.
     - A torch.memory_format is converted to a {"$$memory_format": format_name}
       dict.
+    - An enum (Python or pybind11) is converted to a {"$$enum": ...} dict.
     - A complex number is converted to a {"$$real": ..., "$$imag": ...} dict.
     - An Exception is serialized to a {"$$exception": ""} dict.
 
@@ -1261,6 +1269,16 @@ def _to_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
     if isinstance(x, torch.memory_format):
       # The value is the name of the memory format, e.g. "contiguous_format".
       return {"$$memory_format": str(x).split(".")[-1]}
+    if _is_enum(x):
+      enum_class = type(x)
+      return {
+          "$$enum": {
+              "module": enum_class.__module__,
+              "class": enum_class.__qualname__,
+              "name": getattr(x, "name", str(x)),
+              "value": getattr(x, "value", None),
+          }
+      }
     if isinstance(x, Exception):
       # We don't care about the actual exception, but just need to know it's
       # an exception. Therefore we use a dummy value.
@@ -1279,9 +1297,47 @@ def _to_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
             complex,
             Exception,
         ),
-    )
+    ) or _is_enum(obj)
 
   return _pytree.tree_map(leaf_func, ptree, is_leaf=is_leaf)
+
+
+def _resolve_enum_class(mod_name: str, class_name: str) -> Any:
+  """Resolves an enum class by module name and class name."""
+  if mod_name in sys.modules:
+    mod = sys.modules[mod_name]
+    try:
+      cls = mod
+      for part in class_name.split("."):
+        cls = getattr(cls, part)
+      return cls
+    except AttributeError:
+      pass
+
+  if mod_name:
+    try:
+      mod = importlib.import_module(mod_name)
+      cls = mod
+      for part in class_name.split("."):
+        cls = getattr(cls, part)
+      return cls
+    except (ImportError, AttributeError):
+      pass
+
+  # pylint: disable-next=protected-access
+  for target_mod in (torch, torch._C, torch.nn.functional):
+    cls = target_mod
+    found = True
+    for part in class_name.split("."):
+      if hasattr(cls, part):
+        cls = getattr(cls, part)
+      else:
+        found = False
+        break
+    if found and cls is not target_mod:
+      return cls
+
+  return None
 
 
 def _from_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
@@ -1294,6 +1350,7 @@ def _from_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
     - A {"$$dtype": ...} dict is deserialized to a torch.dtype.
     - A {"$$device": ...} dict is deserialized to a torch.device.
     - A {"$$memory_format": ...} dict is deserialized to a torch.memory_format.
+    - A {"$$enum": ...} dict is deserialized to an enum instance.
     - A {"$$real": ..., "$$imag": ...} dict is deserialized to a complex number.
     - A {"$$exception": ""} dict is deserialized to an Exception.
 
@@ -1323,6 +1380,31 @@ def _from_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
       if "$$memory_format" in x:
         format_name = x["$$memory_format"]
         return getattr(torch, format_name)
+      if "$$enum" in x:
+        enum_info = x["$$enum"]
+        mod_name = enum_info.get("module", "")
+        class_name = enum_info.get("class", "")
+        enum_name = enum_info.get("name", "")
+        enum_val = enum_info.get("value", None)
+
+        cls = _resolve_enum_class(mod_name, class_name)
+        if cls is not None:
+          if hasattr(cls, enum_name):
+            return getattr(cls, enum_name)
+          if hasattr(cls, "__getitem__"):
+            try:
+              return cls[enum_name]
+            except (KeyError, TypeError, IndexError):
+              pass
+          if enum_val is not None:
+            try:
+              return cls(enum_val)
+            except (ValueError, TypeError):
+              pass
+
+        if enum_val is not None:
+          return enum_val
+        return enum_name
       if "$$real" in x and "$$imag" in x:
         return complex(x["$$real"], x["$$imag"])
       if "$$exception" in x:

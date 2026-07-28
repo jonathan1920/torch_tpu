@@ -17,14 +17,17 @@
 import concurrent
 import contextlib
 import dataclasses
+import enum
 import functools
 import itertools
 import math
 import os
+import plistlib
 import sys
 import tempfile
 import threading
 import time
+import typing
 from typing import Any
 import unittest
 
@@ -9211,6 +9214,33 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
     self.assertGreater(len(pairs), 0)
     for golden_input, _ in pairs:
       self.assertEqual(golden_input.input_value.dtype, torch.float4_e2m1fn_x2)
+
+  def test_plistlib_enum_serialization(self):
+    enum_val = getattr(
+        torch.nn.functional,
+        "_ScalingType",
+        getattr(torch._C, "_ScalingType", None),
+    )
+    if enum_val is not None:
+      test_enum = enum_val.RowWise
+    else:
+
+      class CustomEnum(enum.Enum):
+        ROW_WISE = 1
+
+      test_enum = CustomEnum.ROW_WISE
+
+    data = {"enum_arg": test_enum, "tuple_arg": (test_enum, 42)}
+    plist_compat = op_testing._to_plistlib_compatible(data)
+    bin_data = plistlib.dumps(
+        plist_compat,
+        fmt=typing.cast(plistlib.PlistFormat, plistlib.FMT_BINARY),
+    )
+    self.assertIsInstance(bin_data, bytes)
+
+    restored = op_testing._from_plistlib_compatible(plist_compat)
+    self.assertEqual(restored["enum_arg"], test_enum)
+    self.assertEqual(restored["tuple_arg"][0], test_enum)
 
 
 if __name__ == "__main__":
