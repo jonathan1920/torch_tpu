@@ -1670,6 +1670,152 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
   @parameterized.product(
+      m=[32, 128],
+      n=[32, 128],
+      k=[128],
+      fp8_dtype=[torch.float8_e4m3fn, torch.float8_e5m2],
+      swizzle_a=[0, 1],
+      swizzle_b=[0, 1],
+  )
+  def test_scaled_mm_v2_blockwise(
+      self, m, n, k, fp8_dtype, swizzle_a, swizzle_b
+  ):
+    """Tests torch._scaled_mm_v2 with BlockWise1x32 scaling and swizzling."""
+    torch.set_printoptions(threshold=10000, profile="full")
+    old_precision = torch.get_float32_matmul_precision()
+    torch.set_float32_matmul_precision("highest")
+    try:
+      if swizzle_a == 1 and m < 128:
+        self.skipTest("LHS Swizzling requires M >= 128")
+      if swizzle_b == 1 and n < 128:
+        self.skipTest("RHS Swizzling requires N >= 128")
+
+      self_float = torch.randn(m, k, dtype=torch.float32)
+      self_fp8 = self_float.to(fp8_dtype)
+      mat2_float = torch.randn(k, n, dtype=torch.float32)
+      mat2_fp8 = mat2_float.to(fp8_dtype)
+
+      scale_a_logical = torch.randn(m, k // 32, dtype=torch.float32).abs() + 0.1
+      scale_b_logical = torch.randn(k // 32, n, dtype=torch.float32).abs() + 0.1
+
+      if swizzle_a == 1:
+        scale_a_tpu = op_testing._swizzle_lhs_scale(scale_a_logical)
+      else:
+        scale_a_tpu = scale_a_logical
+
+      if swizzle_b == 1:
+        scale_b_tpu = op_testing._swizzle_rhs_scale(scale_b_logical)
+      else:
+        scale_b_tpu = scale_b_logical
+
+      recipe_a = [3]
+      recipe_b = [3]
+      swiz_a = [swizzle_a]
+      swiz_b = [swizzle_b]
+
+      def compute(device):
+        if device == "cpu":
+          s_f32 = self_fp8.float()
+          m_f32 = mat2_fp8.float()
+          sa_expanded = (
+              scale_a_logical.unsqueeze(-1).expand(m, k // 32, 32).reshape(m, k)
+          )
+          s_dequant = s_f32 * sa_expanded
+          sb_expanded = (
+              scale_b_logical.unsqueeze(1).expand(k // 32, 32, n).reshape(k, n)
+          )
+          m_dequant = m_f32 * sb_expanded
+          out_f32 = torch.mm(s_dequant, m_dequant)
+          return out_f32
+        else:
+          return torch._scaled_mm_v2(
+              self_fp8.to(device),
+              mat2_fp8.to(device),
+              [scale_a_tpu.to(device)],
+              recipe_a,
+              swiz_a,
+              [scale_b_tpu.to(device)],
+              recipe_b,
+              swiz_b,
+              None,
+              torch.float32,
+          )
+
+      self.assert_close_tpu_vs_cpu(
+          compute,
+          rtol=1e-2,
+          atol=1.001e-2,
+      )
+    finally:
+      torch.set_float32_matmul_precision(old_precision)
+
+  def test_scaled_mm_v2_valid_inputs_pass(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = op_testing._get_scaled_mm_v2_default_inputs("tpu")
+    out = torch._scaled_mm_v2(
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+        None,
+        None,
+        contraction_dim=[1, 0],
+    )
+    self.assertEqual(out.shape, (16, 16))
+
+  def test_scaled_mm_v2_use_fast_accum(self):
+    """Tests torch._scaled_mm_v2 with use_fast_accum=True."""
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = op_testing._get_scaled_mm_v2_default_inputs("tpu")
+    out = torch._scaled_mm_v2(
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+        None,
+        None,
+        use_fast_accum=True,
+    )
+    self.assertEqual(out.shape, (16, 16))
+
+  def test_swizzle_math(self):
+    # Test LHS
+    logical_lhs = torch.randn(128, 8)
+    swizzled_lhs = op_testing._swizzle_lhs_scale(logical_lhs)
+    unswizzled_lhs = op_testing._unswizzle_lhs_scale(swizzled_lhs)
+    self.assertTrue(torch.equal(logical_lhs, unswizzled_lhs))
+
+    # Test RHS
+    logical_rhs = torch.randn(8, 128)
+    swizzled_rhs = op_testing._swizzle_rhs_scale(logical_rhs)
+    unswizzled_rhs = op_testing._unswizzle_rhs_scale(swizzled_rhs)
+    self.assertTrue(torch.equal(logical_rhs, unswizzled_rhs))
+
+  @parameterized.product(
       m=[16, 32],
       n=[16, 32],
       k=[16, 32],

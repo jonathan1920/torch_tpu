@@ -28,6 +28,7 @@ from absl import flags
 from absl.testing import absltest
 import torch
 from torch.nn import attention
+from torch.testing._internal import common_methods_invocations  # pylint: disable=unused-import
 from torch_tpu._internal.utils import utils
 from tests import dynamism_test_utils
 from tests import op_testing
@@ -3471,6 +3472,12 @@ class TestOps(TorchTpuTestBase):
 
   def test_rsub(self):
     self.do_test_op("rsub")
+
+  def test_scaled_mm_v2(self):
+    self.do_test_op(
+        "torch._scaled_mm_v2",
+        extra_dtypes=common_methods_invocations.float8_types(),
+    )
 
   def test_scatter(self):
     self.do_test_op("scatter")

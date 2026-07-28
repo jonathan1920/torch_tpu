@@ -33,6 +33,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Generator.h"
 #include "ATen/core/IListRef.h"
+#include "ATen/core/List.h"
 #include "ATen/core/TensorBody.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/absl_check.h"
@@ -528,6 +529,10 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
   } else if constexpr (std::is_same_v<T, c10::List<bool>>) {
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
                   "c10::List<bool>")
+        << message();
+  } else if constexpr (std::is_same_v<T, c10::List<at::Tensor>>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "c10::List<at::Tensor>")
         << message();
   } else {
     static_assert(false, "Unsupported argument type.");

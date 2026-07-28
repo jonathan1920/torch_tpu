@@ -3273,6 +3273,68 @@ module {
           computation_name,
       )
 
+  @et.why_tpu_only("TPU-specific C++ kernel argument validation")
+  def test_scaled_mm_v2_invalid_contraction_dim_size(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""scaled_mm_v2(): expected contraction_dim list to contain exactly 2 elements, got 1""",
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          None,
+          contraction_dim=[1],
+      )
+
+  @et.why_tpu_only("TPU-specific C++ kernel argument validation")
+  def test_scaled_mm_v2_non_standard_contraction_dim(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""scaled_mm_v2(): expected contraction_dim to be [1, 0], got [0, 1]""",
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          None,
+          contraction_dim=[0, 1],
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -6707,10 +6707,15 @@ Device-side assertion tracking was not enabled by user.""",
     scale_a = torch.tensor([1.0], dtype=torch.float32, device=device)
     scale_b = torch.tensor([1.0], dtype=torch.float32, device=device)
 
+    err_type = RuntimeError if et.is_on_tpu() else Exception
     with et.assert_raises_message(
-        RuntimeError,
+        err_type,
         tpu="""scaled_mm(): expected the self argument to be a 2D tensor (matrix), got 1D of shape [16]""",
-        gpu="""torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+""",
+        gpu=re.compile(
+            r".*(mat1 must be a matrix|mat_a must be a matrix|self must be a 2D"
+            r" matrix|torch\._scaled_mm.*is only supported on CUDA devices).*",
+            re.DOTALL,
+        ),
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b)
 
@@ -6726,11 +6731,15 @@ Device-side assertion tracking was not enabled by user.""",
     scale_a = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
     scale_b = torch.tensor([1.0], dtype=torch.float32, device=device)
 
-    err_type = NotImplementedError if et.is_on_tpu() else RuntimeError
+    err_type = Exception
     with et.assert_raises_message(
         err_type,
         tpu="""scaled_mm(): expected scale_a to have numel 1 (tensorwise) or 16 (row-wise), got numel 2""",
-        gpu="""torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+""",
+        gpu=re.compile(
+            r".*(Invalid scaling configuration|torch\._scaled_mm.*is only"
+            r" supported on CUDA devices).*",
+            re.DOTALL,
+        ),
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b)
 
@@ -6746,11 +6755,15 @@ Device-side assertion tracking was not enabled by user.""",
     scale_a = torch.tensor([1.0], dtype=torch.float32, device=device)
     scale_b = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
 
-    err_type = NotImplementedError if et.is_on_tpu() else RuntimeError
+    err_type = Exception
     with et.assert_raises_message(
         err_type,
         tpu="""scaled_mm(): expected scale_b to have numel 1 (tensorwise) or 16 (per-channel), got numel 2""",
-        gpu="""torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+""",
+        gpu=re.compile(
+            r".*(Invalid scaling configuration|torch\._scaled_mm.*is only"
+            r" supported on CUDA devices).*",
+            re.DOTALL,
+        ),
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b)
 
@@ -6767,11 +6780,16 @@ Device-side assertion tracking was not enabled by user.""",
     scale_b = torch.tensor([1.0], dtype=torch.float32, device=device)
     scale_result = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
 
-    err_type = NotImplementedError if et.is_on_tpu() else RuntimeError
+    err_type = Exception
     with et.assert_raises_message(
         err_type,
         tpu="""scaled_mm(): expected scale_result to have numel 1, got numel 2""",
-        gpu="""torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+""",
+        gpu=re.compile(
+            r".*(scale_result must be|Invalid scaling"
+            r" configuration|torch\._scaled_mm.*is only supported on CUDA"
+            r" devices).*",
+            re.DOTALL,
+        ),
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b, scale_result=scale_result)
 
@@ -6790,9 +6808,572 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""scaled_mm(): expected column size of first matrix to match row size of second matrix, got shapes [16, 32] and [16, 32]""",
-        gpu="""torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+""",
+        gpu=re.compile(
+            r".*(mat1 and mat2 shapes cannot be multiplied|scaled_mm\(\):"
+            r" expected column size of first matrix to match row size of second"
+            r" matrix|torch\._scaled_mm is only supported on CUDA devices).*",
+            re.DOTALL,
+        ),
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b)
+
+  def test_scaled_mm_v2_non_2d_self(self):
+    """Tests that _scaled_mm_v2 fails if self is not 2D."""
+    (
+        _,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    dev = et.device()
+    self_1d = torch.randn(16, dtype=torch.float32, device=dev).to(
+        torch.float8_e4m3fn
+    )
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected the self argument to be a 2D tensor (matrix), got 1D of shape [16]""",
+        gpu=re.compile(
+            r".*(mat1 must be a matrix|mat_a must be a matrix|self must be a 2D"
+            r" matrix|torch\._scaled_mm.*is only"
+            r" supported on CUDA devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_1d,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_incompatible_shapes(self):
+    """Tests that _scaled_mm_v2 fails if matrix shapes are incompatible."""
+    (
+        _,
+        _,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    dev = et.device()
+    mat1 = torch.randn(16, 32, dtype=torch.float32, device=dev).to(
+        torch.float8_e4m3fn
+    )
+    mat2 = torch.randn(16, 32, dtype=torch.float32, device=dev).to(
+        torch.float8_e4m3fn
+    )
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected column size of first matrix to match row size of second matrix, got shapes [16, 32] and [16, 32]""",
+        gpu=re.compile(
+            r".*(mat_a and mat_b shapes cannot be multiplied|expected column"
+            r" size of first matrix to match row size of second"
+            r" matrix|torch\._scaled_mm.*is only supported on CUDA devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          mat1,
+          mat2,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_invalid_scale_a_size(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected scale_a list to contain exactly 1 tensor, got 2""",
+        gpu=re.compile(
+            r".*(scale_a must have 1 Float element|torch\._scaled_mm is only"
+            r" supported on CUDA devices|torch\._scaled_mm_v2 is only"
+            r" supported on CUDA devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu + scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_invalid_recipe_a_size(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected recipe_a list to contain exactly 1 recipe, got 2""",
+        gpu=re.compile(
+            r".*(Invalid scaling configuration for _scaled_mm_v2: unsupported"
+            r" recipe|torch\._scaled_mm is only supported on CUDA"
+            r" devices|torch\._scaled_mm_v2 is only supported on CUDA"
+            r" devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a + recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_invalid_swizzle_a_size(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected swizzle_a list to contain exactly 1 swizzle mode, got 2""",
+        gpu=re.compile(
+            r".*(Only multiplication of row-major|swizzle_a must have 1"
+            r" value|torch\._scaled_mm.*is only"
+            r" supported on CUDA devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a + swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_unsupported_recipe(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        _,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected scaling recipe for scale_a to be TensorWise, RowWise, or BlockWise1x32, got 2""",
+        gpu=re.compile(
+            r".*(Invalid scaling configuration for _scaled_mm_v2: unsupported"
+            r" recipe|torch\._scaled_mm is only supported on CUDA"
+            r" devices|torch\._scaled_mm_v2 is only supported on CUDA"
+            r" devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          [2],
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_unsupported_swizzle(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        _,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected swizzle type for scale_a to be NO_SWIZZLE or SWIZZLE_32_4_4, got 2""",
+        gpu=re.compile(
+            r".*(Only multiplication of row-major|scale_a must be swizzled to"
+            r" SWIZZLE_32_4_4"
+            r" format|torch\._scaled_mm.*is only supported on CUDA devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          [2],
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_invalid_scale_b_size(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected scale_b list to contain exactly 1 tensor, got 2""",
+        gpu=re.compile(
+            r".*(scale_b must have 1 Float element|torch\._scaled_mm is only"
+            r" supported on CUDA devices|torch\._scaled_mm_v2 is only"
+            r" supported on CUDA devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu + scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_invalid_recipe_b_size(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected recipe_b list to contain exactly 1 recipe, got 2""",
+        gpu=re.compile(
+            r".*(Invalid scaling configuration for _scaled_mm_v2: unsupported"
+            r" recipe|torch\._scaled_mm is only supported on CUDA"
+            r" devices|torch\._scaled_mm_v2 is only supported on CUDA"
+            r" devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b + recipe_b,
+          swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_invalid_swizzle_b_size(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected swizzle_b list to contain exactly 1 swizzle mode, got 2""",
+        gpu=re.compile(
+            r".*(Only multiplication of row-major|swizzle_b must have 1"
+            r" value|torch\._scaled_mm.*is only"
+            r" supported on CUDA devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b + swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_unsupported_recipe_b(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        _,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected scaling recipe for scale_b to be TensorWise, RowWise, or BlockWise1x32, got 2""",
+        gpu=re.compile(
+            r".*(Invalid scaling configuration for _scaled_mm_v2: unsupported"
+            r" recipe|torch\._scaled_mm is only supported on CUDA"
+            r" devices|torch\._scaled_mm_v2 is only supported on CUDA"
+            r" devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          [2],
+          swizzle_b,
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_unsupported_swizzle_b(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        _,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected swizzle type for scale_b to be NO_SWIZZLE or SWIZZLE_32_4_4, got 2""",
+        gpu=re.compile(
+            r".*(Only multiplication of row-major|scale_b must be swizzled to"
+            r" SWIZZLE_32_4_4"
+            r" format|torch\._scaled_mm.*is only supported on CUDA devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          [2],
+          None,
+          None,
+      )
+
+  def test_scaled_mm_v2_invalid_bias_dim(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    dev = et.device()
+    bias = torch.randn(1, 1, 1, dtype=torch.float32, device=dev)
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected bias to be 1D or 2D tensor, got 3D""",
+        gpu=re.compile(
+            r".*(Bias must be size|bias|torch\._scaled_mm.*is only supported on"
+            r" CUDA devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          bias,
+          None,
+      )
+
+  def test_scaled_mm_v2_bias_dtype_mismatch(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    dev = et.device()
+    bias = torch.zeros(16, dtype=torch.int32, device=dev)
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected bias dtype to be float32 or bfloat16, got int32""",
+        gpu=re.compile(
+            r".*(Bias must be|bias|torch\._scaled_mm.*is only supported on CUDA"
+            r" devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          bias,
+          None,
+      )
+
+  def test_scaled_mm_v2_invalid_out_dtype(self):
+    (
+        self_tpu,
+        mat2_tpu,
+        scale_a_tpu,
+        recipe_a,
+        swizzle_a,
+        scale_b_tpu,
+        recipe_b,
+        swizzle_b,
+    ) = et.get_scaled_mm_v2_default_inputs()
+    err_type = RuntimeError if et.is_on_tpu() else Exception
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm_v2(): expected out dtype to be float32, bfloat16, or float16, got int32""",
+        gpu=re.compile(
+            r".*(Only multiplication of row-major|out|torch\._scaled_mm.*is"
+            r" only supported on CUDA devices).*",
+            re.DOTALL,
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._scaled_mm_v2(
+          self_tpu,
+          mat2_tpu,
+          scale_a_tpu,
+          recipe_a,
+          swizzle_a,
+          scale_b_tpu,
+          recipe_b,
+          swizzle_b,
+          None,
+          torch.int32,
+      )
 
   def test_fft_c2c_non_complex_input(self):
     t = torch.ones(4, device=et.device(), dtype=torch.float32)

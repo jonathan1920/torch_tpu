@@ -32,7 +32,6 @@ from torch_tpu._internal import testing as tt_testing
 
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
-
 ChildFailedError = errors.ChildFailedError
 
 
@@ -648,3 +647,28 @@ class TpuOnlyDistributedErrorTestBase(TpuOnlyErrorTestBaseNoCheckingWhy):
   """
 
   pass
+
+
+def get_scaled_mm_v2_default_inputs():
+  """Returns default input tensors for torch._scaled_mm_v2 error tests."""
+  m, n, k = 16, 16, 16
+  dtype = torch.float8_e4m3fn
+  dev = device()
+  self_fp8 = torch.randn(m, k, dtype=torch.float32).to(dtype).to(dev)
+  mat2_fp8 = torch.randn(k, n, dtype=torch.float32).to(dtype).to(dev)
+  scale_a = [torch.tensor([1.5], dtype=torch.float32, device=dev)]
+  scale_b = [torch.tensor([2.0], dtype=torch.float32, device=dev)]
+  recipe_a = [0]
+  recipe_b = [0]
+  swizzle_a = [0]
+  swizzle_b = [0]
+  return (
+      self_fp8,
+      mat2_fp8,
+      scale_a,
+      recipe_a,
+      swizzle_a,
+      scale_b,
+      recipe_b,
+      swizzle_b,
+  )

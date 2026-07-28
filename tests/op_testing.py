@@ -482,8 +482,243 @@ def _ref_thnn_fused_gru_cell(
   return hy, workspace.detach()
 
 
+def _swizzle_lhs_scale(logical_scale):
+  """Swizzles an LHS scale tensor from logical shape to TPU SWIZZLE_32_4_4 layout."""
+  m, k_logical = logical_scale.shape
+  m_blocks = m // 128
+  k_blocks = k_logical // 4
+  x = logical_scale.view(m_blocks, 128, k_blocks, 4)
+  x = x.transpose(1, 2)
+  x = x.view(m_blocks, k_blocks, 4, 32, 4)
+  x = x.transpose(2, 3)
+  x = x.reshape(m_blocks, k_blocks, 32, 16)
+  x = x.transpose(1, 2)
+  return x.reshape(m_blocks * 32, k_blocks * 16)
+
+
+def _unswizzle_lhs_scale(swizzled_scale):
+  """Unswizzles an LHS scale tensor from TPU SWIZZLE_32_4_4 layout to logical shape."""
+  h, w = swizzled_scale.shape
+  m_blocks = h // 32
+  k_blocks = w // 16
+  op1 = swizzled_scale.view(m_blocks, 32, k_blocks, 16)
+  op2 = op1.transpose(1, 2)
+  op3 = op2.view(m_blocks, k_blocks, 32, 4, 4)
+  op4 = op3.transpose(2, 3)
+  op5 = op4.reshape(m_blocks, k_blocks, 128, 4)
+  op6 = op5.transpose(1, 2)
+  unswizzled = op6.reshape(m_blocks * 128, k_blocks * 4)
+  return unswizzled
+
+
+def _swizzle_rhs_scale(logical_scale):
+  """Swizzles an RHS scale tensor from logical shape to TPU SWIZZLE_32_4_4 layout."""
+  return _swizzle_lhs_scale(logical_scale.t()).t()
+
+
+def _unswizzle_rhs_scale(swizzled_scale):
+  """Unswizzles an RHS scale tensor from TPU SWIZZLE_32_4_4 layout to logical shape."""
+  return _unswizzle_lhs_scale(swizzled_scale.t()).t()
+
+
+def _get_scaled_mm_v2_default_inputs(device="tpu"):
+  """Returns default input tensors for torch._scaled_mm_v2 tests."""
+  m, n, k = 16, 16, 16
+  dtype = torch.float8_e4m3fn
+  self_fp8 = torch.randn(m, k, dtype=torch.float32).to(dtype).to(device)
+  mat2_fp8 = torch.randn(k, n, dtype=torch.float32).to(dtype).to(device)
+  scale_a = [torch.tensor([1.5], dtype=torch.float32, device=device)]
+  scale_b = [torch.tensor([2.0], dtype=torch.float32, device=device)]
+  recipe_a = [0]
+  recipe_b = [0]
+  swizzle_a = [0]
+  swizzle_b = [0]
+  return (
+      self_fp8,
+      mat2_fp8,
+      scale_a,
+      recipe_a,
+      swizzle_a,
+      scale_b,
+      recipe_b,
+      swizzle_b,
+  )
+
+
+def _ref_scaled_mm_v2(
+    self_mat,
+    mat2,
+    scale_a,
+    recipe_a,
+    swizzle_a,
+    scale_b,
+    recipe_b,
+    swizzle_b,
+    bias=None,
+    out_dtype=None,
+    # Unused in CPU ref (defaults to 2D matmul contraction)
+    contraction_dim=None,
+    # Unused in CPU ref (hardware precision hint)
+    use_fast_accum=False,
+):
+  """CPU reference implementation for torch._scaled_mm_v2."""
+  del contraction_dim, use_fast_accum
+  s_f32 = self_mat.float()
+  m_f32 = mat2.float()
+  sa_raw = scale_a[0]
+  sb_raw = scale_b[0]
+  rec_a = recipe_a[0]
+  rec_b = recipe_b[0]
+  swiz_a = swizzle_a[0]
+  swiz_b = swizzle_b[0]
+
+  if rec_a == 0 or rec_a == 1:
+    s_scaled = s_f32 * sa_raw
+  elif rec_a == 3:
+    if swiz_a == 1:
+      sa_logical = _unswizzle_lhs_scale(sa_raw)
+    else:
+      sa_logical = sa_raw
+    m, k = self_mat.shape
+    sa_expanded = sa_logical.unsqueeze(-1).expand(m, k // 32, 32).reshape(m, k)
+    s_scaled = s_f32 * sa_expanded
+  else:
+    s_scaled = s_f32 * sa_raw
+
+  if rec_b == 0 or rec_b == 1:
+    m_scaled = m_f32 * sb_raw
+  elif rec_b == 3:
+    if swiz_b == 1:
+      sb_logical = _unswizzle_rhs_scale(sb_raw)
+    else:
+      sb_logical = sb_raw
+    k, n = mat2.shape
+    sb_expanded = sb_logical.unsqueeze(1).expand(k // 32, 32, n).reshape(k, n)
+    m_scaled = m_f32 * sb_expanded
+  else:
+    m_scaled = m_f32 * sb_raw
+
+  out_f32 = torch.mm(s_scaled, m_scaled)
+  if bias is not None:
+    out_f32 = out_f32 + bias
+  if out_dtype is not None:
+    return out_f32.to(out_dtype)
+  return out_f32
+
+
+def _sample_inputs_scaled_mm_v2(
+    op_info, device, dtype, requires_grad=False, **kwargs
+):
+  """Generates sample inputs for torch._scaled_mm_v2."""
+  del op_info, requires_grad, kwargs
+  make_mat = (
+      lambda shape: torch.randn(*shape, dtype=torch.float32)
+      .to(dtype)
+      .to(device)
+  )
+  make_scale = lambda shape: (
+      torch.randn(*shape, dtype=torch.float32).abs() + 0.1
+  ).to(device)
+
+  # 1. TensorWise scaling (recipe=0, swizzle=0)
+  m, n, k = 16, 16, 16
+  mat1 = make_mat((m, k))
+  mat2 = make_mat((k, n))
+  scale1 = [make_scale((1,))]
+  scale2 = [make_scale((1,))]
+  yield core.SampleInput(
+      mat1,
+      mat2,
+      scale1,
+      [0],
+      [0],
+      scale2,
+      [0],
+      [0],
+      None,
+      None,
+  )
+
+  # 2. RowWise scaling (recipe=1, swizzle=0)
+  scale1_row = [make_scale((m, 1))]
+  scale2_row = [make_scale((1, n))]
+  yield core.SampleInput(
+      mat1,
+      mat2,
+      scale1_row,
+      [1],
+      [0],
+      scale2_row,
+      [1],
+      [0],
+      None,
+      None,
+  )
+
+  # 3. BlockWise1x32 scaling (recipe=3, swizzle=0)
+  m2, n2, k2 = 128, 128, 128
+  mat1_bw = make_mat((m2, k2))
+  mat2_bw = make_mat((k2, n2))
+  scale1_bw = [make_scale((m2, k2 // 32))]
+  scale2_bw = [make_scale((k2 // 32, n2))]
+  yield core.SampleInput(
+      mat1_bw,
+      mat2_bw,
+      scale1_bw,
+      [3],
+      [0],
+      scale2_bw,
+      [3],
+      [0],
+      None,
+      None,
+  )
+
+  # 4. BlockWise1x32 scaling with SWIZZLE_32_4_4 (recipe=3, swizzle=1)
+  scale1_swiz = [_swizzle_lhs_scale(scale1_bw[0])]
+  scale2_swiz = [_swizzle_rhs_scale(scale2_bw[0])]
+  yield core.SampleInput(
+      mat1_bw,
+      mat2_bw,
+      scale1_swiz,
+      [3],
+      [1],
+      scale2_swiz,
+      [3],
+      [1],
+      None,
+      None,
+  )
+
+  # 5. TensorWise with bias and out_dtype
+  bias = torch.randn(16, dtype=torch.float32, device=device)
+  yield core.SampleInput(
+      mat1,
+      mat2,
+      scale1,
+      [0],
+      [0],
+      scale2,
+      [0],
+      [0],
+      bias,
+      torch.bfloat16,
+  )
+
+
 # Ops not included in the list of tested ops for pytorch.
 _ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
+    OpInfo(
+        "torch._scaled_mm_v2",
+        op=torch._scaled_mm_v2,  # pylint: disable=protected-access
+        ref=_ref_scaled_mm_v2,
+        # Input matrices for _scaled_mm_v2 are quantized FP8 tensors.
+        dtypes=common_methods_invocations.float8_types(),
+        sample_inputs_func=_sample_inputs_scaled_mm_v2,
+        supports_out=True,
+        # Inference-only quantized primitive without autograd formula.
+        supports_autograd=False,
+    ),
     OpInfo(
         "torch.ops.aten._unsafe_view",
         op=lambda x, shape: x.view(shape),
@@ -552,7 +787,11 @@ _ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
     ),
 ]
 for _op_info in _ADDITIONAL_TORCH_TPU_OPS:
-  if _op_info.name in ("_thnn_fused_lstm_cell", "_thnn_fused_gru_cell"):
+  if _op_info.name in (
+      "_thnn_fused_lstm_cell",
+      "_thnn_fused_gru_cell",
+      "torch._scaled_mm_v2",
+  ):
     _op_info.use_ref_for_cpu_golden = True
 
 # Used in the gen_gpu_golden mode to collect the golden results for each op.
