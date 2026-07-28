@@ -1333,6 +1333,7 @@ def ml_layer_model_builder(
             cfg.intermediate_size,
             dtype=weights_dtype,
             device=device,
+            requires_grad=is_training,
         ),
     )
   elif model_name == "BertPooler":

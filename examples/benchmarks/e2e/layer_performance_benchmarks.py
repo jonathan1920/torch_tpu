@@ -506,8 +506,6 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_gelu_activation(self, run_mode, is_training, layer_config):
-    # TODO: b/494430218 - Fix gelu_activation training.
-    self.skipTest("Gelu activation test fails in training mode.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
