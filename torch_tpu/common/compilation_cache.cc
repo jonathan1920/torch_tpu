@@ -308,38 +308,43 @@ void CompilationCache::EvictAll() {
   //
   // We chose a busy-wait loop as the alternative is much more complex.
   for (; !keys_to_evict.empty(); absl::SleepFor(absl::Seconds(1))) {
-    absl::MutexLock lock(cache_mutex_);
-    const auto keys = keys_to_evict;
-    // Loop over a copy of keys_to_evict, as we will modify it during
-    // the loop and invalidate its iterator.
-    for (const auto key : keys) {
-      const auto it = executable_cache_.find(key);
-      if (it == executable_cache_.end()) {
-        ABSL_VLOG(1) << "Key already evicted by another thread: " << key;
-        keys_to_evict.erase(key);
-        continue;
-      }
+    std::vector<decltype(executable_cache_)::node_type> evicted_nodes;
+    {
+      absl::MutexLock lock(cache_mutex_);
+      const auto keys = keys_to_evict;
+      // Loop over a copy of keys_to_evict, as we will modify it during
+      // the loop and invalidate its iterator.
+      for (const auto key : keys) {
+        const auto it = executable_cache_.find(key);
+        if (it == executable_cache_.end()) {
+          ABSL_VLOG(1) << "Key already evicted by another thread: " << key;
+          keys_to_evict.erase(key);
+          continue;
+        }
 
-      const auto& cache_entry = it->second;
-      ABSL_VLOG_EVERY_N(1, 100)
-          << "Evicting compilation future for key: " << key;
-      if (IsFutureReady(cache_entry.executable_future())) {
-        // The compilation is completed, so we can evict it immediately.
-        executable_cache_.erase(it);
-        keys_to_evict.erase(key);
-        ABSL_VLOG(1) << "Evicted compilation future for key: " << key;
-      } else {
         ABSL_VLOG_EVERY_N(1, 100)
-            << "Waiting for compilation to complete for key: " << key;
+            << "Evicting compilation future for key: " << key;
+        if (IsFutureReady(it->second.executable_future())) {
+          // The compilation is completed, so we can evict it immediately.
+          // Extract node to prevent dangling references
+          evicted_nodes.push_back(executable_cache_.extract(it));
+          keys_to_evict.erase(key);
+          ABSL_VLOG(1) << "Evicted compilation future for key: " << key;
+        } else {
+          ABSL_VLOG_EVERY_N(1, 100)
+              << "Waiting for compilation to complete for key: " << key;
+        }
       }
     }
-    // Release the lock here to give in-flight compilations a chance to
-    // complete and update the cache.
+    // Release the lock before destroying evicted_nodes to prevent lock
+    // contention from slow Executable destructors, and to give in-flight
+    // compilations a chance to complete.
   }
-  // Clear bounded dynamic cache entries.
+  // Clear bounded dynamic cache entries after releasing the mutex.
+  BoundedDynamicCache bounded_dynamic_cache_to_clear;
   {
     absl::MutexLock lock(cache_mutex_);
-    bounded_dynamic_cache_.clear();
+    bounded_dynamic_cache_to_clear = std::move(bounded_dynamic_cache_);
   }
 
   ABSL_LOG(INFO) << "Compilation cache evicted.";
@@ -885,43 +890,47 @@ void CompilationCache::SetExecutable(
     CompilationCacheKey key,
     absl::StatusOr<SharedLoadedExecutableWithMetadata> executable,
     CacheEntryStats stats) {
-  absl::MutexLock lock(cache_mutex_);
-  // If the user requested to evict the cache while we were compiling this
-  // executable, the key may be missing. In this case, adding the key back to
-  // the cache doesn't help as EvictAll() already set the executable future
-  // to a failed state, so we just log and return.
-  const auto it = executable_cache_.find(key);
-  if (it == executable_cache_.end()) {
-    ABSL_LOG(WARNING) << "Key already evicted when setting executable for key "
-                      << key;
-    return;
-  }
+  decltype(executable_cache_)::node_type node;
+  {
+    absl::MutexLock lock(cache_mutex_);
+    // If the user requested to evict the cache while we were compiling this
+    // executable, the key may be missing. In this case, adding the key back to
+    // the cache doesn't help as EvictAll() already set the executable future
+    // to a failed state, so we just log and return.
+    const auto it = executable_cache_.find(key);
+    if (it == executable_cache_.end()) {
+      ABSL_LOG(WARNING)
+          << "Key already evicted when setting executable for key " << key;
+      return;
+    }
 
-  const CacheEntry& cache_entry = it->second;
-  if (IsFutureReady(cache_entry.executable_future())) {
-    // Another thread has already set the executable future.
-    return;
-  }
+    const CacheEntry& cache_entry = it->second;
+    if (IsFutureReady(cache_entry.executable_future())) {
+      // Another thread has already set the executable future.
+      return;
+    }
 
-  cache_entry.stats() = std::move(stats);
-  if (cache_entry.stats().compilation_duration > absl::ZeroDuration()) {
-    ABSL_VLOG(1) << "Compile duration for key " << key << ": "
-                 << absl::ToInt64Milliseconds(
-                        cache_entry.stats().compilation_duration)
-                 << " ms";
-  }
+    cache_entry.stats() = std::move(stats);
+    if (cache_entry.stats().compilation_duration > absl::ZeroDuration()) {
+      ABSL_VLOG(1) << "Compile duration for key " << key << ": "
+                   << absl::ToInt64Milliseconds(
+                          cache_entry.stats().compilation_duration)
+                   << " ms";
+    }
 
-  TrySetExecutablePromise(key, *cache_entry.executable_promise(),
-                          std::move(executable));
+    TrySetExecutablePromise(key, *cache_entry.executable_promise(),
+                            std::move(executable));
 
-  if (!allow_cache_mode_) {
-    // If the cache is disabled, we remove the executable from the cache.
-    // Note that this is done after the executable future is set, so a
-    // user holding another shared pointer to the executable future will still
-    // be able to retrieve the executable.
-    executable_cache_.erase(it);
-    ABSL_VLOG(1) << "Evicted key from cache because allow_cache_mode is false: "
-                 << key;
+    if (!allow_cache_mode_) {
+      // If the cache is disabled, we remove the executable from the cache.
+      // Note that this is done after the executable future is set, so a
+      // user holding another shared pointer to the executable future will still
+      // be able to retrieve the executable.
+      node = executable_cache_.extract(it);
+      ABSL_VLOG(1)
+          << "Evicted key from cache because allow_cache_mode is false: "
+          << key;
+    }
   }
 }
 
