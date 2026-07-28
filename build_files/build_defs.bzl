@@ -924,6 +924,13 @@ def torch_tpu_py_test(
     tsan_opts.append("suppressions=$(location %s)" % _TSAN_SUPPRESSIONS)
     base_env["TSAN_OPTIONS"] = " ".join([opt for opt in tsan_opts if opt])
 
+    # Apply AddressSanitizer options.
+    # Suppress new_delete_type_mismatch caused by an upstream OpenXLA/TSL
+    # async_value.h deletion alignment mismatch (not caused by torch_tpu).
+    asan_opts = [base_env.get("ASAN_OPTIONS", "")]
+    asan_opts.append("new_delete_type_mismatch=0")
+    base_env["ASAN_OPTIONS"] = ":".join([opt for opt in asan_opts if opt])
+
     # Prepend standard library paths to base env (required for mp.spawn support)
     _prepend_to_env(base_env, "LD_LIBRARY_PATH", ":".join(std_ld))
 

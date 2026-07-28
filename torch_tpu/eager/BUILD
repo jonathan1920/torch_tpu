@@ -793,6 +793,9 @@ torch_tpu_cc_library(
     name = "device_buffer_utils",
     srcs = ["device_buffer_utils.cc"],
     hdrs = ["device_buffer_utils.h"],
+    # Needed for CppLink on remote distributor workers under ASan;
+    # otherwise, remote linking fails with DISTRIBUTOR(OUT_OF_MEMORY).
+    tags = ["requires-mem:16g"],
     deps = [
         ":device_buffer",
         ":eager_mode",
