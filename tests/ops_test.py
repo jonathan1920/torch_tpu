@@ -2012,14 +2012,7 @@ class TestOps(TorchTpuTestBase):
         # these types are enabled.
         exclude_dtypes={  # EXCLUDE_DTYPES_OK=failed to generate random inputs
             "cpu": COMPLEX_DTYPES + FLOAT_DTYPES + (torch.bool,),
-            "gpu": (
-                COMPLEX_DTYPES
-                + (
-                    torch.float64,
-                    torch.float16,
-                )
-                + (torch.bool,)
-            ),
+            "gpu": COMPLEX_DTYPES + (torch.float64,) + (torch.bool,),
         },
     )
 
@@ -3147,7 +3140,6 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes={
             "gpu": (
                 torch.bfloat16,
-                torch.float16,
                 torch.float64,
             )
         },
@@ -3453,7 +3445,7 @@ class TestOps(TorchTpuTestBase):
             torch.int64,
         )
         + COMPLEX_DTYPES
-        + (torch.float64, torch.float16),
+        + (torch.float64,),
     )
 
   def test_polygamma(self):
@@ -3690,7 +3682,7 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes={
             "gpu": (
                 (torch.uint8, torch.int8, torch.int16)
-                + (torch.float64, torch.float16, torch.bfloat16)
+                + (torch.float64, torch.bfloat16)
                 + COMPLEX_DTYPES
             ),
         },
