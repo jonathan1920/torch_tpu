@@ -351,6 +351,7 @@ torch_tpu_cc_test(
         "//torch_tpu/common:context_states",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:fingerprint_utils",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:eager_mode",
         "//torch_tpu/eager:tensor_to_buffer",

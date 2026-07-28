@@ -106,6 +106,7 @@ torch_tpu_cc_test(
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:fingerprint_utils",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/ops:op_names",
         "@com_google_absl//absl/status:statusor",

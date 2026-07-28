@@ -24,6 +24,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/fingerprint_utils.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace torch_tpu {
@@ -40,12 +41,14 @@ TEST(DeviceBufferUtilsTest,
       internal::ComputeConstantDeviceBufferRefOpParamCacheKeys(data, dims,
                                                                dtype));
 
-  std::map<std::string, std::string> actual_map(keys.begin(), keys.end());
+  std::map<std::string, FingerprintType> actual_map(
+      keys.begin(), keys.end());  // STD_PAIR_OK=test map.
 
-  const std::map<std::string, std::string> expected_map = {
-      {"data", "1897425971756105985"},
-      {"dimensions", "[2,2]"},
-      {"element_type", "f32"},
+  const std::map<std::string, FingerprintType> expected_map = {
+      // STD_PAIR_OK=test map.
+      {"data", 2026542488743870450ULL},
+      {"dimensions", Fingerprint("[2,2]")},
+      {"element_type", Fingerprint("f32")},
   };
 
   EXPECT_EQ(actual_map, expected_map);

@@ -914,6 +914,7 @@ torch_tpu_cc_test(
         ":cache_key",
         ":dimension_types",
         ":error_utils",
+        ":fingerprint_utils",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",

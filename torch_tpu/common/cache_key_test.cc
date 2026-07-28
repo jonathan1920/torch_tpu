@@ -40,6 +40,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
 #include "xla/xla_data.pb.h"
@@ -61,7 +62,8 @@ TEST(OpParamCacheKeys, DefaultIsEmpty) {
 TEST(OpParamCacheKeys, SetParamScalar) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", at::Scalar(123));
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "123:int64")));
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("123:int64"))));
 }
 
 TEST(OpParamCacheKeys, SetParamMaybePromotedScalar_Promoted) {
@@ -91,7 +93,7 @@ TEST(OpParamCacheKeys, SetParamMaybePromotedScalarExcludedZero) {
 
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", mps);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "0")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("0"))));
 }
 
 TEST(OpParamCacheKeys, SetParamMaybePromotedScalarExcludedOne) {
@@ -106,7 +108,7 @@ TEST(OpParamCacheKeys, SetParamMaybePromotedScalarExcludedOne) {
 
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", mps);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "1")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("1"))));
 }
 
 TEST(MaybePromotedScalar, IsZeroAndIsOne) {
@@ -143,7 +145,8 @@ TEST(OpParamCacheKeys, SetParamScalarType) {
   auto params_or =
       *OpParamCacheKeysBuilder().SetParam("foo", at::ScalarType::Float);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "float32")));
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("float32"))));
 }
 
 TEST(OpParamCacheKeysDeathTest, SetSameParamTwiceCrashes) {
@@ -195,8 +198,9 @@ TEST(OpParamCacheKeys, SetParamScalarArray) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam(
       "foo", at::ArrayRef<at::Scalar>(scalars));
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("foo", "[123:int64,4.5:float64,1:bool]")));
+  EXPECT_THAT(
+      params_or.value(),
+      ElementsAre(Pair("foo", Fingerprint("[123:int64,4.5:float64,1:bool]"))));
 
   auto params2_or =
       *OpParamCacheKeysBuilder().SetParam("foo", at::ArrayRef<at::Scalar>());
@@ -208,61 +212,65 @@ TEST(OpParamCacheKeys, SetParamReduceOp) {
   const c10d::ReduceOp reduce_op = c10d::ReduceOp::SUM;
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", reduce_op);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "sum")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("sum"))));
 
   const c10d::ReduceOp reduce_op2 = c10d::ReduceOp::MAX;
   auto params2_or = *OpParamCacheKeysBuilder().SetParam("foo", reduce_op2);
   ASSERT_TRUE(params2_or.ok());
-  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("foo", "max")));
+  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("foo", Fingerprint("max"))));
 }
 
 TEST(OpParamCacheKeys, SetParamMlirElementType) {
   auto params_or =
       *OpParamCacheKeysBuilder().SetParam("foo", mlir::ElementType::F32);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "f32")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("f32"))));
 }
 
 TEST(OpParamCacheKeys, SetParamStablehloPrecision) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam(
       "foo", mlir::stablehlo::Precision::DEFAULT);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "DEFAULT")));
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("DEFAULT"))));
 
   auto params2_or = *OpParamCacheKeysBuilder().SetParam(
       "foo", mlir::stablehlo::Precision::HIGH);  // EXPLICIT_PRECISION_OK=unit
                                                  // test okay
   ASSERT_TRUE(params2_or.ok());
-  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("foo", "HIGH")));
+  EXPECT_THAT(params2_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("HIGH"))));
 
   auto params3_or = *OpParamCacheKeysBuilder().SetParam(
       "foo",
       mlir::stablehlo::Precision::HIGHEST);  // EXPLICIT_PRECISION_OK=unit
                                              // test okay
   ASSERT_TRUE(params3_or.ok());
-  EXPECT_THAT(params3_or.value(), ElementsAre(Pair("foo", "HIGHEST")));
+  EXPECT_THAT(params3_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("HIGHEST"))));
 }
 
 TEST(OpParamCacheKeys, SetParamInteger) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", 1234567890L);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "1234567890")));
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("1234567890"))));
 }
 
 TEST(OpParamCacheKeys, SetParamBool) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("bar", true);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", "t")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", Fingerprint("t"))));
 
   auto params2_or = *OpParamCacheKeysBuilder().SetParam("bar", false);
   ASSERT_TRUE(params2_or.ok());
-  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("bar", "f")));
+  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("bar", Fingerprint("f"))));
 }
 
 void Kernel1(int x, int y) {
   TT_KERNEL(OpName::kAdd, param_keys, (IgnoreInCacheKey(x, "testing"), y), {
     // x should be ignored in the cache keys, so only y should be there.
-    EXPECT_THAT(param_keys, ElementsAre(Pair("y", "42")));
+    EXPECT_THAT(param_keys, ElementsAre(Pair("y", Fingerprint("42"))));
   });
 }
 
@@ -273,24 +281,27 @@ TEST(OpParamCacheKeys, TtKernelIgnored) { Kernel1(9, 42); }
 TEST(OpParamCacheKeys, SetParamString) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", "a,bar=b");
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "a,bar=b")));
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("a,bar=b"))));
 
   auto params2_or = *OpParamCacheKeysBuilder().SetParam("foo", "\"\n");
   ASSERT_TRUE(params2_or.ok());
-  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("foo", "\"\n")));
+  EXPECT_THAT(params2_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("\"\n"))));
 }
 
 TEST(OpParamCacheKeys, SetParamIntSpan) {
   auto params_or =
       *OpParamCacheKeysBuilder().SetParam("foo", Dimensions({1, 2, 3}));
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "[1,2,3]")));
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("[1,2,3]"))));
 }
 
 TEST(OpParamCacheKeys, SetParamDouble) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", 4.5);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "4.5")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("4.5"))));
 }
 
 TEST(OpParamCacheKeys, SetParamNullopt) {
@@ -323,7 +334,8 @@ TEST(OpParamCacheKeys, SetParamLayout) {
                         .SetParam("bar", at::Layout::Sparse);
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("bar", "Sparse"), Pair("foo", "Strided")));
+              ElementsAre(Pair("bar", Fingerprint("Sparse")),
+                          Pair("foo", Fingerprint("Strided"))));
 }
 
 TEST(OpParamCacheKeys, SetParamOptionalTensor) {
@@ -338,7 +350,7 @@ TEST(OpParamCacheKeys, SetParamOptionalTensor) {
   // Both foo and bar should be omitted from the cache keys.
   // baz should be formatted as "t" to indicate the presence of a
   // defined tensor.
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("baz", "t")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("baz", Fingerprint("t"))));
 }
 
 TEST(OpParamCacheKeys, SetParamMemoryFormat) {
@@ -346,14 +358,15 @@ TEST(OpParamCacheKeys, SetParamMemoryFormat) {
                         .SetParam("foo", at::MemoryFormat::Contiguous)
                         .SetParam("bar", at::MemoryFormat::ChannelsLast3d);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", "ChannelsLast3d"),
-                                             Pair("foo", "Contiguous")));
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("bar", Fingerprint("ChannelsLast3d")),
+                          Pair("foo", Fingerprint("Contiguous"))));
 }
 
 TEST(OpParamCacheKeys, SetParamSymInt) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", c10::SymInt(123));
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "123")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("123"))));
 
 #if defined(__has_feature) && __has_feature(hwaddress_sanitizer)
   // Skip the test as c10::SymInt pointer packing is incompatible with
@@ -364,7 +377,7 @@ TEST(OpParamCacheKeys, SetParamSymInt) {
   auto params2_or =
       *OpParamCacheKeysBuilder().SetParam("foo", c10::SymInt(sym_node));
   ASSERT_TRUE(params2_or.ok());
-  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("foo", "456")));
+  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("foo", Fingerprint("456"))));
 #endif
 }
 
@@ -379,7 +392,8 @@ TEST(OpParamCacheKeys, SetParamSymIntArrayRef) {
   c10::SymIntArrayRef sir(si);
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", sir);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "[123,456]")));
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("[123,456]"))));
 #endif
 
   c10::SymIntArrayRef empty_sym_int_array_ref;
@@ -394,8 +408,8 @@ TEST(OpParamCacheKeys, SetParamDevice) {
                         .SetParam("foo", at::Device("cpu"))
                         .SetParam("bar", at::Device("cuda:1"));
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("bar", "cuda:1"), Pair("foo", "cpu")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", Fingerprint("cuda:1")),
+                                             Pair("foo", Fingerprint("cpu"))));
 }
 
 TEST(OpParamCacheKeys, SetParamAllreduceOptions) {
@@ -403,7 +417,7 @@ TEST(OpParamCacheKeys, SetParamAllreduceOptions) {
   options.reduceOp = c10d::ReduceOp::SUM;
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", options);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "sum")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("sum"))));
 }
 
 TEST(OpParamCacheKeys, SetParamReduceScatterOptions) {
@@ -411,7 +425,8 @@ TEST(OpParamCacheKeys, SetParamReduceScatterOptions) {
   options.reduceOp = c10d::ReduceOp::PRODUCT;
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", options);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "product")));
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("foo", Fingerprint("product"))));
 }
 
 TEST(OpParamCacheKeys, SetParamBroadcastOptions) {
@@ -419,7 +434,7 @@ TEST(OpParamCacheKeys, SetParamBroadcastOptions) {
   options.rootRank = 1;
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", options);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "1")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("1"))));
 }
 
 TEST(OpParamCacheKeys, SetParamScatterOptions) {
@@ -427,7 +442,7 @@ TEST(OpParamCacheKeys, SetParamScatterOptions) {
   options.rootRank = 2;
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", options);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "2")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("2"))));
 }
 
 }  // namespace

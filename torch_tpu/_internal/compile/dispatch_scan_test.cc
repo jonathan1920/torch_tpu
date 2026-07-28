@@ -52,6 +52,7 @@
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -423,11 +424,12 @@ TEST_F(DispatchScanTest, VerifyCacheKeys) {
   ASSERT_TRUE(deferred_op != nullptr);
 
   const OpParamCacheKeys& cache_keys = deferred_op->op_param_cache_keys();
-  EXPECT_THAT(cache_keys, testing::UnorderedElementsAre(
-                              testing::Pair("scan_direction", "forward"),
-                              testing::Pair("num_scan_inputs", "1"),
-                              testing::Pair("num_carries", "1"),
-                              testing::Pair("body_mlir", testing::_)));
+  EXPECT_THAT(cache_keys,
+              testing::UnorderedElementsAre(
+                  testing::Pair("scan_direction", Fingerprint("forward")),
+                  testing::Pair("num_scan_inputs", Fingerprint("1")),
+                  testing::Pair("num_carries", Fingerprint("1")),
+                  testing::Pair("body_mlir", testing::_)));
 }
 
 TEST_F(DispatchScanTest, CpuTensorInputsError) {

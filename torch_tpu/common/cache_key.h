@@ -502,7 +502,7 @@ constexpr internal::IgnoredInCacheKey<T> IgnoreInCacheKey(
 // wasting time computing cache keys that are not used.
 class [[nodiscard]] OpParamCacheKeys {
  private:
-  using Map = std::map<std::string, std::string>;
+  using Map = std::map<std::string, FingerprintType>;
 
  public:
   class Builder;
@@ -560,7 +560,7 @@ class [[nodiscard]] OpParamCacheKeys {
     if (str.empty()) {
       // No need to add an empty string to the cache keys.
     } else {
-      name_to_value_[std::move(name_str)] = std::move(str);
+      name_to_value_[std::move(name_str)] = Fingerprint(str);
     }
     return absl::OkStatus();
   }
@@ -712,7 +712,7 @@ class ShapelessKey {
   explicit ShapelessKey(FingerprintType key) : key_(key) {}
 
   struct Hash {
-    [[nodiscard]] inline size_t operator()(const ShapelessKey key) const {
+    [[nodiscard]] size_t operator()(const ShapelessKey key) const {
       return key.key_;
     }
   };
@@ -799,7 +799,7 @@ void AbslStringify(Sink& sink, const GraphKey key) {
 class CompilationCacheKey {
  public:
   struct Hash {
-    [[nodiscard]] inline size_t operator()(CompilationCacheKey key) const {
+    [[nodiscard]] size_t operator()(CompilationCacheKey key) const {
       const auto& graph_key = key.graph_key();
       const auto& compile_options_key = key.compile_options_key();
 
@@ -1009,8 +1009,11 @@ class GraphSignature {
   // OpParamCacheKeys.
   absl::InlinedVector<int, 8> op_param_cache_keys_starts_{0};
 
-  // The key and value of each op param cache key, sorted by key.
-  std::vector<std::pair<std::string, std::string>> op_param_cache_keys_;
+  // The key and value fingerprint of each op param cache key, sorted by key.
+  std::vector<
+      std::pair<std::string, FingerprintType>>  // STD_PAIR_OK=matching std::map
+                                                // value type.
+      op_param_cache_keys_;
 
   // Two graphs are equal only if all DeferredOps have the same number of
   // output for each node.
