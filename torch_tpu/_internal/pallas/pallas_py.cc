@@ -60,6 +60,89 @@ bool PyLookupCustomKernel(c10::string_view name, c10::string_view kernel_key) {
   return LookupCustomKernel(name, kernel_key);
 }
 
+// Dispatches a previously registered custom kernel (e.g., Pallas or XLA
+// MLIR custom call) on the TPU eager runtime and returns the output tensors.
+//
+// Contract:
+// - Preconditions:
+//   - The custom kernel identified by `name` and `kernel_key` must already be
+//     registered in the runtime symbol registry (via RegisterCustomKernel).
+//   - All tensors in `inputs` must reside on the TPU device or be compatible
+//     with TorchTPU device buffer conversion.
+//   - `output_shapes` must specify the expected layout, dtype, and shape of
+//     each output produced by the kernel.
+//   - Elements of `donate_argnums` must be valid 0-based indices into `inputs`.
+// - Postconditions:
+//   - Returns a vector of freshly constructed at::Tensor objects representing
+//     the execution results, matching `output_shapes` in count, shape, and
+//     dtype.
+//   - If `output_shapes` is empty, returns an empty vector without dispatching
+//     any MLIR operation or executing on hardware.
+// - Side Effects:
+//   - Schedules asynchronous kernel execution on the TPU hardware/runtime.
+//   - Input buffers corresponding to indices in `donate_argnums` may be
+//     donated (reused or mutated in place by XLA) during execution, making
+//     their prior tensor contents invalid or updated.
+//
+// Parameters:
+//   name: The registered base name of the custom kernel symbol (e.g.,
+//     "add_kernel").
+//   kernel_key: A specialization identifier or cache key used during kernel
+//     registration and symbol lookup.
+//     - Format: An arbitrary UTF-8 string defined by the caller. Often a string
+//       representation or fingerprint of keyword arguments, static tile sizes,
+//       or block configurations (e.g., "bm=128_bn=128").
+//     - Behavioral impact: Symbol lookup in the internal runtime registry is
+//       strictly keyed on the exact pair `(name, kernel_key)`. When generating
+//       the XLA HLO module, XLA fingerprints `(kernel_key, input_dims,
+//       input_dtypes)` into the generated symbol name (e.g.,
+//       "add_kernel_0x1a2b3c4d") to avoid symbol collision between different
+//       specializations of the same kernel.
+//     - Choosing a value: The caller should include any parameter or static
+//       configuration that changes the generated MLIR structure or compilation
+//       behavior. If a kernel requires no specialization across invocations, an
+//       empty string `""` may be used.
+//     - Uniqueness: For a given `name`, `kernel_key` MUST be unique for each
+//       distinct MLIR implementation or compilation specialization. If two
+//       different kernel behaviors share the same `(name, kernel_key)`, symbol
+//       lookup will silently reuse the earlier registered MLIR module.
+//   inputs: Vector of input tensors to be passed into the kernel.
+//   output_shapes: Vector of dummy/placeholder tensors whose shapes and dtypes
+//     define the expected output tensor layouts from kernel execution.
+//   donate_argnums: 0-based indices of leaf input tensors whose underlying
+//     device buffers can be donated/aliased for output memory reuse.
+//
+// Example usage from Python:
+//   ```python
+//   import torch
+//   from torch_tpu._internal.pallas import tpu_torch_pallas
+//
+//   kernel_name = "my_custom_add"
+//   kernel_key = "tile_128x128"  # Key identifies this specific tiling config
+//
+//   # 1. Register the kernel if it hasn't been registered yet for this key:
+//   if not tpu_torch_pallas.lookup_custom_kernel(kernel_name, kernel_key):
+//     mlir_bytes = lower_to_mlir(block_size=128)  # Generates serialized MLIR
+//     tpu_torch_pallas.register_custom_kernel(
+//         kernel_name,
+//         kernel_key,
+//         serialized_mlir_module=mlir_bytes,
+//     )
+//
+//   # 2. Call the custom kernel:
+//   x = torch.randn(1024, 1024, device="xla")
+//   y = torch.randn(1024, 1024, device="xla")
+//   out_placeholder = torch.empty_like(x)
+//
+//   results = tpu_torch_pallas.call_custom_kernel(
+//       kernel_name,
+//       kernel_key,
+//       inputs=[x, y],
+//       output_shapes=[out_placeholder],
+//       donate_argnums=[0],  # Donate buffer x for output aliasing if possible.
+//   )
+//   out = results[0]
+//   ```
 std::vector<at::Tensor> PyCallCustomKernel(
     c10::string_view name, c10::string_view kernel_key,
     const std::vector<at::Tensor>& inputs,
