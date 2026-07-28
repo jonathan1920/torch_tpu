@@ -784,8 +784,6 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       torch.fill(t, value)
 
   def test_fmod_tensor_with_unsupported_dtype(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t = torch.tensor([1, 2, 3], device=et.device(), dtype=torch.complex64)
     other = torch.tensor([1, 2, 3], device=et.device(), dtype=torch.complex64)
     with et.assert_raises_message(
@@ -799,7 +797,7 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     other = torch.tensor([1, 2, 3], device=et.device(), dtype=torch.bool)
     with et.assert_raises_message(
         RuntimeError,
-        gpu=""""fmod_cpu" not implemented for 'Bool'""",
+        gpu=""""fmod_cuda" not implemented for 'Bool'""",
         tpu="""fmod(): boolean dtypes are not supported""",
     ):
       torch.fmod(t, other)
@@ -1176,8 +1174,6 @@ Device-side assertion tracking was not enabled by user.""",
 
   def test_round_decimals_param_integer_input(self):
     """torch.round() errors when input is an integer and decimals is specified."""
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
 
     t = torch.ones(1, device=et.device(), dtype=torch.int64)
     with et.assert_raises_message(
@@ -1192,7 +1188,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""round(): expected the input dtype not to be integer when the decimals argument is specified (2), got int32""",
-        gpu=""""round_cpu" not implemented for 'Int'""",
+        gpu=""""round_cuda" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
       t.round_(decimals=2)
@@ -1202,7 +1198,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""round(): expected the input dtype not to be integer when the decimals argument is specified (0), got int16""",
-        gpu=""""round_vml_cpu" not implemented for 'Short'""",
+        gpu=""""round_cuda" not implemented for 'Short'""",
         message_reviewed_by="wan",
     ):
       torch.round(t, decimals=0, out=out_t)
@@ -1666,7 +1662,9 @@ Device-side assertion tracking was not enabled by user.""",
       self.skipTest("GPU behavior difference")
     with et.assert_raises_message(
         RuntimeError,
-        gpu="""N <= iter.ntensors() INTERNAL ASSERT FAILED at "third_party/py/torch/aten/src/ATen/cuda/detail/OffsetCalculator.cuh":115, please report a bug to PyTorch.""",
+        gpu=re.compile(
+            r"""N <= iter\.ntensors\(\) INTERNAL ASSERT FAILED at.*OffsetCalculator\.cuh.*please report a bug to PyTorch\.\s*"""
+        ),
         tpu="""index_put_(): indices must be specified""",
     ):
       torch.index_put_(
@@ -2272,15 +2270,13 @@ Device-side assertion tracking was not enabled by user.""",
   def test_elu_unsupported_dtypes(
       self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
   ):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     inp = torch.ones(4, device=et.device(), dtype=dtype)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""elu(): expected the input dtype to be floating point, got"""
         f""" {tpu_dtype_str}""",
-        gpu=""""elu_cuda" not implemented for 'Long'""",
+        gpu=f""""elu_cuda" not implemented for '{cpu_dtype_str}'""",
     ):
       torch.nn.functional.elu(inp)
 
@@ -2384,8 +2380,6 @@ Device-side assertion tracking was not enabled by user.""",
       torch.ops.aten.glu.out(t, dim=1, out=out)
 
   def test_glu_backward_unsupported_dtypes(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     float_tensor = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     int_tensor = torch.ones(2, 4, device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
@@ -2401,7 +2395,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""glu_backward(): expected the grad_output dtype to be floating point, got int32""",
-        gpu="""Found dtype Int but expected Float""",
+        gpu="""Expected grad_output.sizes() == IntArrayRef{iter_shape} to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)""",
         message_reviewed_by="wan",
     ):
       torch.ops.aten.glu_backward(
@@ -2411,7 +2405,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""glu_backward(): expected the grad_input dtype to be floating point, got int32""",
-        gpu="""result type Float can't be cast to the desired output type Int""",
+        gpu="""Expected grad_output.sizes() == IntArrayRef{iter_shape} to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)""",
         message_reviewed_by="wan",
     ):
       torch.ops.aten.glu_backward.grad_input(
@@ -2422,8 +2416,6 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_glu_backward_dtype_mismatch(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     float32_tensor = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     float64_tensor = torch.ones(2, 4, device=et.device(), dtype=torch.float64)
     with et.assert_raises_message(
@@ -2439,7 +2431,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""glu_backward(): expected self and grad_input to have the same dtype, got float32 and float64""",
-        gpu="""Found dtype Float but expected Double""",
+        gpu="""Expected grad_output.sizes() == IntArrayRef{iter_shape} to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)""",
         message_reviewed_by="wan",
     ):
       torch.ops.aten.glu_backward.grad_input(
@@ -2643,7 +2635,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu=expected_error,
-        gpu="""Could not run 'tpu::ragged_dot' with arguments from the 'CUDA' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'tpu::ragged_dot' is only available for these backends: [CPU, PrivateUse1, Meta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradXLA, AutogradMPS, AutogradXPU, AutogradHPU, AutogradLazy, AutogradMTIA, AutogradMAIA, AutogradPrivateUse1, AutogradMeta, Tracer, AutocastCPU, AutocastMTIA, AutocastMAIA, AutocastXPU, AutocastMPS, AutocastCUDA, AutocastPrivateUse1, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].""",
+        gpu="""Could not run 'tpu::ragged_dot' with arguments from the 'CUDA' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'tpu::ragged_dot' is only available for these backends: [CPU, PrivateUse1, Meta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradXLA, AutogradMPS, AutogradXPU, AutogradHPU, AutogradLazy, AutogradMTIA, AutogradMAIA, AutogradPrivateUse1, AutogradMeta, Tracer, AutocastCPU, AutocastMTIA, AutocastMAIA, AutocastXPU, AutocastMPS, AutocastCUDA, AutocastPrivateUse1, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].""",
     ):
       torch.ops.tpu.ragged_dot(lhs, rhs, group_sizes)
 
@@ -2800,8 +2792,6 @@ Device-side assertion tracking was not enabled by user.""",
     # Note that the CPU error message is different for the both cases mentioned
     # above.
 
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     x1 = torch.randn(2, 2, device=et.device())
     x2 = torch.randn(2, 2, device=et.device())
 
@@ -2809,7 +2799,7 @@ Device-side assertion tracking was not enabled by user.""",
         RuntimeError,
         tpu="""cdist_forward(): expected the first argument's dtype not to be"""
         f""" bfloat16 or float16, got {tpu_dtype_str}""",
-        gpu=""""cdist_cuda" not implemented for 'Half'""",
+        gpu=f""""cdist_cuda" not implemented for '{cpu_dtype_str}'""",
         message_reviewed_by="wan",
     ):
       torch.cdist(x1.to(dtype), x2, p=1.0)
@@ -2866,8 +2856,6 @@ Device-side assertion tracking was not enabled by user.""",
   def test_cdist_backward_unsupported_floating_point_dtypes(
       self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
   ):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     grad = torch.randn(2, 2, device=et.device(), dtype=dtype)
     x1 = torch.randn(2, 2, device=et.device(), dtype=dtype)
     x2 = torch.randn(2, 2, device=et.device(), dtype=dtype)
@@ -2876,7 +2864,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu=f"""cdist_backward(): expected the first argument's dtype not to be bfloat16 or float16, got {tpu_dtype_str}""",
-        gpu=""""cdist_cuda_backward" not implemented for 'Half'""",
+        gpu=f""""cdist_cuda_backward" not implemented for '{cpu_dtype_str}'""",
         message_reviewed_by="gunhyun",
     ):
       torch.ops.aten._cdist_backward(grad, x1, x2, 1.0, cdist)
@@ -2935,8 +2923,6 @@ Device-side assertion tracking was not enabled by user.""",
       torch.add(a, b, out=a[1:2])
 
   def test_avg_pool2d_unsupported_dtypes(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t_complex = torch.zeros(
         (1, 1, 4, 4), device=et.device(), dtype=torch.complex64
     )
@@ -2955,28 +2941,28 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got uint8""",
-        gpu=""""avg_pool2d" not implemented for 'Byte'""",
+        gpu=""""avg_pool2d_out_cuda_frame" not implemented for 'Byte'""",
     ):
       torch.nn.functional.avg_pool2d(t_uint8, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got int8""",
-        gpu=""""avg_pool2d" not implemented for 'Char'""",
+        gpu=""""avg_pool2d_out_cuda_frame" not implemented for 'Char'""",
     ):
       torch.nn.functional.avg_pool2d(t_int8, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got int16""",
-        gpu=""""avg_pool2d" not implemented for 'Short'""",
+        gpu=""""avg_pool2d_out_cuda_frame" not implemented for 'Short'""",
     ):
       torch.nn.functional.avg_pool2d(t_int16, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got int32""",
-        gpu=""""avg_pool2d" not implemented for 'Int'""",
+        gpu=""""avg_pool2d_out_cuda_frame" not implemented for 'Int'""",
     ):
       torch.nn.functional.avg_pool2d(t_int32, kernel_size=3)
 
@@ -3007,56 +2993,56 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got bool""",
-        gpu=""""avg_pool3d_out_frame" not implemented for 'Bool'""",
+        gpu=""""avg_pool3d_out_cuda" not implemented for 'Bool'""",
     ):
       torch.nn.functional.avg_pool3d(t_bool, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got bfloat16""",
-        gpu=""""avg_pool3d_out_frame" not implemented for 'BFloat16'""",
+        gpu=""""avg_pool3d_out_cuda" not implemented for 'BFloat16'""",
     ):
       torch.nn.functional.avg_pool3d(t_bf16, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got float16""",
-        gpu=""""avg_pool3d_out_frame" not implemented for 'Half'""",
+        gpu=""""avg_pool3d_out_cuda" not implemented for 'Half'""",
     ):
       torch.nn.functional.avg_pool3d(t_f16, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got complex64""",
-        gpu=""""avg_pool3d_out_frame" not implemented for 'ComplexFloat'""",
+        gpu=""""avg_pool3d_out_cuda" not implemented for 'ComplexFloat'""",
     ):
       torch.nn.functional.avg_pool3d(t_complex, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got uint8""",
-        gpu=""""avg_pool3d_out_frame" not implemented for 'Byte'""",
+        gpu=""""avg_pool3d_out_cuda" not implemented for 'Byte'""",
     ):
       torch.nn.functional.avg_pool3d(t_uint8, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got int8""",
-        gpu=""""avg_pool3d_out_frame" not implemented for 'Char'""",
+        gpu=""""avg_pool3d_out_cuda" not implemented for 'Char'""",
     ):
       torch.nn.functional.avg_pool3d(t_int8, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got int16""",
-        gpu=""""avg_pool3d_out_frame" not implemented for 'Short'""",
+        gpu=""""avg_pool3d_out_cuda" not implemented for 'Short'""",
     ):
       torch.nn.functional.avg_pool3d(t_int16, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got int32""",
-        gpu=""""avg_pool3d_out_frame" not implemented for 'Int'""",
+        gpu=""""avg_pool3d_out_cuda" not implemented for 'Int'""",
     ):
       torch.nn.functional.avg_pool3d(t_int32, kernel_size=3)
 
@@ -3067,15 +3053,13 @@ Device-side assertion tracking was not enabled by user.""",
   def test_pdist_forward_unsupported_dtypes(
       self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
   ):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     inp = torch.randn(2, 2, device=et.device(), dtype=dtype)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""pdist_forward(): expected the input dtype not to be bfloat16 or"""
         f""" float16, got {tpu_dtype_str}""",
-        gpu=""""pdist_cuda" not implemented for 'Half'""",
+        gpu=f""""pdist_cuda" not implemented for '{cpu_dtype_str}'""",
         message_reviewed_by="wan",
     ):
       torch.nn.functional.pdist(inp, p=2.0)
@@ -3088,8 +3072,6 @@ Device-side assertion tracking was not enabled by user.""",
   def test_pdist_backward_unsupported_dtypes(
       self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
   ):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     grad = torch.randn(1, device=et.device())
     self_tensor = (
         torch.ones(2, 2, device=et.device(), dtype=dtype)
@@ -3112,7 +3094,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu=expected_tpu_msg,
-        gpu=""""pdist_cuda_backward" not implemented for 'Int'""",
+        gpu=f""""pdist_cuda_backward" not implemented for '{cpu_dtype_str}'""",
     ):
       torch.ops.aten._pdist_backward(grad, self_tensor, 2.0, pdist)
 
@@ -3178,8 +3160,6 @@ Device-side assertion tracking was not enabled by user.""",
       ).backward(torch.randn(1, 6, 4, device=et.device()))
 
   def test_replication_pad_backward_unsupported_dtypes(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     with et.assert_raises_message(
         RuntimeError,
         tpu="""replication_pad1d(): not implemented for 'Bool'""",
@@ -3194,7 +3174,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""replication_pad2d(): not implemented for 'Bool'""",
-        gpu=""""replication_pad2d" not implemented for 'Bool'""",
+        gpu=""""replication_pad2d_cuda" not implemented for 'Bool'""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, 4, device=et.device(), dtype=torch.bool),
@@ -3205,7 +3185,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""replication_pad3d(): not implemented for 'Bool'""",
-        gpu=""""replication_pad3d" not implemented for 'Bool'""",
+        gpu=""""replication_pad3d_cuda" not implemented for 'Bool'""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, 4, 4, device=et.device(), dtype=torch.bool),
@@ -3277,8 +3257,6 @@ Supported combinations for non-constant padding:
       ).backward(torch.randn(1, 6, 4, device=et.device()))
 
   def test_reflection_pad_backward_unsupported_dtypes(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     with et.assert_raises_message(
         RuntimeError,
         tpu="""reflection_pad1d(): not implemented for bool""",
@@ -3293,7 +3271,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""reflection_pad2d(): not implemented for bool""",
-        gpu=""""reflection_pad2d" not implemented for 'Bool'""",
+        gpu=""""reflection_pad2d_out_template" not implemented for 'Bool'""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, 4, device=et.device(), dtype=torch.bool),
@@ -3304,7 +3282,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""reflection_pad3d(): not implemented for bool""",
-        gpu=""""reflection_pad3d" not implemented for 'Bool'""",
+        gpu=""""reflection_pad3d_out_cuda" not implemented for 'Bool'""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, 4, 4, device=et.device(), dtype=torch.bool),
@@ -3313,8 +3291,6 @@ Supported combinations for non-constant padding:
       ).backward(torch.randn(1, 6, 4, 4, 4, device=et.device()))
 
   def test_adaptive_avg_pool2d_unsupported_dtypes(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t_complex = torch.zeros(
         (1, 1, 4, 4), device=et.device(), dtype=torch.complex64
     )
@@ -3334,41 +3310,39 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got uint8""",
-        gpu=""""adaptive_avg_pool2d" not implemented for 'Byte'""",
+        gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Byte'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_uint8, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int8""",
-        gpu=""""adaptive_avg_pool2d" not implemented for 'Char'""",
+        gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Char'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int8, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int16""",
-        gpu=""""adaptive_avg_pool2d" not implemented for 'Short'""",
+        gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Short'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int16, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int32""",
-        gpu=""""adaptive_avg_pool2d" not implemented for 'Int'""",
+        gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Int'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int32, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int64""",
-        gpu=""""adaptive_avg_pool2d" not implemented for 'Long'""",
+        gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Long'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int64, output_size=2)
 
   def test_adaptive_avg_pool3d_unsupported_dtypes(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t_complex = torch.zeros(
         (1, 1, 4, 4), device=et.device(), dtype=torch.complex64
     )
@@ -3389,48 +3363,46 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got complex64""",
-        gpu=""""adaptive_avg_pool3d_cpu" not implemented for 'ComplexFloat'""",
+        gpu=""""adaptive_avg_pool3d_cuda" not implemented for 'ComplexFloat'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_complex, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got uint8""",
-        gpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Byte'""",
+        gpu=""""adaptive_avg_pool3d_cuda" not implemented for 'Byte'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_uint8, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int8""",
-        gpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Char'""",
+        gpu=""""adaptive_avg_pool3d_cuda" not implemented for 'Char'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_int8, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int16""",
-        gpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Short'""",
+        gpu=""""adaptive_avg_pool3d_cuda" not implemented for 'Short'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_int16, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int32""",
-        gpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Int'""",
+        gpu=""""adaptive_avg_pool3d_cuda" not implemented for 'Int'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_int32, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int64""",
-        gpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Long'""",
+        gpu=""""adaptive_avg_pool3d_cuda" not implemented for 'Long'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_int64, output_size=3)
 
   def test_floor_divide_complex64(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     lhs = torch.arange(5, device=et.device())
     rhs = torch.arange(5, device=et.device())
 
@@ -3445,14 +3417,12 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""floor_divide(): expected dtype of the second argument to be neither complex nor bool, got complex64""",
-        gpu=""""div_floor_cpu" not implemented for 'ComplexFloat'""",
+        gpu=""""div_floor_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
       torch.floor_divide(lhs, rhs.to(torch.complex64))
 
   def test_atan2_complex(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     x = torch.tensor([1.0, 2.0], device=et.device())
     y = torch.tensor([1.0, 2.0], device=et.device())
 
@@ -3467,7 +3437,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""atan2(): expected the dtype of the second argument not to be complex, got complex64""",
-        gpu=""""atan2_cpu" not implemented for 'ComplexFloat'""",
+        gpu=""""atan2_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
       torch.atan2(x, y.to(torch.complex64))
@@ -3490,15 +3460,13 @@ Supported combinations for non-constant padding:
       },
   )
   def test_bitwise_ops_float64(self, op_name: str, op: Any):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     x = torch.ones(5, dtype=torch.int64, device=et.device())
     y = torch.ones(5, dtype=torch.int64, device=et.device())
 
     with et.assert_raises_message(
         RuntimeError,
         tpu=f"""{op_name}(): expected the dtype of the first argument to be neither floating-point nor complex, got float64""",
-        gpu=""""bitwise_and_cuda" not implemented for 'Double'""",
+        gpu=f""""{op_name}_cuda" not implemented for 'Double'""",
         message_reviewed_by="wan",
     ):
       op(x.to(torch.float64), y)
@@ -3506,7 +3474,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu=f"""{op_name}(): expected the dtype of the second argument to be neither floating-point nor complex, got float64""",
-        gpu=f""""{op_name}_cpu" not implemented for 'Double'""",
+        gpu=f""""{op_name}_cuda" not implemented for 'Double'""",
         message_reviewed_by="wan",
     ):
       op(x, y.to(torch.float64))
@@ -3528,15 +3496,13 @@ Supported combinations for non-constant padding:
   def test_bitwise_shift_float64(
       self, op_name_tpu: str, op_name_cpu: str, op: Any
   ):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     x = torch.ones(5, dtype=torch.int64, device=et.device())
     y = torch.ones(5, dtype=torch.int64, device=et.device())
 
     with et.assert_raises_message(
         RuntimeError,
         tpu=f"""{op_name_tpu}(): expected the dtype of the first argument to be integer, got float64""",
-        gpu=""""rshift_cuda" not implemented for 'Double'""",
+        gpu=f""""{op_name_cpu}_cuda" not implemented for 'Double'""",
         message_reviewed_by="wan",
     ):
       op(x.to(torch.float64), y)
@@ -3544,7 +3510,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu=f"""{op_name_tpu}(): expected the dtype of the second argument to be integer, got float64""",
-        gpu=f""""{op_name_cpu}_cpu" not implemented for 'Double'""",
+        gpu=f""""{op_name_cpu}_cuda" not implemented for 'Double'""",
         message_reviewed_by="wan",
     ):
       op(x, y.to(torch.float64))
@@ -3681,8 +3647,6 @@ Supported combinations for non-constant padding:
       {"testcase_name": "lt", "op_name": "lt", "op": torch.lt},
   )
   def test_comparison_ops_complex(self, op_name: str, op: Any):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     lhs = torch.tensor([1.0, 2.0], device=et.device())
     rhs = torch.tensor([1.0, 2.0], device=et.device())
 
@@ -3697,7 +3661,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu=f"""{op_name}(): expected the dtype of the second argument not to be complex, got complex64""",
-        gpu=f""""{op_name}_cpu" not implemented for 'ComplexFloat'""",
+        gpu=""""compare_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
       op(lhs, rhs.to(torch.complex64))
@@ -3706,7 +3670,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu=f"""{op_name}(): expected the dtype of the second argument not to be complex, got complex128""",
-        gpu=f""""{op_name}_cpu" not implemented for 'ComplexFloat'""",
+        gpu=""""compare_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
       op(lhs, 1j)
@@ -4041,14 +4005,12 @@ Supported combinations for non-constant padding:
       },
   )
   def test_aminmax_complex(self, op_name_cpu: str, op_name_tpu: str, op: Any):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     tensor = torch.ones(5, device=et.device(), dtype=torch.complex64)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu=f"""{op_name_tpu}(): expected the dtype of the input not to be complex, got complex64""",
-        gpu=""""aminmax_cuda" not implemented for 'ComplexFloat'""",
+        gpu=f""""{op_name_cpu}_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
       op(tensor, dim=0)
@@ -4096,8 +4058,6 @@ Supported combinations for non-constant padding:
       torch.polar(absv, angle.to(torch.int32), out=out)
 
   def test_polygamma_negative_n(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t = torch.tensor([1.0, 2.0], device=et.device())
     with et.assert_raises_message(
         RuntimeError,
@@ -4117,20 +4077,16 @@ Supported combinations for non-constant padding:
       torch.polygamma(-1, t, out=out)
 
   def test_polygamma_complex(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t = torch.tensor([1.0 + 1.0j], device=et.device(), dtype=torch.complex64)
     with et.assert_raises_message(
         RuntimeError,
         tpu="""polygamma(): expected the input dtype not to be complex, got complex64""",
-        gpu=""""polygamma" not implemented for 'ComplexFloat'""",
+        gpu=""""polygamma_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="gunhyun",
     ):
       torch.polygamma(2, t)
 
   def test_polygamma_invalid_out(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t = torch.tensor([1.0, 2.0], device=et.device())
     out = torch.empty(2, device=et.device(), dtype=torch.uint8)
     with et.assert_raises_message(
@@ -4525,8 +4481,6 @@ Supported combinations for non-constant padding:
       },
   )
   def test_convolution_bool(self, convolution, tpu_fn: str, cpu_fn: str):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     inp = torch.ones(2, 3, 10, 10, device=et.device())
     w = torch.ones(1, 3, 3, 3, device=et.device())
 
@@ -4541,7 +4495,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu=f"""{tpu_fn}(): expected the dtype of the weight tensor to be neither long nor bool, got bool""",
-        gpu="""expected scalar type Float but found Bool""",
+        gpu="""Input type (torch.cuda.FloatTensor) and weight type (CUDABoolType) should be the same""",
         message_reviewed_by="wan",
     ):
       convolution(inp, w.to(torch.bool))
@@ -5052,7 +5006,9 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""index(): at least one index tensor must be defined""",
-        gpu="""N <= iter.ntensors() INTERNAL ASSERT FAILED at "third_party/py/torch/aten/src/ATen/cuda/detail/OffsetCalculator.cuh":115, please report a bug to PyTorch.""",
+        gpu=re.compile(
+            r"""N <= iter\.ntensors\(\) INTERNAL ASSERT FAILED at.*OffsetCalculator\.cuh.*please report a bug to PyTorch\.\s*"""
+        ),
         message_reviewed_by="wan",
     ):
       torch.ops.aten.index.Tensor(t, [None])
@@ -5446,8 +5402,6 @@ Supported combinations for non-constant padding:
       torch.lerp(t, t, t)
 
   def test_mse_loss_invalid_dtypes(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     uint8 = torch.ones(2, 2, device=et.device(), dtype=torch.uint8)
     int8 = torch.ones(2, 2, device=et.device(), dtype=torch.int8)
     int16 = torch.ones(2, 2, device=et.device(), dtype=torch.int16)
@@ -5466,7 +5420,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int8""",
-        gpu=""""mse_cpu" not implemented for 'Char'""",
+        gpu=""""mse_cuda" not implemented for 'Char'""",
         message_reviewed_by="yilingyuan",
     ):
       torch.nn.functional.mse_loss(int8, int8, reduction="sum")
@@ -5474,7 +5428,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int16""",
-        gpu=""""mse_cpu" not implemented for 'Short'""",
+        gpu=""""mse_cuda" not implemented for 'Short'""",
         message_reviewed_by="yilingyuan",
     ):
       torch.nn.functional.mse_loss(int16, int16, reduction="sum")
@@ -5482,7 +5436,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int32""",
-        gpu=""""mse_cpu" not implemented for 'Int'""",
+        gpu=""""mse_cuda" not implemented for 'Int'""",
         message_reviewed_by="yilingyuan",
     ):
       torch.nn.functional.mse_loss(int32, int32, reduction="sum")
@@ -5490,7 +5444,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int64""",
-        gpu=""""mse_cpu" not implemented for 'Long'""",
+        gpu=""""mse_cuda" not implemented for 'Long'""",
         message_reviewed_by="yilingyuan",
     ):
       torch.nn.functional.mse_loss(int64, int64, reduction="sum")
@@ -5498,7 +5452,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: complex64""",
-        gpu=""""mse_cpu" not implemented for 'ComplexFloat'""",
+        gpu=""""mse_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="yilingyuan",
     ):
       torch.nn.functional.mse_loss(complex64, complex64, reduction="sum")
@@ -5518,8 +5472,6 @@ Supported combinations for non-constant padding:
       torch.ops.aten.embedding_renorm_(inp, indices, max_norm, norm_type)
 
   def test_grid_sampler_invalid_input_dtype(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t = torch.randint(
         0, 10, (2, 3, 4, 4), device=et.device(), dtype=torch.int32
     )
@@ -5539,7 +5491,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""grid_sampler_2d(): expected the input dtype to be floating point, got complex64""",
-        gpu=""""grid_sampler_2d_cpu_kernel_impl" not implemented for 'ComplexFloat'""",
+        gpu=""""grid_sampler_2d_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
       torch.grid_sampler(inp2d, grid2d, 0, 0, False)
@@ -5547,7 +5499,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""grid_sampler_3d(): expected the input dtype to be floating point, got complex64""",
-        gpu=""""grid_sampler3d_cpu" not implemented for 'ComplexFloat'""",
+        gpu=""""grid_sampler_3d_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
       torch.grid_sampler(inp3d, grid3d, 0, 0, False)
@@ -5589,25 +5541,23 @@ Supported combinations for non-constant padding:
         check(p)
 
   def test_fused_dropout_invalid_dtype(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     x = torch.ones((2, 3), device=et.device(), dtype=torch.int32)
+    err_type = RuntimeError if et.is_on_tpu() else NotImplementedError
     with et.assert_raises_message(
-        RuntimeError,
+        err_type,
         tpu="""fused_dropout(): expected input to be floating point or complex, got Int""",
+        gpu=""""fused_dropout" not implemented for 'Int'""",
         message_reviewed_by="adivinpatel",
     ):
       torch.ops.aten._fused_dropout(x, 0.5)
 
   def test_native_dropout_backward_invalid_mask_dtype(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     grad_output = torch.ones((2, 3), device=et.device(), dtype=torch.float32)
     mask = torch.ones((2, 3), device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
         tpu="""native_dropout_backward(): expected mask to be Bool scalar type, got Int""",
-        message_reviewed_by="adivinpatel",
+        gpu="""Mask should be Bool Scalar TypeInt""",
     ):
       torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)
 
@@ -5627,15 +5577,13 @@ Supported combinations for non-constant padding:
       torch.ops.aten._weight_norm_interface(v, g, dim)
 
   def test_weight_norm_interface_unsupported_dtype(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     v = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
     g = torch.ones(2, device=et.device(), dtype=torch.float32)
     dim = 0
     with et.assert_raises_message(
         RuntimeError,
         tpu="""weight_norm_interface(): expected the input dtype to be floating point, got int32""",
-        gpu=""""weight_norm_kernel" not implemented for 'Int'""",
+        gpu=""""weight_norm_fwd_first_dim_kernel" not implemented for 'Int'""",
     ):
       torch.ops.aten._weight_norm_interface(v, g, dim)
 
@@ -5651,8 +5599,6 @@ Supported combinations for non-constant padding:
       torch.ops.aten._weight_norm_interface(v, g, 0)
 
   def test_softplus_unsupported_dtypes(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t_bool = torch.ones(2, 2, device=et.device(), dtype=torch.bool)
     t_uint8 = torch.ones(2, 2, device=et.device(), dtype=torch.uint8)
     t_int8 = torch.ones(2, 2, device=et.device(), dtype=torch.int8)
@@ -5672,7 +5618,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""softplus(): expected the input dtype to be floating-point, got uint8""",
-        gpu=""""softplus_cpu" not implemented for 'Byte'""",
+        gpu=""""softplus_cuda" not implemented for 'Byte'""",
         message_reviewed_by="wan",
     ):
       torch.nn.functional.softplus(t_uint8)
@@ -5680,7 +5626,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""softplus(): expected the input dtype to be floating-point, got int8""",
-        gpu=""""softplus_cpu" not implemented for 'Char'""",
+        gpu=""""softplus_cuda" not implemented for 'Char'""",
         message_reviewed_by="wan",
     ):
       torch.nn.functional.softplus(t_int8)
@@ -5688,7 +5634,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""softplus(): expected the input dtype to be floating-point, got int16""",
-        gpu=""""softplus_cpu" not implemented for 'Short'""",
+        gpu=""""softplus_cuda" not implemented for 'Short'""",
         message_reviewed_by="wan",
     ):
       torch.nn.functional.softplus(t_int16)
@@ -5696,7 +5642,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""softplus(): expected the input dtype to be floating-point, got int32""",
-        gpu=""""softplus_cpu" not implemented for 'Int'""",
+        gpu=""""softplus_cuda" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
       torch.nn.functional.softplus(t_int32)
@@ -5704,7 +5650,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""softplus(): expected the input dtype to be floating-point, got int64""",
-        gpu=""""softplus_cpu" not implemented for 'Long'""",
+        gpu=""""softplus_cuda" not implemented for 'Long'""",
         message_reviewed_by="wan",
     ):
       torch.nn.functional.softplus(t_int64)
@@ -5712,14 +5658,12 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""softplus(): expected the input dtype to be floating-point, got complex64""",
-        gpu=""""softplus_cpu" not implemented for 'ComplexFloat'""",
+        gpu=""""softplus_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
       torch.nn.functional.softplus(t_complex64)
 
   def test_softplus_backward_unsupported_dtypes(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t_bool = torch.ones(2, 2, device=et.device(), dtype=torch.bool)
     t_int32 = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
     t_complex64 = torch.ones(2, 2, device=et.device(), dtype=torch.complex64)
@@ -5735,7 +5679,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""softplus_backward(): expected the input dtype to be floating-point, got int32""",
-        gpu=""""softplus_backward_cpu" not implemented for 'Int'""",
+        gpu=""""softplus_backward_cuda" not implemented for 'Int'""",
         message_reviewed_by="gunhyun",
     ):
       torch.ops.aten.softplus_backward(t_int32, t_int32, 1.0, 20.0)
@@ -5743,7 +5687,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""softplus_backward(): expected the input dtype to be floating-point, got complex64""",
-        gpu=""""softplus_backward_cpu" not implemented for 'ComplexFloat'""",
+        gpu=""""softplus_backward_cuda" not implemented for 'ComplexFloat'""",
         message_reviewed_by="gunhyun",
     ):
       torch.ops.aten.softplus_backward(t_complex64, t_complex64, 1.0, 20.0)
@@ -5798,8 +5742,6 @@ Supported combinations for non-constant padding:
 
   def test_hardtanh_backward_unsupported_integral_dtypes(self):
     # hardtanh_backward does not support integral types.
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     t_uint8 = torch.ones(2, device=et.device(), dtype=torch.uint8)
     with et.assert_raises_message(
         RuntimeError,
@@ -5812,7 +5754,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""hardtanh_backward(): expected the input dtype to be floating point, got int32""",
-        gpu=""""hardshrink_backward_cpu" not implemented for 'Int'""",
+        gpu=""""hardtanh_backward_cuda" not implemented for 'Int'""",
     ):
       torch.ops.aten.hardtanh_backward(t_int32, t_int32, min_val=0, max_val=1)
 
@@ -5890,7 +5832,7 @@ Supported combinations for non-constant padding:
       dict(
           testcase_name="int32",
           dtype=torch.int32,
-          gpu_msg=""""normal_kernel_cpu" not implemented for 'Int'""",
+          gpu_msg=""""normal_kernel_cuda" not implemented for 'Int'""",
           tpu_msg=(
               "normal_(): expected the self tensor to be floating point or"
               " complex type, got int32"
@@ -5899,7 +5841,7 @@ Supported combinations for non-constant padding:
       dict(
           testcase_name="int64",
           dtype=torch.int64,
-          gpu_msg=""""normal_kernel_cpu" not implemented for 'Long'""",
+          gpu_msg=""""normal_kernel_cuda" not implemented for 'Long'""",
           tpu_msg=(
               "normal_(): expected the self tensor to be floating point or"
               " complex type, got int64"
@@ -5909,12 +5851,10 @@ Supported combinations for non-constant padding:
   def test_normal_errors_invalid_input_dtype(
       self, dtype: torch.dtype, *, gpu_msg: str, tpu_msg: str
   ):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     device = et.device()
     with et.assert_raises_message(
         RuntimeError,
-        gpu=""""normal_kernel_cuda" not implemented for 'Long'""",
+        gpu=gpu_msg,
         tpu=tpu_msg,
     ):
       torch.tensor([1, 2], device=device, dtype=dtype).normal_()
@@ -6003,12 +5943,10 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
   def test_normal_errors_invalid_mean_dtype(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     device = et.device()
     with et.assert_raises_message(
         RuntimeError,
-        gpu=""""normal_kernel_cpu" not implemented for 'Int'""",
+        gpu=""""normal_kernel_cuda" not implemented for 'Int'""",
         tpu="""normal(): expected the mean tensor to be floating point or complex type, got int32""",
     ):
       torch.normal(
@@ -6166,8 +6104,6 @@ Device-side assertion tracking was not enabled by user.""",
       indices.cpu()
 
   def test_pooling_create_batch_input_invalid_rank(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
 
     inp = torch.ones(10, 10, device=et.device())
     out = torch.empty(1, device=et.device())
@@ -6179,8 +6115,9 @@ Device-side assertion tracking was not enabled by user.""",
     count_include_pad = True
     divisor_override = None
 
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
-        RuntimeError,
+        err_type,
         tpu="""avg_pool2d(): expected non-empty 3D or 4D (batch mode) tensor for input, got 2D tensor""",
         gpu="""Dimension out of range (expected to be in range of [-2, 1], but got -3)""",
     ):
@@ -6391,8 +6328,6 @@ Device-side assertion tracking was not enabled by user.""",
       torch.sign(t, out=out)
 
   def test_scatter_rank_src_rank_mismatch(self):
-    if et.is_on_gpu():
-      self.skipTest("GPU behavior difference")
     self_t = torch.ones(5, 5, device=et.device())
     index = torch.zeros(5, 5, dtype=torch.int64, device=et.device())
     src = torch.ones(5, device=et.device())
@@ -6401,8 +6336,9 @@ Device-side assertion tracking was not enabled by user.""",
     out = torch.empty(5, 5, device=et.device())
 
     # TODO: Error eagerly, i.e. without having to call the op builder.
+    err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
-        RuntimeError,
+        err_type,
         tpu="""scatter(): materialization failed with: expected the self tensor of shape [5, 5] to have the same rank as the src tensor of shape [5], got 2 vs. 1""",
         gpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
     ):
@@ -7333,8 +7269,6 @@ Device-side assertion tracking was not enabled by user.""",
 class InputPreprocessingErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
   def test_input_preprocessing_invalid_proto(self):
-    if et.is_on_gpu():
-      self.skipTest("TPU only op")
     with et.assert_raises_message(
         RuntimeError,
         tpu="""failed to parse StackedTablesConfig proto""",
