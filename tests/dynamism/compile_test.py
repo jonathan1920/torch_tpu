@@ -448,7 +448,7 @@ class SymIntArithmeticTest(absltest.TestCase):
     torch._dynamo.mark_dynamic(x1, 1, min=1, max=16)
 
     out1 = compiled(x1)
-    utils.assert_close(out1, torch.tensor(9, device="tpu"))
+    self.assertEqual(out1, 9)
 
 
 class DynamicReshapeTest(absltest.TestCase):

@@ -223,8 +223,10 @@ class HandleSymIntUsagesPass:
         if node.args and isinstance(node.args[0], (tuple, list)):
           new_ret_args = []
           changed = False
-          for arg in node.args[0]:
+          symint_output_indices = []
+          for idx, arg in enumerate(node.args[0]):
             if isinstance(arg, torch.fx.Node) and sym_utils.is_symint_node(arg):
+              symint_output_indices.append(idx)
               tensor_node = self._sym_shape_manager.ensure_tensor(
                   graph_module, arg, node
               )
@@ -251,6 +253,9 @@ class HandleSymIntUsagesPass:
 
           if changed:
             node.args = (type(node.args[0])(new_ret_args),)
+            self._sym_shape_manager.set_symint_output_indices(
+                symint_output_indices
+            )
 
 
 _PYTHON_COMPARISON_BUILTINS = {

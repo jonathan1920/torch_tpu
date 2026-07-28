@@ -130,11 +130,29 @@ def _compute_output_shapes(
   output_shapes = [
       output_sym_shape.get_output_runtime_shape(args)
       for output_sym_shape in sym_shape_manager.outputs_sym_shape
+      if output_sym_shape.is_tensor
   ]
   logging.debug(
       "[_DynamicTpuCompiledExecutable] Output shapes: %s", output_shapes
   )
   return output_shapes
+
+
+def _convert_symint_outputs_to_scalars(
+    outputs: Any,
+    sym_shape_manager: SymShapeManager,
+) -> Any:
+  """Converts output tensors at symint output positions back to Python scalars."""
+  symint_indices = sym_shape_manager.get_symint_output_indices()
+  if not symint_indices or not isinstance(outputs, (list, tuple)):
+    return outputs
+
+  outputs_list = list(outputs)
+  for idx in symint_indices:
+    if idx < len(outputs_list) and isinstance(outputs_list[idx], torch.Tensor):
+      outputs_list[idx] = outputs_list[idx].item()
+
+  return tuple(outputs_list) if isinstance(outputs, tuple) else outputs_list
 
 
 class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
@@ -431,8 +449,7 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
 
     # Run model executable with constructed inputs
     outputs = executable(model_inputs, output_shapes=output_shapes)
-
-    return outputs
+    return _convert_symint_outputs_to_scalars(outputs, self.sym_shape_manager)
 
   def __reduce__(self) -> tuple[Callable[..., Any], tuple[Any, ...]]:
     # TODO(b/903508278): Add support for pickling to DynamicCompiler.

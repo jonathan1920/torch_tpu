@@ -26,6 +26,7 @@ from torch_tpu._internal.compile.dynamic import sym_utils
 from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
 
 
+@dataclasses.dataclass
 class _OutputSymShape:
   """Information needed to compute the runtime shape of a dynamic output tensor.
 
@@ -44,10 +45,7 @@ class _OutputSymShape:
   """
 
   output_sym_shape: list[int | dict[str, Any]]
-
-  def __init__(self, output_sym_shape: list[int | dict[str, Any]]):
-    """Initializes the instance."""
-    self.output_sym_shape = output_sym_shape
+  is_tensor: bool = True
 
   def get_output_runtime_shape_from_sym_values(
       self, sym_values: dict[str, int]
@@ -130,10 +128,11 @@ class _OutputSymShape:
         from input tensor dimensions.
     """
     output_sym_shape = []
+    is_tensor = output_node_meta_value is not None
     if (
-        output_node_meta_value is not None
+        is_tensor
         and hasattr(output_node_meta_value, "shape")
-        and getattr(output_node_meta_value, "shape", None) is not None
+        and output_node_meta_value.shape is not None
     ):
       for dim in output_node_meta_value.shape:
         if isinstance(dim, torch.SymInt) and hasattr(dim, "node"):
@@ -176,7 +175,7 @@ class _OutputSymShape:
           output_sym_shape.append(dim)
         else:
           output_sym_shape.append(-1)
-    return cls(output_sym_shape)
+    return cls(output_sym_shape, is_tensor=is_tensor)
 
 
 @dataclasses.dataclass
@@ -220,6 +219,8 @@ class SymShapeManager:
       tensor nodes.
     _sym_str_to_tensor_node: Internal cache mapping symint string to the created
       tensor node.
+    _symint_output_indices: List of output indices that were originally SymInt
+      nodes and promoted to 0D tensors.
   """
 
   # Tensor idx is its position in the example inputs.
@@ -244,6 +245,10 @@ class SymShapeManager:
   # Mapping of SymInt string representation to the created tensor node.
   _sym_str_to_tensor_node: dict[str, torch.fx.Node]
 
+  # List of output indices that were originally SymInt nodes and
+  # promoted to 0D tensors.
+  _symint_output_indices: list[int]
+
   def __init__(
       self,
       graph_module: torch.fx.GraphModule,
@@ -254,8 +259,17 @@ class SymShapeManager:
     self.symint_to_placeholder = {}
     self.symint_node_to_tensor_node = {}
     self._sym_str_to_tensor_node = {}
+    self._symint_output_indices = []
     self._create_outputs_sym_shape()
     self._populate_input_tensors_metadata()
+
+  def set_symint_output_indices(self, indices: Sequence[int]) -> None:
+    """Sets the indices of graph outputs that were originally SymInt nodes."""
+    self._symint_output_indices = list(indices)
+
+  def get_symint_output_indices(self) -> list[int]:
+    """Returns the indices of graph outputs that were originally SymInt nodes."""
+    return self._symint_output_indices
 
   @property
   def example_inputs(self) -> Sequence[torch.Tensor | int]:
