@@ -66,6 +66,11 @@ struct DeferredOpParams {
 absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
     DeferredOpParams&& params);
 
+// Computes the OpParamCacheKeys for CreateConstantDeviceBufferRefImpl.
+absl::StatusOr<OpParamCacheKeys> ComputeConstantDeviceBufferRefOpParamCacheKeys(
+    absl::Span<const char> cpu_tensor_data, const Dimensions& dimensions,
+    mlir::ElementType element_type);
+
 }  // namespace internal
 
 // Creates a deferred DeviceBufferList containing a constant tensor value,

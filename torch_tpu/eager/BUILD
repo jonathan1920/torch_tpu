@@ -806,6 +806,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:fingerprint_utils",
         "//torch_tpu/common:layout_utils",
         "//torch_tpu/common:shape",
         "//torch_tpu/common:to_string",
@@ -893,6 +894,20 @@ torch_tpu_cc_library(
     hdrs = ["current_stream.h"],
     deps = [
         "@com_google_absl//absl/log:absl_check",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "device_buffer_utils_test",
+    srcs = ["device_buffer_utils_test.cc"],
+    requires_libtpu = True,
+    deps = [
+        ":device_buffer_utils",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dimension_types",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

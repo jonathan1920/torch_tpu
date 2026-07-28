@@ -44,6 +44,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/layout_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
@@ -213,6 +214,22 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
   return results;
 }
 
+absl::StatusOr<OpParamCacheKeys> ComputeConstantDeviceBufferRefOpParamCacheKeys(
+    absl::Span<const char> cpu_tensor_data, const Dimensions& dimensions,
+    mlir::ElementType element_type) {
+  auto op_param_cache_keys = OpParamCacheKeys::Empty();
+  // Pre-fingerprint the tensor data using a string_view to avoid storing a
+  // large tensor data copy in OpParamCacheKeys, even though SetParam() handles
+  // string_view values.
+  TT_RETURN_IF_ERROR(op_param_cache_keys.SetParam(
+      "data", Fingerprint(std::string_view(cpu_tensor_data.data(),
+                                           cpu_tensor_data.size()))));
+  TT_RETURN_IF_ERROR(op_param_cache_keys.SetParam("dimensions", dimensions));
+  TT_RETURN_IF_ERROR(
+      op_param_cache_keys.SetParam("element_type", element_type));
+  return op_param_cache_keys;
+}
+
 }  // namespace internal
 
 namespace {
@@ -226,14 +243,9 @@ absl::StatusOr<DeviceBufferRef> CreateConstantDeviceBufferRefImpl(
   ScopedPythonContextCapturer capturer(op_name);
 
   // Create the cache keys for the op parameters.
-  // Since a change in data causes recompilation, we include the hash of the
-  // tensor data as part of the cache key.
-  auto op_param_cache_keys = OpParamCacheKeys::Empty();
-  TT_RETURN_IF_ERROR(
-      op_param_cache_keys.SetParam("data", absl::HashOf(cpu_tensor_data)));
-  TT_RETURN_IF_ERROR(op_param_cache_keys.SetParam("dimensions", dimensions));
-  TT_RETURN_IF_ERROR(
-      op_param_cache_keys.SetParam("element_type", element_type));
+  TT_ASSIGN_OR_RETURN(auto op_param_cache_keys,
+                      internal::ComputeConstantDeviceBufferRefOpParamCacheKeys(
+                          cpu_tensor_data, dimensions, element_type));
 
   // The op returns a single tensor with the given shape and dtype.
   std::vector<Shape> output_shapes;
