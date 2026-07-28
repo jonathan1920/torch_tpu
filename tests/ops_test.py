@@ -356,9 +356,9 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1.8e-2, "atol": 7.9e-3},
     },
     "addmm": {
-        torch.bfloat16: {"atol": 8.3e-3},
-        torch.float16: {"rtol": 1.9e-1, "atol": 2.2e-1},
-        torch.float32: {"rtol": 1.9e-1, "atol": 2.1e-1},
+        torch.bfloat16: {"rtol": 1.9e-2, "atol": 1.5e-2},
+        torch.float16: {"rtol": 1.6e-1, "atol": 1.8e-1},
+        torch.float32: {"rtol": 1.8e-1, "atol": 1.9e-1},
     },
     "addmv": {
         torch.bfloat16: {"rtol": 1.1e-1, "atol": 2.5e-1},
@@ -656,9 +656,8 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 2e-2, "atol": 9.2e-5},
     },
     "norm": {
-        torch.bfloat16: {"rtol": 2e-2, "atol": 9.2e-5},
-        torch.complex64: {"rtol": 1e-5, "atol": 5e-5},
-        torch.float32: {"rtol": 1e-5, "atol": 5e-5},
+        torch.complex64: {"rtol": 6.8e-6},
+        torch.float32: {"rtol": 6.9e-6},
     },
     "polygamma": {
         torch.bfloat16: {"rtol": 2.2e-1, "atol": 2.5e-4},
@@ -718,7 +717,8 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.uint8: {"rtol": 3e-5, "atol": 3e-5},
     },
     "var": {
-        torch.float16: {"rtol": 1.3e-3, "atol": 3.2e-2},
+        torch.bfloat16: {"atol": 4.7e-3},
+        torch.float16: {"rtol": 2.6e-3, "atol": 5.9e-4},
     },
     "xlogy": {
         torch.float32: {"rtol": 2.6e-4, "atol": 7.5e-4},
@@ -1175,10 +1175,6 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"atol": 6.2e-5},
         torch.float32: {"atol": 6e-5},
     },
-    "norm": {
-        torch.complex64: {"rtol": 1e-5, "atol": 5e-5},
-        torch.float32: {"rtol": 1e-5, "atol": 5e-5},
-    },
     "polygamma": {
         torch.float32: {"rtol": 8.6e-6, "atol": 1.1e-4},
     },
@@ -1227,7 +1223,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.uint8: {"atol": 3e-5},
     },
     "var": {
-        torch.float16: {"atol": 3.2e-2},
+        torch.float16: {"rtol": 1.5e-3},
     },
     "xlogy": {
         torch.float32: {"atol": 7.6e-4},
