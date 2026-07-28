@@ -412,34 +412,6 @@ class DeferredOp {
   // split into subgraphs for compilation.
   [[nodiscard]] OpSplitMode split_mode() const { return split_mode_; }
 
-  // Returns the name of the custom kernel, if this DeferredOp is a custom
-  // kernel. Otherwise, returns an empty string.
-  std::string_view custom_kernel_name() const {
-    if (op_name_ != OpName::kCustomKernel) {
-      return "";
-    }
-    for (const auto& [key, value] : op_param_cache_keys_) {
-      if (key == "custom_kernel_name") {
-        return value;
-      }
-    }
-    return "";
-  }
-
-  // Returns the kwargs string of the custom kernel, if this DeferredOp is a
-  // custom kernel. Otherwise, returns an empty string.
-  std::string_view custom_kernel_kwargs() const {
-    if (op_name_ != OpName::kCustomKernel) {
-      return "";
-    }
-    for (const auto& [key, value] : op_param_cache_keys_) {
-      if (key == "custom_kernel_kwargs") {
-        return value;
-      }
-    }
-    return "";
-  }
-
   [[nodiscard]] absl::Span<const int64_t> donated_indices() const {
     return donated_indices_;
   }
