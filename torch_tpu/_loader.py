@@ -29,6 +29,8 @@ os.environ["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
 # pylint: disable=g-import-not-at-top
 import torch
 import torch._dynamo.backends.registry as backend_registry
+from torch._dynamo.device_interface import get_interface_for_device
+from torch._dynamo.device_interface import register_interface_for_device
 from torch_tpu._internal import tracing
 from torch_tpu._internal.device import _device_module
 from torch_tpu._internal.device import _tpu_backend_config
@@ -143,6 +145,19 @@ def _init_device_impl(device: str) -> torch.device:
 
   device_module = _device_module.get_device_module(device)
   device_module._init_runtime_options()  # pylint: disable=protected-access
+  # We call `get_interface_for_device` here to force the device interfaces
+  # defined upstream (which as of torch 2.13 includes one for TPU) to be
+  # initialized and mapped (which happens once), that way if any code somehow
+  # manages to call `get_interface_for_device` before we're able to register
+  # our own DeviceInterface it won't clobber the one we register below.
+  # This will not be needed once we become an in-tree backend in which case we
+  # will move our DeviceModule implementation upstream similar to existing ones
+  # for CUDA and other backends.
+  try:
+    get_interface_for_device(device)
+  except NotImplementedError:
+    pass
+  register_interface_for_device(device, device_module)
 
   torch.utils.rename_privateuse1_backend(device)
   # Generate `Tensor.is_{device}`, `Tensor.{device}()`, `Module.{device}()`,

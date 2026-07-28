@@ -16,6 +16,7 @@
 
 from absl.testing import absltest
 import torch
+from torch._dynamo.device_interface import get_interface_for_device
 from tests.device import device_module_testing
 
 
@@ -48,6 +49,11 @@ class TpuDeviceModuleTest(
   def test_module_tpu_method(self):
     m = torch.nn.Linear(1, 1).tpu()
     self.assertEqual(next(m.parameters()).device.type, "tpu")
+
+  def test_device_interface_registration_always_wins(self):
+    """Verifies device_module from _loader.py is registered as device interface."""
+    iface = get_interface_for_device("tpu")
+    self.assertEqual(iface, self.device_module)
 
 
 if __name__ == "__main__":
