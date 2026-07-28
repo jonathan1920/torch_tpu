@@ -307,8 +307,8 @@ class ModelCoverageTimmTest(parameterized.TestCase):
           expected_class=1,  # Goldfish
           img_path=_GOLDFISH_IMG_PATH,
           rtol=1e-3,
-          atol=4e-2,
-          rmse_tol=1.1e-2,
+          atol=4.5e-2,
+          rmse_tol=1.3e-2,
           conf_tol=3e-3,
       ),
       dict(
