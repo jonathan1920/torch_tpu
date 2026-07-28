@@ -42,6 +42,10 @@ on:
     branches:
       - main
 
+# Prevent "overly broad permissions" Zizmor finding.
+permissions:
+  contents: read
+
 # Cancel old jobs when they are replaced by new runs
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -58,14 +62,19 @@ jobs:
       default_python_version: "3.12"
     steps:
       - id: set
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HAS_TPU_NIGHTLY_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'tpu-nightly') }}
+          HAS_RUN_ALL_VERSIONS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:run_all_versions') }}
+          HAS_POSTSUBMIT_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:postsubmit') }}
         run: |
           DEFAULT_VER="3.12"
           TPU_VERS="[\"${DEFAULT_VER}\"]"
-          if [[ "${{ github.event_name }}" == "schedule" ]] || \
-             [[ "${{ github.event_name }}" == "push" ]] || \
-             [[ "${{ contains(github.event.pull_request.labels.*.name, 'tpu-nightly') }}" == "true" ]] || \
-             [[ "${{ contains(github.event.pull_request.labels.*.name, 'ci:run_all_versions') }}" == "true" ]] || \
-             [[ "${{ contains(github.event.pull_request.labels.*.name, 'ci:postsubmit') }}" == "true" ]]; then
+          if [[ "${EVENT_NAME}" == "schedule" ]] || \
+             [[ "${EVENT_NAME}" == "push" ]] || \
+             [[ "${HAS_TPU_NIGHTLY_LABEL}" == "true" ]] || \
+             [[ "${HAS_RUN_ALL_VERSIONS_LABEL}" == "true" ]] || \
+             [[ "${HAS_POSTSUBMIT_LABEL}" == "true" ]]; then
             TPU_VERS='["3.11", "3.12", "3.13", "3.14"]'
           fi
           echo "tpu_versions=${TPU_VERS}" >> $GITHUB_OUTPUT
@@ -81,7 +90,7 @@ jobs:
             {
               name: "CPU",
               runner: "linux-x86-n4-16",
-              container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+              container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996",  # Tag infrastructure-public-image-2c74567ee8e0
             },
           ]
         python_version: ${{ fromJSON(needs.setup.outputs.cpu_versions) }}
@@ -94,7 +103,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
       - name: Build and upload wheel
         id: build
         uses: ./.github/actions/build-wheel
@@ -133,14 +142,14 @@ jobs:
     runs-on: ${{ matrix.runner }}
     continue-on-error: ${{ matrix.allowed_to_fail }}
     container:
-      image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest
+      image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996  # Tag infrastructure-public-image-2c74567ee8e0
       options: --privileged
     permissions:
       contents: read
       pull-requests: read
       issues: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
       # Git security patch (CVE-2022-24765) blocks root from operating on runner-owned directories:
       # https://github.blog/open-source/git/git-security-vulnerability-announced/#cve-2022-24765.
       # Tell Git explicitly to trust the workspace `/__w/torch_tpu/torch_tpu` inside this ephemeral
@@ -148,10 +157,13 @@ jobs:
       - name: Fix Git Workspace Ownership
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Download Wheel from GCS
+        env:
+          PYTHON_VERSION: ${{ matrix.python_version }}
+          GCS_WHEEL_DIR: ${{ needs.build_wheels.outputs.gcs_wheel_dir }}
         run: |
           mkdir dist
-          PYTHON_VER_CLEAN=$(echo "${{ matrix.python_version }}" | tr -d '.')
-          gcloud storage cp "${{ needs.build_wheels.outputs.gcs_wheel_dir }}*cp${PYTHON_VER_CLEAN}*.whl" dist/
+          PYTHON_VER_CLEAN=$(echo "${PYTHON_VERSION}" | tr -d '.')
+          gcloud storage cp "${GCS_WHEEL_DIR}*cp${PYTHON_VER_CLEAN}*.whl" dist/
       - name: Download a specific CUDA-enabled torch wheel to verify the override mechanism
         if: matrix.wheel_version == 'cuda'
         run: |
@@ -211,14 +223,14 @@ jobs:
     runs-on: ${{ matrix.runner || 'linux-x86-ct5lp-224-8tpu' }}
     continue-on-error: ${{ matrix.allowed_to_fail }}
     container:
-      image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest
+      image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996  # Tag infrastructure-public-image-2c74567ee8e0
       options: --privileged
     permissions:
       contents: read
       pull-requests: read
       issues: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
       # Git security patch (CVE-2022-24765) blocks root from operating on runner-owned directories:
       # https://github.blog/open-source/git/git-security-vulnerability-announced/#cve-2022-24765.
       # Tell Git explicitly to trust the workspace `/__w/torch_tpu/torch_tpu` inside this ephemeral
@@ -226,10 +238,13 @@ jobs:
       - name: Fix Git Workspace Ownership
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Download Wheel from GCS
+        env:
+          PYTHON_VERSION: ${{ matrix.python_version }}
+          GCS_WHEEL_DIR: ${{ needs.build_wheels.outputs.gcs_wheel_dir }}
         run: |
           mkdir dist
-          PYTHON_VER_CLEAN=$(echo "${{ matrix.python_version }}" | tr -d '.')
-          gcloud storage cp "${{ needs.build_wheels.outputs.gcs_wheel_dir }}*cp${PYTHON_VER_CLEAN}*.whl" dist/
+          PYTHON_VER_CLEAN=$(echo "${PYTHON_VERSION}" | tr -d '.')
+          gcloud storage cp "${GCS_WHEEL_DIR}*cp${PYTHON_VER_CLEAN}*.whl" dist/
       - name: Download PyTorch Nightly Wheel to verify the override mechanism
         if: matrix.wheel_version == 'nightly'
         run: |
