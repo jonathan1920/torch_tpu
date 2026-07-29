@@ -2171,11 +2171,7 @@ class TestOps(TorchTpuTestBase):
                 + COMPLEX_DTYPES
                 + (torch.bfloat16, torch.float16)
             ),
-            "gpu": (
-                INTEGRAL_DTYPES
-                + COMPLEX_DTYPES
-                + (torch.bfloat16, torch.float16)
-            ),
+            "gpu": INTEGRAL_DTYPES + COMPLEX_DTYPES + (torch.float16,),
         },
     )
 
@@ -2740,7 +2736,7 @@ class TestOps(TorchTpuTestBase):
         # precision variations can lead to binning errors.
         # TODO: GPU does not support `bool`, `bfloat16`, and `float16` dtypes.
         exclude_dtypes={
-            "cpu": INTEGRAL_DTYPES + (torch.bfloat16, torch.float16),
+            "cpu": INTEGRAL_DTYPES + (torch.float16,),
             "gpu": (
                 torch.bool,
                 torch.int8,
@@ -2856,7 +2852,16 @@ class TestOps(TorchTpuTestBase):
   def test_lu_unpack(self):
     self.do_test_op(
         "lu_unpack",
-        exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        exclude_dtypes={  # EXCLUDE_DTYPES_OK=unsupported
+            "cpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+            "gpu": (
+                torch.uint8,
+                torch.int16,
+                torch.int32,
+                torch.int64,
+                torch.half,
+            ),
+        },
         # TODO(b/495521055): lu_unpack fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
             op_testing.is_compiled_mode()
@@ -2867,7 +2872,16 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_lu_solve(self):
     self.do_test_op(
         "linalg.lu_solve",
-        exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        exclude_dtypes={  # EXCLUDE_DTYPES_OK=unsupported
+            "cpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+            "gpu": (
+                torch.uint8,
+                torch.int16,
+                torch.int32,
+                torch.int64,
+                torch.half,
+            ),
+        },
         # TODO(b/495521055): linalg.lu_solve fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
             op_testing.is_compiled_mode()
@@ -2878,7 +2892,16 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_solve_ex(self):
     self.do_test_op(
         "linalg.solve_ex",
-        exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        exclude_dtypes={  # EXCLUDE_DTYPES_OK=unsupported
+            "cpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+            "gpu": (
+                torch.uint8,
+                torch.int16,
+                torch.int32,
+                torch.int64,
+                torch.half,
+            ),
+        },
         # TODO(b/495521055): linalg.solve_ex fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
             op_testing.is_compiled_mode()
@@ -2902,7 +2925,16 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_inv_ex_out(self):
     self.do_test_op(
         "linalg.inv",
-        exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        exclude_dtypes={  # EXCLUDE_DTYPES_OK=unsupported
+            "cpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+            "gpu": (
+                torch.uint8,
+                torch.int16,
+                torch.int32,
+                torch.int64,
+                torch.half,
+            ),
+        },
         # TODO(b/495521055): linalg.inv fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
             op_testing.is_compiled_mode()
@@ -3148,10 +3180,7 @@ class TestOps(TorchTpuTestBase):
         # TODO: fix _native_batch_norm_legit(out=...) failing.
         check_out_variant=False,
         exclude_dtypes={
-            "gpu": (
-                torch.bfloat16,
-                torch.float64,
-            )
+            "gpu": (torch.float64,),
         },
         skip_if=_batch_norm_complex64_compiled_gpu,
     )
@@ -3494,7 +3523,8 @@ class TestOps(TorchTpuTestBase):
   def test_remainder(self):
     self.do_test_op(
         "remainder",
-        # TODO: fix remainder() failing with bfloat16 dtypes.
+        # bfloat16 remainder is unstable at division boundaries: quotient
+        # rounding flips shift the result by a full divisor vs CPU and GPU.
         exclude_dtypes=(torch.bfloat16,),
         exclude_inplace_dtypes=(torch.bfloat16,),
     )
@@ -3694,8 +3724,7 @@ class TestOps(TorchTpuTestBase):
         # integers other than int32 and int64, floats and complex.
         exclude_dtypes={
             "gpu": (
-                (torch.uint8, torch.int8, torch.int16)
-                + (torch.float64, torch.bfloat16)
+                (torch.uint8, torch.int8, torch.int16, torch.float64)
                 + COMPLEX_DTYPES
             ),
         },
