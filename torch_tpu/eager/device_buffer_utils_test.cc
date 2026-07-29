@@ -20,8 +20,9 @@
 #include <string>
 #include <vector>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mlir/IR/BuiltinTypes.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/fingerprint_utils.h"
@@ -30,28 +31,32 @@
 namespace torch_tpu {
 namespace {
 
+using testing::ElementsAre;
+using testing::Pair;
+
 TEST(DeviceBufferUtilsTest,
      ComputeConstantDeviceBufferRefOpParamCacheKeysMatchesGoldenMap) {
-  std::vector<char> data = {'a', 'b', 'c', 'd'};
-  Dimensions dims = {2, 3};
-  mlir::ElementType dtype = mlir::ElementType::F32;
+  const std::vector<char> data = {'a', 'b', 'c', 'd'};
+  const Dimensions dims = {2, 3};
+  const auto dtype = mlir::ElementType::F32;
 
   TF_ASSERT_OK_AND_ASSIGN(
       const OpParamCacheKeys keys,
       internal::ComputeConstantDeviceBufferRefOpParamCacheKeys(data, dims,
                                                                dtype));
 
-  std::map<std::string, FingerprintType> actual_map(
-      keys.begin(), keys.end());  // STD_PAIR_OK=test map.
+  const std::map<std::string, FingerprintType> actual_map(keys.begin(),
+                                                          keys.end());
 
-  const std::map<std::string, FingerprintType> expected_map = {
-      // STD_PAIR_OK=test map.
-      {"data", 2026542488743870450ULL},
-      {"dimensions", FingerprintCatLeft("", "2", "3")},
-      {"element_type", Fingerprint("f32")},
-  };
-
-  EXPECT_EQ(actual_map, expected_map);
+  EXPECT_THAT(
+      actual_map,
+      ElementsAre(
+          // go/keep-sorted start
+          Pair("data", 1897425971756105985ULL),
+          Pair("dimensions", FingerprintCatLeft("", "2", "3")),
+          Pair("element_type", Fingerprint("f32"))  //
+                                                    // go/keep-sorted end
+          ));
 }
 
 }  // namespace

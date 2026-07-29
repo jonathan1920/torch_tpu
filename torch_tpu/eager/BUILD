@@ -915,7 +915,7 @@ torch_tpu_cc_test(
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:fingerprint_utils",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
         "@xla//xla/tsl/platform:statusor",
     ],
 )
