@@ -522,7 +522,7 @@ TEST(SymbolicViewPrimitive, UnsupportedViewCacheKeys) {
       param_keys, ViewSequenceCacheKey(unfold, *tensor.unsafeGetTensorImpl()));
   EXPECT_THAT(param_keys,
               ElementsAre(Pair("storage_offset", Fingerprint("0")),
-                          Pair("strides", FingerprintCatLeft("", "4", "1"))));
+                          Pair("strides", FingerprintCat("", "4", "1"))));
 }
 
 }  // namespace

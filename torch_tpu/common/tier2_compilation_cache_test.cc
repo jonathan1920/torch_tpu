@@ -163,9 +163,8 @@ TEST_F(Tier2CacheEntryLockTest, CreatesLockFileIfNeeded) {
 
   // The lock file should be created.
   EXPECT_THAT(ListFiles(cache_path_),
-              ElementsAre(absl::StrCat(
-                  cache_path_, "/",
-                  "000000000000007b_5825f5f3bd962979_121ed38098a602e1.lock")));
+              ElementsAre(absl::StrCat(cache_path_, "/", key.CompactFormat(),
+                                       ".lock")));
 }
 
 // If the lock file for a key already exists, the Tier2CacheEntryLock ctor

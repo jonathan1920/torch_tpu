@@ -279,12 +279,12 @@ TEST(FingerprintCat, WorksForMultipleArgs) {
          "correctness. Do not change the expected value to make the test pass. "
          "Instead, figure out why your code change caused the fingerprint to "
          "change.";
-  EXPECT_EQ(FingerprintCat(1, 2, 3), 10629069731271099820ULL)
+  EXPECT_EQ(FingerprintCat(1, 2, 3), 4705709369506538269ULL)
       << "Fingerprint stability is vital for the compilation cache "
          "correctness. Do not change the expected value to make the test pass. "
          "Instead, figure out why your code change caused the fingerprint to "
          "change.";
-  EXPECT_EQ(FingerprintCat(1, 2, 3, 4), 6144917672450084373ULL)
+  EXPECT_EQ(FingerprintCat(1, 2, 3, 4), 16128061944719583136ULL)
       << "Fingerprint stability is vital for the compilation cache "
          "correctness. Do not change the expected value to make the test pass. "
          "Instead, figure out why your code change caused the fingerprint to "

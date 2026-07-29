@@ -215,9 +215,9 @@ TEST(OpParamCacheKeys, SetParamScalarArray) {
   ASSERT_TRUE(params2_or.ok());
   EXPECT_THAT(
       params2_or.value(),
-      ElementsAre(Pair("foo", FingerprintCatLeft(
-                                  "", internal::EncodeParamCacheKey(s1).value(),
-                                  internal::EncodeParamCacheKey(s2).value()))));
+      ElementsAre(Pair(
+          "foo", FingerprintCat("", internal::EncodeParamCacheKey(s1).value(),
+                                internal::EncodeParamCacheKey(s2).value()))));
 
   const at::Scalar scalars3[] = {s1, s2, s3};
   const auto params3_or = *OpParamCacheKeysBuilder().SetParam(
@@ -225,10 +225,10 @@ TEST(OpParamCacheKeys, SetParamScalarArray) {
   ASSERT_TRUE(params3_or.ok());
   EXPECT_THAT(
       params3_or.value(),
-      ElementsAre(Pair("foo", FingerprintCatLeft(
-                                  "", internal::EncodeParamCacheKey(s1).value(),
-                                  internal::EncodeParamCacheKey(s2).value(),
-                                  internal::EncodeParamCacheKey(s3).value()))));
+      ElementsAre(Pair(
+          "foo", FingerprintCat("", internal::EncodeParamCacheKey(s1).value(),
+                                internal::EncodeParamCacheKey(s2).value(),
+                                internal::EncodeParamCacheKey(s3).value()))));
 }
 
 TEST(OpParamCacheKeys, SetParamReduceOp) {
@@ -318,7 +318,7 @@ TEST(OpParamCacheKeys, SetParamIntSpan) {
       *OpParamCacheKeysBuilder().SetParam("foo", Dimensions({1, 2, 3}));
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("foo", FingerprintCatLeft("", "1", "2", "3"))));
+              ElementsAre(Pair("foo", FingerprintCat("", "1", "2", "3"))));
 }
 
 TEST(OpParamCacheKeys, SetParamDouble) {
@@ -416,7 +416,7 @@ TEST(OpParamCacheKeys, SetParamSymIntArrayRef) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", sir);
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("foo", FingerprintCatLeft("", "123", "456"))));
+              ElementsAre(Pair("foo", FingerprintCat("", "123", "456"))));
 #endif
 
   c10::SymIntArrayRef empty_sym_int_array_ref;

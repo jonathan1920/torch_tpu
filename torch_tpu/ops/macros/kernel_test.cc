@@ -107,10 +107,10 @@ void Kernel5(int ndim, double alpha, std::optional<int> seed,
   TT_KERNEL(OpName::kAdd, param_keys, (ndim, alpha, seed, cond, name), {
     EXPECT_THAT(param_keys, ElementsAre(
                                 // go/keep-sorted start
-                                Pair("alpha", Fingerprint("2.5")),           //
-                                Pair("name", FingerprintCatLeft("+", "")),   //
-                                Pair("ndim", Fingerprint("3")),              //
-                                Pair("seed", FingerprintCatLeft("+", "42"))  //
+                                Pair("alpha", Fingerprint("2.5")),       //
+                                Pair("name", FingerprintCat("+", "")),   //
+                                Pair("ndim", Fingerprint("3")),          //
+                                Pair("seed", FingerprintCat("+", "42"))  //
                                 // go/keep-sorted end
                                 ));
   });

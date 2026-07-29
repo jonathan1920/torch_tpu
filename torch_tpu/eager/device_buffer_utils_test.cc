@@ -48,15 +48,14 @@ TEST(DeviceBufferUtilsTest,
   const std::map<std::string, FingerprintType> actual_map(keys.begin(),
                                                           keys.end());
 
-  EXPECT_THAT(
-      actual_map,
-      ElementsAre(
-          // go/keep-sorted start
-          Pair("data", 1897425971756105985ULL),
-          Pair("dimensions", FingerprintCatLeft("", "2", "3")),
-          Pair("element_type", Fingerprint("f32"))  //
-                                                    // go/keep-sorted end
-          ));
+  EXPECT_THAT(actual_map, ElementsAre(
+                              // go/keep-sorted start
+                              Pair("data", 1897425971756105985ULL),
+                              Pair("dimensions", FingerprintCat("", "2", "3")),
+                              Pair("element_type",
+                                   Fingerprint("f32"))  //
+                                                        // go/keep-sorted end
+                              ));
 }
 
 }  // namespace

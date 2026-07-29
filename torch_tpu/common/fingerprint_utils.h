@@ -167,12 +167,12 @@ template <typename T>
 }
 
 // FingerprintCat(ts...) returns the fingerprint of the given values in a
-// right-associative manner.
+// left-associative manner.
 //
 // FingerprintCat(t0) = F(t0)
 // FingerprintCat(t0, t1) = F(t0) + F(t1)
-// FingerprintCat(t0, t1, t2) = F(t0) + (F(t1) + F(t2))
-// FingerprintCat(t0, ..., tN) = F(t0) + (F(t1) + (... + F(tN)...))
+// FingerprintCat(t0, t1, t2) = (F(t0) + F(t1)) + F(t2)
+// FingerprintCat(t0, ..., tN) = (...(F(t0) + F(t1)) + ...) + F(tN)
 //
 // where F(t) is Fingerprint(t) and + is tsl::FingerprintCat64.
 //
@@ -183,33 +183,12 @@ template <typename T>
   return Fingerprint(t);
 }
 // The recursive case.
-template <typename T, typename... Ts>
-[[nodiscard]] FingerprintType FingerprintCat(const T& t, const Ts&... ts) {
-  return tsl::FingerprintCat64(Fingerprint(t), FingerprintCat(ts...));
-}
-
-// FingerprintCatLeft(ts...) returns the fingerprint of the given values in a
-// left-associative manner.
-//
-// FingerprintCatLeft(t0) = F(t0)
-// FingerprintCatLeft(t0, t1) = F(t0) + F(t1)
-// FingerprintCatLeft(t0, t1, t2) = (F(t0) + F(t1)) + F(t2)
-// FingerprintCatLeft(t0, ..., tN) = (...(F(t0) + F(t1)) + ...) + F(tN)
-//
-// where F(t) is Fingerprint(t) and + is tsl::FingerprintCat64.
-//
-// The base cases.
-template <typename T>
-[[nodiscard]] FingerprintType FingerprintCatLeft(const T& t) {
-  return Fingerprint(t);
-}
-// The recursive case.
 template <typename T0, typename T1, typename... Ts>
-[[nodiscard]] FingerprintType FingerprintCatLeft(const T0& t0, const T1& t1,
-                                                 const Ts&... ts) {
+[[nodiscard]] FingerprintType FingerprintCat(const T0& t0, const T1& t1,
+                                             const Ts&... ts) {
   const FingerprintType fp =
       tsl::FingerprintCat64(Fingerprint(t0), Fingerprint(t1));
-  return FingerprintCatLeft(fp, ts...);
+  return FingerprintCat(fp, ts...);
 }
 
 }  // namespace torch_tpu
