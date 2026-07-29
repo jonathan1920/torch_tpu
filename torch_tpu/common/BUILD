@@ -770,6 +770,7 @@ torch_tpu_cc_library(
     hdrs = ["environment.h"],
     deps = [
         ":env_vars",
+        ":error_utils",
         "//torch_tpu/distributed/slicebuilder:discovery",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",

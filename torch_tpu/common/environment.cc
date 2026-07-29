@@ -25,13 +25,24 @@
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "torch_tpu/common/env_vars.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 
 namespace torch_tpu {
 
 absl::Status InitializeDistributedEnvironment(
     const DistributedWorkerConfiguration& config) {
-  SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(config.rank));
+  if (config.sb_addrs.empty()) {
+    return TT_ERROR(error::kFailedPrecondition)
+           << kTpuSlicebuilderAddressesEnvVar << " is empty.";
+  }
+  if (config.rank < 0) {
+    return TT_ERROR(error::kFailedPrecondition)
+           << "RANK " << config.rank << " is out of bounds (negative)";
+  }
+  std::vector<std::string> addresses = absl::StrSplit(config.sb_addrs, ',');
+  int slice_rank = config.rank % static_cast<int>(addresses.size());
+  SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(slice_rank));
   SetEnv(kTpuVisibleChipsEnvVar, absl::StrCat(config.local_rank));
 
   std::vector<std::string> topology_dims = absl::StrSplit(config.topology, ',');

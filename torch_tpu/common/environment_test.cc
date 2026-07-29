@@ -111,5 +111,29 @@ TEST(EnvironmentTest, InitializeDistributedEnvironmentUnsetsAddressesFirst) {
   EXPECT_STREQ(addr_val, "new_address");
 }
 
+TEST(EnvironmentTest,
+     InitializeDistributedEnvironmentSetsTaskIdUsingSliceRankForMultislice) {
+  unsetenv(kAllowMultipleLibtpuLoadEnvVar);
+  unsetenv(kTpuProcessAddressesEnvVar);
+  unsetenv(kTpuHostBoundsEnvVar);
+  unsetenv(kTpuChipsPerHostBoundsEnvVar);
+  unsetenv(kTpuProcessBoundsEnvVar);
+  unsetenv(kTpuChipsPerProcessBoundsEnvVar);
+  unsetenv(kCloudTpuTaskIdEnvVar);
+
+  DistributedWorkerConfiguration config;
+  config.rank = 5;
+  config.local_rank = 0;
+  config.sb_port = "1234";
+  config.sb_addrs = "host0:1234,host1:1234";
+  config.topology = "1,1,1";
+
+  EXPECT_EQ(InitializeDistributedEnvironment(config), absl::OkStatus());
+
+  const char* task_id_val = std::getenv(kCloudTpuTaskIdEnvVar);
+  ASSERT_NE(task_id_val, nullptr);
+  EXPECT_STREQ(task_id_val, "1");
+}
+
 }  // namespace
 }  // namespace torch_tpu

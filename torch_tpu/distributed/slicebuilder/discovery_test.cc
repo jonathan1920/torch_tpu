@@ -99,5 +99,34 @@ TEST(DiscoveryDeathTest, GetDistributedWorkerConfiguration) {
       ExitedWithCode(0), "");
 }
 
+TEST(DiscoveryDeathTest, GetDistributedWorkerConfigurationMultislice) {
+  EXPECT_EXIT(
+      {
+        setenv(kRankEnvVar, "3", 1);
+        setenv(kLocalRankEnvVar, "0", 1);
+        setenv(kWorldSizeEnvVar, "4", 1);
+        setenv(kMasterAddrEnvVar, "localhost", 1);
+        setenv(kMasterPortEnvVar, "12345", 1);
+        setenv(kTpuSlicebuilderAddressesEnvVar, "host0:54321,host1:54322", 1);
+        setenv(kTpuTopologyEnvVar, "1x1x1", 1);
+
+        const absl::StatusOr<DistributedWorkerConfiguration> config_or =
+            GetDistributedWorkerConfiguration();
+
+        if (!config_or.ok()) {
+          ABSL_LOG(ERROR) << "Expected success, but got failure: "
+                          << config_or.status();
+          _exit(1);
+        }
+        if (config_or->rank != 3 || config_or->sb_port != "54322" ||
+            config_or->sb_addrs != "host0:54321,host1:54322") {
+          ABSL_LOG(ERROR) << "Unexpected config values.";
+          _exit(2);
+        }
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
 }  // namespace
 }  // namespace torch_tpu
