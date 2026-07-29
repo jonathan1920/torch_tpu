@@ -218,9 +218,13 @@ class FunctionTest(absltest.TestCase):
 
       m, n, k = 16, 16, 16
       dtype = torch.float8_e4m3fn
-      self_float = torch.randn(m, k, dtype=torch.float32)
+      self_float = (
+          torch.arange(m * k, dtype=torch.float32).view(m, k) % 10
+      ) * 0.1
       self_fp8 = self_float.to(dtype)
-      mat2_float = torch.randn(k, n, dtype=torch.float32)
+      mat2_float = (
+          torch.arange(k * n, dtype=torch.float32).view(k, n) % 10
+      ) * 0.1
       mat2_fp8 = mat2_float.to(dtype)
 
       scale_a = [torch.tensor([1.5], dtype=torch.float32)]
@@ -294,13 +298,21 @@ class FunctionTest(absltest.TestCase):
 
       m, n, k = 128, 128, 128
       dtype = torch.float8_e4m3fn
-      self_float = torch.randn(m, k, dtype=torch.float32)
+      self_float = (
+          torch.arange(m * k, dtype=torch.float32).view(m, k) % 10
+      ) * 0.1
       self_fp8 = self_float.to(dtype)
-      mat2_float = torch.randn(k, n, dtype=torch.float32)
+      mat2_float = (
+          torch.arange(k * n, dtype=torch.float32).view(k, n) % 10
+      ) * 0.1
       mat2_fp8 = mat2_float.to(dtype)
 
-      scale_a_logical = torch.randn(m, k // 32, dtype=torch.float32).abs() + 0.1
-      scale_b_logical = torch.randn(k // 32, n, dtype=torch.float32).abs() + 0.1
+      scale_a_logical = (
+          torch.arange(m * (k // 32), dtype=torch.float32).view(m, k // 32) % 5
+      ) * 0.1 + 0.1
+      scale_b_logical = (
+          torch.arange((k // 32) * n, dtype=torch.float32).view(k // 32, n) % 5
+      ) * 0.1 + 0.1
 
       scale_a_tpu = swizzle_lhs_scale(scale_a_logical)
       scale_b_tpu = swizzle_rhs_scale(scale_b_logical)
