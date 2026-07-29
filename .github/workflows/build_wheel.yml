@@ -278,6 +278,15 @@ jobs:
         uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      # Unlike the bazel suite below (which runs from source), this exercises
+      # the wheel exactly as users consume it: nox installs the built wheel
+      # plus a pip torch in one uv resolution, then runs the TPU smoke tests
+      # (autoload, execution modes, and a sync test that compiles) against the
+      # versioned-glue dispatch on a real TPU.
+      - name: Run smoke tests via nox
+        env:
+          PYTHON_VERSION: ${{ matrix.python_version }}
+        run: uvx nox --force-python "${PYTHON_VERSION}" -s "smoke_test(tpu-cpu)"
       - name: Run Impacted Tests via bazel-diff
         uses: ./.github/actions/bazel-diff
         with:

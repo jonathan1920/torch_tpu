@@ -131,6 +131,7 @@ def _dist_wheel(session: nox.Session) -> pathlib.Path:
         ("cpu", "cuda"),
         ("cpu", "nightly"),
         ("cpu", "nightly-pinned"),
+        ("tpu", "cpu"),
         ("tpu", "nightly"),
         ("tpu", "nightly-pinned"),
     ],
@@ -139,6 +140,7 @@ def _dist_wheel(session: nox.Session) -> pathlib.Path:
         "cpu-cuda",
         "cpu-nightly",
         "cpu-nightly-pinned",
+        "tpu-cpu",
         "tpu-nightly",
         "tpu-nightly-pinned",
     ],
@@ -246,4 +248,15 @@ def _install_and_run_smoke_tests(
   # Mirrors the env of the corresponding bazel target in tests/BUILD: the
   # xla_cpu backend only registers when explicitly allowed.
   env = {"TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1"} if device == "cpu" else {}
-  session.run("pytest", *_smoke_test_files(device), *session.posargs, env=env)
+  # sys-level capture (not the fd-level default): fd capture swallows
+  # C-level stderr, so when a native extension aborts the process at import
+  # the abort message is lost with it -- only the faulthandler traceback
+  # survives. Smoke tests exist to catch exactly those crashes; keep the
+  # real stderr fd open so their messages reach the CI log.
+  session.run(
+      "pytest",
+      "--capture=sys",
+      *_smoke_test_files(device),
+      *session.posargs,
+      env=env,
+  )
