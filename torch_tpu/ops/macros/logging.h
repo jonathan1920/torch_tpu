@@ -500,7 +500,8 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     ABSL_CHECK(  // CRASH_OK
         normalized_arg_type_in_func_sig == "at::Scalar" ||
         normalized_arg_type_in_func_sig == "double" ||
-        normalized_arg_type_in_func_sig == "std::optional<at::Scalar>")
+        normalized_arg_type_in_func_sig == "std::optional<at::Scalar>" ||
+        normalized_arg_type_in_func_sig == "std::optional<double>")
         << message();
   } else if constexpr (std::is_same_v<T, MaybePromotedScalar>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();

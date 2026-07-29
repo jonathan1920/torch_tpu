@@ -921,6 +921,12 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "logical_or.out";
     case OpName::kLogicalXorOut:
       return "logical_xor.out";
+    case OpName::kLogit:
+      return "logit";
+    case OpName::kLogitOut:
+      return "logit.out";
+    case OpName::kLogit_:
+      return "logit_";
     case OpName::kLshiftScalar:
       return "__lshift__.Scalar";
     case OpName::kLshiftTensor:

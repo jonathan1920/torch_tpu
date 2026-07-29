@@ -533,6 +533,17 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 8e-3, "atol": 1.5e-3},
         torch.float32: {"rtol": 3e-4, "atol": 1e-4},
     },
+    "logit": {
+        torch.bfloat16: {"atol": 9.4e-3},
+        torch.bool: {"rtol": 0, "atol": 7.5e-5},
+        torch.float16: {"rtol": 1.2e-3, "atol": 1.2e-3},
+        torch.float32: {"rtol": 1.1e-4, "atol": 1.3e-4},
+        torch.int16: {"rtol": 0, "atol": 7.5e-5},
+        torch.int32: {"rtol": 0, "atol": 7.5e-5},
+        torch.int64: {"rtol": 0, "atol": 7.5e-5},
+        torch.int8: {"rtol": 0, "atol": 7.5e-5},
+        torch.uint8: {"rtol": 0, "atol": 7.5e-5},
+    },
     "matmul": {
         torch.bfloat16: {"rtol": 3.9e-1, "atol": 2.9e-1},
         torch.complex64: {"rtol": 4e-1, "atol": 1.9},
@@ -2838,6 +2849,9 @@ class TestOps(TorchTpuTestBase):
         # bool triggers an error in the sample generation code
         exclude_dtypes=(torch.bool,),
     )
+
+  def test_logit(self):
+    self.do_test_op("logit", check_grad=False)
 
   def test_lu_unpack(self):
     self.do_test_op(

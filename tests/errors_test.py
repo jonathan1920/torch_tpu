@@ -2263,6 +2263,22 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.digamma(t)
 
+  def test_logit_unsupported_complex(self):
+    t = torch.tensor([1 + 1j], device=et.device(), dtype=torch.complex64)
+    out = torch.tensor([1 + 1j], device=et.device(), dtype=torch.complex64)
+    funcs = [
+        (lambda: torch.logit(t), "logit()"),
+        (lambda: torch.logit(t, out=out), "logit()"),
+        (lambda: torch.logit_(t), "logit_()"),
+    ]
+    for func, op_prefix in funcs:
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=f"{op_prefix}: complex dtypes are not supported, got complex64",
+          gpu=""""logit_cuda" not implemented for 'ComplexFloat'""",
+      ):
+        func()
+
   @parameterized.named_parameters(
       ("bool", torch.bool, "bool", "Bool"),
       ("int64", torch.int64, "int64", "Long"),
