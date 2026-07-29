@@ -35,7 +35,7 @@ namespace torch_tpu {
 
 enum class ScanDirection { kForward, kReverse };
 
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const ScanDirection value) {
   return value == ScanDirection::kForward ? "forward" : "reverse";
 }

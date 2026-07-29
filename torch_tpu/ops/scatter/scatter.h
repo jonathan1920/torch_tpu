@@ -38,7 +38,7 @@ enum class ScatterVersion {
   kV2   // Supports 'sum', 'prod', 'mean', 'amax', 'amin'
 };
 
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const ScatterOp scatter_op) {
   switch (scatter_op) {
     case ScatterOp::kReplace:
@@ -60,7 +60,7 @@ enum class ScatterVersion {
   }
 }
 
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const ScatterIncludeSelf include_self) {
   switch (include_self) {
     case ScatterIncludeSelf::kNo:

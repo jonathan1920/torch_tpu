@@ -151,8 +151,8 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
                << ", self_type: " << mlir::debugString(self_type)
                << ", src_type: " << mlir::debugString(src_type)
                << ", index_type: " << mlir::debugString(index_type)
-               << ", scatter_op: " << FormatParamCacheKey(scatter_op)
-               << ", include_self: " << FormatParamCacheKey(include_self);
+               << ", scatter_op: " << EncodeParamCacheKey(scatter_op)
+               << ", include_self: " << EncodeParamCacheKey(include_self);
 
   if (src_type.getRank() == 0) {
     TT_ASSIGN_OR_RETURN(src, BroadcastIfNeeded(src, index));

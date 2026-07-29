@@ -263,54 +263,57 @@ constexpr bool IncludeInCacheKey() {
       false);
 }
 
-// FormatParamCacheKey() is a family of function templates and overloads that
-// convert different op parameter types to strings, which will be used to
-// compute the op cache key. They may return either a string or a
-// StatusOr<std::string>.
+// EncodeParamCacheKey() is a family of function templates and overloads that
+// convert different op parameter types to strings or fingerprints, which will
+// be used to compute the op cache key. They may return std::string,
+// absl::StatusOr<std::string>, FingerprintType, or
+// absl::StatusOr<FingerprintType>.
 //
 // For each given value type, they must guarantee that different values
-// produce different strings.
+// produce different keys or fingerprints.
 //
-// FormatParamCacheKey() should be defined only for types that need to be
+// EncodeParamCacheKey() should be defined only for types that need to be
 // included in the cache key computation.
-absl::StatusOr<std::string> FormatParamCacheKey(at::Scalar value);
-[[nodiscard]] std::string FormatParamCacheKey(const c10::SymInt& value);
-[[nodiscard]] std::string FormatParamCacheKey(c10::SymIntArrayRef value);
-[[nodiscard]] inline std::string FormatParamCacheKey(
+absl::StatusOr<std::string> EncodeParamCacheKey(at::Scalar value);
+[[nodiscard]] std::string EncodeParamCacheKey(const c10::SymInt& value);
+[[nodiscard]] FingerprintType EncodeParamCacheKey(c10::SymIntArrayRef value);
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const at::ScalarType value) {
   return std::string(ToString(value));
 }
-[[nodiscard]] std::string FormatParamCacheKey(c10d::ReduceOp value);
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] std::string EncodeParamCacheKey(c10d::ReduceOp value);
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const mlir::ElementType value) {
   return std::string(ToShortString(value));
 }
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const mlir::stablehlo::Precision value) {
   return std::string(mlir::stablehlo::stringifyPrecision(value));
 }
-[[nodiscard]] inline std::string FormatParamCacheKey(const double value) {
+[[nodiscard]] inline std::string EncodeParamCacheKey(const double value) {
   return LosslessToString(value);
 }
 template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-[[nodiscard]] inline std::string FormatParamCacheKey(const T value) {
+[[nodiscard]] inline std::string EncodeParamCacheKey(const T value) {
   return absl::StrCat(value);
 }
-[[nodiscard]] inline std::string FormatParamCacheKey(const bool value) {
+[[nodiscard]] inline std::string EncodeParamCacheKey(const bool value) {
   return value ? "t" : "f";
 }
-[[nodiscard]] std::string FormatParamCacheKey(std::string_view value);
-[[nodiscard]] inline std::string FormatParamCacheKey(const char* const value) {
-  return FormatParamCacheKey(std::string_view(value));
+[[nodiscard]] FingerprintType EncodeParamCacheKey(std::string_view value);
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(
+    const char* const value) {
+  return EncodeParamCacheKey(std::string_view(value));
 }
-[[nodiscard]] inline std::string FormatParamCacheKey(const std::string& value) {
-  return FormatParamCacheKey(std::string_view(value));
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(
+    const std::string& value) {
+  return EncodeParamCacheKey(std::string_view(value));
 }
-[[nodiscard]] std::string FormatParamCacheKey(at::Layout value);
-[[nodiscard]] std::string FormatParamCacheKey(at::MemoryFormat value);
-[[nodiscard]] std::string FormatParamCacheKey(at::Device value);
+[[nodiscard]] std::string EncodeParamCacheKey(at::Layout value);
+[[nodiscard]] std::string EncodeParamCacheKey(at::MemoryFormat value);
+[[nodiscard]] std::string EncodeParamCacheKey(at::Device value);
 
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const c10::optional<at::Tensor>& value) {
   // Encode both the presence and the definedness of the tensor uniformly.
   // Both nullopt and an undefined tensor are formatted as empty string because
@@ -318,157 +321,172 @@ template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
   return (value.has_value() && value->defined()) ? "t" : "";
 }
 
-[[nodiscard]] std::string FormatParamCacheKey(
+[[nodiscard]] std::string EncodeParamCacheKey(
     const std::optional<PromotedScalar>& value);
 
-[[nodiscard]] std::string FormatParamCacheKey(const MaybePromotedScalar& value);
+[[nodiscard]] std::string EncodeParamCacheKey(const MaybePromotedScalar& value);
 
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const c10::optional<at::Generator>& value) {
   return value.has_value() ? "g" : "";
 }
 
-// The return type of FormatParamCacheKey(const T&). Can be either std::string
-// or absl::StatusOr<std::string>.
+// The return type of EncodeParamCacheKey(const T&). Can be std::string,
+// absl::StatusOr<std::string>, FingerprintType, or
+// absl::StatusOr<FingerprintType>.
 template <typename T>
-using FormattedKey = decltype(FormatParamCacheKey(std::declval<T>()));
+using EncodedKey = decltype(EncodeParamCacheKey(std::declval<T>()));
 
-// To guarantee that the correct overload of FormatParamCacheKey() is found,
-// overloads that invoke other FormatParamCacheKey() overloads should be
+// If EncodeParamCacheKey(const T&) returns absl::StatusOr<...>,
+// FingerprintedKey<T> is absl::StatusOr<FingerprintType>. Otherwise it is
+// FingerprintType.
+template <typename T>
+struct FingerprintedKeyTrait {
+  using type = FingerprintType;
+};
+template <typename T>
+struct FingerprintedKeyTrait<absl::StatusOr<T>> {
+  using type = absl::StatusOr<FingerprintType>;
+};
+template <typename T>
+using FingerprintedKey = typename FingerprintedKeyTrait<EncodedKey<T>>::type;
+
+// To guarantee that the correct overload of EncodeParamCacheKey() is found,
+// overloads that invoke other EncodeParamCacheKey() overloads should be
 // declared first and their definitions should be put after all the other
 // overloads.
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(const std::optional<T>& value);
+FingerprintedKey<T> EncodeParamCacheKey(const std::optional<T>& value);
 template <typename T1, typename T2>
-std::string FormatParamCacheKey(      //
+FingerprintType EncodeParamCacheKey(  //
     const std::pair<T1, T2>& value);  // STD_PAIR_OK=generic code.
 template <typename T, std::size_t kSize>
-FormattedKey<T> FormatParamCacheKey(const std::array<T, kSize>& value);
+FingerprintedKey<T> EncodeParamCacheKey(const std::array<T, kSize>& value);
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(const std::vector<T>& value);
+FingerprintedKey<T> EncodeParamCacheKey(const std::vector<T>& value);
 template <typename T, size_t kSize, typename Allocator>
-FormattedKey<T> FormatParamCacheKey(
+FingerprintedKey<T> EncodeParamCacheKey(
     const absl::InlinedVector<T, kSize, Allocator>& value);
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value);
+FingerprintedKey<T> EncodeParamCacheKey(at::ArrayRef<T> value);
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(absl::Span<T> value);
+FingerprintedKey<T> EncodeParamCacheKey(absl::Span<T> value);
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(c10::OptionalArrayRef<T> value);
+FingerprintedKey<T> EncodeParamCacheKey(c10::OptionalArrayRef<T> value);
 
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(const std::optional<T>& value) {
+FingerprintedKey<T> EncodeParamCacheKey(const std::optional<T>& value) {
+  // Encode nullopt as the fingerprint of an empty string.
   if (!value.has_value()) {
-    return "";
+    return Fingerprint("");
   }
 
-  // Surround the formatted value with <> to distinguish between
-  // a nullopt and a value of T that happens to be an empty string.
-  std::string str;
-  if constexpr (std::is_same_v<FormattedKey<T>, std::string>) {
-    str = FormatParamCacheKey(value.value());
-  } else if constexpr (std::is_same_v<FormattedKey<T>,
-                                      absl::StatusOr<std::string>>) {
-    TT_ASSIGN_OR_RETURN(str, FormatParamCacheKey(value.value()));
+  // Prepend the encoded value with "+" to distinguish between
+  // a nullopt and a value of T that happens to encode as an empty string.
+  if constexpr (std::is_same_v<EncodedKey<T>, std::string> ||
+                std::is_same_v<EncodedKey<T>, FingerprintType>) {
+    return FingerprintCat("+", EncodeParamCacheKey(value.value()));
   } else {
-    static_assert(false, "Unsupported return type of FormatParamCacheKey(T).");
+    TT_ASSIGN_OR_RETURN(const auto encoded_value,
+                        EncodeParamCacheKey(value.value()));
+    return FingerprintCat("+", encoded_value);
   }
-  return absl::StrCat("<", str, ">");
 }
 
 template <typename T1, typename T2>
-std::string FormatParamCacheKey(const std::pair<T1, T2>& value) {
-  return absl::StrCat("(", FormatParamCacheKey(value.first), ",",
-                      FormatParamCacheKey(value.second), ")");
+FingerprintType EncodeParamCacheKey(
+    const std::pair<T1, T2>& value) {  // STD_PAIR_OK=generic code.
+  return FingerprintCat(EncodeParamCacheKey(value.first),
+                        EncodeParamCacheKey(value.second));
 }
 
-// Formats a range of values into a string to be used as a cache parameter key.
-template <typename T, typename Result, typename Iter>
-Result FormatParamCacheKeyForRange(const Iter begin, const Iter end) {
-  if (begin == end) {
-    return "";
-  }
-  std::string result = "[";
-  bool first = true;
+// Encodes a range of values into a fingerprint to be used as a cache
+// parameter key. An empty range is encoded as the fingerprint of an empty
+// string, which is intuitive as an empty string can be viewed as an empty
+// sequence of characters.
+template <typename T, typename Iter>
+FingerprintedKey<T> EncodeParamCacheKeyForRange(const Iter begin,
+                                                const Iter end) {
+  using Result = FingerprintedKey<T>;
+  FingerprintType result = Fingerprint("");
   for (Iter it = begin; it != end; ++it) {
-    if (first) {
-      first = false;
+    if constexpr (std::is_same_v<Result, FingerprintType>) {
+      result = FingerprintCat(result, EncodeParamCacheKey(*it));
     } else {
-      absl::StrAppend(&result, ",");
-    }
-    if constexpr (std::is_same_v<Result, std::string>) {
-      absl::StrAppend(&result, FormatParamCacheKey(*it));
-    } else if constexpr (std::is_same_v<Result, absl::StatusOr<std::string>>) {
-      TT_ASSIGN_OR_RETURN(std::string str, FormatParamCacheKey(*it));
-      absl::StrAppend(&result, str);
-    } else {
-      static_assert(false, "Unsupported Result type.");
+      TT_ASSIGN_OR_RETURN(const auto val, EncodeParamCacheKey(*it));
+      result = FingerprintCat(result, val);
     }
   }
-  absl::StrAppend(&result, "]");
   return result;
 }
 
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(absl::Span<T> value) {
-  return FormatParamCacheKeyForRange<T, FormattedKey<T>>(value.begin(),
-                                                         value.end());
+FingerprintedKey<T> EncodeParamCacheKey(absl::Span<T> value) {
+  return EncodeParamCacheKeyForRange<T>(value.begin(), value.end());
 }
 
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(const c10::OptionalArrayRef<T> value) {
+FingerprintedKey<T> EncodeParamCacheKey(const c10::OptionalArrayRef<T> value) {
   if (!value.has_value()) {
-    return "";
+    return Fingerprint("");
   }
-  return FormatParamCacheKey(absl::MakeConstSpan(*value));
+  // Prepend the encoded value with "+" to distinguish between
+  // a nullopt and an empty array.
+  if constexpr (std::is_same_v<FingerprintedKey<T>, FingerprintType>) {
+    return FingerprintCat("+",
+                          EncodeParamCacheKey(absl::MakeConstSpan(*value)));
+  } else {
+    TT_ASSIGN_OR_RETURN(const auto val,
+                        EncodeParamCacheKey(absl::MakeConstSpan(*value)));
+    return FingerprintCat("+", val);
+  }
 }
 template <typename T, std::size_t N>
-FormattedKey<T> FormatParamCacheKey(const std::array<T, N>& value) {
-  return FormatParamCacheKey(absl::MakeConstSpan(value));
+FingerprintedKey<T> EncodeParamCacheKey(const std::array<T, N>& value) {
+  return EncodeParamCacheKey(absl::MakeConstSpan(value));
 }
 template <typename T, size_t kSize, typename Allocator>
-FormattedKey<T> FormatParamCacheKey(
+FingerprintedKey<T> EncodeParamCacheKey(
     const absl::InlinedVector<T, kSize, Allocator>& value) {
-  return FormatParamCacheKey(absl::MakeConstSpan(value));
+  return EncodeParamCacheKey(absl::MakeConstSpan(value));
 }
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(const std::vector<T>& value) {
-  return FormatParamCacheKey(absl::MakeConstSpan(value));
+FingerprintedKey<T> EncodeParamCacheKey(const std::vector<T>& value) {
+  return EncodeParamCacheKey(absl::MakeConstSpan(value));
 }
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value) {
-  return FormatParamCacheKey(absl::MakeConstSpan(value));
+FingerprintedKey<T> EncodeParamCacheKey(at::ArrayRef<T> value) {
+  return EncodeParamCacheKey(absl::MakeConstSpan(value));
 }
 
 template <typename T>
-FormattedKey<T> FormatParamCacheKey(const c10::List<T>& value) {
-  return FormatParamCacheKeyForRange<T, FormattedKey<T>>(value.begin(),
-                                                         value.end());
+FingerprintedKey<T> EncodeParamCacheKey(const c10::List<T>& value) {
+  return EncodeParamCacheKeyForRange<T>(value.begin(), value.end());
 }
 
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const c10d::AllreduceOptions& value) {
-  return FormatParamCacheKey(value.reduceOp);
+  return EncodeParamCacheKey(value.reduceOp);
 }
 
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const c10d::ReduceScatterOptions& value) {
-  return FormatParamCacheKey(value.reduceOp);
+  return EncodeParamCacheKey(value.reduceOp);
 }
 
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const c10d::BroadcastOptions& value) {
-  return FormatParamCacheKey(value.rootRank);
+  return EncodeParamCacheKey(value.rootRank);
 }
 
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const c10d::ScatterOptions& value) {
-  return FormatParamCacheKey(value.rootRank);
+  return EncodeParamCacheKey(value.rootRank);
 }
 
-[[nodiscard]] inline std::string FormatParamCacheKey(
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const c10d::GatherOptions& value) {
-  return FormatParamCacheKey(value.rootRank);
+  return EncodeParamCacheKey(value.rootRank);
 }
 
 }  // namespace internal
@@ -550,17 +568,26 @@ class [[nodiscard]] OpParamCacheKeys {
         << "Duplicate parameter name '" << name
         << "' when computing param cache keys. This is a TorchTPU bug.";
 
-    // Rely on ADL to find the appropriate FormatParamCacheKey() overload for
-    // the given value type. Some overloads return StatusOr<std::string>,
-    // while others return std::string. We assign the result to a
-    // StatusOr<std::string> so that we can handle both the same way.
-    using internal::FormatParamCacheKey;
-    absl::StatusOr<std::string> str_or = FormatParamCacheKey(value);
-    TT_ASSIGN_OR_RETURN(std::string str, std::move(str_or));
-    if (str.empty()) {
-      // No need to add an empty string to the cache keys.
+    // Rely on ADL to find the appropriate EncodeParamCacheKey() overload for
+    // the given value type. Some overloads return std::string or
+    // absl::StatusOr<std::string>, while others return FingerprintType or
+    // absl::StatusOr<FingerprintType>.
+    using internal::EncodeParamCacheKey;
+    using ReturnType = decltype(EncodeParamCacheKey(value));
+    FingerprintType fp = 0;
+    if constexpr (std::is_same_v<ReturnType, std::string> ||
+                  std::is_same_v<ReturnType, absl::StatusOr<std::string>>) {
+      absl::StatusOr<std::string> str_or = EncodeParamCacheKey(value);
+      TT_ASSIGN_OR_RETURN(const std::string str, std::move(str_or));
+      fp = Fingerprint(str);
     } else {
-      name_to_value_[std::move(name_str)] = Fingerprint(str);
+      absl::StatusOr<FingerprintType> fp_or = EncodeParamCacheKey(value);
+      TT_ASSIGN_OR_RETURN(fp, std::move(fp_or));
+    }
+    if (fp == Fingerprint("")) {
+      // No need to add the fingerprint of an empty string to the cache keys.
+    } else {
+      name_to_value_[std::move(name_str)] = fp;
     }
     return absl::OkStatus();
   }
@@ -615,9 +642,9 @@ class OpParamCacheKeys::Builder {
   // 2. If the string is empty, remove the parameter from the builder.
   // If formatting fails, the builder enters an error state.
   //
-  // The formatting is done by calling FormatParamCacheKey() on the value.
+  // The formatting is done by calling EncodeParamCacheKey() on the value.
   // To make this API extensible, we rely on Argument Dependent Lookup (ADL)
-  // to find the appropriate FormatParamCacheKey() overload for the given
+  // to find the appropriate EncodeParamCacheKey() overload for the given
   // value type. In general, the overload for type T should be defined in
   // the same file where T is defined and in the same namespace. When that's
   // not possible (e.g. T is a c10 type, which we don't own), define the

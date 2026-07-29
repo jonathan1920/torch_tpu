@@ -73,13 +73,13 @@ TEST(PromoteScalar, Array) {
   EXPECT_EQ(vps[1].scalar().toDouble(), 4.0);
 }
 
-TEST(FormatParamCacheKey, OptionalPromotedScalar) {
+TEST(EncodeParamCacheKey, OptionalPromotedScalar) {
   at::Scalar s(1.0);
   auto ps = PromoteScalar(s);
   std::optional<PromotedScalar> ops = std::move(ps);
-  EXPECT_EQ(internal::FormatParamCacheKey(ops), "s");
+  EXPECT_EQ(internal::EncodeParamCacheKey(ops), "s");
   std::optional<PromotedScalar> empty;
-  EXPECT_EQ(internal::FormatParamCacheKey(empty), "");
+  EXPECT_EQ(internal::EncodeParamCacheKey(empty), "");
 }
 
 TEST(OpDispatcher, OutputCastingWithoutComputationDtype) {

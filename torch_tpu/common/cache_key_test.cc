@@ -191,21 +191,44 @@ TEST(MaybePromotedScalarDeathTest, GetTensorWhenValueMatchesExcludeCrashes) {
 }
 
 TEST(OpParamCacheKeys, SetParamScalarArray) {
-  at::Scalar s1(123);
-  at::Scalar s2(4.5);
-  at::Scalar s3(true);
-  at::Scalar scalars[] = {s1, s2, s3};
-  auto params_or = *OpParamCacheKeysBuilder().SetParam(
-      "foo", at::ArrayRef<at::Scalar>(scalars));
-  ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(
-      params_or.value(),
-      ElementsAre(Pair("foo", Fingerprint("[123:int64,4.5:float64,1:bool]"))));
-
-  auto params2_or =
+  // Empty array should be omitted from the cache keys.
+  auto params0_or =
       *OpParamCacheKeysBuilder().SetParam("foo", at::ArrayRef<at::Scalar>());
+  ASSERT_TRUE(params0_or.ok());
+  EXPECT_THAT(params0_or.value(), IsEmpty());
+
+  const at::Scalar s1(123);
+  const at::Scalar s2(4.5);
+  const at::Scalar s3(true);
+  const at::Scalar scalars1[] = {s1};
+  const auto params1_or = *OpParamCacheKeysBuilder().SetParam(
+      "foo", at::ArrayRef<at::Scalar>(scalars1));
+  ASSERT_TRUE(params1_or.ok());
+  EXPECT_THAT(params1_or.value(),
+              ElementsAre(Pair(
+                  "foo", FingerprintCat(
+                             "", internal::EncodeParamCacheKey(s1).value()))));
+
+  const at::Scalar scalars2[] = {s1, s2};
+  const auto params2_or = *OpParamCacheKeysBuilder().SetParam(
+      "foo", at::ArrayRef<at::Scalar>(scalars2));
   ASSERT_TRUE(params2_or.ok());
-  EXPECT_THAT(params2_or.value(), IsEmpty());
+  EXPECT_THAT(
+      params2_or.value(),
+      ElementsAre(Pair("foo", FingerprintCatLeft(
+                                  "", internal::EncodeParamCacheKey(s1).value(),
+                                  internal::EncodeParamCacheKey(s2).value()))));
+
+  const at::Scalar scalars3[] = {s1, s2, s3};
+  const auto params3_or = *OpParamCacheKeysBuilder().SetParam(
+      "foo", at::ArrayRef<at::Scalar>(scalars3));
+  ASSERT_TRUE(params3_or.ok());
+  EXPECT_THAT(
+      params3_or.value(),
+      ElementsAre(Pair("foo", FingerprintCatLeft(
+                                  "", internal::EncodeParamCacheKey(s1).value(),
+                                  internal::EncodeParamCacheKey(s2).value(),
+                                  internal::EncodeParamCacheKey(s3).value()))));
 }
 
 TEST(OpParamCacheKeys, SetParamReduceOp) {
@@ -295,7 +318,7 @@ TEST(OpParamCacheKeys, SetParamIntSpan) {
       *OpParamCacheKeysBuilder().SetParam("foo", Dimensions({1, 2, 3}));
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("foo", Fingerprint("[1,2,3]"))));
+              ElementsAre(Pair("foo", FingerprintCatLeft("", "1", "2", "3"))));
 }
 
 TEST(OpParamCacheKeys, SetParamDouble) {
@@ -393,7 +416,7 @@ TEST(OpParamCacheKeys, SetParamSymIntArrayRef) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", sir);
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("foo", Fingerprint("[123,456]"))));
+              ElementsAre(Pair("foo", FingerprintCatLeft("", "123", "456"))));
 #endif
 
   c10::SymIntArrayRef empty_sym_int_array_ref;

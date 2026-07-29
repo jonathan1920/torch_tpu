@@ -63,7 +63,7 @@ namespace torch_tpu {
 
 namespace internal {
 
-absl::StatusOr<std::string> FormatParamCacheKey(const at::Scalar value) {
+absl::StatusOr<std::string> EncodeParamCacheKey(const at::Scalar value) {
   std::string key;
   if (value.isFloatingPoint()) {
     key = LosslessToString(value.toDouble());
@@ -81,24 +81,24 @@ absl::StatusOr<std::string> FormatParamCacheKey(const at::Scalar value) {
   return absl::StrCat(key, ":", ToString(dtype));
 }
 
-std::string FormatParamCacheKey(const c10::SymInt& value) {
+std::string EncodeParamCacheKey(const c10::SymInt& value) {
   return ToString(value);
 }
 
-std::string FormatParamCacheKey(c10::SymIntArrayRef value) {
-  return FormatParamCacheKey(absl::MakeConstSpan(value));
+FingerprintType EncodeParamCacheKey(c10::SymIntArrayRef value) {
+  return EncodeParamCacheKey(absl::MakeConstSpan(value));
 }
 
-std::string FormatParamCacheKey(const c10d::ReduceOp value) {
+std::string EncodeParamCacheKey(const c10d::ReduceOp value) {
   const c10d::ReduceOp::RedOpType reduce_op_type = value;
   return ToString(reduce_op_type);
 }
 
-std::string FormatParamCacheKey(const std::string_view value) {
-  return std::string(value);
+FingerprintType EncodeParamCacheKey(const std::string_view value) {
+  return Fingerprint(value);
 }
 
-std::string FormatParamCacheKey(const MaybePromotedScalar& value) {
+std::string EncodeParamCacheKey(const MaybePromotedScalar& value) {
   if (value.ValueMatchesExclude()) {
     if (value.IsZero()) {
       return "0";
@@ -115,23 +115,19 @@ std::string FormatParamCacheKey(const MaybePromotedScalar& value) {
   return "";
 }
 
-std::string FormatParamCacheKey(const absl::Span<const int64_t> value) {
-  return absl::StrCat("[", absl::StrJoin(value, ","), "]");
+FingerprintType EncodeParamCacheKey(const absl::Span<const int64_t> value) {
+  return EncodeParamCacheKeyForRange<int64_t>(value.begin(), value.end());
 }
 
-std::string FormatParamCacheKey(const at::Layout value) {
+std::string EncodeParamCacheKey(const at::Layout value) {
   return ToString(value);
 }
 
-std::string FormatParamCacheKey(const at::MemoryFormat value) {
+std::string EncodeParamCacheKey(const at::MemoryFormat value) {
   return ToString(value);
 }
 
-std::string FormatParamCacheKey(const at::Device value) {
-  // The device string may contain `:`, which may cause ambiguity when
-  // parsing the cache key, so we quote it.
-  return FormatParamCacheKey(value.str());
-}
+std::string EncodeParamCacheKey(const at::Device value) { return value.str(); }
 
 std::string_view ParseNextArgName(std::string_view& args_str) {
   // Find the first ',' that is not inside parentheses, or the end of the

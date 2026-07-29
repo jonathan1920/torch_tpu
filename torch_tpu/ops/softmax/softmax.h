@@ -28,8 +28,8 @@ namespace torch_tpu {
 
 enum class SoftmaxMode { kSoftmax, kLogSoftmax };
 
-// Formats a SoftmaxMode enum as a parameter cache key string.
-[[nodiscard]] inline std::string FormatParamCacheKey(
+// Encodes a SoftmaxMode enum as a parameter cache key string.
+[[nodiscard]] inline std::string EncodeParamCacheKey(
     const SoftmaxMode softmax_mode) {
   switch (softmax_mode) {
     case SoftmaxMode::kSoftmax:

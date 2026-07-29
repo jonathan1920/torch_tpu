@@ -151,7 +151,7 @@ void SetOpDispatchFailure(std::string op_base_name,
                             std::move(failure_message)};
 }
 
-std::string FormatParamCacheKey(const std::optional<PromotedScalar>& value) {
+std::string EncodeParamCacheKey(const std::optional<PromotedScalar>& value) {
   return value.has_value() ? "s" : "";
 }
 

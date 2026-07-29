@@ -56,8 +56,8 @@
 // Requirements:
 //    - OpParamCacheKeys::Builder knows how to compute the cache keys for
 //      all argument types. If you get a compiler error that
-//      FormatParamCacheKey() cannot be resolved, add an overload of
-//      FormatParamCacheKey() for that type.
+//      EncodeParamCacheKey() cannot be resolved, add an overload of
+//      EncodeParamCacheKey() for that type.
 //    - All argument types are printable via ToString().
 //
 // See go/torch-tpu-op-easy for more details.

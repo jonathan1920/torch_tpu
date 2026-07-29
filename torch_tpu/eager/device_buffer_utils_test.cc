@@ -33,7 +33,7 @@ namespace {
 TEST(DeviceBufferUtilsTest,
      ComputeConstantDeviceBufferRefOpParamCacheKeysMatchesGoldenMap) {
   std::vector<char> data = {'a', 'b', 'c', 'd'};
-  Dimensions dims = {2, 2};
+  Dimensions dims = {2, 3};
   mlir::ElementType dtype = mlir::ElementType::F32;
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -47,7 +47,7 @@ TEST(DeviceBufferUtilsTest,
   const std::map<std::string, FingerprintType> expected_map = {
       // STD_PAIR_OK=test map.
       {"data", 2026542488743870450ULL},
-      {"dimensions", Fingerprint("[2,2]")},
+      {"dimensions", FingerprintCatLeft("", "2", "3")},
       {"element_type", Fingerprint("f32")},
   };
 
