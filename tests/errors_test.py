@@ -1036,6 +1036,10 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_histc_bounds_overflow(self):
     """Tests that torch.histc() fails when the bounds overflow."""
     if et.is_on_gpu():
+      # On TPU, when min == max, bounds adjustment (+/- 1) causes int32
+      # overflow, synchronously raising a RuntimeError. On GPU,
+      # converting float to int bounds does not overflow or raise an
+      # error.
       self.skipTest("GPU behavior difference")
     max_int32 = torch.iinfo(torch.int32).max
     t = torch.tensor(
@@ -1051,6 +1055,10 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_histc_bounds_underflow(self):
     """Tests that torch.histc() fails when the bounds underflow."""
     if et.is_on_gpu():
+      # On TPU, when min == max, bounds adjustment (+/- 1) causes int32
+      # underflow, synchronously raising a RuntimeError. On GPU,
+      # converting float to int bounds does not underflow or raise an
+      # error.
       self.skipTest("GPU behavior difference")
     min_int32 = torch.iinfo(torch.int32).min
     t = torch.tensor(
@@ -1116,6 +1124,10 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_invalid_index_in_take(self):
     """Tests that torch.take() fails when the index is invalid."""
     if et.is_on_gpu():
+      # On TPU, out-of-bounds indices synchronously raise an IndexError
+      # with a clean range message. On GPU, out-of-bounds indexing in
+      # CUDA kernels triggers an asynchronous device-side assert,
+      # raising RuntimeError instead of IndexError.
       self.skipTest("GPU behavior difference")
     t = torch.tensor([0, 1, 2], device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
@@ -1659,6 +1671,9 @@ Device-side assertion tracking was not enabled by user.""",
 
   def test_index_put_index_or_indices_must_be_specified_error(self):
     if et.is_on_gpu():
+      # On TPU, passing empty indices () raises a clean Python RuntimeError
+      # ("indices must be specified"). On GPU, this triggers an internal C++
+      # assertion in OffsetCalculator.cuh instead of a standard Python error.
       self.skipTest("GPU behavior difference")
     with et.assert_raises_message(
         RuntimeError,
@@ -2340,6 +2355,10 @@ Device-side assertion tracking was not enabled by user.""",
 
   def test_glu_unsupported_input_dtype(self):
     if et.is_on_gpu():
+      # On TPU, passing an integer tensor raises RuntimeError ("expected
+      # the self dtype to be floating point"). On GPU, it fails at the
+      # dispatcher level with NotImplementedError ("'glu_cuda' not
+      # implemented for 'Int'").
       self.skipTest("GPU behavior difference")
     t = torch.ones(2, 4, device=et.device(), dtype=torch.int32)
     out = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
@@ -2642,6 +2661,10 @@ Device-side assertion tracking was not enabled by user.""",
       expected_error: The expected error message substring.
     """
     if et.is_on_gpu():
+      # torch.ops.tpu.ragged_dot is a custom TPU operator. On GPU,
+      # calling it immediately fails with a backend dispatch error
+      # before any op error checks (such as invalid shapes or
+      # contracting dims) can run.
       self.skipTest("GPU behavior difference")
     lhs = torch.ones(*lhs_arg, dtype=torch.float32, device=et.device())
     rhs = torch.ones(*rhs_arg, dtype=torch.float32, device=et.device())
@@ -2984,6 +3007,9 @@ Device-side assertion tracking was not enabled by user.""",
 
   def test_avg_pool3d_unsupported_dtypes(self):
     if et.is_on_gpu():
+      # On TPU, avg_pool3d raises RuntimeError for unsupported dtypes
+      # (bool, bfloat16, float16). On GPU, CUDA natively supports 3D
+      # average pooling for float16 and bfloat16 without error.
       self.skipTest("GPU behavior difference")
     t_bool = torch.zeros((1, 1, 4, 4, 4), device=et.device(), dtype=torch.bool)
     t_bf16 = torch.zeros(
@@ -3739,6 +3765,10 @@ Supported combinations for non-constant padding:
 
   def test_foreach_add_int_tensors_bool_alpha(self):
     if et.is_on_gpu():
+      # On TPU, boolean alpha with integer tensors raises RuntimeError
+      # ("expected input tensor dtypes to be bool when alpha dtype is
+      # bool"). On GPU, CUDA silently promotes bool alpha True to
+      # integer 1 and completes without raising an error.
       self.skipTest("GPU behavior difference")
 
     self_list = [torch.tensor([1, 2], dtype=torch.int32, device=et.device())]
@@ -4813,6 +4843,9 @@ Supported combinations for non-constant padding:
 
   def test_linalg_lu_factor_ex_no_pivoting(self):
     if et.is_on_gpu():
+      # On TPU, non-pivoting LU decomposition (pivot=False) raises
+      # RuntimeError ("non-pivoting decomposition is not supported").
+      # On GPU, cuSOLVER implements non-pivoting LU without error.
       self.skipTest("GPU behavior difference")
     a = torch.ones(1, 2, 3, device=et.device())
 
@@ -5016,6 +5049,10 @@ Supported combinations for non-constant padding:
 
   def test_index_no_indices(self):
     if et.is_on_gpu():
+      # On TPU, passing [None] indices raises a clean RuntimeError
+      # ("at least one index tensor must be defined"). On GPU, empty
+      # indices trigger an internal C++ assertion in OffsetCalculator.cuh
+      # instead of a standard Python error.
       self.skipTest("GPU behavior difference")
     t = torch.ones(2, device=et.device())
 
