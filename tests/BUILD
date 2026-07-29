@@ -2325,6 +2325,85 @@ oss_target(
     ],
 )
 
+# Test for ensure pytorch example works with torch_tpu. It functions as an integration test and as a
+# documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
+# Therefore, this test is OSS only.
+oss_target(
+    torch_tpu_py_test,
+    name = "run_upstream_example_regression_tpu",
+    srcs = ["run_upstream_example.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "regression/main.py",
+        "TORCH_TPU_INTERNAL_TEST_DEVICE": "tpu",
+    },
+    main = "run_upstream_example.py",
+    nolocal = "This test requires downloading the raw PyTorch examples tree.",
+    nonightly_oss = "Test requires downloading raw PyTorch examples.",
+    nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
+    tags = [
+        "requires-tpu-v5lite",
+        "wheel_test_excluded",
+    ],
+    deps = [
+        "//shims/absl_py:app",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
+# Test for ensure pytorch example works with torch_tpu. It functions as an integration test and as a
+# documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
+# Therefore, this test is OSS only.
+oss_target(
+    torch_tpu_py_test,
+    name = "run_upstream_example_fx_invert_tpu",
+    srcs = ["run_upstream_example.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "fx/invert.py",
+        "TORCH_TPU_INTERNAL_TEST_DEVICE": "tpu",
+    },
+    main = "run_upstream_example.py",
+    nolocal = "This test requires downloading the raw PyTorch examples tree.",
+    nonightly_oss = "Test requires downloading raw PyTorch examples.",
+    nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
+    tags = [
+        "requires-tpu-v5lite",
+        "wheel_test_excluded",
+    ],
+    deps = [
+        "//shims/absl_py:app",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
+# Test for ensure pytorch example works with torch_tpu. It functions as an integration test and as a
+# documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
+# Therefore, this test is OSS only.
+oss_target(
+    torch_tpu_py_test,
+    name = "run_upstream_example_fx_module_tracer_tpu",
+    srcs = ["run_upstream_example.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "fx/module_tracer.py",
+        "TORCH_TPU_INTERNAL_TEST_DEVICE": "tpu",
+    },
+    main = "run_upstream_example.py",
+    nolocal = "This test requires downloading the raw PyTorch examples tree.",
+    nonightly_oss = "Test requires downloading raw PyTorch examples.",
+    nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
+    tags = [
+        "requires-tpu-v5lite",
+        "wheel_test_excluded",
+    ],
+    deps = [
+        "//shims/absl_py:app",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "@pypi//torchvision",
+    ],
+)
+
 torch_tpu_py_test(
     name = "scan_test",
     srcs = ["scan_test.py"],
