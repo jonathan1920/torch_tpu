@@ -2857,7 +2857,6 @@ class TestOps(TorchTpuTestBase):
             "gpu": (
                 torch.uint8,
                 torch.int16,
-                torch.int64,
                 torch.half,
             ),
         },
@@ -2876,7 +2875,6 @@ class TestOps(TorchTpuTestBase):
             "gpu": (
                 torch.uint8,
                 torch.int16,
-                torch.int64,
                 torch.half,
             ),
         },
@@ -2895,7 +2893,6 @@ class TestOps(TorchTpuTestBase):
             "gpu": (
                 torch.uint8,
                 torch.int16,
-                torch.int64,
                 torch.half,
             ),
         },
@@ -2927,7 +2924,6 @@ class TestOps(TorchTpuTestBase):
             "gpu": (
                 torch.uint8,
                 torch.int16,
-                torch.int64,
                 torch.half,
             ),
         },
@@ -3209,10 +3205,7 @@ class TestOps(TorchTpuTestBase):
         # so we have to exclude complex64 here.
         exclude_dtypes={
             "cpu": COMPLEX_DTYPES,
-            "gpu": (
-                (torch.uint8, torch.int8, torch.int16, torch.int64)
-                + COMPLEX_DTYPES
-            ),
+            "gpu": (torch.uint8, torch.int8, torch.int16) + COMPLEX_DTYPES,
         },
         # TODO: look into why this test produces float32 (default dtype) tensors
         # on GPU for the last 2 tensors being compared, while TPU produces
