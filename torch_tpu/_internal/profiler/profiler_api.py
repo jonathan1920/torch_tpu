@@ -41,6 +41,7 @@ class ProfilerActivity(enum.Enum):
 
 def xprof_trace_handler(
     dir_name: os.PathLike[str] | str,
+    worker_rank: str | None = None,
 ) -> Callable[[Any], str]:
   """Standard handler to be used with the `on_trace_ready` argument in `profiler.profile`.
 
@@ -49,6 +50,7 @@ def xprof_trace_handler(
 
   Args:
     dir_name: The directory path to save the profiler trace to.
+    worker_rank: Optional worker rank to append to the trace filename.
 
   Returns:
     A function that takes a profiler object (currently unused) and returns the
@@ -69,6 +71,7 @@ def xprof_trace_handler(
     del prof  # Unused in this handler
     return str(dir_name)
 
+  handler_fn.worker_rank = worker_rank
   return handler_fn
 
 
@@ -149,8 +152,11 @@ def profile(
   # is called after the trace is stopped.
   # For now, we call it without a profiler object.
   log_dir = on_trace_ready(None)
+  worker_rank = getattr(on_trace_ready, "worker_rank", None)
 
-  profiler.start_trace(log_dir, profiler_options=options)
+  profiler.start_trace(
+      log_dir, profiler_options=options, worker_rank=worker_rank
+  )
   # pylint: disable-next=protected-access
   _profiler_backend._push_enable_profiler()
 

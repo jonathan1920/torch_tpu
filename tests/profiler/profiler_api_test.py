@@ -69,6 +69,70 @@ class ProfilerApiTest(absltest.TestCase):
         ),
     )
 
+  def test_xprof_trace_handler_with_rank(self):
+    handler = profiler.xprof_trace_handler(dir_name='/tmp', worker_rank='42')
+    self.assertEqual(getattr(handler, 'worker_rank', None), '42')
+
+  @mock.patch('socket.gethostname', return_value='test_host')
+  def test_profile_api_with_rank(self, _):
+    output_dir = self.create_tempdir('profile_api_with_rank').full_path
+    handler = profiler.xprof_trace_handler(
+        dir_name=output_dir, worker_rank='42'
+    )
+    with profiler.profile(
+        activities=[profiler.ProfilerActivity.CPU],
+        on_trace_ready=handler,
+    ):
+      # Simulate some work
+      a = torch.randn(10, 10)
+      b = torch.randn(10, 10)
+      _ = a + b
+
+    # Check if trace files are created with correct rank
+    plugins_dir = os.path.join(output_dir, 'plugins', 'profile')
+    self.assertTrue(os.path.isdir(plugins_dir))
+    trace_dirs = os.listdir(plugins_dir)
+    self.assertLen(trace_dirs, 1)
+    trace_dir = os.path.join(plugins_dir, trace_dirs[0])
+    found_files = os.listdir(trace_dir)
+    self.assertIn('test_host_42.xplane.pb', found_files)
+
+  def test_profile_api_with_invalid_rank(self):
+    output_dir = self.create_tempdir('profile_api_with_invalid_rank').full_path
+    handler = profiler.xprof_trace_handler(
+        dir_name=output_dir, worker_rank='../../invalid'
+    )
+    with self.assertRaisesRegex(
+        ValueError, 'worker_rank cannot contain path separators'
+    ):
+      with profiler.profile(
+          activities=[profiler.ProfilerActivity.CPU],
+          on_trace_ready=handler,
+      ):
+        pass
+
+  @mock.patch('socket.gethostname', return_value='test_host')
+  def test_profile_api_without_rank(self, _):
+    output_dir = self.create_tempdir('profile_api_without_rank').full_path
+    handler = profiler.xprof_trace_handler(dir_name=output_dir)
+    with profiler.profile(
+        activities=[profiler.ProfilerActivity.CPU],
+        on_trace_ready=handler,
+    ):
+      # Simulate some work
+      a = torch.randn(10, 10)
+      b = torch.randn(10, 10)
+      _ = a + b
+
+    # Check if trace files are created without rank
+    plugins_dir = os.path.join(output_dir, 'plugins', 'profile')
+    self.assertTrue(os.path.isdir(plugins_dir))
+    trace_dirs = os.listdir(plugins_dir)
+    self.assertLen(trace_dirs, 1)
+    trace_dir = os.path.join(plugins_dir, trace_dirs[0])
+    found_files = os.listdir(trace_dir)
+    self.assertIn('test_host.xplane.pb', found_files)
+
   def test_profile_api_tpu(self):
     """Tests the profile context manager with TPU operations."""
     try:

@@ -84,18 +84,21 @@ class _ProfileState:
     profile_session: The active profiler session, or None if no session is
       active.
     log_dir: The directory to save the profiler trace to.
+    worker_rank: The worker rank for the trace file naming.
     lock: A lock to protect access to the profile state.
   """
 
   def __init__(self):
     self.profile_session = None
     self.log_dir = None
+    self.worker_rank = None
     self.lock = threading.Lock()
 
   def reset(self):
     """Resets the profiler state."""
     self.profile_session = None
     self.log_dir = None
+    self.worker_rank = None
 
 
 _profile_state = _ProfileState()
@@ -104,6 +107,7 @@ _profile_state = _ProfileState()
 def start_trace(
     log_dir: os.PathLike[str] | str,
     profiler_options: ProfileOptions | None = None,
+    worker_rank: str | None = None,
 ) -> None:
   """Starts a profiler trace.
 
@@ -122,9 +126,11 @@ def start_trace(
     log_dir: The directory to save the profiler trace to (usually the
       TensorBoard log directory).
     profiler_options: Profiler options to configure the profiler for collection.
+    worker_rank: Optional worker rank to append to the trace filename.
 
   Raises:
     RuntimeError: If a profile has already been started.
+    ValueError: If worker_rank contains path separators.
   """
   with _profile_state.lock:
     if _profile_state.profile_session is not None:
@@ -139,9 +145,17 @@ def start_trace(
           profiler_options,
           dict_factory=lambda x: {k: v for k, v in x if v is not None},
       )
+
+    if worker_rank is not None:
+      if '/' in worker_rank or '\\' in worker_rank:
+        raise ValueError(
+            f'worker_rank cannot contain path separators: {worker_rank}'
+        )
+
     start_trace_backend(str(log_dir), options)
     _profile_state.profile_session = True
     _profile_state.log_dir = str(log_dir)
+    _profile_state.worker_rank = worker_rank
 
 
 def stop_trace() -> None:
@@ -162,7 +176,11 @@ def stop_trace() -> None:
         _profile_state.log_dir, 'plugins', 'profile', timestamp
     )
     hostname = socket.gethostname() or 'localhost'
-    final_file = os.path.join(plugin_dir, f'{hostname}.xplane.pb')
+    if _profile_state.worker_rank is not None:
+      filename = f'{hostname}_{_profile_state.worker_rank}.xplane.pb'
+    else:
+      filename = f'{hostname}.xplane.pb'
+    final_file = os.path.join(plugin_dir, filename)
 
     try:
       stop_trace_backend(final_file)
