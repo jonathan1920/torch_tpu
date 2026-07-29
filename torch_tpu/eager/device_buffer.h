@@ -535,8 +535,7 @@ class DeviceBufferList {
   // Creates a DeviceBufferList that represents a pending materialized buffer.
   // This is used to hold the output of calling a precompiled executable, such
   // as for torch.compile mode.
-  static absl::StatusOr<DeviceBufferRef> CreatePending(
-      Dimensions dimensions, mlir::ElementType element_type);
+  static absl::StatusOr<DeviceBufferRef> CreatePending(const Shape& shape);
 
   // Sets the DeviceBufferList to a pending-materialized state.
   // If the DeviceBufferList is already materialized, this is a no-op.
@@ -722,6 +721,10 @@ class DeviceBufferList {
 
     const xla::Shape& on_device_shape = buffer_ptr->on_device_shape();
     Shape shape(CopyIntVector(on_device_shape.dimensions()), element_type);
+    if (on_device_shape.has_layout()) {
+      shape.set_layout(
+          CopyIntVector(on_device_shape.layout().minor_to_major()));
+    }
     shapes_.push_back(std::move(shape));
 
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (materialized)] Created. Dims: "
@@ -785,6 +788,19 @@ class DeviceBufferList {
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (bufferless)] Created. Dims: "
                  << ToString(shapes_[0].dimensions())
                  << ", Type: " << ToString(shapes_[0].dtype());
+  }
+
+  DeviceBufferList(const Shape& shape, bool placeholder) : data_(placeholder) {
+    const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+    device_index_ = device_index;
+    stream_id_ = stream_id;
+    creation_index_ = g_creation_index_.fetch_add(1);
+
+    shapes_.push_back(shape);
+    ABSL_VLOG(3)
+        << "[DeviceBuffer CONSTRUCTOR (bufferless)] Created with shape. Dims: "
+        << ToString(shapes_[0].dimensions())
+        << ", Type: " << ToString(shapes_[0].dtype());
   }
 
   // Helper function to verify that the given buffers are valid for this

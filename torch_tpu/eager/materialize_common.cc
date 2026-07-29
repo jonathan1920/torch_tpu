@@ -18,9 +18,11 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <future>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -29,6 +31,7 @@
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
@@ -45,15 +48,20 @@
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/context_states.h"
+#include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/dynamism_utils.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/xla_data.pb.h"
 
@@ -193,6 +201,44 @@ void FinalizePushTraceEvent(std::unique_ptr<StructuredLogEvent> event,
   StructuredLogBuffer::GetInstance().Push(std::move(event));
 }
 
+absl::StatusOr<std::vector<Indices>>
+ExtractArgumentLayoutsIfDifferentFromDefault(const Traversal& traversal) {
+  std::vector<Indices> argument_layouts;
+  xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
+  ABSL_CHECK(client != nullptr)  // CRASH_OK
+      << "Could not get PjRtClient from PjrtBackend.";
+  const auto& arguments = traversal.arguments();
+  for (size_t i = 0; i < arguments.size(); ++i) {
+    const DeviceBufferRef& arg = arguments[i];
+    const Shape& shape = arg.shape();
+    const std::optional<Indices>& layout_opt = shape.layout();
+    if (!layout_opt.has_value()) {
+      continue;
+    }
+
+    const Indices& minor_to_major = *layout_opt;
+    const xla::PrimitiveType element_type =
+        ConvertTo<xla::PrimitiveType>(arg.element_type());
+    TT_ASSIGN_OR_RETURN(
+        const auto default_layout,
+        client->GetDefaultLayout(element_type, arg.dimensions()));
+    if (minor_to_major == default_layout.minor_to_major()) {
+      continue;
+    }
+    ABSL_VLOG(3)
+        << "[ExtractArgumentLayoutsIfDifferentFromDefault] Argument layout "
+        << ToString(minor_to_major) << " differs from PjRT default layout "
+        << default_layout.ToString() << " for shape ("
+        << ToString(arg.dimensions()) << "), updating layout";
+
+    if (argument_layouts.empty()) {
+      argument_layouts.resize(arguments.size());
+    }
+    argument_layouts[i] = minor_to_major;
+  }
+  return argument_layouts;
+}
+
 }  // namespace
 
 absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
@@ -237,6 +283,9 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
   TT_RETURN_IF_ERROR(VerifyPerNodeOutputs(traversal->outputs()));
 #endif  // NDEBUG
 
+  TT_ASSIGN_OR_RETURN(const std::vector<Indices> argument_layouts,
+                      ExtractArgumentLayoutsIfDifferentFromDefault(*traversal));
+
   // Start compiling the traversal.
   ABSL_VLOG(1) << "[ExecutionTask] Compiling traversal";
   absl::StatusOr<CompiledKernel> compiled_kernel;
@@ -244,7 +293,8 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
     tsl::profiler::TraceMe t("CompileTraversal");
     TT_ASSIGN_OR_RETURN(
         compiled_kernel,
-        traversal->Compile(std::move(compilation_spec), out_mlir_text));
+        traversal->Compile(std::move(compilation_spec), out_mlir_text,
+                           /*use_stablehlo_bounds=*/false, argument_layouts));
   }
 
   // Mark all outputs of the split as scheduled/materialized.

@@ -18,6 +18,7 @@
 #define TORCH_TPU_COMMON_SHAPE_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -72,9 +73,13 @@ class Shape {
     return dynamic_dimensions_;
   }
 
+  const std::optional<Indices>& layout() const { return layout_; }
+  void set_layout(Indices layout) { layout_ = std::move(layout); }
+
   friend bool operator==(const Shape& lhs, const Shape& rhs) {
     return lhs.dtype_ == rhs.dtype_ && lhs.dimensions_ == rhs.dimensions_ &&
-           lhs.dynamic_dimensions_ == rhs.dynamic_dimensions_;
+           lhs.dynamic_dimensions_ == rhs.dynamic_dimensions_ &&
+           lhs.layout_ == rhs.layout_;
   }
 
  private:
@@ -84,8 +89,10 @@ class Shape {
   // most dynamic Shapes are dynamic in 1 dimension only, so this allows for
   // no heap allocation in the common case.
   absl::InlinedVector<BoundedDynamicDimension, 1> dynamic_dimensions_;
+  std::optional<Indices> layout_;
 };
-static_assert(sizeof(Shape) == 96);
+
+static_assert(sizeof(Shape) == 160);
 
 // Converts an XLA shape to a torch_tpu shape.
 absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape);

@@ -392,11 +392,11 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreatePlaceholder(
 }
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreatePending(
-    Dimensions dimensions, mlir::ElementType element_type) {
-  TT_RETURN_IF_ERROR(ValidateTensorByteSize(dimensions, element_type));
+    const Shape& shape) {
+  TT_RETURN_IF_ERROR(ValidateTensorByteSize(shape.dimensions(), shape.dtype()));
   // Can't use make_shared because the constructor is private.
-  auto device_buffer = std::shared_ptr<DeviceBufferList>(new DeviceBufferList(
-      std::move(dimensions), element_type, /*placeholder=*/false));
+  auto device_buffer = std::shared_ptr<DeviceBufferList>(
+      new DeviceBufferList(shape, /*placeholder=*/false));
   return DeviceBufferRef(std::move(device_buffer), 0);
 }
 

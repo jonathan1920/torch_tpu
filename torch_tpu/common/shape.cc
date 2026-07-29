@@ -31,7 +31,11 @@ namespace torch_tpu {
 absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape) {
   TT_ASSIGN_OR_RETURN(mlir::ElementType result_dtype,
                       ConvertTo<mlir::ElementType>(xla_shape.element_type()));
-  return Shape(CopyIntVector(xla_shape.dimensions()), result_dtype);
+  Shape shape(CopyIntVector(xla_shape.dimensions()), result_dtype);
+  if (xla_shape.has_layout()) {
+    shape.set_layout(CopyIntVector(xla_shape.layout().minor_to_major()));
+  }
+  return shape;
 }
 
 std::string ToString(const Shape& s) {

@@ -254,9 +254,8 @@ class MaterializationWorker {
     outputs.reserve(output_shapes.size());
     for (const auto& shape : output_shapes) {
       // Create pending buffer lists to hold the results.
-      TT_ASSIGN_OR_RETURN(
-          DeviceBufferRef output_ref,
-          DeviceBufferList::CreatePending(shape.dimensions(), shape.dtype()));
+      TT_ASSIGN_OR_RETURN(DeviceBufferRef output_ref,
+                          DeviceBufferList::CreatePending(shape));
       outputs.push_back(std::move(output_ref));
     }
 

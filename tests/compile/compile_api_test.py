@@ -755,10 +755,10 @@ class CompileApiTest(absltest.TestCase):
     self.assertEqual(res.stride(), (1, 2))
 
   def test_dynamic_placeholder(self):
-    max_dynamic_dim = 22
+    max_dynamic_dim = 100
     static_dim_1 = 128
     static_dim_2 = 64
-    logical_dynamic_dim = 5
+    logical_dynamic_dim = 4
 
     with eager_mode_defer_all():
       sizes = [max_dynamic_dim, static_dim_1]
@@ -790,9 +790,9 @@ class CompileApiTest(absltest.TestCase):
     )
     expected_mlir = textwrap.dedent("""\
         module @tt_jit_compile_api_test_test_dynamic_placeholder_mm {
-          func.func @main(%arg0: tensor<?x128xbf16, #stablehlo.bounds<22, ?>>, %arg1: tensor<128x64xbf16>) -> tensor<?x64xbf16, #stablehlo.bounds<22, ?>> {
-            %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<?x128xbf16, #stablehlo.bounds<22, ?>>, tensor<128x64xbf16>) -> tensor<?x64xbf16, #stablehlo.bounds<22, ?>>
-            return %0 : tensor<?x64xbf16, #stablehlo.bounds<22, ?>>
+          func.func @main(%arg0: tensor<?x128xbf16, #stablehlo.bounds<100, ?>>, %arg1: tensor<128x64xbf16>) -> tensor<?x64xbf16, #stablehlo.bounds<100, ?>> {
+            %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<?x128xbf16, #stablehlo.bounds<100, ?>>, tensor<128x64xbf16>) -> tensor<?x64xbf16, #stablehlo.bounds<100, ?>>
+            return %0 : tensor<?x64xbf16, #stablehlo.bounds<100, ?>>
           }
         }""")
 
@@ -822,14 +822,12 @@ class CompileApiTest(absltest.TestCase):
     )
 
     results = tpu_torch_compile.execute(
-        executable, [dynamic_input, static_input]
+        executable,
+        [dynamic_input, static_input],
+        output_shapes=[[logical_dynamic_dim, static_dim_2]],
     )
     self.assertLen(results, 1)
-    self.assertEqual(results[0].shape, (max_dynamic_dim, static_dim_2))
-
-    # Copy to CPU first (might fail if ToLiteral checks shapes, but let's see)
-    res_cpu = results[0].cpu()
-    actual_res = res_cpu[:logical_dynamic_dim, :]
+    actual_res = results[0]
     self.assertEqual(actual_res.shape, (logical_dynamic_dim, static_dim_2))
 
     expected_dynamic_input = physical_dynamic_input[
@@ -839,6 +837,216 @@ class CompileApiTest(absltest.TestCase):
     expected_res = torch.matmul(expected_dynamic_input, expected_static_input)
 
     utils.assert_close(actual_res, expected_res, rtol=1e-2, atol=1e-2)
+
+  def test_compiled_module_output_to_eager_op_dynamic_major_dim(self):
+    """Verifies passing compiled module outputs (dynamic PJRT buffers) into eager ops works."""
+    max_dynamic_dim = 100
+    static_dim_1 = 128
+    static_dim_2 = 64
+    logical_dynamic_dim = 4
+
+    with eager_mode_defer_all():
+      sizes = [max_dynamic_dim, static_dim_1]
+      dtype = torch.bfloat16
+      bounds = ([0], [max_dynamic_dim])
+      dynamic_placeholder = tpu_torch_compile.dynamic_placeholder(
+          sizes, dtype, bounds
+      )
+      static_placeholder = torch.ones(
+          static_dim_1,
+          static_dim_2,
+          dtype=torch.bfloat16,
+          device='cpu',
+      ).to(device=torch.device('tpu'))
+      res = torch.matmul(dynamic_placeholder, static_placeholder)
+
+    result_tensors = [res]
+    argument_tensors = [dynamic_placeholder, static_placeholder]
+    mlir = tpu_torch_compile.build_mlir(
+        result_tensors, argument_tensors, use_stablehlo_bounds=True
+    )
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    physical_dynamic_input = torch.randn(
+        max_dynamic_dim,
+        static_dim_1,
+        dtype=torch.bfloat16,
+        device=torch.device('tpu'),
+    )
+    logical_size = torch.tensor(
+        logical_dynamic_dim, dtype=torch.int32, device=torch.device('tpu')
+    )
+    dynamic_input = torch.ops.tpu.set_dimension_logical_size(
+        physical_dynamic_input, 0, logical_size
+    )
+
+    static_input = torch.randn(
+        static_dim_1,
+        static_dim_2,
+        dtype=torch.bfloat16,
+        device=torch.device('tpu'),
+    )
+
+    results = tpu_torch_compile.execute(
+        executable,
+        [dynamic_input, static_input],
+        output_shapes=[[logical_dynamic_dim, static_dim_2]],
+    )
+    compiled_output = results[0]
+    self.assertTrue(tpu_torch_compile.is_device_shape_dynamic(compiled_output))
+
+    # Perform an eager operation on the compiled output
+    eager_result = compiled_output + 1.0
+
+    # Verify expected values
+    expected_dynamic_input = physical_dynamic_input[
+        :logical_dynamic_dim, :
+    ].cpu()
+    expected_static_input = static_input.cpu()
+    expected_res = (
+        torch.matmul(expected_dynamic_input, expected_static_input) + 1.0
+    )
+
+    utils.assert_close(eager_result.cpu(), expected_res, rtol=1e-2, atol=1e-2)
+
+  def test_compiled_module_output_to_eager_op_dynamic_intermediate_dim(self):
+    """Verifies 3D tensor with dynamic middle dimension passed to eager ops works."""
+    batch_dim = 8
+    max_dynamic_dim = 100
+    static_dim_2 = 64
+    logical_dynamic_dim = 4
+
+    with eager_mode_defer_all():
+      sizes = [batch_dim, max_dynamic_dim, static_dim_2]
+      dtype = torch.bfloat16
+      bounds = ([1], [max_dynamic_dim])
+      dynamic_placeholder = tpu_torch_compile.dynamic_placeholder(
+          sizes, dtype, bounds
+      )
+      res = dynamic_placeholder * 2.0
+
+    result_tensors = [res]
+    argument_tensors = [dynamic_placeholder]
+    mlir = tpu_torch_compile.build_mlir(
+        result_tensors, argument_tensors, use_stablehlo_bounds=True
+    )
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    physical_dynamic_input = torch.randn(
+        batch_dim,
+        max_dynamic_dim,
+        static_dim_2,
+        dtype=torch.bfloat16,
+        device=torch.device('tpu'),
+    )
+    logical_size = torch.tensor(
+        logical_dynamic_dim, dtype=torch.int32, device=torch.device('tpu')
+    )
+    dynamic_input = torch.ops.tpu.set_dimension_logical_size(
+        physical_dynamic_input, 1, logical_size
+    )
+
+    results = tpu_torch_compile.execute(
+        executable,
+        [dynamic_input],
+        output_shapes=[[batch_dim, logical_dynamic_dim, static_dim_2]],
+    )
+    compiled_output = results[0]
+    self.assertEqual(
+        compiled_output.shape, (batch_dim, logical_dynamic_dim, static_dim_2)
+    )
+
+    # Eager mode op (+ 1.0) on 3D tensor output
+    eager_result = compiled_output + 1.0
+
+    expected_input = physical_dynamic_input[:, :logical_dynamic_dim, :].cpu()
+    expected_res = (expected_input * 2.0) + 1.0
+
+    utils.assert_close(eager_result.cpu(), expected_res, rtol=1e-2, atol=1e-2)
+
+  def test_compiled_module_output_to_eager_op_dynamic_minor_dim(self):
+    """Verifies passing compiled module outputs (dynamic PJRT buffers) into eager ops works."""
+    max_dynamic_dim = 256
+    static_dim = 128
+    logical_dynamic_dim = 4
+
+    with eager_mode_defer_all():
+      sizes = [static_dim, max_dynamic_dim]
+      dtype = torch.bfloat16
+      bounds = ([1], [max_dynamic_dim])
+      dynamic_placeholder = tpu_torch_compile.dynamic_placeholder(
+          sizes, dtype, bounds
+      )
+      res = dynamic_placeholder * 2.0
+
+    result_tensors = [res]
+    argument_tensors = [dynamic_placeholder]
+    mlir = tpu_torch_compile.build_mlir(
+        result_tensors, argument_tensors, use_stablehlo_bounds=True
+    )
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    physical_dynamic_input = torch.randn(
+        static_dim,
+        max_dynamic_dim,
+        dtype=torch.bfloat16,
+        device=torch.device('tpu'),
+    )
+    logical_size = torch.tensor(
+        logical_dynamic_dim, dtype=torch.int32, device=torch.device('tpu')
+    )
+    dynamic_input = torch.ops.tpu.set_dimension_logical_size(
+        physical_dynamic_input, 1, logical_size
+    )
+
+    results = tpu_torch_compile.execute(
+        executable,
+        [dynamic_input],
+        output_shapes=[[static_dim, logical_dynamic_dim]],
+    )
+    compiled_output = results[0]
+    self.assertEqual(compiled_output.shape, (static_dim, logical_dynamic_dim))
+
+    # Eager mode op (+ 1.0) on 2D output with dynamic minor dimension
+    eager_result = compiled_output + 1.0
+
+    expected_input = physical_dynamic_input[:, :logical_dynamic_dim].cpu()
+    expected_res = (expected_input * 2.0) + 1.0
+
+    utils.assert_close(eager_result.cpu(), expected_res, rtol=1e-2, atol=1e-2)
+
+  def test_eager_module_inputs_different_layouts(self):
+    """Verifies eager op execution with input tensors having different layouts."""
+    dim0, dim1 = 8, 64
+    x = torch.randn(dim0, dim1, dtype=torch.bfloat16, device='tpu')
+
+    # Tensor 1 created with default layout [1, 0]
+    t_default = torch.randn(dim0, dim1, dtype=torch.bfloat16, device='cpu').to(
+        device=torch.device('tpu')
+    )
+
+    # Tensor 2 created with non-default column-major layout [0, 1]
+    layout_non_default = annotations.TpuLayout(minor_to_major=[0, 1])
+    with annotations.LayoutContext(layout_non_default):
+      t_non_default = torch.randn(
+          dim0, dim1, dtype=torch.bfloat16, device='cpu'
+      ).to(device=torch.device('tpu'))
+
+    # Eager Op 1: operates with default layout input
+    eager_result_1 = x + t_default
+
+    # Eager Op 2: operates with non-default layout input
+    eager_result_2 = x + t_non_default
+
+    expected_res_1 = x.cpu() + t_default.cpu()
+    expected_res_2 = x.cpu() + t_non_default.cpu()
+
+    utils.assert_close(
+        eager_result_1.cpu(), expected_res_1, rtol=1e-2, atol=1e-2
+    )
+    utils.assert_close(
+        eager_result_2.cpu(), expected_res_2, rtol=1e-2, atol=1e-2
+    )
 
   def test_get_default_layout(self):
     layout = tpu_torch_compile.get_default_layout(torch.float32, [2, 3])
