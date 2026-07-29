@@ -64,12 +64,12 @@ jobs:
     # See go/ml-github-actions/getting_started/using_runners.md#supported-runner-scale-set.
     runs-on: ${{ matrix.job_info.runner }}
     container:
-      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
     steps:
       # Clone the GitHub repository to runner's environment $GITHUB_WORKSPACE, making its files
       # accessible for workflow to use. Otherwise, the workflow cannot find the files (e.g. ls -lR
       # will return "total 0").
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
 
       # Enable remote connections. Add a waiting step.
       # See go/ml-github-actions:connect#add-waiting-step.

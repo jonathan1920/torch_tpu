@@ -40,8 +40,6 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  issues: write
-  actions: write
 
 # Concurrency for postsubmit:
 # Differentiate push runs from schedule runs so heavy 4-hour benchmark runs don't block push postsubmits.
@@ -56,6 +54,8 @@ jobs:
       (github.event_name == 'push' && github.ref_name == 'main') ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:postsubmit'))
+    permissions:
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -87,13 +87,13 @@ jobs:
     # See go/ml-github-actions/getting_started/using_runners.md#supported-runner-scale-set.
     runs-on: ${{ matrix.job_info.runner }}
     container:
-      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
     steps:
       - run: echo "Start running tests."
       # Clone the GitHub repository to runner's environment $GITHUB_WORKSPACE, making its files
       # accessible for workflow to use. Otherwise, the workflow cannot find the files (e.g. ls -lR
       # will return "total 0").
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
       # Git security patch (CVE-2022-24765) blocks root from operating on runner-owned directories:
       # https://github.blog/open-source/git/git-security-vulnerability-announced/#cve-2022-24765.
       # Tell Git explicitly to trust the workspace `/__w/torch_tpu/torch_tpu` inside this ephemeral
@@ -127,7 +127,7 @@ jobs:
       - name: Run Bazel Test
         run: bazel test --config=${{ matrix.job_info.bazel_config }} ${{ matrix.job_info.extra_flags }} //...
       - name: Upload Test Logs on Failure
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@c7d193f32edcb7bfad88892161225aeda64e9392  # v4.0.0
         if: failure()
         with:
           name: bazel-testlogs-${{ matrix.job_info.runner }}
@@ -138,14 +138,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: linux-x86-n4-16
     container:
-      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
     outputs:
       gcs_wheel_path: ${{ steps.build.outputs.gcs_wheel_path }}
       gcs_wheel_dir: ${{ steps.build.outputs.gcs_wheel_dir }}
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
       - name: Build and upload wheel
         id: build
         uses: ./.github/actions/build-wheel
@@ -158,7 +158,7 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: linux-x86-tpu7x-224-4tpu
     container:
-      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
     timeout-minutes: 180
 
     env:
@@ -173,14 +173,14 @@ jobs:
           ln -sfn /tmp/torch_tpu_cache /dev/shm/torch_tpu_cache
 
       - name: Checkout torch_tpu
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
 
       - name: Install SSH
         run: |
           apt-get update && apt-get install -y openssh-client || true
 
       - name: Checkout torchtpu-vllm
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
         with:
           repository: google-pytorch/torchtpu-vllm
           path: torchtpu-vllm
@@ -188,7 +188,7 @@ jobs:
           ssh-key: ${{ secrets.TORCHTPU_VLLM_DEPLOY_KEY }}
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@2af22b5b2dcfc0729ee842c635f300f1fc5a9e9a  # v5.0.0
 
       - name: Setup Virtual Environment
         run: |
@@ -198,9 +198,11 @@ jobs:
 
       - name: Download wheel from GCS
         shell: bash
+        env:
+          GCS_WHEEL_PATH: ${{ needs.build_wheels.outputs.gcs_wheel_path }}
         run: |
           mkdir dist
-          gcloud storage cp "${{ needs.build_wheels.outputs.gcs_wheel_path }}" dist/
+          gcloud storage cp "${GCS_WHEEL_PATH}" dist/
 
       - name: Install torchtpu-vllm with local wheel override
         run: |
@@ -237,6 +239,8 @@ jobs:
     needs: [run_tests, build_wheels, vllm_perf_eval]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Get current date
         id: date

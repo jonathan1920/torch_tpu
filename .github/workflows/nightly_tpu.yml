@@ -37,7 +37,6 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  issues: write
 
 # Cancel old jobs when they are replaced by new runs
 concurrency:
@@ -57,7 +56,7 @@ jobs:
         job_info: [
           {
             runner: "linux-x86-ct6e-180-8tpu",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996",  # Tag infrastructure-public-image-2c74567ee8e0
           }
         ]
     # Use self-hosted runners. For a Linux runner, a corresponding container image used for the
@@ -71,7 +70,7 @@ jobs:
       # Clone the GitHub repository to runner's environment $GITHUB_WORKSPACE, making its files
       # accessible for workflow to use. Otherwise, the workflow cannot find the files (e.g. ls -lR
       # will return "total 0").
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
       # Enable remote connections.
       # Step 2: Add a waiting step.
       # See go/ml-github-actions:connect#add-waiting-step.
@@ -95,6 +94,8 @@ jobs:
     needs: [run_tests]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Get current date
         id: date

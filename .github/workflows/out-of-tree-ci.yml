@@ -90,7 +90,7 @@ jobs:
         ]
     runs-on: ${{ matrix.job_info.runner }}
     container:
-      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
 
     steps:
       - name: Checkout TorchTPU
@@ -107,8 +107,10 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Run TorchTPU Native Tests
+        env:
+          PYTORCH_SHA: ${{ github.event.client_payload.payload.after }}
         run: |
-          echo "Testing against PyTorch SHA: ${{ github.event.client_payload.payload.after }}"
+          echo "Testing against PyTorch SHA: ${PYTORCH_SHA}"
 
           set +e
           bazel test //... \
@@ -129,9 +131,11 @@ jobs:
 
       - name: Log event to step summary
         if: always()
+        env:
+          EVENT_JSON: ${{ toJson(github.event) }}
         run: |
-          cat <<'SUMMARY' >> $GITHUB_STEP_SUMMARY
-          ```json
-          ${{ toJson(github.event) }}
-          ```
-          SUMMARY
+          {
+            echo '```json'
+            echo "$EVENT_JSON"
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
