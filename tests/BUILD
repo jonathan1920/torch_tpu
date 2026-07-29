@@ -2172,17 +2172,67 @@ test_suite(
 )
 
 torch_tpu_py_test(
-    name = "tracing_test",
+    name = "tracing_test_cpu",
     srcs = ["tracing_test.py"],
-    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    env = {
+        "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
+    },
+    main = "tracing_test.py",
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu:_loader",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/tracing",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "tracing_test_gpu",
+    srcs = ["tracing_test.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
+    },
+    main = "tracing_test.py",
+    tags = [
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/tracing",
+        "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
+        "@xla//xla/stream_executor:cuda_platform",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "tracing_test_tpu",
+    srcs = ["tracing_test.py"],
+    main = "tracing_test.py",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/tracing",
+    ],
+)
+
+test_suite(
+    name = "tracing_tests",
+    tests = [
+        "tracing_test_cpu",
+        "tracing_test_gpu",
+        "tracing_test_tpu",
     ],
 )
 

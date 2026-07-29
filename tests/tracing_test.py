@@ -40,7 +40,6 @@ if "TORCH_TRACE" not in os.environ:
 # pylint: disable=g-import-not-at-top
 from absl.testing import absltest
 import torch
-from torch_tpu import _loader
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal import tracing
@@ -110,13 +109,12 @@ class TracingTest(absltest.TestCase):
         "TORCH_TRACE not enabled. This test requires TORCH_TRACE to be set.",
     )
     os.makedirs(os.environ["TORCH_TRACE"], exist_ok=True)
-    _loader.load(allow_xla_backend=True)
     # All trace tests run with deferred materialization so reasons reflect
     # the user's API call, not kDebugMode.
     self._old_mode = execution_mode.eager_mode
     self.addCleanup(setattr, execution_mode, "eager_mode", self._old_mode)
     execution_mode.eager_mode = execution_mode.EagerMode.INTERNAL_DEFER_ALL
-    self._dev = torch.device("privateuseone")
+    self._dev = torch.accelerator.current_accelerator()
 
   def test_daemon_started(self):
     self.assertIsNotNone(tracing._daemon)
