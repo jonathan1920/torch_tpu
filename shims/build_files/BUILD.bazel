@@ -14,10 +14,19 @@
 
 load("//shims/build_defs_testing:bzl_library.bzl", "bzl_library")
 
-exports_files(["build_defs.bzl"])
+exports_files([
+    "build_defs.bzl",
+    "torch_version.bzl",
+])
 
 bzl_library(
     name = "build_defs_bzl",
     srcs = ["build_defs.bzl"],
+    visibility = ["//:__subpackages__"],
+)
+
+bzl_library(
+    name = "torch_version_bzl",
+    srcs = ["torch_version.bzl"],
     visibility = ["//:__subpackages__"],
 )
