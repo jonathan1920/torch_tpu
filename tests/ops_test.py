@@ -1979,7 +1979,7 @@ class TestOps(TorchTpuTestBase):
         # `bfloat16` and `float16` dtypes.
         exclude_dtypes={
             "gpu": (
-                (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64)
+                (torch.uint8, torch.int8, torch.int16, torch.int64)
                 + COMPLEX_DTYPES
                 + (torch.bfloat16, torch.float16)
             )
@@ -2857,7 +2857,6 @@ class TestOps(TorchTpuTestBase):
             "gpu": (
                 torch.uint8,
                 torch.int16,
-                torch.int32,
                 torch.int64,
                 torch.half,
             ),
@@ -2877,7 +2876,6 @@ class TestOps(TorchTpuTestBase):
             "gpu": (
                 torch.uint8,
                 torch.int16,
-                torch.int32,
                 torch.int64,
                 torch.half,
             ),
@@ -2897,7 +2895,6 @@ class TestOps(TorchTpuTestBase):
             "gpu": (
                 torch.uint8,
                 torch.int16,
-                torch.int32,
                 torch.int64,
                 torch.half,
             ),
@@ -2930,7 +2927,6 @@ class TestOps(TorchTpuTestBase):
             "gpu": (
                 torch.uint8,
                 torch.int16,
-                torch.int32,
                 torch.int64,
                 torch.half,
             ),
@@ -3214,7 +3210,7 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes={
             "cpu": COMPLEX_DTYPES,
             "gpu": (
-                (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64)
+                (torch.uint8, torch.int8, torch.int16, torch.int64)
                 + COMPLEX_DTYPES
             ),
         },
