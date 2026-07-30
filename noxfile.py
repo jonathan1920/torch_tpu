@@ -32,10 +32,14 @@ nox.options.default_venv_backend = "uv"
 nox.options.sessions = ["lint"]
 
 # The index that must satisfy the `torch` dependency for each variant. `None`
-# means the default index (PyPI), whose Linux wheels bundle CUDA support.
+# means the default index (PyPI), whose Linux wheels bundle CUDA support. The
+# `local` variant installs no torch from an index at all: it uses the torch
+# wheel file in dist/local/ that the torch_tpu wheel was built against
+# (TORCH_SOURCE=local builds).
 _TORCH_INDEXES: Final[Mapping[str, str | None]] = {
     "cpu": "https://download.pytorch.org/whl/cpu",
     "cuda": None,
+    "local": None,
     "nightly": "https://download.pytorch.org/whl/nightly/cpu",
     "nightly-pinned": "https://download.pytorch.org/whl/nightly/cpu",
 }
@@ -126,12 +130,37 @@ def _dist_wheel(session: nox.Session) -> pathlib.Path:
   return wheels[0]
 
 
+def _local_torch_wheel(session: nox.Session) -> pathlib.Path:
+  """The torch wheel a TORCH_SOURCE=local build compiled against.
+
+  The local-torch CI downloads it into dist/local/ before building -- a
+  directory reserved for the local-torch flow, unlike dist/ itself, which
+  other processes also drop wheels into -- so the smoke test installs the
+  torch_tpu wheel with the exact torch it was built from rather than
+  whatever torch wheel happens to be lying around.
+
+  Args:
+    session: the nox session the checks run in.
+
+  Returns:
+    The path to the torch wheel in dist/local/.
+  """
+  wheels = sorted(pathlib.Path("dist", "local").glob("torch-*.whl"))
+  if len(wheels) != 1:
+    session.error(
+        "Expected exactly one torch wheel in dist/local/, found:"
+        f" {[str(wheel) for wheel in wheels]}"
+    )
+  return wheels[0]
+
+
 @nox.session
 @nox.parametrize(
     "device, torch_variant",
     [
         ("cpu", "cpu"),
         ("cpu", "cuda"),
+        ("cpu", "local"),
         ("cpu", "nightly"),
         ("cpu", "nightly-pinned"),
         ("tpu", "cpu"),
@@ -141,6 +170,7 @@ def _dist_wheel(session: nox.Session) -> pathlib.Path:
     ids=[
         "cpu-cpu",
         "cpu-cuda",
+        "cpu-local",
         "cpu-nightly",
         "cpu-nightly-pinned",
         "tpu-cpu",
@@ -168,7 +198,11 @@ def smoke_test(session: nox.Session, device: str, torch_variant: str) -> None:
     # torch is guaranteed to come from the variant index while every other
     # dependency falls back to PyPI.
     install_args += ["--extra-index-url", index]
-  if torch_variant == "nightly":
+  if torch_variant == "local":
+    # The exact torch wheel the torch_tpu wheel was built against
+    # (TORCH_SOURCE=local), installed from the file rather than an index.
+    install_args.append(str(_local_torch_wheel(session)))
+  elif torch_variant == "nightly":
     # The *latest* nightly, deliberately unpinned: it can drift
     # ABI-incompatibly from the snapshot the nightly glue was built against,
     # so a failure here is the signal to refresh the nightly lock.
