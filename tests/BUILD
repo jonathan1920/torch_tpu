@@ -1197,7 +1197,9 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=1",
     ],
     main = "ops_test.py",
+    nobuild = "TODO(b/540823026): re-enable once the test build hang is fixed.",
     nolocal = "slow test",
+    notap = "TODO(b/540823026): re-enable once the test build hang is fixed.",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 3,
     tags = [
