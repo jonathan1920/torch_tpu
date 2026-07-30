@@ -46,6 +46,16 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "propagate_symints",
+    srcs = ["propagate_symints.py"],
+    deps = [
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile/dynamic:sym_utils",
+    ],
+)
+
+torch_tpu_py_library(
     name = "reorder_symints",
     srcs = ["reorder_symints.py"],
     deps = [

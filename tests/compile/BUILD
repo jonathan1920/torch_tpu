@@ -62,6 +62,23 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "split_compile_test",
+    srcs = ["split_compile_test.py"],
+    tags = [
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:collective_ops",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/utils",
+    ],
+)
+
+torch_tpu_py_test(
     name = "activation_checkpointing_test",
     srcs = ["activation_checkpointing_test.py"],
     tags = [
@@ -409,6 +426,17 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/compile/fx_passes:reorder_symints",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "propagate_symints_test",
+    srcs = ["propagate_symints_test.py"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile/fx_passes:propagate_symints",
     ],
 )
 

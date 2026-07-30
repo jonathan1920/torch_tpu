@@ -34,6 +34,8 @@ from torch_tpu._internal.compile import collective_ops
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.fx_passes import force_collectives_output
+from torch_tpu._internal.compile.fx_passes import propagate_symints
+from torch_tpu._internal.compile.fx_passes import reorder_symints
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import CompiledArtifact
 
 # Required to register the SPMD safe region ops.
@@ -391,6 +393,12 @@ class SplitCompiler(compiler.Compiler):
     graph_transform_observer.GraphTransformObserver(
         split_gm, "force_collectives_output"
     ).apply_gm_pass(force_collectives_output.apply)
+    graph_transform_observer.GraphTransformObserver(
+        split_gm, "propagate_symints"
+    ).apply_gm_pass(propagate_symints.apply)
+    graph_transform_observer.GraphTransformObserver(
+        split_gm, "reorder_symints"
+    ).apply_gm_pass(reorder_symints.apply)
 
     fake_mode = detect_fake_mode(example_inputs)
     if fake_mode is None:
