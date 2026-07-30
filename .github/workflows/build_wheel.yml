@@ -129,27 +129,24 @@ jobs:
           - wheel_version: "standard"
             runner: linux-x86-n4-16
             config: "wheel_test_cpu"
-            allowed_to_fail: false
             extra_flags: ""
           - python_version: ${{ needs.setup.outputs.default_python_version }}
             wheel_version: "cuda"
             custom_name: "CPU (CUDA wheel)"
             runner: linux-x86-n4-16
             nox_smoke_test: "cpu-cuda"
-            allowed_to_fail: false
           - python_version: ${{ needs.setup.outputs.default_python_version }}
             wheel_version: "nightly"
             custom_name: "CPU (PyTorch Nightly)"
             runner: linux-x86-n4-16
-            nox_smoke_test: "cpu-nightly"
-            # The wheel ships a nightly glue built against the dev snapshot
-            # pinned in requirements/requirements_torch_nightly.txt, but this
-            # installs the *latest* nightly, which can drift ABI-incompatibly
-            # from that snapshot between lock refreshes -- so this stays a
-            # soft failure.
-            allowed_to_fail: true
+            # Presubmit installs the exact nightly snapshot the wheel's
+            # nightly glue was built against (requirements/
+            # requirements_torch_nightly.txt), so the check is deterministic
+            # and gates hard. Postsubmit installs the *latest* nightly, which
+            # can drift ABI-incompatibly from that snapshot -- a failure
+            # there is the signal to refresh the lock.
+            nox_smoke_test: ${{ github.event_name == 'pull_request' && 'cpu-nightly-pinned' || 'cpu-nightly' }}
     runs-on: ${{ matrix.runner }}
-    continue-on-error: ${{ matrix.allowed_to_fail }}
     container:
       image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996  # Tag infrastructure-public-image-2c74567ee8e0
       options: --privileged
@@ -180,23 +177,13 @@ jobs:
       # For the alternate-torch wheel variants (CUDA, nightly), run a trimmed-
       # down smoke test instead of the bazel test suite: nox installs the built
       # wheel and the torch variant in a single uv resolution, then checks that
-      # the backend autoloads. Soft-fail variants swallow the failure at the
-      # step level (a job-level continue-on-error still shows a red X on the
-      # PR) and surface it as a warning annotation instead.
+      # the backend autoloads.
       - name: Run smoke tests via nox
-        id: nox_smoke
         if: matrix.nox_smoke_test
-        continue-on-error: ${{ matrix.allowed_to_fail == true }}
         env:
           PYTHON_VERSION: ${{ matrix.python_version }}
           NOX_SMOKE_TEST: ${{ matrix.nox_smoke_test }}
         run: uvx nox --force-python "${PYTHON_VERSION}" -s "smoke_test(${NOX_SMOKE_TEST})"
-      - name: Surface soft-failed smoke tests as a warning
-        if: matrix.nox_smoke_test && steps.nox_smoke.outcome == 'failure'
-        env:
-          CUSTOM_NAME: ${{ matrix.custom_name }}
-          WHEEL_VERSION: ${{ matrix.wheel_version }}
-        run: echo "::warning title=${CUSTOM_NAME} smoke test failed (allowed)::The ${WHEEL_VERSION} torch smoke test failed; this variant is allowed to fail until compatible glue ships."
       - name: Run Impacted Tests via bazel-diff
         if: ${{ !matrix.nox_smoke_test }}
         uses: ./.github/actions/bazel-diff
@@ -300,15 +287,16 @@ jobs:
           extra_bazel_flags: ${{ matrix.extra_flags || '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"' }} --repo_env=HERMETIC_PYTHON_VERSION=${{ matrix.python_version }} --define PYTHON_VERSION=${{ matrix.python_version }}
           disable_bazel_diff: ${{ contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}
 
-  # Smoke-test the nightly glue on TPU: nox installs the built wheel plus the
-  # *latest* PyTorch nightly in a single uv resolution and checks that the
-  # backend autoloads. The latest nightly can drift ABI-incompatibly from the
-  # snapshot pinned in requirements/requirements_torch_nightly.txt between
-  # lock refreshes, so this runs in postsubmit only -- a hard failure there is
-  # the signal to refresh the lock, without ever blocking presubmit on drift.
+  # Smoke-test the nightly glue on TPU: nox installs the built wheel plus a
+  # PyTorch nightly in a single uv resolution and checks that the backend
+  # autoloads. Presubmit installs the exact snapshot the glue was built
+  # against (requirements/requirements_torch_nightly.txt), so the check is
+  # deterministic and gates hard. Postsubmit installs the *latest* nightly,
+  # which can drift ABI-incompatibly from that snapshot between lock
+  # refreshes -- a failure there is the signal to refresh the lock, without
+  # ever blocking presubmit on drift.
   test_wheel_tpu_nightly:
     name: "Test wheel on TPU v5 (PyTorch Nightly) (Python ${{ needs.setup.outputs.default_python_version }})"
-    if: github.event_name != 'pull_request'
     needs: [build_wheels, setup]
     runs-on: linux-x86-ct5lp-224-8tpu
     container:
@@ -339,4 +327,5 @@ jobs:
       - name: Run the nightly smoke test via nox
         env:
           PYTHON_VERSION: ${{ needs.setup.outputs.default_python_version }}
-        run: uvx nox --force-python "${PYTHON_VERSION}" -s "smoke_test(tpu-nightly)"
+          NOX_SMOKE_TEST: ${{ github.event_name == 'pull_request' && 'tpu-nightly-pinned' || 'tpu-nightly' }}
+        run: uvx nox --force-python "${PYTHON_VERSION}" -s "smoke_test(${NOX_SMOKE_TEST})"
