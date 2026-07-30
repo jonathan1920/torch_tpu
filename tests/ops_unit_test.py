@@ -30,8 +30,10 @@ import time
 import typing
 from typing import Any
 import unittest
+from unittest import mock
 
 from absl.testing import absltest
+from absl.testing import flagsaver
 from absl.testing import parameterized
 from scipy import stats
 import torch
@@ -1192,6 +1194,39 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
     self.assertEqual(tpu_input.args, (1,))
     self.assertEqual(tpu_input.kwargs, {"device": "tpu"})
+
+  def test_torch_tpu_vs_gpu_missing_golden_fails(self):
+    op = next(op for op in op_db if op.name == "add")
+    with (
+        flagsaver.flagsaver(test_mode=op_testing.TestMode.TORCH_TPU_VS_GPU),
+        mock.patch.dict(op_testing._GOLDEN_GPU_DATA, clear=True),
+    ):
+      with self.assertRaisesRegex(
+          AssertionError,
+          "No GPU golden samples found for add.*Please re-generate the GPU"
+          " golden files",
+      ):
+        self._get_golden_input_output_pairs(
+            op=op,
+            dtype=torch.float32,
+            variant=op_testing.OpVariant.BASE,
+            max_samples=1,
+        )
+
+      # Ensure that if samples are present, no error is raised and samples are
+      # returned.
+      fake_sample = (
+          op_testing.OpInput(FakeSample("s", torch.zeros(1), (), {})),
+          op_testing.OpOutput(torch.zeros(1)),
+      )
+      op_testing._GOLDEN_GPU_DATA["add"] = {torch.float32: [fake_sample]}
+      res = self._get_golden_input_output_pairs(
+          op=op,
+          dtype=torch.float32,
+          variant=op_testing.OpVariant.BASE,
+          max_samples=1,
+      )
+      self.assertEqual(res, [fake_sample])
 
   @parameterized.product(training=[True, False])
   def test_batch_norm_forward_mixed_dtype(self, training):

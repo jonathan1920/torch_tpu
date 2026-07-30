@@ -2296,7 +2296,17 @@ class TorchTpuTestBase(TestCase):
     if _torch_tpu_vs_gpu_mode():
       if out_variant_type != OutVariantType.CORRECT:
         return []
-      return _GOLDEN_GPU_DATA.get(op_name, {}).get(dtype, [])
+      samples = _GOLDEN_GPU_DATA.get(op_name, {}).get(dtype, [])
+      # TODO(b/540887166): Enable this check for compiled mode too when the bug
+      # is fixed.
+      if not samples and not is_compiled_mode():
+        self.fail(
+            f"No GPU golden samples found for {op_name}() with dtype {dtype}."
+            " Please re-generate the GPU golden files using the"
+            " update-gpu-golden-files-and-tolerances skill to cover the new"
+            " (op, dtype)."
+        )
+      return samples
 
     # Generate sample inputs on the golden device.
     try:
