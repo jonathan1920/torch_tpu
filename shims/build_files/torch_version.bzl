@@ -150,23 +150,36 @@ def is_backend_dep(dep):
             return False
     return True
 
-def _set_torch_version_impl(_settings, attr):
+# Set by --config=local_torch (.bazelrc): the build compiles against a locally
+# provided PyTorch wheel instead of the pip hubs.
+_LOCAL_TORCH = "//shims/torch:local_torch"
+
+def _set_torch_version_impl(settings, attr):
     # Only the torch_version is set: the glue links real torch (headers_only stays
     # at its default False), so its per-version common carries a DT_NEEDED on
     # libc10/libtorch_cpu resolved from the user's install at load. Just the
     # shared xla_base filter opts into headers-only, to stay torch-free.
     #
+    # A local-torch build has exactly one torch -- the local wheel -- so no
+    # glue gets a per-version configuration: every version's glue builds in
+    # the top-level configuration, where the local wheel already satisfies
+    # every torch select. (This is why local-torch mode is a real flag set by
+    # --config=local_torch rather than a --define: transitions cannot read
+    # --define values.)
+    #
     # The default version maps to the sentinel -- its torch is the default pip
     # hub's, exactly what every select() serves at the flag's default value, so
     # its glue builds in the top-level configuration instead of forking an
     # identical one. Only the non-default versions need a config of their own.
+    if settings[_LOCAL_TORCH]:
+        return {_TORCH_VERSION: SENTINEL_TORCH_VERSION}
     if attr.torch_version == DEFAULT_TORCH_VERSION:
         return {_TORCH_VERSION: SENTINEL_TORCH_VERSION}
     return {_TORCH_VERSION: attr.torch_version}
 
 _set_torch_version = transition(
     implementation = _set_torch_version_impl,
-    inputs = [],
+    inputs = [_LOCAL_TORCH],
     outputs = [_TORCH_VERSION],
 )
 

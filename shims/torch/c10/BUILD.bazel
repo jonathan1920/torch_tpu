@@ -17,11 +17,13 @@ load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
 
 package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
 
+# The real c10 libraries a full-link build links against, by torch source.
+# Reached only through the //conditions:default row of :c10 below, i.e. never
+# in a headers-only configuration (see the select-chain note in
+# //shims/torch:BUILD.bazel).
 cc_library(
-    name = "c10",
+    name = "c10_runtime_libs",
     deps = select({
-        # Per-version wheel glues: headers only, torch symbols resolved at runtime.
-        "//:torch_headers_only_enabled": ["//shims/torch:torch_headers"],
         "//shims/torch:use_local_torch": [
             "@local_torch//:libc10",
             "@local_torch//:torch_headers",
@@ -30,5 +32,14 @@ cc_library(
             "//shims/torch:libc10",
             "@pypi//torch:torch_headers",
         ],
+    }),
+)
+
+cc_library(
+    name = "c10",
+    deps = select({
+        # Per-version wheel glues: headers only, torch symbols resolved at runtime.
+        "//:torch_headers_only_enabled": ["//shims/torch:torch_headers"],
+        "//conditions:default": [":c10_runtime_libs"],
     }),
 )
