@@ -3560,9 +3560,9 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "torch._scaled_mm_v2",
         extra_dtypes=common_methods_invocations.float8_types(),
-        # TODO(b/540128322): CPU does not support complex dtypes, this op should
-        # check the dtype and print the unsupported message.
-        exclude_dtypes=COMPLEX_DTYPES,  # EXCLUDE_DTYPES_OK=unsupported by CPU
+        # TODO(b/540128322): torch._scaled_mm_v2 has no C++ CPU implementation
+        # in OSS.
+        skip_if=lambda device, variant, op_input: device == "cpu",
     )
 
   def test_scatter(self):
