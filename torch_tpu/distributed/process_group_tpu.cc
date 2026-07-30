@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <exception>
 #include <memory>
+#include <numeric>
 #include <set>
 #include <string>
 #include <utility>
@@ -521,7 +522,11 @@ ProcessGroupTpu::ProcessGroupTpu(c10::intrusive_ptr<c10d::Store> store,
 
   if (group_size == device_ids_.size()) {
     // This new group includes all the devices, so the subgroup list is trivial:
-    subgroup_device_ids_.push_back(rank_to_device_id_);
+    std::vector<int64_t> rank_to_logical_device_id(group_size);  // INT_VEC_OK
+    for (int i = 0; i < group_size; ++i) {
+      rank_to_logical_device_id[i] = GetLogicalDeviceId(rank_to_device_id_[i]);
+    }
+    subgroup_device_ids_.push_back(std::move(rank_to_logical_device_id));
   } else {
     // This new group is a proper subgroup. The `c10d::Store` allows us to
     // exchange membership information *within* this subgroup, which is
@@ -1469,9 +1474,11 @@ DeviceGroupList ProcessGroupTpu::GatherAllSubgroups() {
     // This process knows the members of its own subgroup, thanks to
     // c10d::Store.
     ABSL_CHECK_EQ(group_size, rank_to_device_id_.size())  // CRASH_OK
-        << "Inconsisent device subgroup. This is a bug.";
+        << "Inconsistent device subgroup. This is a bug.";
+    int64_t relative_device_id = GetLogicalDeviceId(addressable_device_id_);
     for (int i = 0; i < group_size; ++i) {
-      subgroups.index({addressable_device_id_, i}) = rank_to_device_id_[i];
+      subgroups.index({relative_device_id, i}) =
+          GetLogicalDeviceId(rank_to_device_id_[i]);
     }
     subgroups = subgroups.to(at::device(GetPrivateUse1DeviceType()));
 
@@ -1479,7 +1486,9 @@ DeviceGroupList ProcessGroupTpu::GatherAllSubgroups() {
     // perform a collective, without having to know the "default" process
     // group. We just need to reshape device list as [1, N] to use as
     // subgroup list.
-    auto world_group = DeviceGroupList(1, device_ids_);
+    DeviceGroup logical_device_ids(world_size);
+    std::iota(logical_device_ids.begin(), logical_device_ids.end(), 0);
+    auto world_group = DeviceGroupList(1, std::move(logical_device_ids));
     auto op_builder = [group = std::move(world_group)](mlir::MlirOp input) {
       return BuildDistributedAllReduceShlo(input, c10d::ReduceOp::SUM, group);
     };
@@ -1513,6 +1522,14 @@ DeviceGroupList ProcessGroupTpu::GatherAllSubgroups() {
     std::set<DeviceGroup> subgroups_set(result.cbegin(), result.cend());
     return DeviceGroupList(subgroups_set.cbegin(), subgroups_set.cend());
   });
+}
+
+int64_t ProcessGroupTpu::GetLogicalDeviceId(int64_t physical_device_id) const {
+  auto it = absl::c_find(device_ids_, physical_device_id);
+  ABSL_CHECK(it != device_ids_.end())  // CRASH_OK
+      << "Could not map physical ID " << physical_device_id
+      << " to logical ID.";
+  return it - device_ids_.begin();
 }
 
 }  // namespace torch_tpu

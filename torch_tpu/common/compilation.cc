@@ -238,8 +238,15 @@ static absl::Status SetDefaultDeviceAssignment(
   options.set_num_replicas(1);
   options.set_num_partitions(num_devices);
   xla::DeviceAssignment da(1, num_devices);
-  for (int idx = 0; idx < num_devices; ++idx) {
-    da(0, idx) = idx;
+  if (num_devices == 1) {
+    TT_ASSIGN_OR_RETURN(const int global_device_id,
+                        PjrtBackend::GetInstance().GetGlobalDeviceId());
+    da(0, 0) = global_device_id;
+  } else {
+    const auto* const pjrt_client = PjrtBackend::GetInstance().GetClient();
+    for (int idx = 0; idx < num_devices; ++idx) {
+      da(0, idx) = pjrt_client->devices()[idx]->global_device_id().value();
+    }
   }
   options.set_device_assignment(da);
 
@@ -269,6 +276,9 @@ static absl::Status SetDefaultDeviceAssignment(
       // Device assignment related fields.
       options.num_replicas(), options.num_partitions(),
       options.use_spmd_partitioning(), options.use_shardy_partitioner(),
+      options.has_device_assignment()
+          ? Fingerprint(options.device_assignment().ToString())
+          : 0,
       // XLA execution effort levels.
       options.optimization_level(), options.memory_fitting_level());
 }

@@ -315,6 +315,10 @@ class ProcessGroupTpu : public c10d::Backend {
   // are required to be known by XLA. This effectively becomes our
   // replica_groups attribute in StableHLO collectives.
   DeviceGroupList subgroup_device_ids_;
+
+  // Converts a physical TPU device ID to its 0-based logical index in
+  // device_ids_.
+  int64_t GetLogicalDeviceId(int64_t physical_device_id) const;
 };
 
 }  // namespace torch_tpu
