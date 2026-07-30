@@ -13,16 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# A script to build Python wheels for TorchTPU in Kokoro, located in the OSS repo.
+# Kokoro orchestration for the TorchTPU wheel build, located in the OSS repo.
+#
+# This script is orchestration ONLY: it provisions the build container and
+# collects artifacts for Kokoro. Everything about how the wheel is actually
+# built -- the bazel target, flags, and version-suffix handling -- lives in
+# the shared ci/build_wheels.sh, which the GitHub CI uses too, so the wheels
+# published from here are built exactly like the wheels CI smoke-tests. The
+# only Kokoro-specific bazel flag is --config=no_rbe: this environment has no
+# RBE credentials.
 
 set -exu -o history -o allexport
 
 echo "===> Starting Python wheel build in Kokoro..."
-
-# Prepare wheel version string with metadata date suffix (similar to GitHub)
-WHEEL_VERSION_EXTRAS=".dev$(date +%Y%m%d%H%M%S)"
-export WHEEL_VERSION_EXTRAS
-echo "WHEEL_VERSION_EXTRAS: ${WHEEL_VERSION_EXTRAS}"
 
 # Define target wheel dir inside Kokoro artifacts folder
 KOKORO_ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR:-$(pwd)/../../artifacts}"
@@ -36,23 +39,14 @@ echo "===> Pulling ml-build container: ${CONTAINER_IMAGE}..."
 docker pull "${CONTAINER_IMAGE}"
 
 echo "===> Compiling wheel via Bazel inside ml-build container..."
-# We map the checked out directory into /workspace and run standard bazel build
+# We map the checked out directory into /workspace and run the shared build
+# script for every supported Python version.
 mkdir -p dist
 docker run --rm \
   -v "$(pwd):/workspace" \
   -w "/workspace" \
-  -e WHEEL_VERSION_EXTRAS="${WHEEL_VERSION_EXTRAS}" \
   "${CONTAINER_IMAGE}" \
-  bash -c "set -ex
-    for py_ver in 3.11 3.12 3.13 3.14; do
-      echo '===> Building wheel for Python' \$py_ver
-      bazel build -c opt --config=no_rbe //ci/wheel:torch_tpu_wheel \
-        --repo_env=WHEEL_VERSION_EXTRAS=\$WHEEL_VERSION_EXTRAS \
-        --repo_env=HERMETIC_PYTHON_VERSION=\$py_ver \
-        --define PYTHON_VERSION=\$py_ver && \
-      cp bazel-bin/ci/wheel/*.whl /workspace/dist/
-    done
-  "
+  ci/build_wheels.sh --output-dir /workspace/dist 3.11 3.12 3.13 3.14 -- --config=no_rbe
 
 # Move the built wheels from local dist back to Kokoro artifacts directory
 if [[ -d dist && -n "$(ls -A dist/*.whl 2>/dev/null)" ]]; then
