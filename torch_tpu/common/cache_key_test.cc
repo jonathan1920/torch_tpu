@@ -60,10 +60,11 @@ TEST(OpParamCacheKeys, DefaultIsEmpty) {
 }
 
 TEST(OpParamCacheKeys, SetParamScalar) {
-  auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", at::Scalar(123));
+  const at::Scalar scalar(123);
+  auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", scalar);
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("foo", Fingerprint("123:int64"))));
+              ElementsAre(Pair("foo", FingerprintCat("int64", 123))));
 }
 
 TEST(OpParamCacheKeys, SetParamMaybePromotedScalar_Promoted) {
@@ -276,24 +277,23 @@ TEST(OpParamCacheKeys, SetParamStablehloPrecision) {
 TEST(OpParamCacheKeys, SetParamInteger) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", 1234567890L);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("foo", Fingerprint("1234567890"))));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", 1234567890UL)));
 }
 
 TEST(OpParamCacheKeys, SetParamBool) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("bar", true);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", Fingerprint("t"))));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", 1)));
 
   auto params2_or = *OpParamCacheKeysBuilder().SetParam("bar", false);
   ASSERT_TRUE(params2_or.ok());
-  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("bar", Fingerprint("f"))));
+  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("bar", 0)));
 }
 
 void Kernel1(int x, int y) {
   TT_KERNEL(OpName::kAdd, param_keys, (IgnoreInCacheKey(x, "testing"), y), {
     // x should be ignored in the cache keys, so only y should be there.
-    EXPECT_THAT(param_keys, ElementsAre(Pair("y", Fingerprint("42"))));
+    EXPECT_THAT(param_keys, ElementsAre(Pair("y", 42)));
   });
 }
 
@@ -318,13 +318,14 @@ TEST(OpParamCacheKeys, SetParamIntSpan) {
       *OpParamCacheKeysBuilder().SetParam("foo", Dimensions({1, 2, 3}));
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("foo", FingerprintCat("", "1", "2", "3"))));
+              ElementsAre(Pair("foo", FingerprintCat("", 1L, 2L, 3L))));
 }
 
 TEST(OpParamCacheKeys, SetParamDouble) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", 4.5);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("4.5"))));
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("foo", absl::bit_cast<FingerprintType>(4.5))));
 }
 
 TEST(OpParamCacheKeys, SetParamNullopt) {
@@ -457,7 +458,7 @@ TEST(OpParamCacheKeys, SetParamBroadcastOptions) {
   options.rootRank = 1;
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", options);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("1"))));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", 1)));
 }
 
 TEST(OpParamCacheKeys, SetParamScatterOptions) {
@@ -465,7 +466,7 @@ TEST(OpParamCacheKeys, SetParamScatterOptions) {
   options.rootRank = 2;
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", options);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", Fingerprint("2"))));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", 2)));
 }
 
 }  // namespace

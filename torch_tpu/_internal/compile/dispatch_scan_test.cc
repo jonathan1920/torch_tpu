@@ -424,12 +424,12 @@ TEST_F(DispatchScanTest, VerifyCacheKeys) {
   ASSERT_TRUE(deferred_op != nullptr);
 
   const OpParamCacheKeys& cache_keys = deferred_op->op_param_cache_keys();
-  EXPECT_THAT(cache_keys,
-              testing::UnorderedElementsAre(
-                  testing::Pair("scan_direction", Fingerprint("forward")),
-                  testing::Pair("num_scan_inputs", Fingerprint("1")),
-                  testing::Pair("num_carries", Fingerprint("1")),
-                  testing::Pair("body_mlir", testing::_)));
+  EXPECT_THAT(
+      cache_keys,
+      testing::UnorderedElementsAre(
+          testing::Pair("scan_direction", Fingerprint("forward")),
+          testing::Pair("num_scan_inputs", 1), testing::Pair("num_carries", 1),
+          testing::Pair("body_mlir", testing::_)));
 }
 
 TEST_F(DispatchScanTest, CpuTensorInputsError) {

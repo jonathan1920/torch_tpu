@@ -32,6 +32,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/List.h"
+#include "absl/base/casts.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -274,31 +275,50 @@ constexpr bool IncludeInCacheKey() {
 //
 // EncodeParamCacheKey() should be defined only for types that need to be
 // included in the cache key computation.
-absl::StatusOr<std::string> EncodeParamCacheKey(at::Scalar value);
+absl::StatusOr<FingerprintType> EncodeParamCacheKey(at::Scalar value);
+// We don't return a FingerprintType, as the SymInt may be symbolic instead of
+// a constant value.
 [[nodiscard]] std::string EncodeParamCacheKey(const c10::SymInt& value);
 [[nodiscard]] FingerprintType EncodeParamCacheKey(c10::SymIntArrayRef value);
-[[nodiscard]] inline std::string EncodeParamCacheKey(
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(
     const at::ScalarType value) {
-  return std::string(ToString(value));
+  // We fingerprint the string representation of the scalar type as it's stable.
+  // The numerical value of an enum is not guaranteed to be stable across
+  // different versions of PyTorch.
+  return Fingerprint(ToString(value));
 }
+// We return a stable string as the enum value is not guaranteed to be stable
+// across different versions of PyTorch.
 [[nodiscard]] std::string EncodeParamCacheKey(c10d::ReduceOp value);
-[[nodiscard]] inline std::string EncodeParamCacheKey(
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(
     const mlir::ElementType value) {
-  return std::string(ToShortString(value));
+  // We fingerprint the string representation of the element type as it's
+  // stable. The numerical value of an enum is not guaranteed to be stable
+  // across different versions of MLIR.
+  return Fingerprint(ToShortString(value));
 }
-[[nodiscard]] inline std::string EncodeParamCacheKey(
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(
     const mlir::stablehlo::Precision value) {
-  return std::string(mlir::stablehlo::stringifyPrecision(value));
+  // We fingerprint the string representation of the precision as it's stable.
+  // The numerical value of an enum is not guaranteed to be stable across
+  // different versions of MLIR.
+  return Fingerprint(mlir::stablehlo::stringifyPrecision(value));
 }
-[[nodiscard]] inline std::string EncodeParamCacheKey(const double value) {
-  return LosslessToString(value);
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(const double value) {
+  static_assert(sizeof(double) <= sizeof(FingerprintType),
+                "double must be small enough to fit in a FingerprintType.");
+  // Normalize -0.0 to 0.0.
+  const double normalized_value = (value == 0.0) ? 0.0 : value;
+  return absl::bit_cast<FingerprintType>(normalized_value);
 }
 template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-[[nodiscard]] inline std::string EncodeParamCacheKey(const T value) {
-  return absl::StrCat(value);
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(const T value) {
+  static_assert(sizeof(T) <= sizeof(FingerprintType),
+                "T must be small enough to fit in a FingerprintType.");
+  return static_cast<FingerprintType>(value);
 }
-[[nodiscard]] inline std::string EncodeParamCacheKey(const bool value) {
-  return value ? "t" : "f";
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(const bool value) {
+  return static_cast<FingerprintType>(value);
 }
 [[nodiscard]] FingerprintType EncodeParamCacheKey(std::string_view value);
 [[nodiscard]] inline FingerprintType EncodeParamCacheKey(
@@ -313,12 +333,13 @@ template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
 [[nodiscard]] std::string EncodeParamCacheKey(at::MemoryFormat value);
 [[nodiscard]] std::string EncodeParamCacheKey(at::Device value);
 
-[[nodiscard]] inline std::string EncodeParamCacheKey(
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(
     const c10::optional<at::Tensor>& value) {
   // Encode both the presence and the definedness of the tensor uniformly.
   // Both nullopt and an undefined tensor are formatted as empty string because
   // they both represent None in Python.
-  return (value.has_value() && value->defined()) ? "t" : "";
+  return (value.has_value() && value->defined()) ? Fingerprint("t")
+                                                 : Fingerprint("");
 }
 
 [[nodiscard]] std::string EncodeParamCacheKey(
@@ -326,9 +347,9 @@ template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
 
 [[nodiscard]] std::string EncodeParamCacheKey(const MaybePromotedScalar& value);
 
-[[nodiscard]] inline std::string EncodeParamCacheKey(
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(
     const c10::optional<at::Generator>& value) {
-  return value.has_value() ? "g" : "";
+  return value.has_value() ? Fingerprint("g") : Fingerprint("");
 }
 
 // The return type of EncodeParamCacheKey(const T&). Can be std::string,
@@ -474,17 +495,17 @@ FingerprintedKey<T> EncodeParamCacheKey(const c10::List<T>& value) {
   return EncodeParamCacheKey(value.reduceOp);
 }
 
-[[nodiscard]] inline std::string EncodeParamCacheKey(
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(
     const c10d::BroadcastOptions& value) {
   return EncodeParamCacheKey(value.rootRank);
 }
 
-[[nodiscard]] inline std::string EncodeParamCacheKey(
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(
     const c10d::ScatterOptions& value) {
   return EncodeParamCacheKey(value.rootRank);
 }
 
-[[nodiscard]] inline std::string EncodeParamCacheKey(
+[[nodiscard]] inline FingerprintType EncodeParamCacheKey(
     const c10d::GatherOptions& value) {
   return EncodeParamCacheKey(value.rootRank);
 }

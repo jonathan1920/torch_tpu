@@ -154,6 +154,8 @@ struct Fingerprint64Impl<T, /*kIsSmallIntegral=*/true> {
   [[nodiscard]] static FingerprintType Compute(T value) {
     // Since casting T to FingerprintType doesn't lose information, we can
     // safely use it as the fingerprint. This is super fast.
+    static_assert(sizeof(T) <= sizeof(FingerprintType),
+                  "T must be small enough to fit in a FingerprintType.");
     return static_cast<FingerprintType>(value);
   }
 };

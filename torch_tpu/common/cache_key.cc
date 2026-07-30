@@ -63,22 +63,24 @@ namespace torch_tpu {
 
 namespace internal {
 
-absl::StatusOr<std::string> EncodeParamCacheKey(const at::Scalar value) {
-  std::string key;
+absl::StatusOr<FingerprintType> EncodeParamCacheKey(const at::Scalar value) {
+  FingerprintType typed_value_fp = 0;
   if (value.isFloatingPoint()) {
-    key = LosslessToString(value.toDouble());
+    typed_value_fp = EncodeParamCacheKey(value.toDouble());
   } else if (value.isIntegral(/*include_bool=*/false)) {
-    key = absl::StrCat(value.toLong());
+    typed_value_fp = EncodeParamCacheKey(value.toLong());
   } else if (value.isBoolean()) {
-    key = value.toBool() ? "1" : "0";
+    typed_value_fp = EncodeParamCacheKey(value.toBool());
   } else if (value.isComplex()) {
-    key = LosslessToString(value.toComplexDouble());
+    const auto cd = value.toComplexDouble();
+    typed_value_fp = FingerprintCat(EncodeParamCacheKey(cd.real()),
+                                    EncodeParamCacheKey(cd.imag()));
   } else {
     return TT_ERROR(error::kInvalidArgument)
            << "unable to create key for scalar type";
   }
-  at::ScalarType dtype = value.type();
-  return absl::StrCat(key, ":", ToString(dtype));
+  const at::ScalarType dtype = value.type();
+  return FingerprintCat(ToString(dtype), typed_value_fp);
 }
 
 std::string EncodeParamCacheKey(const c10::SymInt& value) {

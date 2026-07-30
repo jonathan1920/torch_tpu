@@ -105,14 +105,15 @@ TEST(TtKernel, PrependRootOpName) {
 void Kernel5(int ndim, double alpha, std::optional<int> seed,
              std::optional<bool> cond, std::optional<std::string> name) {
   TT_KERNEL(OpName::kAdd, param_keys, (ndim, alpha, seed, cond, name), {
-    EXPECT_THAT(param_keys, ElementsAre(
-                                // go/keep-sorted start
-                                Pair("alpha", Fingerprint("2.5")),       //
-                                Pair("name", FingerprintCat("+", "")),   //
-                                Pair("ndim", Fingerprint("3")),          //
-                                Pair("seed", FingerprintCat("+", "42"))  //
-                                // go/keep-sorted end
-                                ));
+    EXPECT_THAT(param_keys,
+                ElementsAre(
+                    // go/keep-sorted start
+                    Pair("alpha", absl::bit_cast<FingerprintType>(2.5)),
+                    Pair("name", FingerprintCat("+", "")),  //
+                    Pair("ndim", 3),                        //
+                    Pair("seed", FingerprintCat("+", 42))
+                    // go/keep-sorted end
+                    ));
   });
 }
 
@@ -130,8 +131,7 @@ void Kernel4(const at::Tensor& self, int ndim, bool expand,
     // `seed` is nullopt and thus should be omitted from the cache keys.
     EXPECT_THAT(param_keys, ElementsAre(
                                 // go/keep-sorted start
-                                Pair("expand", Fingerprint("t")),  //
-                                Pair("ndim", Fingerprint("3"))     //
+                                Pair("expand", 1), Pair("ndim", 3)
                                 // go/keep-sorted end
                                 ));
   });
@@ -161,9 +161,7 @@ void Kernel6(int ndim, int size, int step) {
        IgnoreInCacheKey(
            step,
            "This reason contains a comma, which should be handled correctly.")),
-      {
-        EXPECT_THAT(param_keys, ElementsAre(Pair("ndim", Fingerprint("1"))));
-      });
+      { EXPECT_THAT(param_keys, ElementsAre(Pair("ndim", 1))); });
 }
 
 TEST(TtKernel, SupportsIgnoreInCacheKeyWithReason) { Kernel6(1, 2, 3); }

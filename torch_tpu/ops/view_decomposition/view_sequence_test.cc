@@ -521,8 +521,8 @@ TEST(SymbolicViewPrimitive, UnsupportedViewCacheKeys) {
   TF_ASSERT_OK_AND_ASSIGN(
       param_keys, ViewSequenceCacheKey(unfold, *tensor.unsafeGetTensorImpl()));
   EXPECT_THAT(param_keys,
-              ElementsAre(Pair("storage_offset", Fingerprint("0")),
-                          Pair("strides", FingerprintCat("", "4", "1"))));
+              ElementsAre(Pair("storage_offset", 0),
+                          Pair("strides", FingerprintCat("", 4, 1))));
 }
 
 }  // namespace
