@@ -3593,9 +3593,9 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes=COMPLEX_DTYPES  # EXCLUDE_DTYPES_OK= complex
         # and bool dtypes not supported.
         + (torch.bool,),
-        # Upstream generates 288 samples per dtype; cap to 10 to prevent test
-        # shard timeouts.
-        max_samples_per_op_dtype=10,
+        # Upstream generates 288 samples per dtype; cap to prevent test
+        # shard timeouts (10 samples per op dtype results in ~15m test time).
+        max_samples_per_op_dtype=6,
     )
 
   def test_sigmoid(self):
