@@ -29,14 +29,14 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # The build itself lives in the shared ci/build_wheels.sh -- the same
+    # script the Kokoro publisher runs -- so the wheel CI tests is built
+    # exactly like the wheel that gets published.
     - name: Build wheel
       shell: bash
-      run: |
-        WHEEL_DIR=dist
-        WHEEL_VERSION_EXTRAS=".dev$(date +%Y%m%d%H%M%S)"
-        bazel build -c opt //ci/wheel:torch_tpu_wheel --config=wheel_common --repo_env=WHEEL_VERSION_EXTRAS=$WHEEL_VERSION_EXTRAS --repo_env=HERMETIC_PYTHON_VERSION=${{ inputs.python_version }} --define PYTHON_VERSION=${{ inputs.python_version }}
-        mkdir -p $WHEEL_DIR
-        cp bazel-bin/ci/wheel/*.whl $WHEEL_DIR
+      env:
+        PYTHON_VERSION: ${{ inputs.python_version }}
+      run: ci/build_wheels.sh --output-dir dist "${PYTHON_VERSION}"
     - name: Check wheel metadata
       shell: bash
       run: |

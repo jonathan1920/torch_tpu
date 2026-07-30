@@ -37,10 +37,10 @@ on:
   push:
     branches:
       - main
+  # No base-branch filter: `branches:` matches the PR *base*, and stacked
+  # pull requests target the layer below them, not main.
   pull_request:
     types: [opened, synchronize, reopened, labeled]
-    branches:
-      - main
 
 # Prevent "overly broad permissions" Zizmor finding.
 permissions:
@@ -173,6 +173,11 @@ jobs:
       # the backend autoloads. Soft-fail variants swallow the failure at the
       # step level (a job-level continue-on-error still shows a red X on the
       # PR) and surface it as a warning annotation instead.
+      # TEMPORARILY INVERTED -- restored by the next commit in this stack: the
+      # wheel is deliberately built broken here (the shared build script does
+      # not yet pass --//:wheel_build=True, matching what the Kokoro publisher
+      # has been shipping), and this step REQUIRES the smoke test to fail,
+      # proving the smoke tests detect exactly that breakage.
       - name: Run smoke tests via nox
         id: nox_smoke
         if: matrix.nox_smoke_test
@@ -180,7 +185,12 @@ jobs:
         env:
           PYTHON_VERSION: ${{ matrix.python_version }}
           NOX_SMOKE_TEST: ${{ matrix.nox_smoke_test }}
-        run: uvx nox --force-python "${PYTHON_VERSION}" -s "smoke_test(${NOX_SMOKE_TEST})"
+        run: |
+          if uvx nox --force-python "${PYTHON_VERSION}" -s "smoke_test(${NOX_SMOKE_TEST})"; then
+            echo "::error title=Smoke test unexpectedly passed::The wheel is built without --//:wheel_build=True at this commit and should fail to import; a passing smoke test means the smoke tests are not detecting broken wheels."
+            exit 1
+          fi
+          echo "Smoke test failed as expected: the broken wheel was detected."
       - name: Surface soft-failed smoke tests as a warning
         if: matrix.nox_smoke_test && steps.nox_smoke.outcome == 'failure'
         env:
@@ -231,10 +241,17 @@ jobs:
         uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      # TEMPORARILY INVERTED -- restored by the next commit in this stack (see
+      # the smoke-test step in test_wheels_cpu for the rationale).
       - name: Run smoke tests against intermediate patches via nox
         env:
           PYTHON_VERSION: ${{ needs.setup.outputs.default_python_version }}
-        run: uvx nox --force-python "${PYTHON_VERSION}" -s intermediate_patch_abi
+        run: |
+          if uvx nox --force-python "${PYTHON_VERSION}" -s intermediate_patch_abi; then
+            echo "::error title=Smoke test unexpectedly passed::The wheel is built without --//:wheel_build=True at this commit and should fail to import."
+            exit 1
+          fi
+          echo "Smoke test failed as expected: the broken wheel was detected."
 
   test_wheels_tpu:
     name: Test wheel on ${{ matrix.custom_name || 'TPU' }} (Python ${{ matrix.python_version }})
@@ -300,6 +317,11 @@ jobs:
       # the backend autoloads. Soft-fail variants swallow the failure at the
       # step level (a job-level continue-on-error still shows a red X on the
       # PR) and surface it as a warning annotation instead.
+      # TEMPORARILY INVERTED -- restored by the next commit in this stack: the
+      # wheel is deliberately built broken here (the shared build script does
+      # not yet pass --//:wheel_build=True, matching what the Kokoro publisher
+      # has been shipping), and this step REQUIRES the smoke test to fail,
+      # proving the smoke tests detect exactly that breakage.
       - name: Run smoke tests via nox
         id: nox_smoke
         if: matrix.nox_smoke_test
@@ -307,7 +329,12 @@ jobs:
         env:
           PYTHON_VERSION: ${{ matrix.python_version }}
           NOX_SMOKE_TEST: ${{ matrix.nox_smoke_test }}
-        run: uvx nox --force-python "${PYTHON_VERSION}" -s "smoke_test(${NOX_SMOKE_TEST})"
+        run: |
+          if uvx nox --force-python "${PYTHON_VERSION}" -s "smoke_test(${NOX_SMOKE_TEST})"; then
+            echo "::error title=Smoke test unexpectedly passed::The wheel is built without --//:wheel_build=True at this commit and should fail to import; a passing smoke test means the smoke tests are not detecting broken wheels."
+            exit 1
+          fi
+          echo "Smoke test failed as expected: the broken wheel was detected."
       - name: Surface soft-failed smoke tests as a warning
         if: matrix.nox_smoke_test && steps.nox_smoke.outcome == 'failure'
         env:
