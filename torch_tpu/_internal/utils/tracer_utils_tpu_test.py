@@ -15,6 +15,7 @@
 from absl import logging
 from absl.testing import absltest
 import torch
+from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import tracer_utils
 from torch_tpu._internal.utils import utils
 
@@ -52,8 +53,8 @@ class TpuTest(absltest.TestCase):
     # Assert
     original = log[0]["output"]
     replayed = replayed_log[0]["output"]  # pyrefly: ignore[bad-index]
-    utils.assert_close(replayed, original.cpu())
-    utils.assert_close(replayed.to(self.device), original)
+    test_utils.assert_close(replayed, original.cpu())
+    test_utils.assert_close(replayed.to(self.device), original)
 
 
 if __name__ == "__main__":

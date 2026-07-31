@@ -20,7 +20,7 @@ import torch
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import optim
 from torch_tpu._internal import testing as tt_testing
-from torch_tpu._internal.utils import utils as tpu_utils
+from torch_tpu._internal.utils import test_utils as tpu_utils
 
 
 class OptimTest(absltest.TestCase):

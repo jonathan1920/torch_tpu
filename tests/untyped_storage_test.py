@@ -18,7 +18,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import torch
 from torch_tpu._internal import testing as tt_testing
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 
 class UntypedStorageTest(parameterized.TestCase):

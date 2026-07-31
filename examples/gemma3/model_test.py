@@ -27,6 +27,7 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal import sync
 from torch_tpu._internal.utils import log_utils
+from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
 from examples.gemma3 import model
 import transformers
@@ -94,7 +95,7 @@ class TestModel(absltest.TestCase):
     hf_output = hf_rope(x, position_ids, layer_type="full_attention")
     custom_output = custom_rope(x, position_ids)
 
-    utils.assert_close(hf_output, custom_output)
+    test_utils.assert_close(hf_output, custom_output)
 
   # @absltest.skip("Skipping test due to tolerance issues.")
   def test_equivalence_hf_and_custom_modules(self):
@@ -145,7 +146,7 @@ class TestModel(absltest.TestCase):
       ):
         hf["output"] = hf["output"].last_hidden_state
 
-      utils.assert_close(
+      test_utils.assert_close(
           hf["output"],
           custom["output"],
           preamble=f"{idx=}: output of {hf_name=} vs {custom_name=}",

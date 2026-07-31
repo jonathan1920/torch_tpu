@@ -38,7 +38,7 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import FullStateDictConf
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
 import torch.multiprocessing as mp
 from torch_tpu._internal.utils import log_utils
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from examples.distributed.fsdp import fsdp_worker as fsdp_tp_worker
 from examples.distributed.fsdp import model
 

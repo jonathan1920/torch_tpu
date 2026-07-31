@@ -22,7 +22,7 @@ from torch.utils import _pytree
 from torch.utils import checkpoint
 from torch_tpu._internal import env
 from torch_tpu._internal.compile import _backend
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 
 def _get_cpu_tensors(tree: Any):

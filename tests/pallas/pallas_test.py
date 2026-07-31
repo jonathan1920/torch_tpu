@@ -32,6 +32,7 @@ from torch_tpu._internal import execution_mode
 from torch_tpu._internal import pallas
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.pallas import _compat
+from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
@@ -143,7 +144,7 @@ class TestPallasKernels(absltest.TestCase):
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected = torch.add(x, y).to("cpu")
     actual = add_vectors(x, y).to("cpu")
-    utils.assert_close(actual, expected)
+    test_utils.assert_close(actual, expected)
 
   def test_kernel_multiple_outputs(self):
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
@@ -151,8 +152,8 @@ class TestPallasKernels(absltest.TestCase):
     expected_add = torch.add(x, y).to("cpu")
     expected_sub = torch.sub(x, y).to("cpu")
     actual_add, actual_sub = add_subtract_vectors(x, y)
-    utils.assert_close(actual_add.to("cpu"), expected_add)
-    utils.assert_close(actual_sub.to("cpu"), expected_sub)
+    test_utils.assert_close(actual_add.to("cpu"), expected_add)
+    test_utils.assert_close(actual_sub.to("cpu"), expected_sub)
 
   def test_kernel_called_twice_same_shapes(self):
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
@@ -160,7 +161,7 @@ class TestPallasKernels(absltest.TestCase):
     z = torch.tensor([0.7, 0.8, 0.9], dtype=torch.float32, device=self.device)
     expected = torch.add(torch.add(x, y), z).to("cpu")
     actual = add_vectors(add_vectors(x, y), z).to("cpu")
-    utils.assert_close(actual, expected)
+    test_utils.assert_close(actual, expected)
 
   def test_kernel_called_twice_different_shapes(self):
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
@@ -169,7 +170,7 @@ class TestPallasKernels(absltest.TestCase):
     w = torch.tensor([0.9, 1.0], dtype=torch.float32, device=self.device)
     expected = torch.cat([torch.add(x, y), torch.add(z, w)]).to("cpu")
     actual = torch.cat([add_vectors(x, y), add_vectors(z, w)]).to("cpu")
-    utils.assert_close(actual, expected)
+    test_utils.assert_close(actual, expected)
 
   def test_two_different_kernels(self):
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
@@ -177,7 +178,7 @@ class TestPallasKernels(absltest.TestCase):
     z = torch.tensor([0.7, 0.8, 0.9], dtype=torch.float32, device=self.device)
     expected = torch.sub(torch.add(x, y), z).to("cpu")
     actual = subtract_vectors(add_vectors(x, y), z).to("cpu")
-    utils.assert_close(actual, expected)
+    test_utils.assert_close(actual, expected)
 
   def test_two_kernels_same_name_different_kwargs(self):
 
@@ -198,8 +199,8 @@ class TestPallasKernels(absltest.TestCase):
     expected = torch.add(x, y).to("cpu")
     actual_no_metadata = add_vectors(x, y).to("cpu")
     actual_with_metadata = add_vectors_with_metadata(x, y).to("cpu")
-    utils.assert_close(actual_no_metadata, expected)
-    utils.assert_close(actual_with_metadata, expected)
+    test_utils.assert_close(actual_no_metadata, expected)
+    test_utils.assert_close(actual_with_metadata, expected)
 
   @absltest.skip(
       "This is expected to fail now that we wrap in"
@@ -230,8 +231,8 @@ class TestPallasKernels(absltest.TestCase):
     expected_sub = torch.sub(x, y).to("cpu")
     actual_add = add_vectors_fn(x, y).to("cpu")
     actual_sub = sub_vectors_fn(x, y).to("cpu")
-    utils.assert_close(actual_add, expected_add)
-    utils.assert_close(actual_sub, expected_sub)
+    test_utils.assert_close(actual_add, expected_add)
+    test_utils.assert_close(actual_sub, expected_sub)
 
   def test_kernel_donating(self):
 
@@ -244,14 +245,14 @@ class TestPallasKernels(absltest.TestCase):
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected = torch.add(x, y).to("cpu")
     actual = donating_add_vectors(x, y).to("cpu")
-    utils.assert_close(actual, expected)
+    test_utils.assert_close(actual, expected)
     # x should be donated by the output
     self._assert_donated(x)
     # y should not be donated
     expected_y = torch.tensor(
         [0.4, 0.5, 0.6], dtype=torch.float32, device="cpu"
     )
-    utils.assert_close(y.to("cpu"), expected_y)
+    test_utils.assert_close(y.to("cpu"), expected_y)
 
   def test_kernel_donation_inplace(self):
 
@@ -269,9 +270,9 @@ class TestPallasKernels(absltest.TestCase):
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected = torch.add(x, y).to("cpu")
     add_vectors_inplace(x, y)
-    utils.assert_close(x, expected)
+    test_utils.assert_close(x, expected)
     expected_y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32)
-    utils.assert_close(y.to("cpu"), expected_y)
+    test_utils.assert_close(y.to("cpu"), expected_y)
 
   def test_kernel_donation_invalidates_deferred_op(self):
 
@@ -326,7 +327,7 @@ class TestPallasKernels(absltest.TestCase):
     # Do the forward pass.
     expected_forward = torch.add(x, y).sum()
     actual_forward = add_vectors_sum(x, y)
-    utils.assert_close(
+    test_utils.assert_close(
         actual_forward.detach().to("cpu"), expected_forward.detach().to("cpu")
     )
 
@@ -341,8 +342,8 @@ class TestPallasKernels(absltest.TestCase):
     actual_forward.backward()
     x_grad_actual = x.grad.to("cpu")
     y_grad_actual = y.grad.to("cpu")
-    utils.assert_close(x_grad_actual, x_grad_expected)
-    utils.assert_close(y_grad_actual, y_grad_expected)
+    test_utils.assert_close(x_grad_actual, x_grad_expected)
+    test_utils.assert_close(y_grad_actual, y_grad_expected)
 
   def test_kernel_donating_compiled_mode(self):
 
@@ -368,7 +369,7 @@ class TestPallasKernels(absltest.TestCase):
     expected_sum = expected_updated_x.sum()
 
     actual_sum = donated_add_vectors_sum(x, y)
-    utils.assert_close(actual_sum.to("cpu"), expected_sum)
+    test_utils.assert_close(actual_sum.to("cpu"), expected_sum)
     self._assert_donated(x)
 
   def test_kernel_donation_inplace_compiled_mode(self):
@@ -390,9 +391,9 @@ class TestPallasKernels(absltest.TestCase):
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected = torch.add(x, y).to("cpu")
     add_vectors_inplace(x, y)
-    utils.assert_close(x, expected)
+    test_utils.assert_close(x, expected)
     expected_y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32)
-    utils.assert_close(y.to("cpu"), expected_y)
+    test_utils.assert_close(y.to("cpu"), expected_y)
 
   def test_kernel_compiled_mode_donation_invalidates_deferred_op(self):
 
@@ -458,8 +459,8 @@ class TestPallasKernels(absltest.TestCase):
     # This operation executes successfully, because both uses of x are provided
     # to XLA; it inserts defensive copies as needed.
     x_sum, z = x_used_and_donated(x, y)
-    utils.assert_close(x_sum.cpu(), torch.tensor(0.6, dtype=torch.float32))
-    utils.assert_close(
+    test_utils.assert_close(x_sum.cpu(), torch.tensor(0.6, dtype=torch.float32))
+    test_utils.assert_close(
         z.cpu(), torch.tensor([0.5, 0.7, 0.9], dtype=torch.float32)
     )
 
@@ -474,7 +475,7 @@ class TestPallasKernels(absltest.TestCase):
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected = torch.add(x, y).to("cpu")
     actual = add_fn(x, y).to("cpu")
-    utils.assert_close(actual, expected)
+    test_utils.assert_close(actual, expected)
 
   def test_jax_kernel_wrapper_with_donation(self):
     """Test a kernel wrapper with a donated argument."""
@@ -487,7 +488,7 @@ class TestPallasKernels(absltest.TestCase):
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected = torch.add(x, y).to("cpu")
     actual = add_fn(x, y)
-    utils.assert_close(actual.cpu(), expected)
+    test_utils.assert_close(actual.cpu(), expected)
     # x should be donated by the output.
     self._assert_donated(x)
 
@@ -513,8 +514,8 @@ class TestPallasKernels(absltest.TestCase):
     sub_expected = torch.sub(x, y).to("cpu")
     actual_add = add_kernel(x, y).to("cpu")
     actual_sub = sub_kernel(x, y).to("cpu")
-    utils.assert_close(actual_add, add_expected)
-    utils.assert_close(actual_sub, sub_expected)
+    test_utils.assert_close(actual_add, add_expected)
+    test_utils.assert_close(actual_sub, sub_expected)
 
   def test_jax_kernel_retains_unused_operands(self):
     """jax_op retains operands the traced function does not use.
@@ -535,7 +536,7 @@ class TestPallasKernels(absltest.TestCase):
     y = torch.ones((16, 8), dtype=torch.float32, device=self.device)
     expected = (x * 2).to("cpu")
     actual = op(x, y).to("cpu")
-    utils.assert_close(actual, expected)
+    test_utils.assert_close(actual, expected)
 
   def test_jax_kernel_with_static_argnums(self):
     """Test custom_jax_kernel with static_argnums."""
@@ -549,8 +550,8 @@ class TestPallasKernels(absltest.TestCase):
     sub_expected = torch.sub(x, y).to("cpu")
     actual_add = kernel("add", x, y).to("cpu")
     actual_sub = kernel("sub", x, y).to("cpu")
-    utils.assert_close(actual_add, add_expected)
-    utils.assert_close(actual_sub, sub_expected)
+    test_utils.assert_close(actual_add, add_expected)
+    test_utils.assert_close(actual_sub, sub_expected)
 
   def test_kernel_wrapper_with_none_return(self):
     """Simulate kernel libraries like tokamax that wrap pallas kernels."""
@@ -573,7 +574,7 @@ class TestPallasKernels(absltest.TestCase):
 
     x = torch.tensor([1.0, 2.0, 3.0], device=self.device)
     z = wrapper(x, None)
-    utils.assert_close(z.cpu(), x.cpu())
+    test_utils.assert_close(z.cpu(), x.cpu())
 
   def test_kernel_wrapper_with_none_input_new_syntax(self):
     """Simulate kernel libraries like tokamax that wrap pallas kernels."""
@@ -586,7 +587,7 @@ class TestPallasKernels(absltest.TestCase):
 
     x = torch.tensor([1.0, 2.0, 3.0], device=self.device)
     z = wrapper(x, None)
-    utils.assert_close(z.cpu(), x.cpu())
+    test_utils.assert_close(z.cpu(), x.cpu())
 
   def test_jax_op_with_defaulted_int(self):
     """Check that we can bind torch support-types to the kernel."""
@@ -598,15 +599,15 @@ class TestPallasKernels(absltest.TestCase):
 
     x = torch.tensor([1.0, 2.0, 3.0], device=self.device)
     x_plus_one = bias_add_op(x)
-    utils.assert_close(x_plus_one.cpu(), x.cpu() + 1)
+    test_utils.assert_close(x_plus_one.cpu(), x.cpu() + 1)
 
     # Check that we can override the default value with a positional argument.
     x_plus_two = bias_add_op(x, 2)
-    utils.assert_close(x_plus_two.cpu(), x.cpu() + 2)
+    test_utils.assert_close(x_plus_two.cpu(), x.cpu() + 2)
 
     # Check that we can override the default value with a keyword argument.
     x_plus_two = bias_add_op(x, bias=3)
-    utils.assert_close(x_plus_two.cpu(), x.cpu() + 3)
+    test_utils.assert_close(x_plus_two.cpu(), x.cpu() + 3)
 
   def test_jax_op_with_bound_mesh(self):
     """Simulate distributed kernels.
@@ -625,7 +626,7 @@ class TestPallasKernels(absltest.TestCase):
         "pallas::jax_test", functools.partial(kernel, mesh=mesh)
     )
     z = kernel_op(x)
-    utils.assert_close(z.cpu(), x.cpu() + 1)
+    test_utils.assert_close(z.cpu(), x.cpu() + 1)
 
   def test_symbolic_shape_raises_error(self):
     symbolic_shape = torch.fx.experimental.symbolic_shapes
@@ -663,8 +664,8 @@ class TestPallasKernels(absltest.TestCase):
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected_x = torch.add(x, y).to("cpu")
     actual_x = alised_add_vectors(x, y).to("cpu")
-    utils.assert_close(actual_x, expected_x)
-    utils.assert_close(x.to("cpu"), expected_x)
+    test_utils.assert_close(actual_x, expected_x)
+    test_utils.assert_close(x.to("cpu"), expected_x)
 
   def test_kernel_input_output_aliasing_compiled_mode(self):
 
@@ -699,8 +700,8 @@ class TestPallasKernels(absltest.TestCase):
     expected_sum = expected_updated_x.sum()
 
     actual_sum = aliased_add_vectors_sum(x, y)
-    utils.assert_close(actual_sum.to("cpu"), expected_sum)
-    utils.assert_close(x.to("cpu"), expected_updated_x)
+    test_utils.assert_close(actual_sum.to("cpu"), expected_sum)
+    test_utils.assert_close(x.to("cpu"), expected_updated_x)
 
   def test_inconsistent_donate_and_aliases_raises_error(self):
     with self.assertRaisesRegex(
@@ -811,7 +812,7 @@ class TestPallasKernels(absltest.TestCase):
       output_mul, output_add = mul_and_add_scalars(x, y)
 
       # Assert - Forward output
-      # No need for utils.assert_close - these are integer-valued outputs.
+      # No need for test_utils.assert_close - these are integer-valued outputs.
       self.assertEqual(output_mul.item(), 14.0)
       self.assertEqual(output_add.item(), 9.0)
 

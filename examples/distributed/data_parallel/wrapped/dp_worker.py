@@ -26,7 +26,7 @@ from torch import distributed as dist
 from torch import optim
 from torch.nn.parallel import DistributedDataParallel as DDP  # pylint: disable=g-importing-member
 from torch_tpu._internal.utils import log_utils
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from examples.distributed.data_parallel import dp_utils
 
 

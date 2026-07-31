@@ -27,7 +27,7 @@ import torch.multiprocessing as mp
 from torch_tpu._internal import pallas
 from torch_tpu._internal.distributed import tpu_distributed
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from tests.distributed import distributed_utils
 
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing

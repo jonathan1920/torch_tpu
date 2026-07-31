@@ -47,13 +47,14 @@ torch_tpu_py_test(
 
 torch_tpu_py_library(
     name = "tp_worker",
+    testonly = True,
     srcs = ["tp_worker.py"],
     deps = [
         ":model",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",
+        "//torch_tpu/_internal/utils:test_utils",
     ],
 )
 

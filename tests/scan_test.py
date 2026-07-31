@@ -18,7 +18,7 @@ import torch
 from torch._higher_order_ops import scan
 import torch.utils._pytree as pytree
 from torch_tpu._internal.compile import _backend
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 
 def _compile_and_run(fn, *args, **kwargs):

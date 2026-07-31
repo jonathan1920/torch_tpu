@@ -19,7 +19,7 @@ import torch
 from torch_tpu._internal import dynamism
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import testing as tt_testing
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from tests import op_testing
 
 EagerMode: TypeAlias = execution_mode.EagerMode

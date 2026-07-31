@@ -19,7 +19,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import torch
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from examples.mingpt.impl import mingpt
 from examples.mingpt.impl import mingpt_jax
 

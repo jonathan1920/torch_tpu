@@ -41,7 +41,7 @@ from torch.testing._internal import common_methods_invocations
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from tests import op_testing
 from tests import ops_test_data
 

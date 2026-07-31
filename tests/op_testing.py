@@ -58,6 +58,7 @@ from torch_tpu._internal import compile as tt_compile
 from torch_tpu._internal import compiler_options as compiler
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.device import _device_ops_backend
+from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
 
 # In this file, we use the following naming convention for variables:
@@ -68,8 +69,8 @@ from torch_tpu._internal.utils import utils
 TestCase = common_utils.TestCase
 OpInfo = core.OpInfo  # pylint: disable=protected-access
 SampleInput = core.SampleInput  # pylint: disable=protected-access
-CheckValueMode = utils.CheckValueMode
-Tolerance = utils.Tolerance
+CheckValueMode = test_utils.CheckValueMode
+Tolerance = test_utils.Tolerance
 
 AccuracyOverrides = Mapping[str, Mapping[torch.dtype, Mapping[str, Tolerance]]]
 
@@ -2156,7 +2157,7 @@ class TorchTpuTestBase(TestCase):
       self.assertEqual(golden_result, torch_tpu_result)
       return
 
-    utils.assert_close(
+    test_utils.assert_close(
         actual=torch_tpu_result,
         expected=golden_result,
         rtol=rtol,

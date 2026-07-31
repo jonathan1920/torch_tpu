@@ -39,6 +39,18 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/export",
         "//torch_tpu/_internal/sync",
+    ],
+)
+
+torch_tpu_py_library(
+    # TODO(wan): mark this target as testonly. We cannot do it today as it's
+    # included in the wheel, which is not testonly. We need to figure out a
+    # way to move this target out of the wheel.
+    name = "test_utils",
+    srcs = ["test_utils.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/sync",
         "@pypi//numpy",
     ],
 )
@@ -71,6 +83,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":test_fixtures",
+        ":test_utils",
         ":utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -102,6 +115,7 @@ torch_tpu_py_test(
     strict = True,
     deps = [
         ":test_fixtures",
+        ":test_utils",
         ":tracer_utils",
         ":utils",
         "//shims/absl_py/logging",
@@ -118,6 +132,7 @@ torch_tpu_py_test(
     strict = True,
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":test_utils",
         ":tracer_utils",
         ":utils",
         "//shims/absl_py/logging",

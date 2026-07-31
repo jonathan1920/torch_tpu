@@ -28,7 +28,7 @@ from torch import nn
 from torch import optim
 from torch.distributed import fsdp
 from torch_tpu._internal.utils import log_utils
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from examples.distributed.fsdp import model
 
 

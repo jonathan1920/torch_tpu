@@ -23,7 +23,7 @@ from torch.fx.experimental.symbolic_shapes import ShapeEnv
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile.compiler import has_dynamic_symints
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 
 def simple(x):

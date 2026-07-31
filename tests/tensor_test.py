@@ -21,10 +21,11 @@ import torch
 from torch.testing._internal import common_device_type
 from torch.testing._internal import common_utils as torch_test_utils
 from torch_tpu._internal import sync
+from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
 
 
-CheckValueMode = utils.CheckValueMode
+CheckValueMode = test_utils.CheckValueMode
 
 
 def _copy_(rng, dtype):
@@ -461,7 +462,7 @@ class TensorTest(torch_test_utils.TestCase):
       assert isinstance(tpu_result, type(cpu_result))
       if isinstance(tpu_result, torch.Tensor):
         tpu_result_cpu = tpu_result.cpu()
-        utils.assert_close(
+        test_utils.assert_close(
             actual=tpu_result_cpu,
             expected=cpu_result,
             **tolerance,
@@ -473,7 +474,7 @@ class TensorTest(torch_test_utils.TestCase):
           cpu_result_i = cpu_result[i]
           tpu_result_i = tpu_result[i]
           tpu_result_cpu_i = tpu_result_i.cpu()
-          utils.assert_close(
+          test_utils.assert_close(
               actual=tpu_result_cpu_i,
               expected=cpu_result_i,
               **tolerance,

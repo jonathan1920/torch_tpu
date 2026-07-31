@@ -24,7 +24,7 @@ from torch_tpu._internal import execution_mode
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.device_utils import annotations
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 

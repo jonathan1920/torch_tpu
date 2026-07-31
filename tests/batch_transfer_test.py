@@ -16,7 +16,7 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal import batch_transfer
 from torch_tpu._internal import testing as tt_testing
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 
 class BatchTransferTest(absltest.TestCase):

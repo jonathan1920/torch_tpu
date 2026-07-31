@@ -20,6 +20,7 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal import dynamism
 from torch_tpu._internal.utils import test_fixtures
+from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
 
 
@@ -89,16 +90,18 @@ class AllTest(absltest.TestCase):
   def test_compare_strict_mode(self):
     t_tpu = torch.arange(8).reshape((4, 2)).to(torch.float32)
     t_cpu = torch.arange(8).reshape((4, 2)).to(torch.float32)
-    utils.assert_close(t_tpu, t_cpu, check_value=utils.CheckValueMode.STRICT)
+    test_utils.assert_close(
+        t_tpu, t_cpu, check_value=test_utils.CheckValueMode.STRICT
+    )
 
     t_cpu[0, 1] += 0.1
     with self.assertRaises(AssertionError) as cm:
-      utils.assert_close(
+      test_utils.assert_close(
           t_tpu,
           t_cpu,
           rtol=1e-6,
           atol=1e-6,
-          check_value=utils.CheckValueMode.STRICT,
+          check_value=test_utils.CheckValueMode.STRICT,
       )
     self.assertIn("Tolerance Suggestions:", str(cm.exception))
     self.assertIn("Optimal tight tolerances", str(cm.exception))
@@ -107,11 +110,11 @@ class AllTest(absltest.TestCase):
   def test_compare_loose_mode(self):
     t_tpu = torch.arange(8).reshape((4, 2)).to(torch.float32)
     t_cpu = torch.arange(8).reshape((4, 2)).to(torch.float32)
-    utils.assert_close(t_tpu, t_cpu)
+    test_utils.assert_close(t_tpu, t_cpu)
 
     t_cpu[0, 1] += 0.1
     with self.assertRaises(AssertionError) as cm:
-      utils.assert_close(
+      test_utils.assert_close(
           t_tpu,
           t_cpu,
           rtol=1e-6,
@@ -125,14 +128,16 @@ class AllTest(absltest.TestCase):
     t_tpu = torch.arange(8).reshape((4, 2)).to(torch.float32)
     t_cpu = torch.arange(8).reshape((4, 2)).to(torch.float32)
     with self.assertRaises(ValueError) as cm:  # pylint: disable=g-error-prone-assert-raises
-      utils.assert_close(t_tpu, t_cpu, check_value=utils.CheckValueMode.LOOSE)
+      test_utils.assert_close(
+          t_tpu, t_cpu, check_value=test_utils.CheckValueMode.LOOSE
+      )
     self.assertIn("LOOSE mode is the default", str(cm.exception))
 
   def test_compute_optimal_tolerances_case1_expected_le_1(self):
     # |e| <= 1: atol = |a - e| * 1.2, rtol = 0.0
     actual = torch.tensor([0.52, 0.8])
     expected = torch.tensor([0.50, 0.8])
-    atol, rtol = utils.compute_optimal_tolerances(actual, expected)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual, expected)
     self.assertAlmostEqual(atol, 0.02 * 1.2, places=5)
     self.assertEqual(rtol, 0.0)
 
@@ -140,7 +145,7 @@ class AllTest(absltest.TestCase):
     # |e| > 1: atol = 0.0, rtol = (|a - e| / |e|) * 1.2
     actual = torch.tensor([11.0, 10.0])
     expected = torch.tensor([10.0, 10.0])
-    atol, rtol = utils.compute_optimal_tolerances(actual, expected)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual, expected)
     self.assertEqual(atol, 0.0)
     self.assertAlmostEqual(rtol, (1.0 / 10.0) * 1.2, places=5)
 
@@ -149,7 +154,7 @@ class AllTest(absltest.TestCase):
     # Element 2 (e=10 > 1): diff=0.5 -> atol_2=0, rtol_2=0.05
     actual = torch.tensor([0.1, 10.5])
     expected = torch.tensor([0.0, 10.0])
-    atol, rtol = utils.compute_optimal_tolerances(actual, expected)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual, expected)
     self.assertAlmostEqual(atol, 0.1 * 1.2, places=5)
     self.assertAlmostEqual(rtol, 0.05 * 1.2, places=5)
 
@@ -157,7 +162,7 @@ class AllTest(absltest.TestCase):
     # |e| = 1.0 falls under Case 1 (|e| <= 1): atol = |a - e| * 1.2, rtol = 0.0
     actual = torch.tensor([1.05])
     expected = torch.tensor([1.00])
-    atol, rtol = utils.compute_optimal_tolerances(actual, expected)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual, expected)
     self.assertAlmostEqual(atol, 0.05 * 1.2, places=5)
     self.assertEqual(rtol, 0.0)
 
@@ -165,7 +170,7 @@ class AllTest(absltest.TestCase):
     # Verifies float64 promotion calculates exact difference of bfloat16 values
     actual = torch.tensor([0.52], dtype=torch.bfloat16)
     expected = torch.tensor([0.50], dtype=torch.bfloat16)
-    atol, rtol = utils.compute_optimal_tolerances(actual, expected)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual, expected)
     diff_exact = float(actual.to(torch.float64) - expected.to(torch.float64))
     self.assertAlmostEqual(atol, diff_exact * 1.2, places=5)
     self.assertEqual(rtol, 0.0)
@@ -173,7 +178,7 @@ class AllTest(absltest.TestCase):
   def test_compute_optimal_tolerances_unmatched_nan_handling(self):
     actual = torch.tensor([float("nan"), 1.0])
     expected = torch.tensor([0.5, 1.0])
-    atol, rtol = utils.compute_optimal_tolerances(actual, expected)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual, expected)
     self.assertTrue(math.isnan(atol))
     self.assertTrue(math.isnan(rtol))
 
@@ -181,7 +186,7 @@ class AllTest(absltest.TestCase):
     # Matching NaNs should be ignored, and tolerances computed on valid numbers
     actual = torch.tensor([float("nan"), 0.52])
     expected = torch.tensor([float("nan"), 0.50])
-    atol, rtol = utils.compute_optimal_tolerances(actual, expected)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual, expected)
     self.assertAlmostEqual(atol, 0.02 * 1.2, places=5)
     self.assertEqual(rtol, 0.0)
 
@@ -190,7 +195,7 @@ class AllTest(absltest.TestCase):
     # truncation loss.
     actual = torch.tensor([0.52], dtype=torch.float64)
     expected = torch.tensor([0.50], dtype=torch.float64)
-    atol, rtol = utils.compute_optimal_tolerances(actual, expected)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual, expected)
     diff = float((actual - expected).item())
     self.assertGreaterEqual(atol, diff * 1.2)
     self.assertEqual(rtol, 0.0)
@@ -198,7 +203,7 @@ class AllTest(absltest.TestCase):
   def test_compute_optimal_tolerances_inf_handling(self):
     actual = torch.tensor([100.0])
     expected = torch.tensor([float("inf")])
-    atol, rtol = utils.compute_optimal_tolerances(actual, expected)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual, expected)
     self.assertTrue(math.isinf(atol))
     self.assertTrue(math.isinf(rtol))
 
@@ -211,14 +216,14 @@ class AllTest(absltest.TestCase):
         torch.tensor([0.50], dtype=torch.float64),
         torch.tensor([10.0], dtype=torch.float64),
     ]  # atol=0, rtol=0.1
-    atol, rtol = utils.compute_optimal_tolerances(actual_seq, expected_seq)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual_seq, expected_seq)
     self.assertGreaterEqual(atol, 0.02 * 1.2)
     self.assertGreaterEqual(rtol, 0.1 * 1.2)
 
   def test_compute_optimal_tolerances_sequence_nan_propagation(self):
     actual = [torch.tensor([0.52]), torch.tensor([float("nan")])]
     expected = [torch.tensor([0.50]), torch.tensor([1.0])]
-    atol, rtol = utils.compute_optimal_tolerances(actual, expected)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual, expected)
     self.assertTrue(math.isnan(atol))
     self.assertTrue(math.isnan(rtol))
 
@@ -231,7 +236,7 @@ class AllTest(absltest.TestCase):
         torch.tensor([0.50], dtype=torch.float64),
         torch.tensor([1.0], dtype=torch.float64),
     ]
-    atol, rtol = utils.compute_optimal_tolerances(actual_seq, expected_seq)
+    atol, rtol = test_utils.compute_optimal_tolerances(actual_seq, expected_seq)
     self.assertTrue(math.isnan(atol))
     self.assertTrue(math.isnan(rtol))
 
@@ -239,7 +244,7 @@ class AllTest(absltest.TestCase):
     actual = [torch.tensor([1.0]), torch.tensor([2.0])]
     expected = [torch.tensor([1.0])]
     with self.assertRaises(AssertionError):
-      utils.compute_optimal_tolerances(actual, expected)
+      test_utils.compute_optimal_tolerances(actual, expected)
 
   def test_model_shlo_dyn(self):
 
@@ -261,7 +266,7 @@ class AllTest(absltest.TestCase):
   def test_assert_close_with_callable_atol_success(self):
     t1 = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], device=self.device)
     t2 = torch.tensor([[1.1, 2.0, 3.0], [4.2, 5.0, 6.0]])
-    utils.assert_close(
+    test_utils.assert_close(
         actual=t1, expected=t2, atol=lambda x: 0.25 if x > 3 else 0.15
     )
 
@@ -269,7 +274,7 @@ class AllTest(absltest.TestCase):
     t1 = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     t2 = torch.tensor([[1.1, 2.0, 3.0], [4.2, 5.0, 6.0]], device=self.device)
     with self.assertRaises(AssertionError):
-      utils.assert_close(
+      test_utils.assert_close(
           actual=t1, expected=t2, atol=lambda x: 0.05 if x > 3 else 0.2
       )
 
@@ -500,7 +505,7 @@ class AllTest(absltest.TestCase):
         self.assertEqual(actual["kwargs"], {})
       else:
         try:
-          utils.assert_close(actual[key], expected[key])
+          test_utils.assert_close(actual[key], expected[key])
         except Exception as e:
           raise self.failureException(
               f"{key=}\n{actual['idx']=}\n{actual[key]=}\n{expected[key]=}\n"

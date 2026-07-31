@@ -27,6 +27,7 @@ from etils import epath
 from PIL import Image
 import torch
 from torch_tpu._internal.utils import log_utils
+from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import tracer_utils
 from torch_tpu._internal.utils import utils
 from examples import paths
@@ -147,7 +148,7 @@ class ResNet50TVTest(absltest.TestCase):
         # TODO: Investigate discrepancy in batchnorms
         continue
       try:
-        utils.assert_close(
+        test_utils.assert_close(
             acc_event["output"],
             cpu_event["output"],
             atol=1e-4,

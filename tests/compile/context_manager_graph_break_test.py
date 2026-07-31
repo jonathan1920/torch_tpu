@@ -26,7 +26,7 @@ for human inspection only.
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import precision
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 
 def _torch_tpu_ctx_matmul(

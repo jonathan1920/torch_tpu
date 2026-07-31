@@ -41,14 +41,15 @@ torch_tpu_py_test(
 
 torch_tpu_py_library(
     name = "fsdp_lora_worker",
+    testonly = True,
     srcs = ["fsdp_lora_worker.py"],
     deps = [
         "//examples/distributed/fsdp:fsdp_worker",
         "//examples/distributed/fsdp:model",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",
+        "//torch_tpu/_internal/utils:test_utils",
         "@pypi//peft",
     ],
 )

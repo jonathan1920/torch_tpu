@@ -38,6 +38,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/pallas",
         "//torch_tpu/_internal/pallas:pallas_compat",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:test_utils",
         "@pypi//jax",
         "@pypi//packaging",
     ],
@@ -85,7 +86,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/pallas",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
-        "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:test_utils",
         "@pypi//jax",
     ],
 )

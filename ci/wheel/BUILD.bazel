@@ -109,6 +109,9 @@ pytype_strict_library(
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:hardware",
         "//torch_tpu/_internal/utils:log_utils",
+        # TODO(wan): Remove test_utils from the wheel. Currently, some tests
+        # fail without this in the wheel build.
+        "//torch_tpu/_internal/utils:test_utils",
         "//torch_tpu/_internal/utils:tracer_utils",
     ],
     visibility = ["//visibility:public"],

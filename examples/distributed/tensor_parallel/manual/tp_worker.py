@@ -25,7 +25,7 @@ import torch
 from torch import distributed as dist
 # Direct all logs to stdout so kubectl logs can see them
 from torch_tpu._internal.utils import log_utils
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from examples.distributed.tensor_parallel.manual import model
 
 

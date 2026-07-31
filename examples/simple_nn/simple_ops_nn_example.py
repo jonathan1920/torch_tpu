@@ -16,7 +16,7 @@ from typing import Final
 from absl import app
 import torch
 import torch.nn as nn
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 TPU_DEVICE_TYPE: Final[str] = "tpu"
 

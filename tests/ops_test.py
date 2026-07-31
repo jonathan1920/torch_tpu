@@ -29,7 +29,7 @@ from absl.testing import absltest
 import torch
 from torch.nn import attention
 from torch.testing._internal import common_methods_invocations  # pylint: disable=unused-import
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils
 from tests import dynamism_test_utils
 from tests import op_testing
 from tests import oss_utils
@@ -107,7 +107,7 @@ COMPLEX_DTYPES = op_testing.COMPLEX_DTYPES
 FLOAT_DTYPES = op_testing.FLOAT_DTYPES
 INTEGRAL_DTYPES = op_testing.INTEGRAL_DTYPES
 
-CheckValueMode = utils.CheckValueMode
+CheckValueMode = test_utils.CheckValueMode
 
 # OpInput and OpOutput are not used directly in this file, but needed for
 # pickling the golden results.

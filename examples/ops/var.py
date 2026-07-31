@@ -34,7 +34,7 @@ import sys
 from absl import app
 from absl import flags
 import torch
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 
 class VarManual(torch.nn.Module):

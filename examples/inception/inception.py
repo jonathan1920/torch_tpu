@@ -18,7 +18,7 @@ from absl import app
 from absl import flags
 import torch
 from torch import nn
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 _TPU = flags.DEFINE_bool("tpu", True, "Run on TPU and compare output to CPU.")
 

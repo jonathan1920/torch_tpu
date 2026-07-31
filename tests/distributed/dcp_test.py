@@ -30,7 +30,7 @@ from torch.distributed.checkpoint import state_dict
 import torch.distributed.tensor as dt
 import torch.multiprocessing as mp
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from tests.distributed import distributed_utils
 
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing

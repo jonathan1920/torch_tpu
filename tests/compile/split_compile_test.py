@@ -17,7 +17,7 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal.compile import collective_ops
 from torch_tpu._internal.compile._backend import TpuBackend
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 
 
 class SplitCompileTest(absltest.TestCase):

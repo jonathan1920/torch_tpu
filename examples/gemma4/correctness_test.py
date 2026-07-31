@@ -16,7 +16,7 @@
 
 from absl.testing import absltest
 import torch
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from examples.gemma4 import model
 from transformers.models.gemma4.configuration_gemma4 import Gemma4Config
 from transformers.models.gemma4.configuration_gemma4 import Gemma4TextConfig

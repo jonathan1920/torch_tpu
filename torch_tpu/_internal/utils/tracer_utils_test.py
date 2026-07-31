@@ -16,6 +16,7 @@ from absl import logging
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.utils import test_fixtures
+from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import tracer_utils
 from torch_tpu._internal.utils import utils
 
@@ -213,7 +214,7 @@ class AllTest(absltest.TestCase):
       replayed_log = tracer_utils.replay_log(log, "cpu")
 
       # Assert
-      utils.assert_close(replayed_log[0]["output"], log[0]["output"])  # pyrefly: ignore[bad-index]
+      test_utils.assert_close(replayed_log[0]["output"], log[0]["output"])  # pyrefly: ignore[bad-index]
 
   def test_replay_on_linear_with_change_returns_different_value(self):
     """Tests replay on a simple module with a changed weight."""
@@ -225,7 +226,7 @@ class AllTest(absltest.TestCase):
     log, _ = tracer.forward_log, tracer.forward_pre_log
 
     # Internal check:
-    utils.assert_close(log[0]["output"], torch.tensor([6.0]))
+    test_utils.assert_close(log[0]["output"], torch.tensor([6.0]))
 
     with self.subTest("replay"):
       # Act
@@ -233,8 +234,8 @@ class AllTest(absltest.TestCase):
       replayed_log = tracer_utils.replay_log(log, "cpu")
 
       # Assert
-      utils.assert_close(log[0]["output"], torch.tensor([6.0]))
-      utils.assert_close(replayed_log[0]["output"], torch.tensor([15.0]))  # pyrefly: ignore[bad-index]
+      test_utils.assert_close(log[0]["output"], torch.tensor([6.0]))
+      test_utils.assert_close(replayed_log[0]["output"], torch.tensor([15.0]))  # pyrefly: ignore[bad-index]
 
     with self.subTest("pformat"):
       text = tracer_utils.pformat_replay(log, _, replayed_log)
@@ -259,7 +260,7 @@ class AllTest(absltest.TestCase):
 
     # Assert.
     for event, replayed_event in zip(log, replayed_log):
-      utils.assert_close(event["output"], replayed_event["output"])  # pyrefly: ignore[bad-index]
+      test_utils.assert_close(event["output"], replayed_event["output"])  # pyrefly: ignore[bad-index]
 
   def test_replay_on_complex_module_with_change(self):
     """Tests replay_log on a complex module with one spot change."""
