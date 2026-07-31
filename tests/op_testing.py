@@ -1447,6 +1447,12 @@ def is_compiled_mode() -> bool:
   return _USE_COMPILED.value
 
 
+@functools.lru_cache(maxsize=None)
+def is_tpu_vs_gpu_compiled() -> bool:
+  """Returns true if running TPU vs GPU test in compiled mode."""
+  return _torch_tpu_vs_gpu_mode() and is_compiled_mode()
+
+
 def _is_enum(obj: Any) -> bool:
   """Returns True if obj is a Python enum or a pybind11 enum object."""
   cls = obj if isinstance(obj, type) else type(obj)
