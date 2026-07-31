@@ -1804,15 +1804,16 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "abs",
         # TODO(b/495929595): can be incorrect close to 0.
-        # TODO: fix abs() failing with bool dtypes.
-        exclude_dtypes={"gpu": (torch.bool,)},
-        exclude_inplace_dtypes={"gpu": (torch.bool,)},
         # TODO: stablehlo gradients for Real/Imag/Abs on complex are not
         # working.
         skip_if=lambda _1, _2, op_input: (
             op_testing._COMPUTE_GRAD.value
             and op_input.input_value.dtype == torch.complex64
         ),
+        exclude_dtypes={"cpu": (torch.bool,)},  # EXCLUDE_DTYPES_OK=unsupported
+        exclude_inplace_dtypes={  # EXCLUDE_DTYPES_OK=unsupported
+            "cpu": (torch.bool,)
+        },
     )
 
   def test_acos(self):
@@ -2393,9 +2394,10 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_abs(self):
     self.do_test_op(
         "_foreach_abs",
-        # TODO: fix abs() failing with bool dtypes.
-        exclude_dtypes={"gpu": (torch.bool,)},
-        exclude_inplace_dtypes={"gpu": (torch.bool,)},
+        exclude_dtypes={"cpu": (torch.bool,)},  # EXCLUDE_DTYPES_OK=unsupported
+        exclude_inplace_dtypes={  # EXCLUDE_DTYPES_OK=unsupported
+            "cpu": (torch.bool,)
+        },
     )
 
   @category("foreach")
