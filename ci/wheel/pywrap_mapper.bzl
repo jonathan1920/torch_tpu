@@ -20,6 +20,34 @@ their original file directories. This rule is used to call a python script to th
 the location of these files to resolve the original file directory.
 """
 
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
+
+# Shown when someone reaches the execution phase without --//:wheel_build=True.
+# This is deliberately an action that fails rather than a fail() in the rule
+# implementation: a fail() runs during analysis, which takes down every
+# repo-wide `cquery` -- including the one bazel-diff runs to hash the graph on
+# presubmit -- even though nobody asked to build a wheel.
+_WHEEL_BUILD_GUARD_MESSAGE = """
+================================================================================
+The torch_tpu wheel must be built with --//:wheel_build=True.
+
+    bazel build -c opt --config=wheel_common //ci/wheel:torch_tpu_wheel
+
+If you do not have RBE credentials, append --config=no_rbe *after*
+--config=wheel_common to strip the remote cache and executor it turns on:
+
+    bazel build -c opt --config=wheel_common //ci/wheel:torch_tpu_wheel \\
+        --config=no_rbe
+
+--//:wheel_build=True routes the shared XLA/MLIR backend through the
+torch_version-reset transition, so pywrap factors it into a single
+libxla_base.so. Built without it, every per-version common ships its own full
+copy of the backend and the wheel aborts on `import torch` with duplicate
+static registrations. The result is a silently broken wheel, not merely a
+differently-laid-out one, which is why this is refused rather than warned about.
+================================================================================
+"""
+
 def _remapper_impl(ctx):
     manifests = []
     binaries = []
@@ -34,6 +62,20 @@ def _remapper_impl(ctx):
         fail("Could not find a .json manifest in srcs. Ensure pywrap_binaries has JSON output.")
 
     out_dir = ctx.actions.declare_directory(ctx.attr.name + "_pkg")
+
+    # Every wheel build funnels through this rule, so failing the action that
+    # produces out_dir makes a mis-factored wheel unbuildable no matter which
+    # wheel target was requested.
+    if not ctx.attr._wheel_build[BuildSettingInfo].value:
+        ctx.actions.run_shell(
+            outputs = [out_dir],
+            command = "cat >&2 <<'_GUARD_EOF_'{}_GUARD_EOF_\nexit 1\n".format(
+                _WHEEL_BUILD_GUARD_MESSAGE,
+            ),
+            mnemonic = "PywrapWheelBuildGuard",
+            progress_message = "Checking the torch_tpu wheel build configuration",
+        )
+        return [DefaultInfo(files = depset([out_dir]))]
 
     # 3. Construct arguments for the python script. Multiple pywrap_binaries
     # (one per PyTorch version) each contribute a manifest; the per-version
@@ -59,6 +101,7 @@ remap_pywrap_binaries = rule(
     implementation = _remapper_impl,
     attrs = {
         "srcs": attr.label_list(mandatory = True, allow_files = True),
+        "_wheel_build": attr.label(default = Label("//:wheel_build")),
         "_mapper_script": attr.label(
             default = Label("//ci/wheel:wheel_mapper_bin"),
             executable = True,

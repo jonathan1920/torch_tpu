@@ -70,6 +70,12 @@ pytype_strict_binary(
 # GLUE_TORCH_VERSIONS (see //bazel:glue_packages.bzl). The nightly glue rides
 # along by default but is dropped under --config wheel_release, so artifacts
 # published to an index carry only the release glues.
+#
+# Building this without --//:wheel_build=True fails at execution with an
+# explanation and the correct invocation (see pywrap_mapper.bzl). The check
+# lives in the action rather than in the rule implementation so that repo-wide
+# tooling which configures every target -- bazel-diff's `generate-hashes
+# --useCquery`, plain `bazel cquery //...` -- still analyzes cleanly.
 remap_pywrap_binaries(
     name = "remapped_pywrap_binaries",
     srcs = [
@@ -193,6 +199,13 @@ py_test(
         ":torch_tpu_wheel",
         "//:pyproject.toml",
     ],
+    # Only meaningful against the wheel we actually ship, so it is skipped as
+    # incompatible outside a wheel build rather than dragging the wheel (and
+    # its build guard) into every job that happens to touch these files.
+    target_compatible_with = select({
+        "//:wheel_build_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     env = select({
         ":use_local_torch": _COMMON_ENV | {"LOCAL_TORCH": "1"},
         "//conditions:default": _COMMON_ENV,
@@ -213,6 +226,13 @@ py_test(
     env = {"WHEEL_PATH": "$(location :torch_tpu_wheel)"},
     python_version = "PY3",
     tags = ["manual"],
+    # `manual` keeps this out of wildcard expansion, but bazel-diff feeds
+    # impacted targets as explicit labels, which ignores it. Same reasoning as
+    # wheel_single_source_test above.
+    target_compatible_with = select({
+        "//:wheel_build_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         "//shims/absl_py/testing:absltest",
     ],
