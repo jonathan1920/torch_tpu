@@ -87,7 +87,15 @@ mkdir -p "${OUTPUT_DIR}"
 
 for py_ver in "${PY_VERSIONS[@]}"; do
   echo "===> Building wheel for Python ${py_ver}"
-  bazel build -c opt //ci/wheel:torch_tpu_wheel \
+  # --config=wheel_common is REQUIRED for a working wheel: it sets
+  # --//:wheel_build=True, which routes the shared XLA/MLIR backend through
+  # the torch_version-reset transition so pywrap factors it into the single
+  # libxla_base.so. Without it every per-version common carries a full
+  # backend copy and the wheel aborts on import with duplicate static
+  # registrations. Caller-supplied flags come after it, so an environment
+  # without RBE credentials can append --config=no_rbe to strip the RBE
+  # remote-cache/execution flags wheel_common pulls in.
+  bazel build -c opt --config=wheel_common //ci/wheel:torch_tpu_wheel \
     --repo_env=WHEEL_VERSION_EXTRAS="${WHEEL_VERSION_EXTRAS}" \
     --repo_env=HERMETIC_PYTHON_VERSION="${py_ver}" \
     --define PYTHON_VERSION="${py_ver}" \
