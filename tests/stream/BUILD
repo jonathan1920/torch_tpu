@@ -32,7 +32,6 @@ torch_tpu_py_test(
         reason = "Load balancing",
     ),
     tags = [
-        "noasan",  # TODO(b/540419660): Needs further investigation for the ASAN error.
         "requires-tpu-v5lite",
     ],
     deps = [
