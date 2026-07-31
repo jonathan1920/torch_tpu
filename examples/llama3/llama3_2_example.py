@@ -19,7 +19,7 @@ import sys
 from absl import app
 from absl import flags
 import torch
-from torch_tpu._internal.utils import utils
+from torch_tpu._internal.utils import test_utils as utils
 from examples.llama3.impl import llama3_2
 
 

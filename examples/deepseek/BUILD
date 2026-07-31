@@ -60,8 +60,8 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",
+        "//torch_tpu/_internal/utils:test_utils",
     ],
 )
 
@@ -84,8 +84,8 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",
+        "//torch_tpu/_internal/utils:test_utils",
     ],
 )
 
