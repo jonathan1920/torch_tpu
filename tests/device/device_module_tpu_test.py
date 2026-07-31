@@ -55,6 +55,24 @@ class TpuDeviceModuleTest(
     iface = get_interface_for_device("tpu")
     self.assertEqual(iface, self.device_module)
 
+  def test_get_device_properties_multi_processor_count(self):
+    props = self.device_module.get_device_properties()
+    self.assertTrue(hasattr(props, "multi_processor_count"))
+    self.assertIsInstance(props.multi_processor_count, int)
+    self.assertGreaterEqual(props.multi_processor_count, 1)
+
+    iface_props = get_interface_for_device("tpu").get_device_properties("tpu")
+    self.assertTrue(hasattr(iface_props, "multi_processor_count"))
+    self.assertIsInstance(iface_props.multi_processor_count, int)
+    self.assertGreaterEqual(iface_props.multi_processor_count, 1)
+
+  def test_get_compute_capability(self):
+    capability = self.device_module.get_compute_capability()
+    self.assertIsInstance(capability, str)
+
+    iface_cap = get_interface_for_device("tpu").get_compute_capability("tpu")
+    self.assertIsInstance(iface_cap, str)
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -441,6 +441,7 @@ class _TpuDeviceProperties:
 
   name: str
   total_memory: int
+  multi_processor_count: int = 1
 
 
 class TpuDeviceModule(_DeviceModule):
@@ -482,6 +483,14 @@ class TpuDeviceModule(_DeviceModule):
         name=cls.get_device_name(device),
         total_memory=total_memory,
     )
+
+  @classmethod
+  def get_compute_capability(
+      cls,
+      device: int | str | torch.device | None = None,
+  ) -> str:
+    del device  # Unused.
+    return ""
 
 
 class XlaCudaDeviceModule(_DeviceModule):
