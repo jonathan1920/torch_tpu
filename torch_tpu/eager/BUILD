@@ -914,6 +914,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "device_buffer_utils_test",
     srcs = ["device_buffer_utils_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     requires_libtpu = True,
     deps = [
         ":device_buffer_utils",
