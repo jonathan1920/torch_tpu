@@ -106,6 +106,7 @@ def _has_test_filter() -> bool:
 COMPLEX_DTYPES = op_testing.COMPLEX_DTYPES
 FLOAT_DTYPES = op_testing.FLOAT_DTYPES
 INTEGRAL_DTYPES = op_testing.INTEGRAL_DTYPES
+NUMERIC_DTYPES = op_testing.NUMERIC_DTYPES
 
 CheckValueMode = test_utils.CheckValueMode
 
@@ -3581,9 +3582,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "torch._scaled_mm_v2",
         extra_dtypes=common_methods_invocations.float8_types(),
-        # TODO(b/540128322): torch._scaled_mm_v2 has no C++ CPU implementation
-        # in OSS.
-        skip_if=lambda device, variant, op_input: device == "cpu",
+        exclude_dtypes=NUMERIC_DTYPES,  # EXCLUDE_DTYPES_OK=op is FP8-only.
     )
 
   def test_scatter(self):
