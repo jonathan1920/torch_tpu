@@ -746,7 +746,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.uint8: {"rtol": 5.7e-5, "atol": 5.7e-4},
     },
     # go/keep-sorted end
-}
+}  # end of ACCURACY_OVERRIDES_VS_CPU
 
 
 def update_dict(d, u):
@@ -1251,7 +1251,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.uint8: {"atol": 5.7e-4},
     },
     # go/keep-sorted end
-}
+}  # end of ACCURACY_OVERRIDES_VS_GPU
 
 # Like ACCURACY_OVERRIDES_VS_CPU, but for TPU vs GPU with torch.compile().
 ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
@@ -1495,7 +1495,7 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.uint8: {"atol": 3e-5},
     },
     # go/keep-sorted end
-}
+}  # end of ACCURACY_OVERRIDES_VS_GPU_COMPILED
 
 # The gradient tolerances are based on the forward pass tolerances.
 ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
@@ -1673,7 +1673,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             # go/keep-sorted end
         },
     )
-)
+)  # end of ACCURACY_OVERRIDES_GRAD
 
 
 # Returns true for test cases that trigger GPU bug.
