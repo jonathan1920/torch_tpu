@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Iterator
+import contextlib
 import os
 import re
+import tempfile
 from typing import TypeAlias
 
 from absl.testing import absltest
@@ -36,6 +39,27 @@ class InternalSyncTest(absltest.TestCase):
   def tearDown(self):
     execution_mode.eager_mode = self.old_eager_mode
     super().tearDown()
+
+  @contextlib.contextmanager
+  def undeclared_outputs_dir(self) -> Iterator[str]:
+
+    if "TEST_UNDECLARED_OUTPUTS_DIR" in os.environ:
+      context = contextlib.nullcontext(None)
+    else:
+      context = tempfile.TemporaryDirectory()
+
+    with context as possible_temp_dir:
+      if possible_temp_dir is not None:
+        os.environ["TEST_UNDECLARED_OUTPUTS_DIR"] = possible_temp_dir
+        dir_set = True
+      else:
+        dir_set = False
+
+      try:
+        yield os.environ["TEST_UNDECLARED_OUTPUTS_DIR"]
+      finally:
+        if dir_set:
+          del os.environ["TEST_UNDECLARED_OUTPUTS_DIR"]
 
   def test_sync_no_wait_tensor(self):
     x = torch.ones(10, device=torch.device("tpu"))
@@ -393,13 +417,13 @@ digraph {
   5 -> 6
 }
 """
-    output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", "")
-    self.assertNotEmpty(output_dir)
-    file_path = os.path.join(output_dir, "graphviz_dump.txt")
-    sync.dump_computation_graphviz([y, z], file_path)
+    with self.undeclared_outputs_dir() as output_dir:
+      self.assertNotEmpty(output_dir)
+      file_path = os.path.join(output_dir, "graphviz_dump.txt")
+      sync.dump_computation_graphviz([y, z], file_path)
 
-    with open(file_path, "r") as f:
-      s = f.read()
+      with open(file_path, "r") as f:
+        s = f.read()
 
     node_params, num_lines = self.extract_graphviz_invariants(
         expected_graphviz_string
