@@ -198,6 +198,9 @@ c10::Stream TpuDeviceGuardImpl::getDefaultStream(c10::Device d) const {
 void TpuDeviceGuardImpl::record(void** event, const c10::Stream& stream,
                                 const c10::DeviceIndex device_index,
                                 const c10::EventFlag flag) const {
+  if (*event != nullptr) {
+    this->destroyEvent(*event, device_index);
+  }
   auto shared_event = EventSnapshot::Record(stream.device_index(), stream.id());
   *event = new std::shared_ptr<EventSnapshot>(std::move(shared_event));
 }
@@ -231,7 +234,7 @@ void TpuDeviceGuardImpl::destroyEvent(
     void* event, const c10::DeviceIndex device_index) const noexcept {
   std::shared_ptr<EventSnapshot>* snapshot =
       reinterpret_cast<std::shared_ptr<EventSnapshot>*>(event);
-  snapshot->reset();
+  delete snapshot;
 }
 
 void TpuDeviceGuardImpl::synchronizeEvent(void* event) const {
