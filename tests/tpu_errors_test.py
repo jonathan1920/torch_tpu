@@ -3346,10 +3346,20 @@ module {
   @et.why_tpu_only("PjRt addressable devices are TPU specific")
   def test_current_stream_device_index_above_actual_devices(self):
     actual_device_count = torch.accelerator.device_count()
-    expected_message = (
-        f"Device index {actual_device_count} is out of bounds of the number of"
-        f" addressable devices {actual_device_count}"
-    )
+    if actual_device_count >= 8:
+      # Torch TPU has a hardcoded maximum device count of 8. If there are 8 or
+      # more devices, this error is hit first.
+      expected_message = (
+          f"Device index {actual_device_count} is out of bounds of the maximum"
+          " device count 8"
+      )
+    else:
+      # If there are fewer than 8 devices, the hard maximum is not hit, but the
+      # device index is still out of bounds due to addressable device count.
+      expected_message = (
+          f"Device index {actual_device_count} is out of bounds of the number"
+          f" of addressable devices {actual_device_count}"
+      )
     with et.assert_raises_message(
         RuntimeError,
         tpu=expected_message,
