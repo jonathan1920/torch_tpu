@@ -94,7 +94,7 @@ def apply(gm: torch.fx.GraphModule) -> None:
     )
 
     # Sort for determinism
-    sorted_missing_symbols = sorted(list(missing_symbols))
+    sorted_missing_symbols = sorted(missing_symbols)
 
     call_site_node = submod_call_nodes.get(submod_name)
 
