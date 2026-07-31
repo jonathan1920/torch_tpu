@@ -4911,6 +4911,16 @@ Supported combinations for non-constant padding:
     ):
       torch.lu_unpack(data, pivots, out=out)
 
+  def test_lu_factor_ex_unsupported_dtypes(self):
+    t = torch.ones(2, 2, dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""linalg_lu_factor_ex(): expected the input dtype to be float32, float64, complex64, or complex128, got int32""",
+        gpu=""""lu_factor_cusolver" not implemented for 'Int'""",
+        message_reviewed_by="chizz",
+    ):
+      torch.linalg.lu_factor(t)
+
   def test_lu_solve_rank_too_low(self):
     lu = torch.ones(4, device=et.device())
     pivots = torch.ones(4, device=et.device(), dtype=torch.int32)

@@ -775,6 +775,23 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         )
     )
 
+  def test_lu_factor_ex_empty_tensors(self):
+    # Unit test verifying that LU decomposition supports empty tensors across
+    # all dtypes (including bool and integer dtypes), comparing against CPU
+    # reference numerics.
+    dtypes = [
+        *op_testing.INTEGRAL_DTYPES,
+        *op_testing.FLOAT_DTYPES,
+    ]
+    for dtype in dtypes:
+      t_tpu = torch.empty(0, 3, 5, dtype=dtype, device="tpu")
+      t_cpu = t_tpu.cpu()
+      lu_tpu, pivots_tpu, info_tpu = torch.ops.aten.linalg_lu_factor_ex(t_tpu)
+      lu_cpu, pivots_cpu, info_cpu = torch.ops.aten.linalg_lu_factor_ex(t_cpu)
+      self.assertEqual(lu_tpu, lu_cpu)
+      self.assertEqual(pivots_tpu, pivots_cpu)
+      self.assertEqual(info_tpu, info_cpu)
+
   def test_assert_close_partial_override(self):
     """Tests that utils.assert_close works with partial numeric overrides.
 
@@ -9136,7 +9153,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     # Arrange
     device = torch.device("tpu")
-    dtypes = [torch.float16, torch.float32, torch.bfloat16, torch.float64]
+    dtypes = op_testing.FLOAT_DTYPES
 
     # TODO: Systematically enumerate all 2-ary, pointwise ops out of
     # native_functions.yaml. Note that matmul is not a pointwise op.

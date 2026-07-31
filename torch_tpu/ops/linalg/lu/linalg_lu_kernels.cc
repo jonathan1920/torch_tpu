@@ -36,7 +36,6 @@
 #include "ATen/ops/tril.h"
 #include "ATen/ops/triu.h"
 #include "ATen/ops/where.h"
-#include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "c10/core/ScalarType.h"
@@ -68,13 +67,26 @@ namespace torch_tpu {
 
 namespace {
 
+absl::Status CheckLuSupportedDtype(const at::Tensor& tensor) {
+  const c10::ScalarType dtype = tensor.scalar_type();
+  const bool is_f32_or_f64 = (dtype == c10::kFloat || dtype == c10::kDouble);
+  const bool is_c64_or_c128 =
+      (dtype == c10::kComplexFloat || dtype == c10::kComplexDouble);
+  TT_RET_CHECK(is_f32_or_f64 || is_c64_or_c128, error::kInvalidArgument)
+      << "expected the input dtype to be " << ToString(c10::kFloat) << ", "
+      << ToString(c10::kDouble) << ", " << ToString(c10::kComplexFloat)
+      << ", or " << ToString(c10::kComplexDouble) << ", got "
+      << ToString(dtype);
+  return absl::OkStatus();
+}
+
 absl::StatusOr<MlirOpResults<2>> LuDecompositionBuilder(mlir::MlirOp input) {
   auto& builder = input.getBuilder();
   auto& op_builder = builder.getOpBuilder();
   auto& ctx = builder.getContext();
 
-  auto a_type = GetTensorTypeOrDie(input);
-  auto a_shape = a_type.getShape();
+  const auto a_type = GetTensorTypeOrDie(input);
+  const auto a_shape = a_type.getShape();
   int rank = a_shape.size();
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Dimensions constraints are checked
                  // before Mlir lowering.
@@ -118,7 +130,6 @@ absl::StatusOr<MlirOpResults<2>> LuDecompositionBuilder(mlir::MlirOp input) {
        api_version_attr});
   mlir::MlirOp lu(builder, lu_op.getResult(0));
   mlir::MlirOp pivots(builder, lu_op.getResult(1));
-  mlir::MlirOp perm(builder, lu_op.getResult(2));
   return {{lu, pivots}};
 }
 
@@ -188,60 +199,64 @@ absl::Status ApplyPivotsInPlace(at::Tensor& tensor, const at::Tensor& pivots,
 std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
     const at::Tensor& a, bool pivot, bool check_errors, at::Tensor& lu,
     at::Tensor& pivots, at::Tensor& info) {
-  TT_KERNEL(OpName::kLinalgLuFactorExOut, param_keys,
-            (a, pivot, IgnoreInCacheKey(check_errors, "Doesn't affect SHLO"),
-             lu, pivots, info),
-            {
-              TT_CHECK_THROW(pivot, error::kInvalidArgument)
-                  << "non-pivoting decomposition is not supported";
-              TT_CHECK_THROW(a.dim() >= 2, error::kInvalidArgument)
-                  << "input tensor expected to have at least 2 dimensions, got "
-                  << a.dim();
-              const int n = a.size(a.dim() - 2);
-              const int m = a.size(a.dim() - 1);
-              const int num_batch_dims = a.dim() - 2;
-              Dimensions batch_dims(a.sizes().begin(),
-                                    a.sizes().begin() + num_batch_dims);
-              Dimensions pivot_dims = batch_dims;
-              pivot_dims.push_back(std::min(n, m));
+  TT_KERNEL(
+      OpName::kLinalgLuFactorExOut, param_keys,
+      (a, pivot, IgnoreInCacheKey(check_errors, "Doesn't affect SHLO"), lu,
+       pivots, info),
+      {
+        TT_CHECK_THROW(pivot, error::kInvalidArgument)
+            << "non-pivoting decomposition is not supported";
+        TT_CHECK_THROW(a.dim() >= 2, error::kInvalidArgument)
+            << "input tensor expected to have at least 2 dimensions, got "
+            << a.dim();
+        const int n = a.size(a.dim() - 2);
+        const int m = a.size(a.dim() - 1);
+        const int num_batch_dims = a.dim() - 2;
+        Dimensions batch_dims(a.sizes().begin(),
+                              a.sizes().begin() + num_batch_dims);
+        Dimensions pivot_dims = batch_dims;
+        pivot_dims.push_back(std::min(n, m));
 
-              TT_ASSIGN_OR_THROW(mlir::ElementType out_mlir_type,
-                                 ConvertTo<mlir::ElementType>(a.scalar_type()));
-              auto a_f32 = a;
-              if (a.scalar_type() == c10::ScalarType::Double) {
-                ABSL_VLOG(1)
-                    << "linalg.factor_ex.out: lowering is only implemented "
-                       "for f32, so casting f64 down";
-                a_f32 = a.to(c10::ScalarType::Float);
-              }
+        if (a.numel() == 0) {
+          TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(lu, a.sizes()));
+          TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(pivots, pivot_dims));
+          TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(info, batch_dims));
+          info.zero_();
+          return std::forward_as_tuple(lu, pivots, info);
+        }
 
-              TT_ASSIGN_OR_THROW(
-                  auto results,
-                  (DispatchOp<1, 2>(
-                      LuDecompositionBuilder, {a_f32},
-                      {.out_dtypes = {out_mlir_type, mlir::ElementType::I32},
-                       .out_dims_list = {a.sizes(), pivot_dims},
-                       .op_param_cache_keys = std::move(param_keys)})));
+        TT_THROW_IF_ERROR(CheckLuSupportedDtype(a));
 
-              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(lu, a.sizes()));
-              TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[0], lu));
-              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(pivots, pivot_dims));
-              TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[1], pivots));
-              // Pivots are 0-based, but torch uses 1-based indexing.
-              pivots.add_(1);
-              // Find the first non-zero diagonal element.
-              auto diagonal = at::diagonal(lu, /*offset=*/0, -2, -1);
-              auto zeros = at::eq(diagonal, 0).to(c10::ScalarType::Double);
-              auto has_zeros = at::any(zeros, -1);
-              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(info, batch_dims));
-              info.zero_();
-              auto indices = at::add(at::argmax(zeros, -1), 1);
-              CopyTensor(at::where(has_zeros, indices, 0).to(c10::kInt), info);
-              if (check_errors) {
-                at::_linalg_check_errors(info, "lu_factor", a.dim() == 2);
-              }
-              return {lu, pivots, info};
-            });
+        TT_ASSIGN_OR_THROW(mlir::ElementType out_mlir_type,
+                           ConvertTo<mlir::ElementType>(a.scalar_type()));
+
+        TT_ASSIGN_OR_THROW(
+            auto results,
+            (DispatchOp<1, 2>(
+                LuDecompositionBuilder, {a},
+                {.out_dtypes = {out_mlir_type, mlir::ElementType::I32},
+                 .out_dims_list = {a.sizes(), pivot_dims},
+                 .op_param_cache_keys = std::move(param_keys)})));
+
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(lu, a.sizes()));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[0], lu));
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(pivots, pivot_dims));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[1], pivots));
+        // Pivots are 0-based, but torch uses 1-based indexing.
+        pivots.add_(1);
+        // Find the first non-zero diagonal element.
+        auto diagonal = at::diagonal(lu, /*offset=*/0, -2, -1);
+        auto zeros = at::eq(diagonal, 0).to(c10::ScalarType::Double);
+        auto has_zeros = at::any(zeros, -1);
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(info, batch_dims));
+        info.zero_();
+        auto indices = at::add(at::argmax(zeros, -1), 1);
+        CopyTensor(at::where(has_zeros, indices, 0).to(c10::kInt), info);
+        if (check_errors) {
+          at::_linalg_check_errors(info, "lu_factor", a.dim() == 2);
+        }
+        return {lu, pivots, info};
+      });
 }
 
 std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
