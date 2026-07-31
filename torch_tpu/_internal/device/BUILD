@@ -62,6 +62,7 @@ pybind_extension(
         "//torch_tpu/eager:current_stream",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:device_gen_impl",
+        "//torch_tpu/eager:events_queue",
         "//torch_tpu/eager:materialize",
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/eager:tpu_hooks",

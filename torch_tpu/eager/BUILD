@@ -681,6 +681,7 @@ torch_tpu_cc_library(
         ":device_buffer",
         ":device_buffer_utils",
         ":device_gen_impl",
+        ":events_queue",
         ":tensor_to_buffer",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",  # TODO: keep macros
@@ -851,8 +852,10 @@ torch_tpu_cc_library(
     srcs = ["events_queue.cc"],
     hdrs = ["events_queue.h"],
     deps = [
+        ":current_stream",
         ":device_buffer",
         ":traversal",
+        "//shims/torch/c10/core:base_headers",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_names",
         "@com_google_absl//absl/base:core_headers",
@@ -862,9 +865,11 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@xla//xla:future",
     ],
 )
 

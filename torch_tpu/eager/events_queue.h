@@ -17,14 +17,19 @@
 #ifndef TORCH_TPU_EAGER_EVENTS_QUEUE_H_
 #define TORCH_TPU_EAGER_EVENTS_QUEUE_H_
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "c10/core/Device.h"
+#include "c10/core/Stream.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/traversal.h"
+#include "xla/future.h"
 
 namespace torch_tpu {
 
@@ -61,6 +66,47 @@ void ClearEventsQueue();
 absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
 PrepareMaterializationTraversals(
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
+
+// Updates the tracked future for the given device and stream.
+void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
+                      xla::Future<void> future);
+
+// Updates the tracked future for the current stream.
+void MarkStreamActive(xla::Future<void> future);
+
+// Blocks until all pending operations on the given device and stream have
+// completed.
+void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id);
+
+// Blocks until all pending operations on ALL streams of the given device have
+// completed.
+void SynchronizeDevice(c10::DeviceIndex device_index);
+
+// An EventSnapshot is a collection of XLA futures that represents the state of
+// a stream at a particular point in time.
+class EventSnapshot {
+ public:
+  ~EventSnapshot();
+
+  // Records a fence over the async d2h copies already enqueued on the device
+  // and stream.
+  static std::shared_ptr<EventSnapshot> Record(c10::DeviceIndex device_index,
+                                               c10::StreamId stream_id);
+
+  // Wait for the event snapshot to complete.
+  absl::Status Wait() const;
+
+  // Query whether the event snapshot has completed.
+  absl::StatusOr<bool> Query() const;
+
+ private:
+  // The event ID of the event snapshot.
+  // Private; must use Record() so that the snapshot is tracked on the stream.
+  explicit EventSnapshot(int64_t event_id) : event_id_(event_id) {}
+
+  // The event ID of the event snapshot.
+  const int64_t event_id_;
+};
 
 }  // namespace torch_tpu
 

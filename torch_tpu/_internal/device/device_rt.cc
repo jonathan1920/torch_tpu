@@ -42,6 +42,7 @@
 #include "torch_tpu/common/excess_precision.h"
 #include "torch_tpu/eager/current_stream.h"
 #include "torch_tpu/eager/device_gen_impl.h"
+#include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/tpu_hooks.h"
