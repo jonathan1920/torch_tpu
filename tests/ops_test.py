@@ -2122,14 +2122,14 @@ class TestOps(TorchTpuTestBase):
         "clamp_max",
         # TODO: b/478321000 remove when PyTorch#173110 is fixed.
         skip_if=_inplace_clamp_input_has_negative_values_uint8_gpu,
-        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=b/446131726
-            torch.complex64,
-            torch.bool,
-        ),
-        exclude_inplace_dtypes=(  # EXCLUDE_DTYPES_OK=b/446131726
-            torch.complex64,
-            torch.bool,
-        ),
+        exclude_dtypes={  # EXCLUDE_DTYPES_OK=b/446131726
+            "cpu": (torch.complex64, torch.bool),
+            "gpu": (torch.complex64,),
+        },
+        exclude_inplace_dtypes={  # EXCLUDE_DTYPES_OK=b/446131726
+            "cpu": (torch.complex64, torch.bool),
+            "gpu": (torch.complex64,),
+        },
     )
 
   def test_clone(self):
@@ -3437,7 +3437,10 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_glu(self):
     self.do_test_op(
         "nn.functional.glu",
-        exclude_dtypes=(torch.bfloat16,),  # EXCLUDE_DTYPES_OK=b/538164008
+        exclude_dtypes={  # EXCLUDE_DTYPES_OK=flakiness
+            # TODO(b/538164008): fix bfloat16 flakiness in OSS v7 TPU.
+            "gpu": (torch.bfloat16,),
+        },
     )
 
   def test_nn_functional_prelu(self):
