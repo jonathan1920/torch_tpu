@@ -31,7 +31,6 @@ os.environ["XLA_FLAGS"] = f"--xla_dump_to={XLA_DUMP_TO} --xla_dump_hlo_as_text"
 
 from absl import app  # pylint: disable=g-import-not-at-top
 import torch  # pylint: disable=g-import-not-at-top
-import torch_tpu  # pylint: disable=g-import-not-at-top,unused-import
 
 # pylint: disable=protected-access
 torch._logging.set_logs(aot_graphs=True)
