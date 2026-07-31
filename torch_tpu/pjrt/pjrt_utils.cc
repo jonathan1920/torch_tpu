@@ -35,6 +35,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -447,7 +448,8 @@ absl::StatusOr<PjRtBufferPointers> Execute(
       const std::optional<std::string>& rank = GetEnvOnce<kRankEnvVar>();
       ABSL_VLOG(8) << "Executable with collectives on rank "
                    << (rank.has_value() ? *rank : "<unknown_rank>")
-                   << " has PjRT executable fingerprint: " << fingerprint
+                   << " has PjRT executable fingerprint: "
+                   << absl::BytesToHexString(fingerprint)
                    << " and HLO module fingerprint: "
                    << hlo_module->GetFingerprint128();
     }
