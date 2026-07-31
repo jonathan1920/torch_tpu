@@ -9404,6 +9404,168 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_type_promotion, rtol=1.6e-5, atol=6.8e-6)
 
+  def test_masked_softmax(self):
+    def test_fn(device):
+      results = []
+      for dtype in (torch.float32, torch.bfloat16):
+        x = (
+            torch.arange(2 * 4 * 16 * 16, dtype=dtype, device=device) / 1000.0
+        ).reshape(2, 4, 16, 16)
+
+        # 1. 2D padding mask (B=2, L=16) (mask_type=1)
+        mask_padding = (torch.arange(2 * 16, device=device) % 2 == 0).reshape(
+            2, 16
+        )
+        res1 = torch.ops.aten._masked_softmax(
+            x, mask_padding, dim=-1, mask_type=1
+        )
+        results.append(res1)
+
+        # 2. Cross-attention (B=2, H=4, L=8, S=16) and 2D padding mask
+        # (B=2, S=16) (mask_type=1)
+        x_cross = (
+            torch.arange(2 * 4 * 8 * 16, dtype=dtype, device=device) / 1000.0
+        ).reshape(2, 4, 8, 16)
+        mask_padding_cross = (
+            torch.arange(2 * 16, device=device) % 2 == 0
+        ).reshape(2, 16)
+        if device == "cpu":
+          x_masked = x_cross.float().masked_fill(
+              mask_padding_cross.view(2, 1, 1, 16), float("-inf")
+          )
+          res_cross = torch.softmax(x_masked, dim=-1).to(dtype)
+        else:
+          res_cross = torch.ops.aten._masked_softmax(
+              x_cross, mask_padding_cross, dim=-1, mask_type=1
+          )
+        results.append(res_cross)
+
+        # 3. 4D input and 2D attention mask (L=16, L=16) (mask_type=0)
+        mask_attn = (torch.arange(16 * 16, device=device) % 3 == 0).reshape(
+            16, 16
+        )
+        res3 = torch.ops.aten._masked_softmax(x, mask_attn, dim=-1, mask_type=0)
+        results.append(res3)
+
+        # 4. Generic mask (mask_type=2)
+        mask_generic = (
+            torch.arange(2 * 4 * 16 * 16, device=device) % 5 == 0
+        ).reshape(2, 4, 16, 16)
+        res4 = torch.ops.aten._masked_softmax(
+            x, mask_generic, dim=-1, mask_type=2
+        )
+        results.append(res4)
+
+        # 5. Out variant
+        out = torch.empty_like(x)
+        torch.ops.aten._masked_softmax.out(
+            x, mask_generic, dim=-1, mask_type=2, out=out
+        )
+        results.append(out)
+
+        # 6. Non-4D inputs with explicit mask_type=0 and mask_type=1
+        x_2d = (
+            torch.arange(4 * 5, dtype=dtype, device=device) / 100.0
+        ).reshape(4, 5)
+        mask_2d = (torch.arange(4 * 5, device=device) % 2 == 0).reshape(4, 5)
+        for mt in (0, 1):
+          res_non4d = torch.ops.aten._masked_softmax(
+              x_2d, mask_2d, dim=-1, mask_type=mt
+          )
+          results.append(res_non4d)
+
+        # 7. 0D scalar tensors (dim=0, dim=-1)
+        x_0d = torch.tensor(3.14, dtype=dtype, device=device)
+        for mask_val in (False, True):
+          mask_0d = torch.tensor(mask_val, dtype=torch.bool, device=device)
+          for dim_val in (0, -1):
+            res_0d = torch.ops.aten._masked_softmax(x_0d, mask_0d, dim=dim_val)
+            results.append(res_0d)
+
+      return tuple(results)
+
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+
+  def test_masked_softmax_backward(self):
+    def test_fn(device):
+      results = []
+      for dtype in (torch.float32, torch.bfloat16):
+        x = (
+            torch.arange(2 * 4 * 16 * 16, dtype=dtype, device=device) / 1000.0
+        ).reshape(2, 4, 16, 16)
+        grad = (
+            (torch.arange(2 * 4 * 16 * 16, dtype=dtype, device=device) - 1000.0)
+            / 1000.0
+        ).reshape(2, 4, 16, 16)
+        mask = (torch.arange(2 * 4 * 16 * 16, device=device) % 3 == 0).reshape(
+            2, 4, 16, 16
+        )
+        output = torch.ops.aten._masked_softmax(x, mask, dim=-1, mask_type=2)
+
+        # 1. Standard backward
+        res1 = torch.ops.aten._masked_softmax_backward(
+            grad, output, mask, dim=-1
+        )
+        results.append(res1)
+
+        # 2. 2D padding mask (B=2, S=16)
+        mask_padding_2d = (
+            torch.arange(2 * 16, device=device) % 2 == 0
+        ).reshape(2, 16)
+        mask_padding_4d = mask_padding_2d.view(2, 1, 1, 16).expand(2, 4, 16, 16)
+        output_pad = torch.ops.aten._masked_softmax(
+            x, mask_padding_2d, dim=-1, mask_type=1
+        )
+        if device == "cpu":
+          res_pad = torch.ops.aten._masked_softmax_backward(
+              grad, output_pad, mask_padding_4d, dim=-1
+          )
+        else:
+          res_pad = torch.ops.aten._masked_softmax_backward(
+              grad, output_pad, mask_padding_2d, dim=-1
+          )
+        results.append(res_pad)
+
+        # 3. 2D attention mask (L=16, S=16)
+        mask_attn_2d = (torch.arange(16 * 16, device=device) % 3 == 0).reshape(
+            16, 16
+        )
+        mask_attn_4d = mask_attn_2d.view(1, 1, 16, 16).expand(2, 4, 16, 16)
+        output_attn = torch.ops.aten._masked_softmax(
+            x, mask_attn_2d, dim=-1, mask_type=0
+        )
+        if device == "cpu":
+          res_attn = torch.ops.aten._masked_softmax_backward(
+              grad, output_attn, mask_attn_4d, dim=-1
+          )
+        else:
+          res_attn = torch.ops.aten._masked_softmax_backward(
+              grad, output_attn, mask_attn_2d, dim=-1
+          )
+        results.append(res_attn)
+
+        # 4. Out variant
+        out = torch.empty_like(grad)
+        torch.ops.aten._masked_softmax_backward.out(
+            grad, output, mask, dim=-1, out=out
+        )
+        results.append(out)
+
+        # 5. 0D scalar tensors (dim=0, dim=-1)
+        x_0d = torch.tensor(3.14, dtype=dtype, device=device)
+        mask_0d = torch.tensor(False, dtype=torch.bool, device=device)
+        grad_0d = torch.tensor(1.5, dtype=dtype, device=device)
+        output_0d = torch.ops.aten._masked_softmax(x_0d, mask_0d, dim=-1)
+        for dim_val in (0, -1):
+          res_cpu_0d_bwd = torch.ops.aten._masked_softmax_backward(
+              grad_0d, output_0d, mask_0d, dim=dim_val
+          )
+          results.append(res_cpu_0d_bwd.reshape(()))
+
+      return tuple(results)
+
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+
 
 class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
   """Tests for the op_testing framework itself."""

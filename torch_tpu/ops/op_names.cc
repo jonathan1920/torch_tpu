@@ -953,6 +953,14 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "masked_select.out";
     case OpName::kMaskedSelectSize:
       return "masked_select_size";
+    case OpName::kMaskedSoftmax:
+      return "_masked_softmax";
+    case OpName::kMaskedSoftmaxBackward:
+      return "_masked_softmax_backward";
+    case OpName::kMaskedSoftmaxBackwardOut:
+      return "_masked_softmax_backward.out";
+    case OpName::kMaskedSoftmaxOut:
+      return "_masked_softmax.out";
     case OpName::kMax:
       return "max";
     case OpName::kMaxDimMax:

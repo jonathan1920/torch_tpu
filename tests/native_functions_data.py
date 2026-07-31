@@ -85,8 +85,6 @@ UNREGISTERED_OPS = frozenset([
     '_make_per_channel_quantized_tensor',
     '_make_per_tensor_quantized_tensor',
     '_masked_scale',
-    '_masked_softmax',
-    '_masked_softmax_backward',
     '_mixed_dtypes_linear',
     '_mkldnn_reshape',
     '_mkldnn_transpose',
@@ -446,6 +444,8 @@ REGISTRATION_OVERRIDES = frozenset([
     # overriding the entire delegation behavior".
     '_fused_rms_norm',
     '_grouped_mm',
+    '_masked_softmax.out',
+    '_masked_softmax_backward.out',
     '_scaled_dot_product_fused_attention_overrideable',
     '_scaled_dot_product_fused_attention_overrideable_backward',
     '_scaled_mm_v2',

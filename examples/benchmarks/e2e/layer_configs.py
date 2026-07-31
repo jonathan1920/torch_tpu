@@ -1385,3 +1385,74 @@ class PreluConfig:
 
 
 PRELU_CONFIGS = PreluConfig.get_base_configs()
+
+
+@dataclasses.dataclass(frozen=True)
+class MaskedSoftmaxConfig:
+  batch_size: Any  # Supports int or DynamicDimension
+  num_heads: int
+  q_seq_len: int
+  kv_seq_len: int
+  dim: int
+  mask_type: int
+  dtype: torch.dtype = torch.bfloat16
+
+  @classmethod
+  def get_base_configs(cls):
+    return [
+        # 1. Attention Mask (mask_type=0) - shape [L, S]
+        MaskedSoftmaxConfig(
+            batch_size=1,
+            num_heads=8,
+            q_seq_len=128,
+            kv_seq_len=128,
+            dim=-1,
+            mask_type=0,
+        ),
+        # 2. Padding Mask (mask_type=1) - shape [B, S]
+        MaskedSoftmaxConfig(
+            batch_size=1,
+            num_heads=8,
+            q_seq_len=128,
+            kv_seq_len=128,
+            dim=-1,
+            mask_type=1,
+        ),
+        # 3. Generic Mask (mask_type=2) - shape [B, H, L, S]
+        MaskedSoftmaxConfig(
+            batch_size=1,
+            num_heads=8,
+            q_seq_len=128,
+            kv_seq_len=128,
+            dim=-1,
+            mask_type=2,
+        ),
+        # 4. Large Llama 3 8B Scale Attention Logit Dimensions
+        MaskedSoftmaxConfig(
+            batch_size=4,
+            num_heads=32,
+            q_seq_len=2048,
+            kv_seq_len=2048,
+            dim=-1,
+            mask_type=0,
+        ),
+        MaskedSoftmaxConfig(
+            batch_size=4,
+            num_heads=32,
+            q_seq_len=2048,
+            kv_seq_len=2048,
+            dim=-1,
+            mask_type=1,
+        ),
+        MaskedSoftmaxConfig(
+            batch_size=4,
+            num_heads=32,
+            q_seq_len=2048,
+            kv_seq_len=2048,
+            dim=-1,
+            mask_type=2,
+        ),
+    ]
+
+
+MASKED_SOFTMAX_CONFIGS = MaskedSoftmaxConfig.get_base_configs()

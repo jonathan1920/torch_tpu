@@ -18,6 +18,7 @@
 #define TORCH_TPU_OPS_SOFTMAX_SOFTMAX_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/status/statusor.h"
@@ -47,6 +48,14 @@ absl::StatusOr<mlir::MlirOp> BuildSoftmaxBackwardDataShlo(
     mlir::MlirOp grad_output_op, mlir::MlirOp output_op, int64_t dim,
     mlir::stablehlo::Precision precision,
     SoftmaxMode softmax_mode = SoftmaxMode::kSoftmax);
+
+absl::StatusOr<mlir::MlirOp> BuildMaskedSoftmaxShlo(
+    mlir::MlirOp input_op, mlir::MlirOp mask_op, int64_t dim,
+    std::optional<int64_t> mask_type = std::nullopt);
+
+absl::StatusOr<mlir::MlirOp> BuildMaskedSoftmaxBackwardDataShlo(
+    mlir::MlirOp grad_output_op, mlir::MlirOp output_op, mlir::MlirOp mask_op,
+    int64_t dim, mlir::stablehlo::Precision precision);
 
 }  // namespace torch_tpu
 

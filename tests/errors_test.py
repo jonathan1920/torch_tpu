@@ -7995,5 +7995,178 @@ class InputPreprocessingErrorTest(et.ErrorTestBase, parameterized.TestCase):
       )
 
 
+class MaskedSoftmaxErrorTest(et.ErrorTestBase):
+
+  def test_masked_softmax_non_float_input(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu=""""masked_softmax" not implemented for 'Int'""",
+        tpu="""masked_softmax(): expected input to be a floating point tensor, got int32""",
+    ):
+      torch.ops.aten._masked_softmax(
+          torch.tensor([1, 2], dtype=torch.int32, device=et.device()),
+          torch.tensor([True, False], dtype=torch.bool, device=et.device()),
+          dim=0,
+          mask_type=2,
+      )
+
+  def test_masked_softmax_non_bool_mask(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Mask should be a boolean tensor""",
+        tpu="""masked_softmax(): expected mask to be a boolean tensor, got float32""",
+    ):
+      torch.ops.aten._masked_softmax(
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=et.device()),
+          torch.tensor([1.0, 0.0], dtype=torch.float32, device=et.device()),
+      )
+
+  def test_masked_softmax_invalid_mask_type(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Mask Type should be 0 (src_mask), 1 (src_key_padding_mask), or 2 (default_mask)""",
+        tpu="""masked_softmax(): expected mask_type to be 0, 1, or 2, got 5""",
+    ):
+      torch.ops.aten._masked_softmax(
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=et.device()),
+          torch.tensor([True, False], dtype=torch.bool, device=et.device()),
+          dim=0,
+          mask_type=5,
+      )
+
+  def test_masked_softmax_mask_type_0_shape_mismatch(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Mask shape should match input. mask: [5, 5] input: [2, 4, 8, 16]""",
+        tpu="""masked_softmax(): expected mask shape to be (8, 16) for mask_type 0, got [5, 5]""",
+    ):
+      torch.ops.aten._masked_softmax(
+          torch.randn(2, 4, 8, 16, dtype=torch.float32, device=et.device()),
+          torch.randint(0, 2, (5, 5), dtype=torch.bool, device=et.device()),
+          dim=-1,
+          mask_type=0,
+      )
+
+  def test_masked_softmax_mask_type_1_shape_mismatch(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Mask shape should match input. mask: [5, 5] input: [2, 4, 8, 16]""",
+        tpu="""masked_softmax(): expected mask shape to be (2, 16) for mask_type 1, got [5, 5]""",
+    ):
+      torch.ops.aten._masked_softmax(
+          torch.randn(2, 4, 8, 16, dtype=torch.float32, device=et.device()),
+          torch.randint(0, 2, (5, 5), dtype=torch.bool, device=et.device()),
+          dim=-1,
+          mask_type=1,
+      )
+
+  def test_masked_softmax_mask_shape_mismatch(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Mask Type should be defined""",
+        tpu="""masked_softmax(): expected mask shape to be [2], got [3]""",
+    ):
+      torch.ops.aten._masked_softmax(
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=et.device()),
+          torch.tensor(
+              [True, False, True], dtype=torch.bool, device=et.device()
+          ),
+      )
+
+  def test_masked_softmax_backward_non_float_grad(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu=""""masked_softmax_backward" not implemented for 'Int'""",
+        tpu="""masked_softmax_backward(): expected grad_output to be a floating point tensor, got int32""",
+    ):
+      torch.ops.aten._masked_softmax_backward(
+          torch.tensor([1, 2], dtype=torch.int32, device=et.device()),
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=et.device()),
+          torch.tensor([True, False], dtype=torch.bool, device=et.device()),
+          dim=0,
+      )
+
+  def test_masked_softmax_backward_non_float_output(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""expected scalar type Float but found Int""",
+        tpu="""masked_softmax_backward(): expected output to be a floating point tensor, got int32""",
+    ):
+      torch.ops.aten._masked_softmax_backward(
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=et.device()),
+          torch.tensor([1, 2], dtype=torch.int32, device=et.device()),
+          torch.tensor([True, False], dtype=torch.bool, device=et.device()),
+          dim=0,
+      )
+
+  def test_masked_softmax_backward_non_bool_mask(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Mask should be a boolean tensor""",
+        tpu="""masked_softmax_backward(): expected mask to be a boolean tensor, got float32""",
+    ):
+      torch.ops.aten._masked_softmax_backward(
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=et.device()),
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=et.device()),
+          torch.tensor([1.0, 0.0], dtype=torch.float32, device=et.device()),
+          dim=0,
+      )
+
+  def test_masked_softmax_backward_grad_output_shape_mismatch(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Mask shape should match grad shape""",
+        tpu="""masked_softmax_backward(): expected grad_output shape to be [2], got [3]""",
+    ):
+      torch.ops.aten._masked_softmax_backward(
+          torch.tensor(
+              [1.0, 2.0, 3.0], dtype=torch.float32, device=et.device()
+          ),
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=et.device()),
+          torch.tensor([True, False], dtype=torch.bool, device=et.device()),
+          dim=0,
+      )
+
+  def test_masked_softmax_backward_shape_mismatch(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Mask shape should match grad shape""",
+        tpu="""masked_softmax_backward(): expected mask shape to be [2], got [3]""",
+    ):
+      torch.ops.aten._masked_softmax_backward(
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=et.device()),
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=et.device()),
+          torch.tensor(
+              [True, False, True], dtype=torch.bool, device=et.device()
+          ),
+      )
+
+  def test_masked_softmax_scalar_dim_out_of_bounds(self):
+    with et.assert_raises_message(
+        IndexError,
+        gpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
+        tpu="""masked_softmax(): dimension out of range (expected to be in range of [-1, 0], but got 1)""",
+    ):
+      torch.ops.aten._masked_softmax(
+          torch.tensor(3.14, dtype=torch.float32, device=et.device()),
+          torch.tensor(False, dtype=torch.bool, device=et.device()),
+          dim=1,
+          mask_type=2,
+      )
+
+  def test_masked_softmax_backward_scalar_dim_out_of_bounds(self):
+    with et.assert_raises_message(
+        IndexError,
+        gpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
+        tpu="""masked_softmax_backward(): dimension out of range (expected to be in range of [-1, 0], but got 1)""",
+    ):
+      torch.ops.aten._masked_softmax_backward(
+          torch.tensor(1.0, dtype=torch.float32, device=et.device()),
+          torch.tensor(3.14, dtype=torch.float32, device=et.device()),
+          torch.tensor(False, dtype=torch.bool, device=et.device()),
+          dim=1,
+      )
+
+
 if __name__ == "__main__":
   g3_multiprocessing.handle_test_main(absltest.main)

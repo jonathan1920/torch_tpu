@@ -1635,6 +1635,66 @@ def ml_layer_model_builder(
         dtype=weights_dtype,
         device=device,
     )
+  elif model_name == "aten._masked_softmax":
+    dim = kwargs.get("dim", -1)
+    mask_type = kwargs.get("mask_type", 2)
+    num_heads = kwargs["num_heads"]
+    q_seq_len = kwargs["q_seq_len"]
+    kv_seq_len = kwargs["kv_seq_len"]
+
+    class MaskedSoftmaxModel(torch.nn.Module):
+
+      def __init__(self, dim, mask_type):
+        super().__init__()
+        self.dim = dim
+        self.mask_type = mask_type
+
+      def forward(self, x, mask):
+        return torch.ops.aten._masked_softmax(
+            x, mask, dim=self.dim, mask_type=self.mask_type
+        )
+
+    model = MaskedSoftmaxModel(dim, mask_type)
+    model = model.to(dtype=weights_dtype)
+
+    def shape_fn(bs, seq):
+      cur_q_seq_len = (
+          seq if isinstance(sequence_length, DynamicDimension) else q_seq_len
+      )
+      cur_kv_seq_len = (
+          seq if isinstance(sequence_length, DynamicDimension) else kv_seq_len
+      )
+
+      x = torch.randn(
+          (bs, num_heads, cur_q_seq_len, cur_kv_seq_len),
+          dtype=weights_dtype,
+          device=device,
+          requires_grad=is_training,
+      )
+
+      if mask_type == 0:
+        mask = torch.randint(
+            0,
+            2,
+            (cur_q_seq_len, cur_kv_seq_len),
+            dtype=torch.bool,
+            device=device,
+        )
+      elif mask_type == 1:
+        mask = torch.randint(
+            0, 2, (bs, cur_kv_seq_len), dtype=torch.bool, device=device
+        )
+      else:
+        mask = torch.randint(
+            0,
+            2,
+            (bs, num_heads, cur_q_seq_len, cur_kv_seq_len),
+            dtype=torch.bool,
+            device=device,
+        )
+      return (x, mask)
+
+    example_inputs = _generate_inputs(batch_size, sequence_length, shape_fn)
   elif model_name == "Mamba2Block":
     config = configuration_mamba2.Mamba2Config(
         hidden_size=kwargs["hidden_size"],

@@ -631,6 +631,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:searchsorted_aten_kernels",
         "//torch_tpu/ops/set:set_aten_kernels",
         "//torch_tpu/ops/sigmoid:sigmoid_aten_kernels",
+        "//torch_tpu/ops/softmax:_masked_softmax_aten_kernels",
         "//torch_tpu/ops/softmax:softmax_aten_kernels",
         "//torch_tpu/ops/softplus:softplus_aten_kernels",
         "//torch_tpu/ops/sort:sort_aten_kernels",

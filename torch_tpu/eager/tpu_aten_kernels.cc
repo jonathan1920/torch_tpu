@@ -173,6 +173,7 @@
 #include "torch_tpu/ops/searchsorted_aten_kernels.h"
 #include "torch_tpu/ops/set/set_aten_kernels.h"
 #include "torch_tpu/ops/sigmoid/sigmoid_aten_kernels.h"
+#include "torch_tpu/ops/softmax/_masked_softmax_aten_kernels.h"
 #include "torch_tpu/ops/softmax/softmax_aten_kernels.h"
 #include "torch_tpu/ops/softplus/softplus_aten_kernels.h"
 #include "torch_tpu/ops/sort/sort_aten_kernels.h"
@@ -745,6 +746,11 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kMaskedScatter_>(m, AtenMaskedScatter_);
   ImplStable<OpName::kMaskedSelect>(m, AtenMaskedSelect);
   ImplStable<OpName::kMaskedSelectOut>(m, AtenMaskedSelectOut);
+  ImplStable<OpName::kMaskedSoftmax>(m, AtenMaskedSoftmax);
+  ImplStable<OpName::kMaskedSoftmaxBackward>(m, AtenMaskedSoftmaxBackward);
+  ImplStable<OpName::kMaskedSoftmaxBackwardOut>(m,
+                                                AtenMaskedSoftmaxBackwardOut);
+  ImplStable<OpName::kMaskedSoftmaxOut>(m, AtenMaskedSoftmaxOut);
   ImplStable<OpName::kMax>(m, AtenMax);
   ImplStable<OpName::kMaxDimMax>(m, AtenMaxDimMax);
   ImplStable<OpName::kMaxPool2dWithIndicesBackwardGradInput>(

@@ -52,6 +52,34 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "_masked_softmax_aten_kernels",
+    srcs = ["_masked_softmax_aten_kernels.cc"],
+    hdrs = ["_masked_softmax_aten_kernels.h"],
+    deps = [
+        ":softmax",
+        "//shims/torch:aten_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:fixed_size_span",
+        "//torch_tpu/common:to_string",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/eager:tensor_to_buffer",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:precision_context",
+        "//torch_tpu/ops/macros:kernel",
+        "//torch_tpu/ops/resize:resize_aten_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "softmax",
     srcs = ["softmax.cc"],
     hdrs = ["softmax.h"],

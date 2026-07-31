@@ -17,6 +17,8 @@
 #include "torch_tpu/ops/softmax/softmax.h"
 
 #include <cstdint>
+#include <limits>
+#include <optional>
 
 #include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
@@ -109,7 +111,7 @@ absl::StatusOr<mlir::MlirOp> BuildSoftmaxShlo(mlir::MlirOp input_op,
   return result;
 }
 
-absl::StatusOr<MlirOpResults<1>> BuildSoftmaxBackwardDataShlo(
+absl::StatusOr<mlir::MlirOp> BuildSoftmaxBackwardDataShlo(
     mlir::MlirOp grad_output_op, mlir::MlirOp output_op, int64_t dim,
     mlir::stablehlo::Precision precision, SoftmaxMode softmax_mode) {
   const mlir::RankedTensorType grad_output_type =
@@ -185,6 +187,96 @@ absl::StatusOr<MlirOpResults<1>> BuildSoftmaxBackwardDataShlo(
   auto mul_op = mlir::stablehlo::Mul(exp_op, sum_broadcasted);
   // Compute grad_output_op - mul_op
   return mlir::stablehlo::Subtract(grad_output_op, mul_op);
+}
+
+namespace {
+
+absl::StatusOr<mlir::MlirOp> PrepareMaskOp(mlir::MlirOp mask_op,
+                                           mlir::MlirOp input_op,
+                                           std::optional<int64_t> mask_type) {
+  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input_op);
+  const mlir::RankedTensorType mask_tensor_type = GetTensorTypeOrDie(mask_op);
+
+  if (mask_tensor_type.getRank() == 2 && input_type.getRank() == 4) {
+    int64_t resolved_type = mask_type.value_or(-1);
+    if (resolved_type == -1) {
+      // NOTE: There is an inherent ambiguity during the backward pass since
+      // mask_type is not provided in the _masked_softmax_backward ATen
+      // signature. If input shape is (B, H, L, S) where B == L (batch size
+      // equals sequence length), both conditions below will match a mask of
+      // shape (B, S) or (L, S). In this case, we default to resolving as a
+      // padding mask (resolved_type = 1). If the forward pass actually used
+      // mask_type = 0 (attention mask), the backward pass will incorrectly
+      // broadcast the mask. This is a known limitation of the PyTorch ATen
+      // backward operator signature.
+      if (mask_tensor_type.getShape()[0] == input_type.getShape()[0] &&
+          mask_tensor_type.getShape()[1] == input_type.getShape()[3]) {
+        resolved_type = 1;
+      } else if (mask_tensor_type.getShape()[0] == input_type.getShape()[2] &&
+                 mask_tensor_type.getShape()[1] == input_type.getShape()[3]) {
+        resolved_type = 0;
+      }
+    }
+    if (resolved_type == 1) {
+      Dimensions new_shape = {mask_tensor_type.getShape()[0], 1, 1,
+                              mask_tensor_type.getShape()[1]};
+      mask_op = mlir::stablehlo::Reshape(mask_op, new_shape);
+    } else if (resolved_type == 0) {
+      Dimensions new_shape = {1, 1, mask_tensor_type.getShape()[0],
+                              mask_tensor_type.getShape()[1]};
+      mask_op = mlir::stablehlo::Reshape(mask_op, new_shape);
+    }
+  }
+  return BroadcastIfNeeded(mask_op, input_op);
+}
+
+}  // namespace
+
+absl::StatusOr<mlir::MlirOp> BuildMaskedSoftmaxShlo(
+    mlir::MlirOp input_op, mlir::MlirOp mask_op, int64_t dim,
+    std::optional<int64_t> mask_type) {
+  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input_op);
+  mlir::MlirBuilder& builder = input_op.getBuilder();
+
+  if (input_type.getRank() == 0) {
+    mlir::MlirOp nan =
+        MakeScalarConstant(builder, std::numeric_limits<double>::quiet_NaN(),
+                           input_type.getElementType());
+    mlir::MlirOp one =
+        MakeScalarConstant(builder, 1.0, input_type.getElementType());
+    return mlir::stablehlo::Select(mask_op, nan, one);
+  }
+
+  TT_ASSIGN_OR_RETURN(mask_op, PrepareMaskOp(mask_op, input_op, mask_type));
+
+  mlir::MlirOp neg_inf =
+      MakeConstantLike(input_op, -std::numeric_limits<double>::infinity());
+  mlir::MlirOp masked_input =
+      mlir::stablehlo::Select(mask_op, neg_inf, input_op);
+
+  return BuildSoftmaxShlo(masked_input, dim, SoftmaxMode::kSoftmax);
+}
+
+absl::StatusOr<mlir::MlirOp> BuildMaskedSoftmaxBackwardDataShlo(
+    mlir::MlirOp grad_output_op, mlir::MlirOp output_op, mlir::MlirOp mask_op,
+    int64_t dim, mlir::stablehlo::Precision precision) {
+  const mlir::RankedTensorType output_type = GetTensorTypeOrDie(output_op);
+  mlir::MlirBuilder& builder = grad_output_op.getBuilder();
+
+  if (output_type.getRank() == 0) {
+    return MakeScalarConstant(builder, 0.0, output_type.getElementType());
+  }
+
+  TT_ASSIGN_OR_RETURN(
+      mlir::MlirOp grad_input_unmasked,
+      BuildSoftmaxBackwardDataShlo(grad_output_op, output_op, dim, precision,
+                                   SoftmaxMode::kSoftmax));
+
+  TT_ASSIGN_OR_RETURN(
+      mask_op, PrepareMaskOp(mask_op, output_op, /*mask_type=*/std::nullopt));
+
+  mlir::MlirOp zero = MakeConstantLike(output_op, 0.0);
+  return mlir::stablehlo::Select(mask_op, zero, grad_input_unmasked);
 }
 
 }  // namespace torch_tpu
