@@ -19,6 +19,17 @@ inputs:
   python_version:
     description: "Python version to build for"
     required: true
+  extra_bazel_args:
+    description: >-
+      Extra bazel arguments appended to the shared build script's invocation
+      (e.g. --//:include_nightly_glue=False for the release wheel flavor
+      without the PyTorch-nightly glue). Raw flags only -- do not pass
+      --config=wheel_common or --config=wheel_release here: the script
+      already applies wheel_common, and expanding it a second time repeats
+      its --remote_default_exec_properties entries, which crashes bazel with
+      a duplicate-key error.
+    required: false
+    default: ""
 outputs:
   gcs_wheel_path:
     description: "The GCS path to the built wheel file"
@@ -36,7 +47,10 @@ runs:
       shell: bash
       env:
         PYTHON_VERSION: ${{ inputs.python_version }}
-      run: ci/build_wheels.sh --output-dir dist "${PYTHON_VERSION}"
+        EXTRA_BAZEL_ARGS: ${{ inputs.extra_bazel_args }}
+      run: |
+        read -ra EXTRA_ARGS <<< "${EXTRA_BAZEL_ARGS}"
+        ci/build_wheels.sh --output-dir dist "${PYTHON_VERSION}" -- ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
     - name: Check wheel metadata
       shell: bash
       run: |

@@ -36,7 +36,25 @@ _TORCH_INDEXES: Final[Mapping[str, str | None]] = {
     "cpu": "https://download.pytorch.org/whl/cpu",
     "cuda": None,
     "nightly": "https://download.pytorch.org/whl/nightly/cpu",
+    "nightly-pinned": "https://download.pytorch.org/whl/nightly/cpu",
 }
+
+# The lock the wheel's nightly glue is built against (see MODULE.bazel's
+# pypi_torch_nightly hub); the nightly-pinned variant installs exactly this
+# snapshot.
+_NIGHTLY_REQUIREMENTS: Final[pathlib.Path] = (
+    pathlib.Path(__file__).parent
+    / "requirements"
+    / "requirements_torch_nightly.txt"
+)
+
+
+def _pinned_nightly_torch() -> str:
+  """The torch version pinned in the nightly requirements lock."""
+  for line in _NIGHTLY_REQUIREMENTS.read_text().splitlines():
+    if line.startswith("torch=="):
+      return line.removeprefix("torch==").strip()
+  raise ValueError(f"No torch pin found in {_NIGHTLY_REQUIREMENTS}")
 
 
 @nox.session
@@ -112,9 +130,18 @@ def _dist_wheel(session: nox.Session) -> pathlib.Path:
         ("cpu", "cpu"),
         ("cpu", "cuda"),
         ("cpu", "nightly"),
+        ("cpu", "nightly-pinned"),
         ("tpu", "nightly"),
+        ("tpu", "nightly-pinned"),
     ],
-    ids=["cpu-cpu", "cpu-cuda", "cpu-nightly", "tpu-nightly"],
+    ids=[
+        "cpu-cpu",
+        "cpu-cuda",
+        "cpu-nightly",
+        "cpu-nightly-pinned",
+        "tpu-nightly",
+        "tpu-nightly-pinned",
+    ],
 )
 def smoke_test(session: nox.Session, device: str, torch_variant: str) -> None:
   """Install a pre-built wheel with a specific torch variant and smoke test it.
@@ -137,12 +164,21 @@ def smoke_test(session: nox.Session, device: str, torch_variant: str) -> None:
     # dependency falls back to PyPI.
     install_args += ["--extra-index-url", index]
   if torch_variant == "nightly":
+    # The *latest* nightly, deliberately unpinned: it can drift
+    # ABI-incompatibly from the snapshot the nightly glue was built against,
+    # so a failure here is the signal to refresh the nightly lock.
     install_args.append("--prerelease=allow")
+  elif torch_variant == "nightly-pinned":
+    # The exact snapshot the nightly glue was built against, so this is
+    # deterministic and must pass -- unlike the unpinned variant it never
+    # fails from upstream drift.
+    install_args += ["--prerelease=allow", f"torch=={_pinned_nightly_torch()}"]
   else:
     # Pin so the session is deterministic and exercises the newest glue as an
     # exact match. Releases without an exact glue are covered by the
-    # intermediate_patch_abi sessions, and newer-than-any-glue by the nightly
-    # variant (the dispatch loader serves both from the nearest older glue).
+    # intermediate_patch_abi sessions; the nightly variants exercise the
+    # nightly glue (or, on a release-channel wheel without one, the dispatch
+    # loader's fallback to the newest release glue).
     install_args.append(f"torch=={_newest_supported_torch()}")
   _install_and_run_smoke_tests(session, device, *install_args)
 
