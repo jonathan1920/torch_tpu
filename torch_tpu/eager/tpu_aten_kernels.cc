@@ -1013,6 +1013,24 @@ TORCH_LIBRARY_IMPL(_, PrivateUse1, m) {
       torch::CppFunction::makeFromBoxedFunction<&TpuMissingOpFallback>());
 }
 
+void TpuSparseOpFallback(const c10::OperatorHandle& op,
+                         torch::jit::Stack* const stack) {
+  const auto& op_name = op.schema().operator_name();
+  TT_CHECK_THROW(false, error::kPythonNotImplementedError)
+      << op_name << "(): sparse operators are not supported on TPU yet";
+}
+
+// Register a fallback for SparsePrivateUse1 operators. SparsePrivateUse1 is
+// currently dispatched by either using a sparse tensor type or by calling a
+// operation that generates a sparse tensor. More information can be found at
+// https://docs.pytorch.org/docs/2.13/sparse.html.
+// Examples:
+//   torch.sparse_coo_tensor(...)
+//   torch.sparse.mm(...)
+TORCH_LIBRARY_IMPL(_, SparsePrivateUse1, m) {
+  m.fallback(torch::CppFunction::makeFromBoxedFunction<&TpuSparseOpFallback>());
+}
+
 // TODO: (b/448113143) -- Once TPU is upstreamed, remove this fallthrough
 //  and add an AutogradTPU entry to VariableFallbackKernel.cpp.
 TORCH_LIBRARY_IMPL(_, AutogradPrivateUse1, m) {

@@ -3335,6 +3335,18 @@ module {
           contraction_dim=[0, 1],
       )
 
+  @et.why_tpu_only("Sparse operations fallback to SparsePrivateUse1 on TPU.")
+  def test_sparse_ops_not_supported(self):
+    indices = torch.tensor([[0, 1], [1, 2]], device="tpu")
+    values = torch.tensor([1.0, 2.0], device="tpu")
+    # TODO(b/540532086): Update the error message once issue is resolved.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""aten::_sparse_coo_tensor_with_dims_and_tensors(): sparse operators are not supported on TPU yet""",
+        message_reviewed_by="wan",
+    ):
+      torch.sparse_coo_tensor(indices, values, (2, 3), device="tpu")
+
   @et.why_tpu_only("Only TPU hardcodes a maximum possible device count of 8")
   def test_current_stream_device_index_above_max_devices(self):
     with et.assert_raises_message(
