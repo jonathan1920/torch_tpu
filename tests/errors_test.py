@@ -2509,6 +2509,27 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.ops.aten.glu_backward(grad_output, self_tensor, dim=1)
 
+  def test_prelu_kernel_dtype_mismatch(self):
+    self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    weight = torch.ones(3, device=et.device(), dtype=torch.float64)
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Found dtype Double but expected Float""",
+        tpu="""prelu_kernel(): expected self and weight to have the same dtype, got float32 and float64""",
+    ):
+      torch.ops.aten._prelu_kernel(self_tensor, weight)
+
+  def test_prelu_kernel_backward_dtype_mismatch(self):
+    grad_output = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    weight = torch.ones(3, device=et.device(), dtype=torch.bfloat16)
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Found dtype BFloat16 but expected Float""",
+        tpu="""prelu_kernel_backward(): expected grad_output, self, and weight to have the same dtype, got float32, float32, and bfloat16""",
+    ):
+      torch.ops.aten._prelu_kernel_backward(grad_output, self_tensor, weight)
+
   def test_group_norm_backward_grad_out_numel_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,
@@ -5820,6 +5841,58 @@ Supported combinations for non-constant padding:
         gpu="""cannot do hardtanh on an unsigned type with negative limits""",
     ):
       torch.nn.functional.hardtanh(t, min_val=-1, max_val=1)
+
+  def test_prelu_kernel_unsupported_self_dtype(self):
+    self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
+    weight = torch.ones(3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""prelu_kernel(): expected the self dtype to be floating point, got int32""",
+        gpu="""Found dtype Float but expected Int""",
+    ):
+      torch.ops.aten._prelu_kernel(self_tensor, weight)
+
+  def test_prelu_kernel_unsupported_weight_dtype(self):
+    self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    weight = torch.ones(3, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""prelu_kernel(): expected the weight dtype to be floating point, got int32""",
+        gpu="""Found dtype Int but expected Float""",
+    ):
+      torch.ops.aten._prelu_kernel(self_tensor, weight)
+
+  def test_prelu_kernel_unbroadcastable_shapes(self):
+    self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    weight = torch.ones(4, 3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""prelu_kernel(): the size of tensor a (2) must match the size of tensor b (4) at non-singleton dimension 0""",
+        gpu="""The size of tensor a (2) must match the size of tensor b (4) at non-singleton dimension 0""",
+    ):
+      torch.ops.aten._prelu_kernel(self_tensor, weight)
+
+  def test_prelu_kernel_backward_unsupported_dtype(self):
+    grad_output = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
+    self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    weight = torch.ones(3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""prelu_kernel_backward(): expected the grad_output dtype to be floating point, got int32""",
+        gpu="""Found dtype Int but expected Float""",
+    ):
+      torch.ops.aten._prelu_kernel_backward(grad_output, self_tensor, weight)
+
+  def test_prelu_kernel_backward_grad_output_shape_mismatch(self):
+    grad_output = torch.ones(2, 4, device=et.device(), dtype=torch.float32)
+    self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    weight = torch.ones(3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""prelu_kernel_backward(): expected grad_output shape to match self shape [2, 3], got [2, 4]""",
+        gpu="""The size of tensor a (3) must match the size of tensor b (4) at non-singleton dimension 1""",
+    ):
+      torch.ops.aten._prelu_kernel_backward(grad_output, self_tensor, weight)
 
   def test_leaky_relu_unsupported_bool_dtype(self):
     inp = torch.tensor([True, False], device=et.device())

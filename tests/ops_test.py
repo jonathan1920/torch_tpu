@@ -646,6 +646,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     "nn.functional.pdist": {
         torch.float32: {"rtol": 3.1e-6, "atol": 3.3e-5},
     },
+    "nn.functional.prelu": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float16: {"rtol": 2e-3, "atol": 1.5e-3},
+        torch.float32: {"rtol": 6.5e-5, "atol": 1.7e-5},
+    },
     "nn.functional.scaled_dot_product_attention": {
         # this op internally calls bmm, which runs on DEFAULT precision
         # as that is faster but requires higher tolerances.
@@ -3431,6 +3436,13 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "nn.functional.glu",
         exclude_dtypes=(torch.bfloat16,),  # EXCLUDE_DTYPES_OK=b/538164008
+    )
+
+  def test_nn_functional_prelu(self):
+    self.do_test_op(
+        "nn.functional.prelu",
+        exclude_dtypes=INTEGRAL_DTYPES,  # EXCLUDE_DTYPES_OK=prelu only
+        # supports floating point types
     )
 
   def test_nn_functional_hardsigmoid(self):

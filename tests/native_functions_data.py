@@ -122,8 +122,6 @@ UNREGISTERED_OPS = frozenset([
     '_philox_key_split',
     '_philox_normal_',
     '_philox_uniform_',
-    '_prelu_kernel',
-    '_prelu_kernel_backward',
     '_resize_output_',
     '_sample_dirichlet',
     '_scaled_dot_product_attention_math_for_mps',

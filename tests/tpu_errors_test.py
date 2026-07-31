@@ -3364,6 +3364,27 @@ module {
     ):
       torch.tpu.Stream(8)
 
+  @et.why_tpu_only("PReLU weight shape broadcastability check on TPU.")
+  def test_prelu_kernel_weight_shape_not_broadcastable(self):
+    self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    weight = torch.ones(1, 2, 3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""prelu_kernel(): expected weight tensor shape to be broadcastable to self shape [2, 3], got [1, 2, 3]""",
+    ):
+      torch.ops.aten._prelu_kernel(self_tensor, weight)
+
+  @et.why_tpu_only("PReLU backward weight shape broadcastability check on TPU.")
+  def test_prelu_kernel_backward_weight_shape_not_broadcastable(self):
+    self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    grad_output = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    weight = torch.ones(1, 2, 3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""prelu_kernel_backward(): expected weight tensor shape to be broadcastable to self shape [2, 3], got [1, 2, 3]""",
+    ):
+      torch.ops.aten._prelu_kernel_backward(grad_output, self_tensor, weight)
+
 
 if __name__ == "__main__":
   absltest.main()

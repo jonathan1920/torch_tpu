@@ -564,6 +564,8 @@ enum class OpName {
   kPowScalarOut,
   kPowTensorScalarOut,
   kPowTensorTensorOut,
+  kPreluKernel,
+  kPreluKernelBackward,
   kProd,
   kProdDimOut,
   kPut_,

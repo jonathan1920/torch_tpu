@@ -997,6 +997,34 @@ def ml_layer_model_builder(
         dtype=weights_dtype,
         device=device,
     )
+  elif model_name == "nn.PReLU":
+    channels = kwargs["channels"]
+    height = kwargs["height"]
+    width = kwargs["width"]
+    channel_wise = kwargs.get("channel_wise", True)
+
+    class PreluModel(torch.nn.Module):
+
+      def __init__(self, dtype):
+        super().__init__()
+        self.prelu = torch.nn.PReLU(
+            num_parameters=channels if channel_wise else 1, dtype=dtype
+        )
+
+      def forward(self, x):
+        return self.prelu(x)
+
+    model = PreluModel(dtype=weights_dtype)
+
+    def shape_fn(bs, seq):
+      return torch.randn(
+          (bs, channels, height, width),
+          dtype=weights_dtype,
+          device=device,
+          requires_grad=is_training,
+      )
+
+    example_inputs = _generate_inputs(batch_size, sequence_length, shape_fn)
   elif model_name == "nn.GLU":
     dim = kwargs.get("dim", -1)
     shape = kwargs["shape"]

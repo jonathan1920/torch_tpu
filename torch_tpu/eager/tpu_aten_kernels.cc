@@ -152,6 +152,7 @@
 #include "torch_tpu/ops/pooling/avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/max_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/pooling.h"
+#include "torch_tpu/ops/prelu/prelu_aten_kernels.h"
 #include "torch_tpu/ops/prod/prod_aten_kernels.h"
 #include "torch_tpu/ops/put/put_aten_kernels.h"
 #include "torch_tpu/ops/random/random_aten_kernels.h"
@@ -815,6 +816,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kPowScalarOut>(m, AtenPowScalarOut);
   ImplStable<OpName::kPowTensorScalarOut>(m, AtenPowTensorScalarOut);
   ImplStable<OpName::kPowTensorTensorOut>(m, AtenPowTensorTensorOut);
+  ImplStable<OpName::kPreluKernel>(m, AtenPreluKernel);
+  ImplStable<OpName::kPreluKernelBackward>(m, AtenPreluKernelBackward);
   ImplStable<OpName::kProd>(m, AtenProd);
   ImplStable<OpName::kProdDimOut>(m, AtenProdDimOut);
   ImplStable<OpName::kPut_>(m, AtenPut_);

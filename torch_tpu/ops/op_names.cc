@@ -1101,6 +1101,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "pow.Tensor_Scalar_out";
     case OpName::kPowTensorTensorOut:
       return "pow.Tensor_Tensor_out";
+    case OpName::kPreluKernel:
+      return "_prelu_kernel";
+    case OpName::kPreluKernelBackward:
+      return "_prelu_kernel_backward";
     case OpName::kProd:
       return "prod";
     case OpName::kProdDimOut:

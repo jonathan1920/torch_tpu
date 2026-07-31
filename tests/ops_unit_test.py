@@ -91,6 +91,137 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   add it here.
   """
 
+  def test_prelu_kernel_direct(self):
+    for dtype in (torch.float32, torch.bfloat16, torch.float16):
+      # 0D scalar self, 0D scalar weight
+      self_cpu_0d = torch.randn((), dtype=dtype)
+      weight_cpu_0d = torch.randn((), dtype=dtype)
+
+      def compute_0d(device, self_cpu=self_cpu_0d, weight_cpu=weight_cpu_0d):
+        self_tensor = self_cpu.to(device).detach().requires_grad_(True)
+        weight = weight_cpu.to(device).detach().requires_grad_(True)
+        out = torch.ops.aten._prelu_kernel(self_tensor, weight)
+        out.sum().backward()
+        return out, self_tensor.grad, weight.grad
+
+      self.assert_close_tpu_vs_cpu(compute_0d)
+
+      # 1D self, 1D weight (single scalar weight)
+      self_cpu_1d = torch.randn(10, dtype=dtype)
+      weight_cpu_1d = torch.tensor([0.25], dtype=dtype)
+
+      def compute_1d(device, self_cpu=self_cpu_1d, weight_cpu=weight_cpu_1d):
+        self_tensor = self_cpu.to(device).detach().requires_grad_(True)
+        weight = weight_cpu.to(device).detach().requires_grad_(True)
+        out = torch.ops.aten._prelu_kernel(self_tensor, weight)
+        out.sum().backward()
+        return out, self_tensor.grad, weight.grad
+
+      self.assert_close_tpu_vs_cpu(compute_1d)
+
+      # 2D self (N, C), 1D weight (C)
+      self_cpu_2d = torch.randn(4, 5, dtype=dtype)
+      weight_cpu_2d = torch.randn(5, dtype=dtype)
+
+      def compute_2d(device, self_cpu=self_cpu_2d, weight_cpu=weight_cpu_2d):
+        self_tensor = self_cpu.to(device).detach().requires_grad_(True)
+        weight = weight_cpu.to(device).detach().requires_grad_(True)
+        out = torch.ops.aten._prelu_kernel(self_tensor, weight.reshape(1, 5))
+        out.sum().backward()
+        return out, self_tensor.grad, weight.grad
+
+      self.assert_close_tpu_vs_cpu(compute_2d)
+
+      # 3D self (N, C, L), 1D weight (C) reshaped to (1, C, 1)
+      self_cpu_3d = torch.randn(3, 4, 5, dtype=dtype)
+      weight_cpu_3d = torch.randn(4, dtype=dtype)
+
+      def compute_3d(device, self_cpu=self_cpu_3d, weight_cpu=weight_cpu_3d):
+        self_tensor = self_cpu.to(device).detach().requires_grad_(True)
+        weight = weight_cpu.to(device).detach().requires_grad_(True)
+        out = torch.ops.aten._prelu_kernel(self_tensor, weight.reshape(1, 4, 1))
+        out.sum().backward()
+        return out, self_tensor.grad, weight.grad
+
+      self.assert_close_tpu_vs_cpu(compute_3d)
+
+      # 4D self (N, C, H, W), 1D weight (C) reshaped to (1, C, 1, 1)
+      self_cpu_4d = torch.randn(2, 3, 4, 4, dtype=dtype)
+      weight_cpu_4d = torch.randn(3, dtype=dtype)
+
+      def compute_4d(device, self_cpu=self_cpu_4d, weight_cpu=weight_cpu_4d):
+        self_tensor = self_cpu.to(device).detach().requires_grad_(True)
+        weight = weight_cpu.to(device).detach().requires_grad_(True)
+        out = torch.ops.aten._prelu_kernel(
+            self_tensor, weight.reshape(1, 3, 1, 1)
+        )
+        out.sum().backward()
+        return out, self_tensor.grad, weight.grad
+
+      self.assert_close_tpu_vs_cpu(compute_4d)
+
+      # 0-element empty tensor
+      self_cpu_empty = torch.randn(0, 3, 4, dtype=dtype)
+      weight_cpu_empty = torch.randn(3, dtype=dtype)
+
+      def compute_empty(
+          device, self_cpu=self_cpu_empty, weight_cpu=weight_cpu_empty
+      ):
+        self_tensor = self_cpu.to(device)
+        weight = weight_cpu.to(device)
+        return torch.ops.aten._prelu_kernel(
+            self_tensor, weight.reshape(1, 3, 1)
+        )
+
+      self.assert_close_tpu_vs_cpu(compute_empty)
+
+      # Direct _prelu_kernel_backward call
+      grad_out_cpu = torch.randn(2, 3, 4, dtype=dtype)
+      self_cpu_bwd = torch.randn(2, 3, 4, dtype=dtype)
+      weight_cpu_bwd = torch.tensor([0.25], dtype=dtype)
+
+      def compute_bwd_direct(
+          device,
+          grad_out_cpu=grad_out_cpu,
+          self_cpu=self_cpu_bwd,
+          weight_cpu=weight_cpu_bwd,
+      ):
+        grad_out = grad_out_cpu.to(device)
+        self_tensor = self_cpu.to(device)
+        weight = weight_cpu.to(device)
+        grad_self, grad_weight = torch.ops.aten._prelu_kernel_backward(
+            grad_out, self_tensor, weight
+        )
+        if device == "cpu":
+          grad_weight = grad_weight.sum().reshape(1)
+        return grad_self, grad_weight
+
+      self.assert_close_tpu_vs_cpu(compute_bwd_direct)
+
+      # NaN inputs test
+      self_cpu_nan = torch.tensor([1.0, -2.0, float("nan")], dtype=dtype)
+      weight_cpu_nan = torch.tensor([0.25], dtype=dtype)
+      grad_out_nan = torch.tensor([1.0, 1.0, 1.0], dtype=dtype)
+
+      def compute_nan(
+          device,
+          grad_out_nan=grad_out_nan,
+          self_cpu_nan=self_cpu_nan,
+          weight_cpu_nan=weight_cpu_nan,
+      ):
+        grad_out = grad_out_nan.to(device)
+        self_tensor = self_cpu_nan.to(device)
+        weight = weight_cpu_nan.to(device)
+        out = torch.ops.aten._prelu_kernel(self_tensor, weight)
+        grad_self, grad_weight = torch.ops.aten._prelu_kernel_backward(
+            grad_out, self_tensor, weight
+        )
+        if device == "cpu":
+          grad_weight = grad_weight.sum().reshape(1)
+        return out, grad_self, grad_weight
+
+      self.assert_close_tpu_vs_cpu(compute_nan)
+
   def _run_addmm_activation_test(
       self,
       self_shape,

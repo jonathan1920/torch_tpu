@@ -1344,3 +1344,44 @@ SLICE_SCATTER_CONFIGS = (
         step=4,
     ),
 )
+
+
+@dataclasses.dataclass(frozen=True)
+class PreluConfig:
+  batch_size: Any  # Supports int or DynamicDimension
+  channels: int
+  height: int
+  width: int
+  channel_wise: bool
+  dtype: torch.dtype = torch.bfloat16
+
+  @classmethod
+  def get_base_configs(cls):
+    return [
+        # 1. Channel-wise PReLU (typical CNN)
+        PreluConfig(
+            batch_size=1,
+            channels=64,
+            height=112,
+            width=112,
+            channel_wise=True,
+        ),
+        PreluConfig(
+            batch_size=4,
+            channels=128,
+            height=56,
+            width=56,
+            channel_wise=True,
+        ),
+        # 2. Shared PReLU (scalar weight)
+        PreluConfig(
+            batch_size=1,
+            channels=64,
+            height=112,
+            width=112,
+            channel_wise=False,
+        ),
+    ]
+
+
+PRELU_CONFIGS = PreluConfig.get_base_configs()
