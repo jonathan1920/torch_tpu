@@ -43,6 +43,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -157,6 +158,7 @@ at::Tensor& AtenLogitOut(const at::Tensor& self, std::optional<double> eps,
         DeviceBufferRef result_buf,
         BuildLogitBuffer(self, promoted_eps, out_type, std::move(param_keys)));
 
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
