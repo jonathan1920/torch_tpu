@@ -414,12 +414,12 @@ std::vector<at::Tensor> ExecuteCompiledModel(
       std::vector<DeviceBufferRef> result_buffer_refs,
       EnqueueExecutable(executable, std::move(argument_buffer_refs),
                         result_shapes_vec));
+  RecordBackgroundMaterialization(result_buffer_refs);
 
   auto num_outputs = result_buffer_refs.size();
   std::vector<at::Tensor> output_tensors;
   output_tensors.reserve(num_outputs);
   for (auto& result_buffer : result_buffer_refs) {
-    MarkStreamActive(result_buffer.GetReadyFuture());
     output_tensors.push_back(MakeTensor(std::move(result_buffer)));
   }
 

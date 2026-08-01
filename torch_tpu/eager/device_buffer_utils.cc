@@ -157,9 +157,7 @@ absl::Status DeferNeverDispatch(absl::Span<const DeviceBufferRef> results,
   TT_RETURN_IF_ERROR(Materialize(device_buffer_list,
                                  MaterializationReason::kDebugMode,
                                  MaterializationMode::kFullGraph));
-  for (const auto& result : results) {
-    MarkStreamActive(result.GetReadyFuture());
-  }
+  RecordBackgroundMaterialization(results);
   if (block) {
     return device_buffer_list->Synchronize();
   }

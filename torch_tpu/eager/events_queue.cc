@@ -605,20 +605,51 @@ struct StreamFutures {
   std::vector<StreamState::SharedFuture> futures;
 };
 
-}  // namespace
-
 void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
-                      xla::Future<void> future) {
+                      std::vector<StreamState::SharedFuture>&& new_futures) {
+  if (new_futures.empty()) {
+    return;
+  }
   StreamState& state = GetStreamState();
   absl::MutexLock lock(state.mutex);
   auto& futures = state.pending_futures[{device_index, stream_id}];
-  PruneCompletedFutures(futures);
-  futures.push_back(std::make_shared<xla::Future<void>>(std::move(future)));
+  if (futures.size() + new_futures.size() > futures.capacity()) {
+    PruneCompletedFutures(futures);
+  }
+  futures.insert(futures.end(), std::make_move_iterator(new_futures.begin()),
+                 std::make_move_iterator(new_futures.end()));
+}
+
+void MarkStreamActive(std::vector<StreamState::SharedFuture>&& new_futures) {
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+  MarkStreamActive(device_index, stream_id, std::move(new_futures));
 }
 
 void MarkStreamActive(xla::Future<void> future) {
-  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
-  MarkStreamActive(device_index, stream_id, std::move(future));
+  std::vector<StreamState::SharedFuture> futures;
+  futures.push_back(std::make_shared<xla::Future<void>>(std::move(future)));
+  MarkStreamActive(std::move(futures));
+}
+
+}  // namespace
+
+void RecordBackgroundMaterialization(
+    absl::Span<const DeviceBufferRef> outputs) {
+  std::vector<StreamState::SharedFuture> new_futures;
+  new_futures.reserve(outputs.size());
+  for (const auto& output : outputs) {
+    new_futures.push_back(
+        std::make_shared<xla::Future<void>>(output.GetReadyFuture()));
+  }
+  MarkStreamActive(std::move(new_futures));
+}
+
+void RecordAsyncHostToDevice(const DeviceBufferRef& device_buffer_ref) {
+  MarkStreamActive(device_buffer_ref.GetReadyFuture());
+}
+
+void RecordAsyncDeviceToHost(xla::Future<void> to_literal_future) {
+  MarkStreamActive(std::move(to_literal_future));
 }
 
 // Blocks the calling thread until all previously enqueued operations on the

@@ -67,12 +67,17 @@ absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
 PrepareMaterializationTraversals(
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
 
-// Updates the tracked future for the given device and stream.
-void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
-                      xla::Future<void> future);
+// Tracks that a background materialization has been started for the given
+// outputs on the current stream.
+void RecordBackgroundMaterialization(absl::Span<const DeviceBufferRef> outputs);
 
-// Updates the tracked future for the current stream.
-void MarkStreamActive(xla::Future<void> future);
+// Tracks that an async host-to-device copy has been started that will populate
+// the given DeviceBufferRef.
+void RecordAsyncHostToDevice(const DeviceBufferRef& device_buffer_ref);
+
+// Tracks that an async device-to-host copy has been started.
+// The future should be the return value from a call to PjRtBuffer::ToLiteral.
+void RecordAsyncDeviceToHost(xla::Future<void> to_literal_future);
 
 // Blocks until all pending operations on the given device and stream have
 // completed.

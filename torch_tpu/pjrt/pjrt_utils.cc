@@ -302,8 +302,8 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
         /* context= */ "failed to copy buffer from host to device"));
   } else {
     ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Backing tensor present, "
-                    "creating DeviceBufferRef and marking stream active.";
-    MarkStreamActive(future);
+                    "creating DeviceBufferRef and recording async transfer.";
+    RecordAsyncHostToDevice(buffer_ref);
   }
 
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL EXIT] Created "
@@ -407,7 +407,7 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
         ABSL_LOG(ERROR) << "Async D2H ToLiteral transfer failed: " << s;
       }
     });
-    MarkStreamActive(future);
+    RecordAsyncDeviceToHost(std::move(future));
     return absl::OkStatus();
   }
   return AdaptXlaError(
