@@ -2905,67 +2905,78 @@ class TestOps(TorchTpuTestBase):
   def test_lu_unpack(self):
     self.do_test_op(
         "lu_unpack",
-        exclude_dtypes={  # EXCLUDE_DTYPES_OK=unsupported
-            "cpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        exclude_dtypes={  # EXCLUDE_DTYPES_OK=unsupported 64-bit dtypes in XLA
+            "cpu": (
+                INTEGRAL_DTYPES
+                + (torch.half, torch.bfloat16, torch.float64, torch.complex128)
+            ),
             "gpu": (
                 torch.uint8,
                 torch.int16,
                 torch.half,
+                torch.float64,
+                torch.complex128,
             ),
         },
-        # TODO(b/495521055): lu_unpack fails with complex64 with compile.
-        skip_if=lambda device, variant, op_input: (
-            op_testing.is_compiled_mode()
-            and op_input.input_value.dtype in COMPLEX_DTYPES
-        ),
+        # ApplyPivotsInPlace in linalg_lu_kernels.cc calls .item() in C++ loop,
+        # which fails placeholder tensor materialization in compiled mode.
+        skip_if=lambda device, variant, op_input: op_testing.is_compiled_mode(),
     )
 
   def test_linalg_lu_solve(self):
     self.do_test_op(
         "linalg.lu_solve",
-        exclude_dtypes={  # EXCLUDE_DTYPES_OK=unsupported
-            "cpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        exclude_dtypes={  # EXCLUDE_DTYPES_OK=unsupported 64-bit dtypes in XLA
+            "cpu": (
+                INTEGRAL_DTYPES
+                + (torch.half, torch.bfloat16, torch.float64, torch.complex128)
+            ),
             "gpu": (
                 torch.uint8,
                 torch.int16,
                 torch.half,
+                torch.float64,
+                torch.complex128,
             ),
         },
-        # TODO(b/495521055): linalg.lu_solve fails with complex64 with compile.
-        skip_if=lambda device, variant, op_input: (
-            op_testing.is_compiled_mode()
-            and op_input.input_value.dtype in COMPLEX_DTYPES
-        ),
+        # ApplyPivotsInPlace in linalg_lu_kernels.cc calls .item() in C++ loop,
+        # which fails placeholder tensor materialization in compiled mode.
+        skip_if=lambda device, variant, op_input: op_testing.is_compiled_mode(),
     )
 
   def test_linalg_solve_ex(self):
     self.do_test_op(
         "linalg.solve_ex",
-        exclude_dtypes={  # EXCLUDE_DTYPES_OK=unsupported
-            "cpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        exclude_dtypes={  # EXCLUDE_DTYPES_OK=unsupported 64-bit dtypes in XLA
+            "cpu": (
+                INTEGRAL_DTYPES
+                + (torch.half, torch.bfloat16, torch.float64, torch.complex128)
+            ),
             "gpu": (
                 torch.uint8,
                 torch.int16,
                 torch.half,
+                torch.float64,
+                torch.complex128,
             ),
         },
-        # TODO(b/495521055): linalg.solve_ex fails with complex64 with compile.
-        skip_if=lambda device, variant, op_input: (
-            op_testing.is_compiled_mode()
-            and op_input.input_value.dtype in COMPLEX_DTYPES
-        ),
+        # ApplyPivotsInPlace in linalg_lu_kernels.cc calls .item() in C++ loop,
+        # which fails placeholder tensor materialization in compiled mode.
+        skip_if=lambda device, variant, op_input: op_testing.is_compiled_mode(),
     )
 
   def test_linalg_lu_out(self):
     self.do_test_op(
         "linalg.lu",
-        # TODO(b/495521055): linalg.lu fails with complex64 with compile.
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=unsupported 64-bit dtypes in XLA
+            torch.float64,
+            torch.complex128,
+        ),
+        # ApplyPivotsInPlace in linalg_lu_kernels.cc calls .item() in C++ loop,
+        # which fails placeholder tensor materialization in compiled mode.
         skip_if=lambda device, variant, op_input: (
             _linalg_lu_without_pivot_gpu(device, variant, op_input)
-            or (
-                op_testing.is_compiled_mode()
-                and op_input.input_value.dtype in COMPLEX_DTYPES
-            )
+            or op_testing.is_compiled_mode()
         ),
     )
 
