@@ -85,10 +85,16 @@ class VersionSuffixTest(parameterized.TestCase):
       # A dev build's suffix is the release triple it leads up to, so it is
       # served by the glue built against the matching dev snapshot.
       ("2.14.0.dev20260711+cpu", "2_14_0"),
+      # A from-source build of PyTorch main reports a PEP 440 pre-release
+      # marker attached straight to the patch component.
+      ("2.14.0a0", "2_14_0"),
+      ("2.14.0a0+gitfdcd20c", "2_14_0"),
+      ("2.14.0rc1", "2_14_0"),
       ("2.11.10", "2_11_10"),
       # Undeterminable versions disable rather than misdirect the dispatch.
       ("2.13", None),
       ("main", None),
+      ("2.13.0garbage", None),
   )
   def test_version_suffix(self, version, expected):
     self.assertEqual(loader.version_suffix(version), expected)

@@ -34,9 +34,10 @@ When no versioned glues are present at all (e.g. an unversioned developer
 build) the hook is not installed and imports resolve normally.
 
 A dev build's version compares by the release triple it leads up to
-(`2.14.0.dev20260711` -> `2.14.0`), so the glue the nightly-channel wheel
-bundles -- built against a pinned dev snapshot and named by that snapshot's
-release triple, like any other glue -- serves it whenever present.
+(`2.14.0.dev20260711` and `2.14.0a0` -> `2.14.0`), so the glue the
+nightly-channel wheel bundles -- built against a pinned dev snapshot and named
+by that snapshot's release triple, like any other glue -- serves it whenever
+present.
 """
 
 from collections.abc import Collection
@@ -45,6 +46,7 @@ import importlib.machinery
 import importlib.metadata
 import importlib.util
 import pathlib
+import re
 import sys
 from typing import Final
 
@@ -78,15 +80,29 @@ def installed_torch_version() -> str | None:
     return None
 
 
+# A PEP 440 version whose release segment starts with a major.minor.patch
+# triple, which is captured; everything the grammar allows after that triple is
+# matched but discarded. Spelling it out rather than taking the leading triple
+# and ignoring the rest keeps an unparseable version unparseable (None), which
+# is what disables the dispatch instead of misdirecting it.
+_RELEASE_TRIPLE = re.compile(
+    r"""^v?(\d+)\.(\d+)\.(\d+)                               # release triple
+        (?:\.\d+)*                                             # further release parts
+        (?:[-_.]?(?:a|b|c|rc|alpha|beta|pre|preview)[-_.]?\d*)?  # pre-release
+        (?:-\d+|[-_.]?(?:post|rev|r)[-_.]?\d*)?                 # post-release
+        (?:[-_.]?dev[-_.]?\d*)?                                 # dev release
+        (?:\+[a-z0-9]+(?:[-_.][a-z0-9]+)*)?$                    # local version
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+
 def version_suffix(version: str) -> str | None:
   """Turns a torch version into a glue suffix ("2.13.0+cpu" -> "2_13_0")."""
-  # Cut any local tag first so it cannot ride on the patch component
-  # ("2.13.0+cpu" would otherwise split into ("2", "13", "0+cpu")); a ".dev"
-  # tag is a component of its own and falls off the triple.
-  parts = version.split("+")[0].split(".")[:3]
-  if len(parts) < 3 or not all(part.isdigit() for part in parts):
+  match = _RELEASE_TRIPLE.match(version)
+  if match is None:
     return None
-  return "_".join(parts)
+  return "_".join(match.groups())
 
 
 def torch_version_suffix() -> str | None:
