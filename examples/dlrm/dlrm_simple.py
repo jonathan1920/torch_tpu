@@ -29,7 +29,8 @@ from absl import app
 from absl import flags
 import torch
 from torch import nn
-from torch_tpu._internal.utils import test_utils as utils
+from torch_tpu._internal.utils import test_utils
+from torch_tpu._internal.utils import utils
 
 _TPU = flags.DEFINE_bool("tpu", False, "Also run on TPU.")
 
@@ -191,7 +192,7 @@ def main(argv):
   output_tpu = model(dense_input_tpu, sparse_input_tpu).to("cpu")
   print(output_tpu)
 
-  utils.assert_close(output_tpu, prediction, rtol=1e-3, atol=4e-4)
+  test_utils.assert_close(output_tpu, prediction, rtol=1e-3, atol=4e-4)
 
 
 if __name__ == "__main__":

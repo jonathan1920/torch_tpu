@@ -18,10 +18,11 @@ import sys
 from absl import app
 from absl import flags
 import torch
-from torch_tpu._internal.utils import test_utils as utils
+from torch_tpu._internal.utils import test_utils
+from torch_tpu._internal.utils import utils
 from examples.qwen3.impl import qwen3
 
-CheckValueMode = utils.CheckValueMode
+CheckValueMode = test_utils.CheckValueMode
 Qwen3Model = qwen3.Qwen3Model
 configs = qwen3.configs
 
@@ -64,7 +65,7 @@ def main(argv):
   aot_compiled_output_tpu = compiled(tensor_in).to("cpu")
   print(aot_compiled_output_tpu)
 
-  utils.assert_close(
+  test_utils.assert_close(
       actual=output_tpu,
       expected=output_cpu,
       rtol=1e-3,
@@ -72,7 +73,7 @@ def main(argv):
       preamble="Comparing CPU and TPU",
   )
 
-  utils.assert_close(
+  test_utils.assert_close(
       actual=aot_compiled_output_tpu,
       expected=output_cpu,
       rtol=1e-3,

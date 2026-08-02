@@ -36,7 +36,8 @@ from absl import app
 from absl import flags
 import torch
 from torch import nn
-from torch_tpu._internal.utils import test_utils as utils
+from torch_tpu._internal.utils import test_utils
+from torch_tpu._internal.utils import utils
 
 
 class UNet(nn.Module):
@@ -87,7 +88,7 @@ def main(argv):
   t_tensor_tpu = t_tensor.to(device)
   result_tpu = model(t_tensor_tpu).to("cpu")
 
-  utils.assert_close(
+  test_utils.assert_close(
       result,
       result_tpu,
       rtol=4e-3,

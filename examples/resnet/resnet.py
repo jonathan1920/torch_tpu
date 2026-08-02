@@ -19,7 +19,8 @@ import sys
 from absl import app
 from absl import flags
 import torch
-from torch_tpu._internal.utils import test_utils as utils
+from torch_tpu._internal.utils import test_utils
+from torch_tpu._internal.utils import utils
 from examples.resnet.impl import resnet
 
 Block = resnet.Block
@@ -68,7 +69,7 @@ def main(argv):
     tpu_device = torch.device("tpu")
     model.to(tpu_device)
     output_tpu = model(input_tensor.to(tpu_device)).to("cpu")
-    utils.assert_close(
+    test_utils.assert_close(
         actual=output_tpu,
         expected=output,
         preamble="Resnet output",

@@ -19,11 +19,12 @@ import sys
 from absl import app
 from absl import flags
 import torch
-from torch_tpu._internal.utils import test_utils as utils
+from torch_tpu._internal.utils import test_utils
+from torch_tpu._internal.utils import utils
 from examples.llama3.impl import llama3_2
 
 
-CheckValueMode = utils.CheckValueMode
+CheckValueMode = test_utils.CheckValueMode
 Llama32Model = llama3_2.Llama32Model
 configs = llama3_2.configs
 
@@ -67,7 +68,7 @@ def main(argv):
 
   # Compare:
   if _CPU.value and _TPU.value:
-    utils.assert_close(
+    test_utils.assert_close(
         logits_tpu,
         logits,
         rtol=1e-3,

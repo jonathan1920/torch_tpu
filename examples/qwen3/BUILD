@@ -41,6 +41,7 @@ torch_tpu_py_test(
         "//shims/absl_py/flags",
         "//shims/torch:pytorch",
         "//torch_tpu",
+        "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:test_utils",
     ],
 )
