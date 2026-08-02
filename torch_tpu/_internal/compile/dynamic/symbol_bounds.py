@@ -22,7 +22,7 @@ from torch.utils._sympy.numbers import int_oo
 
 
 def _is_valid_bound(s: sympy.Expr) -> bool:
-  return s.is_integer and s.is_constant() and (s not in (int_oo, -int_oo))  # pyrefly: ignore[missing-attribute]
+  return s.is_integer and s.is_constant() and (s not in (int_oo, -int_oo))  # pyrefly: ignore[bad-return, missing-attribute]
 
 
 def _lookup_bounds_in_shape_env(

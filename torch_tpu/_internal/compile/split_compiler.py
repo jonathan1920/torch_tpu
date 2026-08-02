@@ -232,7 +232,7 @@ class _SubmodCompiler(torch.fx.interpreter.Interpreter):
 
       # Stitch the compiled submodule back into the parent GraphModule
       self.module.delete_submodule(n.target)
-      n.target = "compiled_" + n.target
+      n.target = "compiled_" + n.target  # pyrefly: ignore[unsupported-operation]
       self.module.add_submodule(n.target, compiled_submod_real)
       return fake_out
     else:
@@ -247,7 +247,7 @@ class _SplitCompiledExecutable(CompiledArtifact):
 
   def __call__(self, *args: Any) -> Any:
     if len(args) == 1 and isinstance(args[0], (list, tuple)):
-      args = args[0]
+      args = args[0]  # pyrefly: ignore[bad-assignment]
     return self._split_gm(*args)
 
   def __reduce__(self) -> tuple[Callable[..., Any], tuple[Any, ...]]:

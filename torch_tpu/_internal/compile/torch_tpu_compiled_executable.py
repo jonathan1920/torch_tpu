@@ -410,7 +410,7 @@ class NoOpCompiledArtifact(CompiledArtifact):
   ) -> Any:
     del output_shapes  # Unused
     if len(args) == 1 and isinstance(args[0], (list, tuple)):
-      args = args[0]
+      args = args[0]  # pyrefly: ignore[bad-assignment]
     if self._reconstruct_fx_outputs_fn is None:
       return ()
     # No compiled result tensors: reconstruct the FX output structure (Nones

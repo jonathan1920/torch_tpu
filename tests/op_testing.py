@@ -2514,7 +2514,7 @@ class TorchTpuTestBase(TestCase):
 
     try:
       start_time = time.perf_counter()
-      result = op_func(
+      result = op_func(  # pyrefly: ignore[not-callable]
           input_value,
           *device_op_input.args,
           **device_op_input.kwargs,
@@ -2705,7 +2705,7 @@ class TorchTpuTestBase(TestCase):
     golden_result_tuple = _to_tuple(golden_result)
     torch_tpu_result_tuple = _to_tuple(torch_tpu_result)
     if check_value is None or isinstance(check_value, CheckValueMode):
-      check_value = [check_value] * len(torch_tpu_result_tuple)
+      check_value = [check_value] * len(torch_tpu_result_tuple)  # pyrefly: ignore[bad-assignment]
 
     printable_input_str = str(torch_tpu_printable_input)
     for i, golden_result_i in enumerate(golden_result_tuple):
@@ -2722,7 +2722,7 @@ class TorchTpuTestBase(TestCase):
       self.assert_close(
           golden_result=golden_result_i,
           torch_tpu_result=torch_tpu_result_tuple[i],
-          check_value=check_value[i],  # pyrefly: ignore[bad-index]
+          check_value=check_value[i],  # pyrefly: ignore[bad-index, unsupported-operation]
           check_dtype=check_dtype,
           preamble=preamble,
           **accuracy_override,  # pyrefly: ignore[bad-argument-type]
@@ -3364,7 +3364,7 @@ def _set_up_test_random_seed() -> None:
 
   if absltest.FLAGS["test_random_seed"].present:
     # The user explicitly passed --test_random_seed=N, so we use that value.
-    _RANDOM_SEED = absltest.FLAGS.test_random_seed
+    _RANDOM_SEED = absltest.FLAGS.test_random_seed  # pyrefly: ignore[bad-assignment]
   elif (
       _torch_tpu_vs_cpu_mode()
       and _device_ops_backend._is_optimized_build()  # pylint: disable=protected-access
@@ -3372,13 +3372,13 @@ def _set_up_test_random_seed() -> None:
     # We are in postsubmit (optimized build) and comparing TPU vs CPU.
     # We set the seed based on the time, so that we get more test coverage
     # over time.
-    _RANDOM_SEED = time.time_ns() % 100000
+    _RANDOM_SEED = time.time_ns() % 100000  # pyrefly: ignore[bad-assignment]
   else:
     # We are either in presubmit (fastbuild) or comparing TPU vs GPU or
     # generating GPU golden data. In these cases, we want a fixed seed for
     # reproducible behavior. For example, we don't want presubmit to block
     # a CL due to unrelated flakes caused by non-deterministic seeds.
-    _RANDOM_SEED = 1234
+    _RANDOM_SEED = 1234  # pyrefly: ignore[bad-assignment]
 
   # Set the random seed for Python and Torch.
   _seed_rngs(_RANDOM_SEED)

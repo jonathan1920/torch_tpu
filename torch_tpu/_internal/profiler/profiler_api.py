@@ -71,7 +71,7 @@ def xprof_trace_handler(
     del prof  # Unused in this handler
     return str(dir_name)
 
-  handler_fn.worker_rank = worker_rank
+  handler_fn.worker_rank = worker_rank  # pyrefly: ignore[missing-attribute]
   return handler_fn
 
 
