@@ -413,7 +413,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.uint8: {"rtol": 3.4e-6, "atol": 1.2e-3},
     },
     "cummin": {
-        torch.float64: {"rtol": 0, "atol": 5},
+        torch.float64: {"atol": 5},
     },
     "cumprod": {
         torch.bfloat16: {"rtol": 1.7e-1, "atol": 5.9e-3},
@@ -536,14 +536,14 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     },
     "logit": {
         torch.bfloat16: {"atol": 9.4e-3},
-        torch.bool: {"rtol": 0, "atol": 7.5e-5},
+        torch.bool: {"atol": 7.5e-5},
         torch.float16: {"rtol": 1.2e-3, "atol": 1.2e-3},
         torch.float32: {"rtol": 1.1e-4, "atol": 1.3e-4},
-        torch.int16: {"rtol": 0, "atol": 7.5e-5},
-        torch.int32: {"rtol": 0, "atol": 7.5e-5},
-        torch.int64: {"rtol": 0, "atol": 7.5e-5},
-        torch.int8: {"rtol": 0, "atol": 7.5e-5},
-        torch.uint8: {"rtol": 0, "atol": 7.5e-5},
+        torch.int16: {"atol": 7.5e-5},
+        torch.int32: {"atol": 7.5e-5},
+        torch.int64: {"atol": 7.5e-5},
+        torch.int8: {"atol": 7.5e-5},
+        torch.uint8: {"atol": 7.5e-5},
     },
     "matmul": {
         torch.bfloat16: {"rtol": 3.9e-1, "atol": 2.9e-1},
@@ -912,6 +912,12 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"atol": 3.8e-2},
         torch.float16: {"atol": 4e-3},
     },
+    "_thnn_fused_gru_cell": {
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "_thnn_fused_lstm_cell": {
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+    },
     "acos": {
         torch.complex64: {"atol": 6.5e-5},
     },
@@ -1117,6 +1123,17 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"rtol": 1.2, "atol": 4e-3},
         torch.float32: {"rtol": 0.039, "atol": 6.9e-5},
     },
+    "logit": {
+        torch.bfloat16: {"atol": 9.4e-3},
+        torch.bool: {"atol": 7.5e-5},
+        torch.float16: {"rtol": 1.2e-3, "atol": 1.2e-3},
+        torch.float32: {"rtol": 1.1e-4, "atol": 1.3e-4},
+        torch.int16: {"atol": 7.5e-5},
+        torch.int32: {"atol": 7.5e-5},
+        torch.int64: {"atol": 7.5e-5},
+        torch.int8: {"atol": 7.5e-5},
+        torch.uint8: {"atol": 7.5e-5},
+    },
     "matmul": {
         torch.bfloat16: {"atol": 3.8e-1},
         torch.complex64: {"atol": 1.9},
@@ -1191,6 +1208,10 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"atol": 5.4e-5},
         torch.float16: {"atol": 6.2e-5},
         torch.float32: {"atol": 6e-5},
+    },
+    "norm": {
+        torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-5, "atol": 1e-5},
     },
     "polygamma": {
         torch.float32: {"rtol": 8.6e-6, "atol": 1.1e-4},
@@ -1541,7 +1562,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float32: {"rtol": 2.1e-6, "atol": 1.4e-4},
             },
             "_foreach_sigmoid": {
-                torch.float16: {"rtol": 0, "atol": 1e-3},
+                torch.float16: {"atol": 1e-3},
             },
             "_foreach_tanh": {
                 torch.bfloat16: {"rtol": 2.4e-2, "atol": 2e-3},
@@ -1956,13 +1977,8 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "angle",
         exclude_dtypes=(  # EXCLUDE_DTYPES_OK=Not working for GPU compiled.
-            _if_tpu_vs_gpu_compiled(
-                (
-                    torch.bfloat16,
-                    torch.float16,
-                ),
-                (),
-            )
+            torch.bfloat16,
+            torch.float16,
         ),
     )
 
@@ -2217,8 +2233,7 @@ class TestOps(TorchTpuTestBase):
             "gpu": (
                 INTEGRAL_DTYPES
                 + COMPLEX_DTYPES
-                + (torch.float16,)
-                + _if_tpu_vs_gpu_compiled((torch.bfloat16,), ())
+                + (torch.bfloat16, torch.float16)
             ),
         },
     )
@@ -2912,8 +2927,13 @@ class TestOps(TorchTpuTestBase):
             ),
             "gpu": (
                 torch.uint8,
+                torch.int64,  # Cannot generate GPU sample for this dtype.
+                torch.int8,  # Cannot generate GPU sample for this dtype.
                 torch.int16,
+                torch.int32,  # Cannot generate GPU sample for this dtype.
+                torch.bool,  # Cannot generate GPU sample for this dtype.
                 torch.half,
+                torch.bfloat16,  # Cannot generate GPU sample for this dtype.
                 torch.float64,
                 torch.complex128,
             ),
@@ -2934,7 +2954,12 @@ class TestOps(TorchTpuTestBase):
             "gpu": (
                 torch.uint8,
                 torch.int16,
+                torch.int64,  # Cannot generate GPU sample for this dtype.
+                torch.int32,  # Cannot generate GPU sample for this dtype.
+                torch.int8,  # Cannot generate GPU sample for this dtype.
+                torch.bool,  # Cannot generate GPU sample for this dtype.
                 torch.half,
+                torch.bfloat16,  # Cannot generate GPU sample for this dtype.
                 torch.float64,
                 torch.complex128,
             ),
@@ -2954,8 +2979,13 @@ class TestOps(TorchTpuTestBase):
             ),
             "gpu": (
                 torch.uint8,
+                torch.int64,  # Cannot generate GPU sample for this dtype.
+                torch.int32,  # Cannot generate GPU sample for this dtype.
                 torch.int16,
+                torch.int8,  # Cannot generate GPU sample for this dtype.
+                torch.bool,  # Cannot generate GPU sample for this dtype.
                 torch.half,
+                torch.bfloat16,  # Cannot generate GPU sample for this dtype.
                 torch.float64,
                 torch.complex128,
             ),
@@ -2987,7 +3017,12 @@ class TestOps(TorchTpuTestBase):
             "cpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
             "gpu": (
                 torch.uint8,
+                torch.int8,  # Cannot generate GPU sample for this dtype.
                 torch.int16,
+                torch.int32,  # Cannot generate GPU sample for this dtype.
+                torch.int64,  # Cannot generate GPU sample for this dtype.
+                torch.bool,  # Cannot generate GPU sample for this dtype.
+                torch.bfloat16,  # Cannot generate GPU sample for this dtype.
                 torch.half,
             ),
         },
@@ -3236,14 +3271,11 @@ class TestOps(TorchTpuTestBase):
         # TODO: fix _native_batch_norm_legit(out=...) failing.
         check_out_variant=False,
         exclude_dtypes={  # EXCLUDE_DTYPES_OK=Not working for GPU compiled.
-            "gpu": _if_tpu_vs_gpu_compiled(
-                (
-                    torch.bfloat16,
-                    torch.float16,
-                    torch.float32,
-                    torch.float64,
-                ),
-                (torch.float64,),
+            "gpu": (
+                torch.bfloat16,
+                torch.float16,
+                torch.float32,
+                torch.float64,
             ),
         },
         skip_if=_batch_norm_complex64_compiled_gpu,
@@ -3277,7 +3309,17 @@ class TestOps(TorchTpuTestBase):
         # so we have to exclude complex64 here.
         exclude_dtypes={
             "cpu": COMPLEX_DTYPES,
-            "gpu": (torch.uint8, torch.int8, torch.int16) + COMPLEX_DTYPES,
+            "gpu": (
+                (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                    torch.bool,
+                )
+                + COMPLEX_DTYPES
+            ),
         },
         # TODO: look into why this test produces float32 (default dtype) tensors
         # on GPU for the last 2 tensors being compared, while TPU produces
@@ -3790,7 +3832,16 @@ class TestOps(TorchTpuTestBase):
         # integers other than int32 and int64, floats and complex.
         exclude_dtypes={
             "gpu": (
-                (torch.uint8, torch.int8, torch.int16, torch.float64)
+                (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.float16,
+                    torch.bfloat16,
+                    torch.float32,
+                    torch.float64,
+                    torch.bool,
+                )
                 + COMPLEX_DTYPES
             ),
         },
@@ -3928,19 +3979,49 @@ class TestOps(TorchTpuTestBase):
   # certain operations not being implemented on CPU/GPU.
   @op_testing.skip_unless_torch_tpu_vs_gpu_mode
   def test_geqrf(self):
-    self.do_test_op("geqrf")
+    self.do_test_op(
+        "geqrf",
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=known issue
+            torch.complex64,  # Cannot generate GPU sample for this dtype.
+            torch.float64,  # Cannot generate GPU sample for this dtype.
+            torch.float32,  # Cannot generate GPU sample for this dtype.
+            torch.float16,  # Cannot generate GPU sample for this dtype.
+            torch.bfloat16,  # Cannot generate GPU sample for this dtype.
+            torch.uint8,  # Cannot generate GPU sample for this dtype.
+            torch.int8,  # Cannot generate GPU sample for this dtype.
+            torch.int16,  # Cannot generate GPU sample for this dtype.
+            torch.int32,  # Cannot generate GPU sample for this dtype.
+            torch.int64,  # Cannot generate GPU sample for this dtype.
+            torch.bool,  # Cannot generate GPU sample for this dtype.
+        ),
+    )
 
   # qr testing isn't currently supported by PyTorch in other modes due to
   # certain operations not being implemented on CPU/GPU.
   @op_testing.skip_unless_torch_tpu_vs_gpu_mode
   def test_linalg_qr(self):
-    self.do_test_op("linalg.qr")
+    self.do_test_op(
+        "linalg.qr",
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=known issue
+            torch.complex64,  # Cannot generate GPU sample for this dtype.
+            torch.float64,  # Cannot generate GPU sample for this dtype.
+            torch.float32,  # Cannot generate GPU sample for this dtype.
+            torch.float16,  # Cannot generate GPU sample for this dtype.
+            torch.bfloat16,  # Cannot generate GPU sample for this dtype.
+            torch.uint8,  # Cannot generate GPU sample for this dtype.
+            torch.int8,  # Cannot generate GPU sample for this dtype.
+            torch.int16,  # Cannot generate GPU sample for this dtype.
+            torch.int32,  # Cannot generate GPU sample for this dtype.
+            torch.int64,  # Cannot generate GPU sample for this dtype.
+            torch.bool,  # Cannot generate GPU sample for this dtype.
+        ),
+    )
 
   def test_thnn_fused_gru_cell(self):
     self.do_test_op(
         "_thnn_fused_gru_cell",
         exclude_dtypes=(  # EXCLUDE_DTYPES_OK=Not working for GPU compiled.
-            _if_tpu_vs_gpu_compiled((torch.complex64,), ())
+            torch.complex64,
         ),
         check_dynamism=False,
     )
@@ -3957,7 +4038,7 @@ class TestOps(TorchTpuTestBase):
                     torch.float16,
                     torch.bfloat16,
                 ),
-                (),
+                (torch.complex64,),
             )
         ),
         check_dynamism=False,
