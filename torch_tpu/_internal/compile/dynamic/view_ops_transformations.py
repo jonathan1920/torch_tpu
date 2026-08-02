@@ -39,7 +39,7 @@ def _extract_shape_tensors_and_bounds(
   for arg in target_shape:
     if sym_utils.is_symint_node(arg) or isinstance(arg, torch.SymInt):
       is_dynamic.append(True)
-      symint = arg.meta["val"] if sym_utils.is_symint_node(arg) else arg  # pyrefly: ignore[missing-attribute]
+      symint = arg.meta["val"] if sym_utils.is_symint_node(arg) else arg
       _, upper = symbol_bounds.get_symint_bounds(symint)
       static_shape.append(upper)
       tensor_node = sym_shape_manager.ensure_tensor(

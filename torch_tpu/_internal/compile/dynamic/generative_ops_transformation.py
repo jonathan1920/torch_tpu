@@ -304,8 +304,8 @@ class HandleGenerativeOpsPass:
     for dim, arg in enumerate(sizes_list):
       if sym_utils.is_symint_node(arg) or isinstance(arg, torch.SymInt):
         has_symint = True
-        symint = arg.meta["val"] if sym_utils.is_symint_node(arg) else arg  # pyrefly: ignore[missing-attribute]
-        _, upper = get_symint_bounds(symint)  # pyrefly: ignore[bad-argument-type]
+        symint = arg.meta["val"] if sym_utils.is_symint_node(arg) else arg
+        _, upper = get_symint_bounds(symint)
         assert (
             upper is not None
         ), f"Failed to extract upper bound for SymInt {symint}"

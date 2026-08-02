@@ -43,7 +43,7 @@ def apply(
     graph = gm_or_graph
 
   if not hasattr(gm, "_processed_constant_attrs"):
-    gm._processed_constant_attrs = set()  # pyrefly: ignore[missing-attribute]
+    gm._processed_constant_attrs = set()
 
   # Exit Fake mode since we're creating new tensors.
   with unset_fake_temporarily():
@@ -52,7 +52,7 @@ def apply(
     }
 
     for attr_target in unique_attr_targets:
-      if attr_target in gm._processed_constant_attrs:  # pyrefly: ignore[missing-attribute]
+      if attr_target in gm._processed_constant_attrs:
         continue
 
       # pylint: disable-next=protected-access
@@ -65,4 +65,4 @@ def apply(
       new_target = tpu_torch_compile.make_constant_tensor(target.to("cpu"))
       # pylint: disable-next=protected-access
       _assign_attr(new_target, gm, attr_target, _AttrKind.CONSTANT)  # pyrefly: ignore[bad-argument-type]
-      gm._processed_constant_attrs.add(attr_target)  # pyrefly: ignore[missing-attribute]
+      gm._processed_constant_attrs.add(attr_target)

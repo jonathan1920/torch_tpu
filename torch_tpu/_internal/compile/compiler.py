@@ -280,7 +280,7 @@ class StaticCompiler(Compiler):
             placeholder_args,
             build_mlir_module=(tracing_enabled or self._debug),
             use_stablehlo_bounds=self._use_stablehlo_bounds,
-            argument_layouts=argument_layouts,  # pyrefly: ignore[bad-argument-type]
+            argument_layouts=argument_layouts,
             dynamic_outputs=dynamic_outputs,
         )
 
