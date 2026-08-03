@@ -240,11 +240,11 @@ jobs:
         python_version: ${{ fromJSON(needs.setup.outputs.tpu_versions) }}
         wheel_version: ["standard", "v7"]
         include:
+          # v5: Run Nox smoke tests and skip Bazel test suite.
+          # v7: Run Nox both smoke tests and Bazel test suite.
           - wheel_version: "standard"
             runner: linux-x86-ct5lp-224-8tpu
-            config: "wheel_test_tpu_v5"
             custom_name: "TPU v5"
-            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
           - wheel_version: "v7"
             runner: linux-x86-tpu7x-224-4tpu
             config: "wheel_test_tpu_v7"
@@ -278,6 +278,9 @@ jobs:
         uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      # TODO(b/541808039): Refactor this file to consolidate build/test loops and optimize the
+      # dependency graph (e.g., start tests as soon as their specific wheel finishes building).
+      #
       # Unlike the bazel suite below (which runs from source), this exercises
       # the wheel exactly as users consume it: nox installs the built wheel
       # plus a pip torch in one uv resolution, then runs the TPU smoke tests
@@ -288,6 +291,7 @@ jobs:
           PYTHON_VERSION: ${{ matrix.python_version }}
         run: uvx nox --force-python "${PYTHON_VERSION}" -s "smoke_test(tpu-cpu)"
       - name: Run Impacted Tests via bazel-diff
+        if: matrix.config
         uses: ./.github/actions/bazel-diff
         with:
           base_sha: ${{ inputs.override_base_sha || github.event.pull_request.base.sha }}
