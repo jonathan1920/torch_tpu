@@ -21,20 +21,19 @@
 #include <kineto/IActivityProfiler.h>
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "torch_tpu/common/error_utils.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace torch_tpu {
-
-absl::Status UpdateProfileOptions(std::string_view custom_config,
-                                  tensorflow::ProfileOptions& opts,
-                                  std::string& out_run_dir);
 
 namespace {
 
@@ -321,6 +320,45 @@ TEST(TpuProfilerPluginTest, UpdateProfileOptionsTrailingBackslash) {
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), error::kInvalidArgument);
   EXPECT_EQ(status.message(), "Trailing backslash in string");
+}
+
+TEST(TpuProfilerPluginTest, UpdateProfileOptionsWorkerRank) {
+  tensorflow::ProfileOptions opts;
+  std::string run_dir;
+  std::optional<std::string> worker_rank;
+
+  // 1. worker_rank present as integer (unquoted)
+  EXPECT_TRUE(UpdateProfileOptions("device_tracer_level:3,worker_rank:2,"
+                                   "host_tracer_level:3",
+                                   opts, run_dir, worker_rank)
+                  .ok());
+  EXPECT_EQ(opts.device_tracer_level(), 3);
+  EXPECT_EQ(opts.host_tracer_level(), 3);
+  EXPECT_TRUE(worker_rank.has_value());
+  EXPECT_EQ(*worker_rank, "2");
+
+  // 2. worker_rank present as string (quoted)
+  EXPECT_TRUE(
+      UpdateProfileOptions("device_tracer_level:3,worker_rank:\"worker_A\","
+                           "host_tracer_level:3",
+                           opts, run_dir, worker_rank)
+          .ok());
+  EXPECT_EQ(opts.device_tracer_level(), 3);
+  EXPECT_EQ(opts.host_tracer_level(), 3);
+  EXPECT_TRUE(worker_rank.has_value());
+  EXPECT_EQ(*worker_rank, "worker_A");
+
+  // 3. worker_rank missing
+  EXPECT_TRUE(
+      UpdateProfileOptions("device_tracer_level:1", opts, run_dir, worker_rank)
+          .ok());
+  EXPECT_FALSE(worker_rank.has_value());
+
+  // 4. worker_rank as raw string (unquoted)
+  EXPECT_TRUE(
+      UpdateProfileOptions("worker_rank:abc", opts, run_dir, worker_rank).ok());
+  EXPECT_TRUE(worker_rank.has_value());
+  EXPECT_EQ(*worker_rank, "abc");
 }
 
 }  // namespace

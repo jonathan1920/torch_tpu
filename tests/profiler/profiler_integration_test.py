@@ -732,6 +732,72 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     print(f"Difference (TPU - CPU): {tpu_min - cpu_min}", flush=True)
     print(f"TPU Starts (first 5): {tpu_starts[:5]}", flush=True)
 
+  @parameterized.parameters(
+      ("3", "_3.xplane.pb"),
+      ("worker_A", "_worker_A.xplane.pb"),
+  )
+  def test_tpu_profiler_config_worker_rank(self, worker_rank, expected_suffix):
+    device = torch.device("tpu")
+    custom_run_dir = self.create_tempdir("custom_run_dir_worker_rank").full_path
+
+    _cleanup_profile_dir()
+
+    config = TpuProfilerConfig(
+        run_dir=pathlib.Path(custom_run_dir), worker_rank=worker_rank
+    )
+
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
+        ],
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(custom_run_dir),
+        experimental_config=config,
+    ):
+      a = torch.ones((16, 16)).to(device)
+      b = torch.ones((16, 16)).to(device)
+      c = a @ b
+      tpu_sync.synchronize(c)
+
+    expected_profile_dir = pathlib.Path(custom_run_dir) / "plugins" / "profile"
+    self.assertTrue(
+        expected_profile_dir.exists(),
+        "plugins/profile directory should exist under the configured run_dir",
+    )
+
+    timestamp_dirs = list(expected_profile_dir.glob("*"))
+    self.assertLen(timestamp_dirs, 1)
+
+    (timestamp_dir,) = timestamp_dirs
+    xplane_files = list(timestamp_dir.glob(f"*{expected_suffix}"))
+    self.assertNotEmpty(
+        xplane_files, f"Should have a {expected_suffix} file in custom run_dir"
+    )
+
+  def test_tpu_profiler_config_worker_rank_validation(self):
+    # Valid values should not raise errors:
+    _ = TpuProfilerConfig(worker_rank="3")
+    _ = TpuProfilerConfig(worker_rank="worker_A")
+    _ = TpuProfilerConfig(worker_rank=None)
+
+    # Invalid values should raise TypeError or ValueError:
+    with self.assertRaises(TypeError):
+      TpuProfilerConfig(worker_rank=0)
+    with self.assertRaises(TypeError):
+      TpuProfilerConfig(worker_rank=42)
+    with self.assertRaises(TypeError):
+      TpuProfilerConfig(worker_rank=-1)
+    with self.assertRaises(TypeError):
+      TpuProfilerConfig(worker_rank=3.5)
+    with self.assertRaises(TypeError):
+      TpuProfilerConfig(worker_rank=True)
+    with self.assertRaises(TypeError):
+      TpuProfilerConfig(worker_rank={"rank": 1})
+    with self.assertRaises(ValueError):
+      TpuProfilerConfig(worker_rank="worker:1")
+    with self.assertRaises(ValueError):
+      TpuProfilerConfig(worker_rank="worker,1")
+
 
 if __name__ == "__main__":
   absltest.main()

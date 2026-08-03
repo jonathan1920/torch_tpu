@@ -71,6 +71,7 @@ class PrivateUse1ProfilerRegistry {
       PrivateUse1ProfilerFactory factory);
 };
 }  // namespace torch::profiler::impl
+
 #include "torch_tpu/_internal/profiler/xprof_callback_handler.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
@@ -87,6 +88,7 @@ constexpr std::string_view kDeviceTracerLevel = "device_tracer_level";
 constexpr std::string_view kHostTracerLevel = "host_tracer_level";
 constexpr std::string_view kPythonTracerLevel = "python_tracer_level";
 constexpr std::string_view kRunDir = "run_dir";
+constexpr std::string_view kWorkerRank = "worker_rank";
 
 // Represents a parsed custom configuration option.
 struct ProfilerOption {
@@ -275,7 +277,9 @@ absl::StatusOr<ProfilerOption> SplitConfigItem(std::string_view item) {
 // options update the ProfileOptions object in place.
 absl::Status UpdateProfileOptions(std::string_view custom_config,
                                   tensorflow::ProfileOptions& opts,
-                                  std::string& out_run_dir) {
+                                  std::string& out_run_dir,
+                                  std::optional<std::string>& out_worker_rank) {
+  out_worker_rank = std::nullopt;
   if (!std::all_of(custom_config.begin(), custom_config.end(), [](char c) {
         return absl::ascii_isascii(static_cast<unsigned char>(c));
       })) {
@@ -295,9 +299,31 @@ absl::Status UpdateProfileOptions(std::string_view custom_config,
       out_run_dir = std::string(val);
       continue;
     }
+    if (name == kWorkerRank) {
+      if (val.size() >= 2 && val.front() == '"' && val.back() == '"') {
+        // Strip outer quotes and unescape internal characters.
+        absl::StatusOr<std::string> unescaped =
+            UnescapeString(val.substr(1, val.size() - 2));
+        if (!unescaped.ok()) {
+          return unescaped.status();
+        }
+        out_worker_rank = *std::move(unescaped);
+      } else {
+        out_worker_rank = std::string(val);
+      }
+      continue;
+    }
     TT_RETURN_IF_ERROR(UpdateProfileOption(opts, name, val));
   }
   return absl::OkStatus();
+}
+
+absl::Status UpdateProfileOptions(std::string_view custom_config,
+                                  tensorflow::ProfileOptions& opts,
+                                  std::string& out_run_dir) {
+  std::optional<std::string> dummy_worker_rank;
+  return UpdateProfileOptions(custom_config, opts, out_run_dir,
+                              dummy_worker_rank);
 }
 
 namespace {
@@ -339,7 +365,8 @@ std::string GetBaseOutputDir(std::string_view run_dir) {
 // 3. TEST_TMPDIR environment variable (if set).
 // 4. TMPDIR environment variable (if set).
 // 5. Default to "/tmp".
-absl::StatusOr<std::string> GetXPlaneOutputPath(std::string_view run_dir) {
+absl::StatusOr<std::string> GetXPlaneOutputPath(
+    std::string_view run_dir, std::optional<std::string_view> worker_rank) {
   std::string base_dir = GetBaseOutputDir(run_dir);
 
   absl::Time now = absl::Now();
@@ -365,7 +392,10 @@ absl::StatusOr<std::string> GetXPlaneOutputPath(std::string_view run_dir) {
     return status;
   }
 
-  std::string file_name = absl::StrCat(hostname, ".xplane.pb");
+  std::string file_name =
+      worker_rank.has_value()
+          ? absl::StrCat(hostname, "_", *worker_rank, ".xplane.pb")
+          : absl::StrCat(hostname, ".xplane.pb");
   // Windows file names do not support colons.
   absl::StrReplaceAll({{":", "_"}}, &file_name);
 
@@ -385,6 +415,7 @@ void TpuKinetoProfilerSession::start() {
     ABSL_LOG(WARNING) << "TpuKinetoProfilerSession already started";
     return;
   }
+  worker_rank_ = std::nullopt;
   tensorflow::ProfileOptions opts = tsl::ProfilerSession::DefaultOptions();
   opts.set_device_type(tensorflow::ProfileOptions::TPU);
   opts.set_raise_error_on_start_failure(true);
@@ -398,8 +429,8 @@ void TpuKinetoProfilerSession::start() {
     opts.set_python_tracer_level(1);
   }
 
-  TT_THROW_IF_ERROR(
-      UpdateProfileOptions(config_.getCustomConfig(), opts, run_dir_));
+  TT_THROW_IF_ERROR(UpdateProfileOptions(config_.getCustomConfig(), opts,
+                                         run_dir_, worker_rank_));
 
   start_time_ns_ = absl::GetCurrentTimeNanos();
 
@@ -442,6 +473,11 @@ void TpuKinetoProfilerSession::stop() {
       session_.reset();
       return;
     }
+    if (worker_rank_.has_value()) {
+      for (std::string& hostname : *xspace_.mutable_hostnames()) {
+        absl::StrAppend(&hostname, "_", *worker_rank_);
+      }
+    }
     status_ = libkineto::TraceStatus::READY;
 
     std::string run_dir =
@@ -449,7 +485,8 @@ void TpuKinetoProfilerSession::stop() {
             ? run_dir_
             : std::string(tsl::io::Dirname(config_.activitiesLogFile()));
 
-    absl::StatusOr<std::string> resolved_path = GetXPlaneOutputPath(run_dir);
+    absl::StatusOr<std::string> resolved_path =
+        GetXPlaneOutputPath(run_dir, worker_rank_);
     if (!resolved_path.ok()) {
       errors_.push_back(absl::StrCat("Failed to get XPlane output path: ",
                                      resolved_path.status().ToString()));

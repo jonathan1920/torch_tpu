@@ -21,6 +21,7 @@
 #include <kineto/IActivityProfiler.h>
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -73,6 +74,7 @@ class TpuKinetoProfilerSession : public libkineto::IActivityProfilerSession {
   std::set<libkineto::ActivityType> activity_types_;
   std::unique_ptr<XProfCallbackHandler> callback_handler_;
   std::string run_dir_ ABSL_GUARDED_BY(mutex_);
+  std::optional<std::string> worker_rank_ ABSL_GUARDED_BY(mutex_);
   uint64_t start_time_ns_ = 0;
   std::vector<libkineto::ResourceInfo> resource_infos_;
 };
@@ -105,6 +107,15 @@ class TpuProfiler : public libkineto::IActivityProfiler {
     return configure(activity_types, config);
   }
 };
+
+absl::Status UpdateProfileOptions(std::string_view custom_config,
+                                  tensorflow::ProfileOptions& opts,
+                                  std::string& out_run_dir,
+                                  std::optional<std::string>& out_worker_rank);
+
+absl::Status UpdateProfileOptions(std::string_view custom_config,
+                                  tensorflow::ProfileOptions& opts,
+                                  std::string& out_run_dir);
 
 }  // namespace torch_tpu
 
