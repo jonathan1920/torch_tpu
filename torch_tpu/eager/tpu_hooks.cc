@@ -221,14 +221,18 @@ bool TpuDeviceGuardImpl::queryStream(const c10::Stream& stream) const {
 void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
   // TODO(bawilson): only synchronize DeferredOps on the specific stream, not
   // all streams.
-  TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kYes));
+  // SynchronizeAll with kNo will append a future to the stream if any
+  // materialization is required, which we then await in SynchronizeStream.
+  TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kNo));
   SynchronizeStream(stream.device_index(), stream.id());
 }
 void TpuDeviceGuardImpl::synchronizeDevice(
     c10::DeviceIndex device_index) const {
   // TODO(bawilson): only synchronize DeferredOps on the specific device, not
   // all devices.
-  TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kYes));
+  // SynchronizeAll with kNo will append a future to any streams with nodes to
+  // materialize, which we then await in SynchronizeDevice.
+  TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kNo));
   SynchronizeDevice(device_index);
 }
 void TpuDeviceGuardImpl::destroyEvent(

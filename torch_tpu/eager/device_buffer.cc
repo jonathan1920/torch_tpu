@@ -651,7 +651,8 @@ xla::Future<void> DeviceBufferRef::GetReadyFuture() const {
   auto device_buffer_list = device_buffer_list_;
   auto index = index_;
   GetMaterializationFuture().OnReady([promise = std::move(promise),
-                                      device_buffer_list,
+                                      device_buffer_list =
+                                          std::move(device_buffer_list),
                                       index](absl::Status status) mutable {
     if (!status.ok()) {
       promise.Set(status);
@@ -664,8 +665,10 @@ xla::Future<void> DeviceBufferRef::GetReadyFuture() const {
     }
     auto ready_future = buffer_or.value()->GetReadyFuture();
     ready_future.OnReady([promise = std::move(promise),
-                          device_buffer_list](absl::Status status) mutable {
-      promise.Set(status);
+                          device_buffer_list = std::move(device_buffer_list)](
+                             absl::Status status) mutable {
+      promise.Set(std::move(status));
+      device_buffer_list.reset();
     });
   });
   return future;

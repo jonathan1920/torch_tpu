@@ -55,6 +55,7 @@
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/ops/op_names.h"
@@ -304,6 +305,7 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
     TT_RETURN_IF_ERROR(
         output.device_buffer_list()->SetAsPendingMaterialization());
   }
+  RecordBackgroundMaterialization(traversal->outputs());
 
   std::string task_name;
   if (ABSL_VLOG_IS_ON(1)) {

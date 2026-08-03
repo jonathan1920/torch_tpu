@@ -252,7 +252,17 @@ class DeviceBufferRef {
   // PjRtBuffer.
   absl::StatusOr<xla::PjRtBuffer* absl_nonnull> AwaitBuffer() const;
 
+  // Returns a future that is ready when the device buffer has an available
+  // PjRtBuffer (or an error if materialization fails).
+  // For a deferred DeviceBufferRef, this is a future that is ready when
+  // execution has started (but not necessarily completed).
+  // Once this future is ready, subsequent calls to AwaitBuffer() will not
+  // block.
   [[nodiscard]] xla::Future<void> GetMaterializationFuture() const;
+
+  // Returns a future that is ready when the device has a PjRtBuffer with
+  // ready data; this means that either the buffer has successfully finished
+  // execution, or has finished a host-to-device transfer.
   [[nodiscard]] xla::Future<void> GetReadyFuture() const;
 
   // The DeviceBufferList that holds the referenced buffer.

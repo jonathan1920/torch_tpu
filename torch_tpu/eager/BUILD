@@ -294,6 +294,7 @@ torch_tpu_cc_library(
     hdrs = ["materialize_common.h"],
     deps = [
         ":device_buffer",
+        ":events_queue",
         ":structured_log_buffer",
         ":traversal",
         "//shims/torch:torch_headers",
