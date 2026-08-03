@@ -815,6 +815,29 @@ class DynamicBroadcastTest(absltest.TestCase):
     expected = x1.to("cpu").expand([4, 5])
     utils.assert_close(out1, expected)
 
+  def test_expand_before_reshape_shared_symexpr(self):
+    """Tests graph topo order when expand appears before reshape with shared symexpr."""
+
+    class Model(torch.nn.Module):
+
+      def forward(self, x, y):
+        expanded = x.expand([y.shape[1] * y.shape[0], 5])
+        reshaped = y.reshape([1, y.shape[0] * y.shape[1]])
+        return expanded.sum() + reshaped.sum()
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x = torch.ones((1, 5), dtype=torch.float32, device="tpu")
+    y = torch.ones((2, 3), dtype=torch.float32, device="tpu")
+    torch._dynamo.mark_dynamic(y, 1, min=2, max=10)
+
+    out = compiled(x, y)
+    expected = (
+        x.to("cpu").expand([6, 5]).sum() + y.to("cpu").reshape([1, 6]).sum()
+    )
+    utils.assert_close(out, expected)
+
 
 class DynamicSliceTest(absltest.TestCase):
 

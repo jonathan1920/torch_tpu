@@ -20,6 +20,7 @@ import operator
 from typing import Any
 import torch
 from torch.fx.passes import graph_transform_observer
+from torch.fx.passes import tools_common
 from torch.utils import _pytree
 from torch_tpu._internal.compile.dynamic import generative_ops_transformation
 from torch_tpu._internal.compile.dynamic import sym_utils
@@ -347,6 +348,7 @@ def apply_dynamism_transformations(
       HandleSymIntUsagesPass(sym_shape_manager)
   )
 
+  tools_common.stable_topological_sort(graph_module)
   graph_module.graph.eliminate_dead_code()
   graph_module.recompile()
   graph_module.graph.lint()
