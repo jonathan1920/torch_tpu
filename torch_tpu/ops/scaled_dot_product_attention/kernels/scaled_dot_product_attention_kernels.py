@@ -14,8 +14,10 @@
 
 """JAX/Pallas kernels scaled dot product attention."""
 
+import contextlib
 import dataclasses
 import functools
+import inspect
 from typing import cast
 
 import jax
@@ -43,6 +45,34 @@ except AttributeError:
 
 DEFAULT_MASKED_VALUE = -1e30
 _BLOCK_SIZE = 512
+
+
+def _make_abstract_device(device_kind: str, num_cores: int, platform: str):
+  if "platform" in inspect.signature(jax.sharding.AbstractDevice).parameters:
+    return jax.sharding.AbstractDevice(
+        device_kind, num_cores, platform
+    )  # type: ignore[call-arg]
+  else:
+    return jax.sharding.AbstractDevice(
+        device_kind, num_cores
+    )  # type: ignore[call-arg]
+
+
+@contextlib.contextmanager
+def _maybe_use_abstract_tpu_mesh():
+  """Wraps in a TPU abstract mesh when running devicelessly (pre-compile)."""
+  if not jax.devices() or jax.devices()[0].platform != "tpu":
+    abstract_device = _make_abstract_device("TPU v5p", 1, "tpu")
+    abstract_mesh = jax.sharding.AbstractMesh(
+        (1,),
+        ("x",),
+        axis_types=(jax.sharding.AxisType.Auto,),
+        abstract_device=abstract_device,
+    )
+    with jax.sharding.use_abstract_mesh(abstract_mesh):
+      yield
+  else:
+    yield
 
 
 @dataclasses.dataclass
@@ -197,9 +227,10 @@ class SDPAKernelReferenceJax:
     q_shape, k_shape, v_shape, _ = cls.get_shapes(dtype)
     scale_shape = jax.ShapeDtypeStruct((), jnp.float32)
     with pallas_export_experimental(dynamic_shapes=True):
-      return jax.export.export(jax.jit(kernel_fn), platforms=["tpu"])(
-          q_shape, k_shape, v_shape, scale_shape
-      )
+      with _maybe_use_abstract_tpu_mesh():
+        return jax.export.export(jax.jit(kernel_fn), platforms=["tpu"])(
+            q_shape, k_shape, v_shape, scale_shape
+        )
 
   @classmethod
   def export_backward(cls, *, dtype, is_causal, **kwargs):
@@ -213,9 +244,10 @@ class SDPAKernelReferenceJax:
     q_shape, k_shape, v_shape, out_shape = cls.get_shapes(dtype)
     scale_shape = jax.ShapeDtypeStruct((), jnp.float32)
     with pallas_export_experimental(dynamic_shapes=True):
-      return jax.export.export(jax.jit(kernel_fn), platforms=["tpu"])(
-          out_shape, q_shape, k_shape, v_shape, scale_shape
-      )
+      with _maybe_use_abstract_tpu_mesh():
+        return jax.export.export(jax.jit(kernel_fn), platforms=["tpu"])(
+            out_shape, q_shape, k_shape, v_shape, scale_shape
+        )
 
 
 ################################################################################
@@ -613,9 +645,10 @@ class SDPAKernelFlashAttention:
         cls.forward, is_causal=is_causal, block_size=block_size, **kwargs
     )
     with pallas_export_experimental(dynamic_shapes=True):
-      return jax.export.export(jax.jit(f_p), platforms=["tpu"])(
-          q_dtype, k_dtype, v_dtype, scale_dtype
-      )
+      with _maybe_use_abstract_tpu_mesh():
+        return jax.export.export(jax.jit(f_p), platforms=["tpu"])(
+            q_dtype, k_dtype, v_dtype, scale_dtype
+        )
 
   @classmethod
   def export_backward(
@@ -639,9 +672,10 @@ class SDPAKernelFlashAttention:
         cls.backward, is_causal=is_causal, block_size=block_size, **kwargs
     )
     with pallas_export_experimental(dynamic_shapes=True):
-      return jax.export.export(jax.jit(f_p), platforms=["tpu"])(
-          out_dtype, q_dtype, k_dtype, v_dtype, scale_dtype
-      )
+      with _maybe_use_abstract_tpu_mesh():
+        return jax.export.export(jax.jit(f_p), platforms=["tpu"])(
+            out_dtype, q_dtype, k_dtype, v_dtype, scale_dtype
+        )
 
 ########################################################################
 ## Splash Attention Kernels ##
@@ -874,9 +908,10 @@ class SDPAKernelSplashAttention:
         cls.forward, is_causal=is_causal, block_size=block_size, **kwargs
     )
     with pallas_export_experimental(dynamic_shapes=True):
-      return jax.export.export(jax.jit(f_p), platforms=["tpu"])(
-          q_dtype, k_dtype, v_dtype
-      )
+      with _maybe_use_abstract_tpu_mesh():
+        return jax.export.export(jax.jit(f_p), platforms=["tpu"])(
+            q_dtype, k_dtype, v_dtype
+        )
 
   @classmethod
   def export_backward(cls, *, dtype, is_causal, **kwargs):
