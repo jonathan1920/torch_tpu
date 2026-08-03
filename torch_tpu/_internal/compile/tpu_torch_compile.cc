@@ -36,13 +36,16 @@
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AsmState.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Verifier.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/WalkResult.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -75,6 +78,7 @@
 #include "torch_tpu/ops/view_decomposition/decomposition.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -83,6 +87,7 @@
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/service/computation_placer.h"
 
 namespace torch_tpu {
 namespace py = pybind11;
@@ -363,6 +368,45 @@ py::bytes PySerializePortableArtifact(std::shared_ptr<ContextedModule> module) {
   return py::bytes(std::move(bytecode));
 }
 
+// Check if the MLIR module contains SparseCore custom call operations.
+// Check if the MLIR module contains SPMD sharding instructions.
+bool HasSpmdShardingInstructions(mlir::ModuleOp module) {
+  auto result = module.walk([](mlir::Operation* op) {
+    for (const auto& attr : op->getAttrs()) {
+      llvm::StringRef name = attr.getName().strref();
+      if (name.contains("sharding")) {
+        return mlir::WalkResult::interrupt();
+      }
+      if (auto string_attr =
+              mlir::dyn_cast<mlir::StringAttr>(attr.getValue())) {
+        llvm::StringRef val = string_attr.getValue();
+        if (val.contains("mhlo.sharding") || val.contains("op_sharding")) {
+          return mlir::WalkResult::interrupt();
+        }
+      }
+    }
+    return mlir::WalkResult::advance();
+  });
+  return result.wasInterrupted();
+}
+
+bool HasSparseCoreCustomCall(mlir::ModuleOp module) {
+  auto result = module.walk([](mlir::Operation* op) {
+    for (const auto& attr : op->getAttrs()) {
+      if (auto string_attr =
+              mlir::dyn_cast<mlir::StringAttr>(attr.getValue())) {
+        llvm::StringRef val = string_attr.getValue();
+        if (val.contains("SparseDenseMatmul") || val.contains("SparseGather") ||
+            val.contains("SparseMapRow") || val.contains("CooToCsr")) {
+          return mlir::WalkResult::interrupt();
+        }
+      }
+    }
+    return mlir::WalkResult::advance();
+  });
+  return result.wasInterrupted();
+}
+
 // Compiles an MLIR module.
 // Args:
 //   module: The ContextedModule to compile.
@@ -384,6 +428,31 @@ SharedLoadedExecutableWithMetadata PyCompileMlir(
   const auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
                                              : CompilationMode::kFastRuntime;
   auto compilation_spec = GetCompilationSpec(compilation_mode);
+
+  // Force replicated compilation mode (num_replicas = num_devices,
+  // num_partitions = 1) for multi-device SparseCore compilation. This prevents
+  // SPMD partitioning compilation hangs and failures for table-parallel
+  // asymmetric graphs (e.g. SparseCore lookups) without affecting other
+  // SPMD/Pallas/Mosaic workloads.
+  if (HasSparseCoreCustomCall(module->get()) &&
+      !HasSpmdShardingInstructions(module->get())) {
+    TT_ASSIGN_OR_THROW(const int num_devices,
+                       PjrtBackend::GetInstance().GetGlobalDeviceCount());
+    if (num_devices > 1) {
+      xla::ExecutableBuildOptions& options =
+          compilation_spec.xla_compile_options->executable_build_options;
+      options.set_num_replicas(num_devices);
+      options.set_num_partitions(1);
+      xla::DeviceAssignment da(num_devices, 1);
+      for (int idx = 0; idx < num_devices; ++idx) {
+        da(idx, 0) = idx;
+      }
+      options.set_device_assignment(da);
+      compilation_spec.compile_options_key =
+          MakeCompileOptionsKey(GetEnvOnce<kXlaFlagsEnvVar>().value_or(""),
+                                *compilation_spec.xla_compile_options);
+    }
+  }
 
   if (!argument_layouts.empty()) {
     mlir::ModuleOp module_op = module->get();

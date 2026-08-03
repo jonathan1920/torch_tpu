@@ -224,12 +224,14 @@ torch_tpu_cc_library(
         "@llvm-project//mlir:Support",
         "@stablehlo//:attr_type_builder_util",
         "@xla//xla:shape_util",
+        "@xla//xla/client:executable_build_options",
         "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@xla//xla/mlir/utils:error_util",
         "@xla//xla/pjrt:maybe_owning_mlir_module",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt:pjrt_layout",
+        "@xla//xla/service:computation_placer_hdr",
     ],
 )
 
@@ -291,6 +293,7 @@ pybind_extension(
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_ops",
         "@xla//xla:shape_util",
+        "@xla//xla/client:executable_build_options",
         "@xla//xla/hlo/translate:register",
         "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@xla//xla/mlir/utils:error_util",
@@ -298,6 +301,7 @@ pybind_extension(
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt:pjrt_layout",
+        "@xla//xla/service:computation_placer_hdr",
     ],
 )
 
