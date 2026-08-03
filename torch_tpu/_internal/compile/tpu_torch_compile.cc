@@ -224,8 +224,6 @@ std::optional<PyLayout> PyGetDeviceLayoutIfMaterialized(
     TT_THROW_TT_ERROR_(buffer_ref_or.status(), TT_SOURCE_LOCATION);
   }
   DeviceBufferRef buffer_ref = std::move(buffer_ref_or).value();
-
-  // TODO(bawilson): better clarify "materializing" vs "materialized" states
   if (!buffer_ref.is_materializing()) {
     return std::nullopt;
   }

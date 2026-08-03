@@ -181,6 +181,24 @@ class CompileApiTest(absltest.TestCase):
     self.assertLen(results, 1)
     results[0].cpu()  # Verify it passes
 
+  def test_layout_context_auto_extracted_in_static_compile(self):
+    layout = annotations.TpuLayout(minor_to_major=[0, 1], tiles=[[8]])
+    with annotations.LayoutContext(layout):
+      x = torch.ones(16, 128, device='cpu').to(device=torch.device('tpu'))
+
+    def fn(val):
+      return val + 1.0
+
+    gm = make_fx(fn)(x)
+    compiler_instance = compiler.StaticCompiler()
+    executable = compiler_instance(gm, [x])
+
+    param_layouts = executable.parameter_layouts
+    self.assertLen(param_layouts, 1)
+    self.assertIsNotNone(param_layouts[0])
+    minor_to_major, _, _ = param_layouts[0]
+    self.assertEqual(minor_to_major, [0, 1])
+
   def test_build_mlir(self):
     with eager_mode_defer_all():
       x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
