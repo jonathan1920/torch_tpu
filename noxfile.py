@@ -35,7 +35,7 @@ nox.options.sessions = ["lint"]
 # means the default index (PyPI), whose Linux wheels bundle CUDA support. The
 # `local` variant installs no torch from an index at all: it uses the torch
 # wheel file in dist/local/ that the torch_tpu wheel was built against
-# (TORCH_SOURCE=local builds).
+# (--config=local_torch builds).
 _TORCH_INDEXES: Final[Mapping[str, str | None]] = {
     "cpu": "https://download.pytorch.org/whl/cpu",
     "cuda": None,
@@ -131,7 +131,7 @@ def _dist_wheel(session: nox.Session) -> pathlib.Path:
 
 
 def _local_torch_wheel(session: nox.Session) -> pathlib.Path:
-  """The torch wheel a TORCH_SOURCE=local build compiled against.
+  """The torch wheel a local-torch (--config=local_torch) build compiled against.
 
   The local-torch CI downloads it into dist/local/ before building -- a
   directory reserved for the local-torch flow, unlike dist/ itself, which
@@ -200,7 +200,7 @@ def smoke_test(session: nox.Session, device: str, torch_variant: str) -> None:
     install_args += ["--extra-index-url", index]
   if torch_variant == "local":
     # The exact torch wheel the torch_tpu wheel was built against
-    # (TORCH_SOURCE=local), installed from the file rather than an index.
+    # (--config=local_torch), installed from the file rather than an index.
     install_args.append(str(_local_torch_wheel(session)))
   elif torch_variant == "nightly":
     # The *latest* nightly, deliberately unpinned: it can drift

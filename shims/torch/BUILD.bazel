@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:py_library.bzl", "py_library")
 load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
@@ -65,13 +66,24 @@ alias(
     )),
 )
 
+# Local torch mode: build against a locally provided PyTorch wheel instead of
+# the pip hubs. Use by running: bazel build ... --config=local_torch (with the
+# TORCH_SOURCE env var pointing at the wheel; see .bazelrc). This flag is the
+# single switch for the mode: the config sets it, every local-torch
+# config_setting keys on it, and the glue version transition reads it to keep
+# local builds in a single torch configuration.
+bool_flag(
+    name = "local_torch",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
 # Config setting to toggle local torch mode.
-# Use by running: bazel build ... --define TORCH_SOURCE=local
-# Other packages refer to this as "//shims/torch:use_local_torch"
+# Other packages refer to this as "//shims/torch:use_local_torch".
 config_setting(
     name = "use_local_torch",
-    define_values = {
-        "TORCH_SOURCE": "local",
+    flag_values = {
+        ":local_torch": "True",
     },
     visibility = ["//visibility:public"],
 )
@@ -107,18 +119,24 @@ alias(
     actual = ":pytorch",
 )
 
-# C++ Rules: Switch between pip headers and local headers
-# Note: @local_torch//:libtorch_python is added for local builds to fix ABI linking
+# C++ Rules: Switch between pip headers and local headers.
+#
+# The C++ shims select along two independent dimensions -- "headers-only?"
+# (//:_torch_headers_only, set by the wheel transitions for the shared,
+# torch-free XLA base) and "which torch source?" (:local_torch) -- as a chain
+# of single-dimension selects: the shim itself branches only on headers-only
+# and falls through to a *_runtime_libs library that branches only on the
+# torch source. Each select can match at most one non-default row, so
+# headers-only wins over everything by construction, without relying on
+# config_setting specialization. Keep it that way: never mix rows from both
+# dimensions in one select table.
+
+# The real torch libraries a full-link build links against, by torch source.
+# Reached only through the //conditions:default rows of the shims below, i.e.
+# never in a headers-only configuration.
 cc_library(
-    name = "torch",
-    deps = [
-        ":aten",
-        ":torch_headers",
-    ] + select({
-        # Per-version wheel glues: headers only, torch symbols resolved at runtime.
-        "//:torch_headers_only_enabled": [],
-        # NOTE: Keep this list in sync with the default case one for local_torch and pypi_torch.
-        # Any target-specific dependencies should be declared with the specific target/binary
+    name = "torch_runtime_libs",
+    deps = select({
         ":use_local_torch": [
             "@local_torch//:libc10",
             "@local_torch//:libtorch_cpu",
@@ -133,20 +151,23 @@ cc_library(
 )
 
 cc_library(
+    name = "torch",
+    deps = [
+        ":aten",
+        ":torch_headers",
+    ] + select({
+        # Per-version wheel glues: headers only, torch symbols resolved at runtime.
+        "//:torch_headers_only_enabled": [],
+        "//conditions:default": [":torch_runtime_libs"],
+    }),
+)
+
+cc_library(
     name = "aten",
     deps = select({
         # Per-version wheel glues: headers only, torch symbols resolved at runtime.
         "//:torch_headers_only_enabled": [":aten_headers"],
-        # NOTE: Keep this list in sync with the default case one for local_torch and pypi_torch.
-        # Any target-specific dependencies should be declared with the specific target/binary
-        ":use_local_torch": [
-            "@local_torch//:libc10",
-            "@local_torch//:libtorch_cpu",
-        ],
-        "//conditions:default": [
-            ":libc10",
-            ":libtorch_cpu",
-        ],
+        "//conditions:default": [":torch_runtime_libs"],
     }),
 )
 
@@ -175,13 +196,10 @@ cc_library(
     )),
 )
 
+# Note: @local_torch//:libtorch_python is added for local builds to fix ABI linking
 cc_library(
-    name = "torch_python",
+    name = "torch_python_runtime_libs",
     deps = select({
-        # Per-version wheel glues: headers only, torch symbols resolved at runtime.
-        "//:torch_headers_only_enabled": [":torch_headers"],
-        # NOTE: Keep this list in sync with the default case one for local_torch and pypi_torch.
-        # Any target-specific dependencies should be declared with the specific target/binary
         ":use_local_torch": [
             "@local_torch//:libtorch_python",
             "@local_torch//:torch_headers",
@@ -190,6 +208,15 @@ cc_library(
             ":libtorch_python",
             "@pypi//torch:torch_headers",
         ],
+    }),
+)
+
+cc_library(
+    name = "torch_python",
+    deps = select({
+        # Per-version wheel glues: headers only, torch symbols resolved at runtime.
+        "//:torch_headers_only_enabled": [":torch_headers"],
+        "//conditions:default": [":torch_python_runtime_libs"],
     }),
 )
 

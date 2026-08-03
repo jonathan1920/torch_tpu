@@ -49,11 +49,10 @@ concurrency:
 jobs:
   # Presubmit coverage for the local-torch build: build the wheel against a
   # local PyTorch and run the wheel smoke tests on every PR, so breakage in
-  # the TORCH_SOURCE=local configuration (historically only exercised by the
+  # the local-torch configuration (historically only exercised by the
   # schedule / the ci:local-torch label, and therefore invisible in
-  # presubmit) surfaces before merge. Failures are soft (warning
-  # annotations, green check) until the configuration is reliably green; the
-  # full bazel test suite still runs only under the old conditions below.
+  # presubmit) surfaces before merge. The full bazel test suite still runs
+  # only under the old conditions below.
   presubmit_build_and_smoke:
     name: "Presubmit Local Torch Build and Smoke Test"
     # The full job below already covers labeled PRs.
@@ -97,28 +96,17 @@ jobs:
           echo "TORCH_SOURCE=$WHEEL_PATH" >> $GITHUB_ENV
           echo "Exported TORCH_SOURCE=$WHEEL_PATH"
       - name: Build TorchTPU wheel
-        id: build_wheel
-        continue-on-error: true
         run: |
           bazel build -c opt //ci/wheel:torch_tpu_wheel \
             --config=wheel_common \
-            --define TORCH_SOURCE=local \
+            --config=local_torch \
             --repo_env=TORCH_SOURCE=$TORCH_SOURCE
 
           cp bazel-bin/ci/wheel/torch_tpu-*.whl dist/
-      - name: Surface a soft-failed build as a warning
-        if: steps.build_wheel.outcome == 'failure'
-        run: echo "::warning title=Local-torch wheel build failed (allowed)::Building the wheel with TORCH_SOURCE=local failed; this presubmit check is a soft failure while the local-torch configuration is stabilized."
       # The smoke tests install the freshly built wheel together with the
       # local torch wheel it was built against and exercise it on the CPU.
       - name: Run smoke tests via nox
-        id: nox_smoke
-        if: steps.build_wheel.outcome == 'success'
-        continue-on-error: true
         run: uvx nox --force-python 3.12 -s "smoke_test(cpu-local)"
-      - name: Surface soft-failed smoke tests as a warning
-        if: steps.nox_smoke.outcome == 'failure'
-        run: echo "::warning title=Local-torch smoke test failed (allowed)::The wheel smoke tests against a local PyTorch failed; this presubmit check is a soft failure while the local-torch configuration is stabilized."
 
   build_and_test_wheel:
     name: "Build and Test Wheel on ${{ matrix.job_info.name || matrix.job_info.runner }}"
@@ -183,7 +171,7 @@ jobs:
         run: |
           bazel build -c opt //ci/wheel:torch_tpu_wheel \
             --config=wheel_common \
-            --define TORCH_SOURCE=local \
+            --config=local_torch \
             --repo_env=TORCH_SOURCE=$TORCH_SOURCE
 
           cp bazel-bin/ci/wheel/torch_tpu-*.whl dist/
@@ -208,7 +196,7 @@ jobs:
             --config=no_rbe \
             --google_default_credentials=true \
             --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" \
-            --define TORCH_SOURCE=local \
+            --config=local_torch \
             --repo_env=TORCH_SOURCE=$TORCH_SOURCE
 
       - name: Test TorchTPU Wheel
@@ -219,7 +207,7 @@ jobs:
             --config=no_rbe \
             --google_default_credentials=true \
             --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" \
-            --define TORCH_SOURCE=local \
+            --config=local_torch \
             --repo_env=TORCH_SOURCE=$TORCH_SOURCE
 
   notify_failure:

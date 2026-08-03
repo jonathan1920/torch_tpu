@@ -380,6 +380,19 @@ build:wheel_common --//:wheel_build=True
 build:wheel_release --config=wheel_common
 build:wheel_release --//:include_nightly_glue=False
 
+# Build against a locally provided PyTorch instead of the pip hubs. This is
+# the only supported spelling of local-torch mode; typical use:
+#
+#   TORCH_SOURCE=/path/to/torch-*.whl bazel build --config=local_torch ...
+#
+# The TORCH_SOURCE env var points at the wheel (or source tree); @local_torch
+# and rules_python both ingest it from there. The //shims/torch:local_torch
+# flag this config sets is the single switch for the mode: every local-torch
+# config_setting keys on it, and the glue version transition reads it to keep
+# a local build in one torch configuration (a local build has exactly one
+# torch, so the per-version glue configurations never fork).
+build:local_torch --//shims/torch:local_torch=True
+
 # Common config for testing the wheel
 test:wheel_common_test --config=wheel_common
 test:wheel_common_test --test_output=errors

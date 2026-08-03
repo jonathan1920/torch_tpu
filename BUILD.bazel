@@ -158,17 +158,25 @@ config_setting(
 # Combined config setting for ease of use in selects
 config_setting(
     name = "wheel_test_with_local_torch",
-    define_values = {"TORCH_SOURCE": "local"},
-    flag_values = {":test_wheel": "True"},
+    # Pinning the torch version keeps these a strict specialization of the
+    # sentinel-pinned //:wheel_test_<v> rows (which gained the pin in the
+    # multi-ABI wheel change), so a local-torch wheel-test env select() picks
+    # the local row instead of tripping an "ambiguous match" against them.
+    flag_values = {
+        ":test_wheel": "True",
+        ":_torch_version": SENTINEL_TORCH_VERSION,
+        "//shims/torch:local_torch": "True",
+    },
 )
 
 [config_setting(
     name = "wheel_test_with_local_torch_" + v.replace(".", "_"),
-    define_values = {
-        "TORCH_SOURCE": "local",
-        "PYTHON_VERSION": v,
+    define_values = {"PYTHON_VERSION": v},
+    flag_values = {
+        ":test_wheel": "True",
+        ":_torch_version": SENTINEL_TORCH_VERSION,
+        "//shims/torch:local_torch": "True",
     },
-    flag_values = {":test_wheel": "True"},
     visibility = ["//visibility:public"],
 ) for v in SUPPORTED_PYTHON_VERSIONS]
 
