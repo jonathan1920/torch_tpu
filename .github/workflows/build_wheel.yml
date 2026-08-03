@@ -122,6 +122,11 @@ jobs:
     name: "Test wheel on ${{ matrix.custom_name || 'CPU' }} (Python ${{ matrix.python_version }})"
     needs: [build_wheels, setup]
     strategy:
+      # The postsubmit nightly variant below is a drift detector against the
+      # latest PyTorch nightly, so it is expected to fail from time to time.
+      # Let the rest of the matrix finish rather than cancelling every other
+      # Python version's coverage along with it.
+      fail-fast: false
       matrix:
         python_version: ${{ fromJSON(needs.setup.outputs.cpu_versions) }}
         wheel_version: ["standard"]
