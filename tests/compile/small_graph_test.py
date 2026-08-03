@@ -1205,7 +1205,7 @@ class ModuleTest(absltest.TestCase):
 
   def test_geqrf_empty(self):
     # geqrf under torch.compile with empty inputs is not tested in the standard
-    # ops_test_tpu_vs_gpu_compiled target because the GPU golden files lack
+    # ops_test_compiled target because the GPU golden files lack
     # geqrf samples. This test provides explicit compile-mode coverage for
     # geqrf with empty inputs.
     class GeqrfModule(torch.nn.Module):

@@ -345,7 +345,7 @@ def _ref_thnn_fused_lstm_cell(
   (`aten/src/ATen/native/cuda/RNN.cu`) and does not provide a native CPU C++
   kernel (`AutogradCPU`). This function provides an analytical pure-PyTorch CPU
   reference implementation so that `do_test_op` can compute golden forward
-  values (`ops_test_tpu`) and analytical autograd gradients (`ops_test_grad`)
+  values (`ops_test`) and analytical autograd gradients (`ops_test_grad`)
   on CPU when validating TorchTPU accelerated kernels.
 
   Implements the standard LSTM cell recurrence:
@@ -420,7 +420,7 @@ def _ref_thnn_fused_gru_cell(
   (`aten/src/ATen/native/cuda/RNN.cu`) and does not provide a native CPU C++
   kernel (`AutogradCPU`). This function provides an analytical pure-PyTorch CPU
   reference implementation so that `do_test_op` can compute golden forward
-  values (`ops_test_tpu`) and analytical autograd gradients (`ops_test_grad`)
+  values (`ops_test`) and analytical autograd gradients (`ops_test_grad`)
   on CPU when validating TorchTPU accelerated kernels.
 
   Implements the standard GRU cell recurrence:

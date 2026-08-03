@@ -147,12 +147,12 @@ torch_tpu_py_library(
 )
 
 # We have multiple targets for ops_test.py:
-# * ops_test_tpu_vs_gpu: TPU vs GPU.
-# * ops_test_gen_gpu_golden: generates the golden file for the GPU backend
-# * ops_test_grad: gradient on TPU vs CPU.
+# * ops_test: TPU vs GPU (by default, we test against GPU).
+# * ops_test_gen_gpu_golden: generates the golden file for the GPU backend.
+# * ops_test_grad_vs_cpu: gradient on TPU vs CPU.
 # * ops_test_perf: TPU only, for measuring compilation/execution time.
-# * ops_test_dynamic: TPU only, bounds a dimension and compares TPU vs CPU.
-# * ops_test_tpu_vs_gpu_compiled: TPU only, torch.compile TpuBackend vs GPU inductor backend.
+# * ops_test_dynamic_vs_cpu: TPU vs GPU, bounds a dimension.
+# * ops_test_compiled: TPU vs GPU (torch.compile TpuBackend vs GPU inductor backend).
 
 # We chose to manually maintain the duplicate tests instead of using a for-loop to generate the
 # targets because:
@@ -163,7 +163,7 @@ torch_tpu_py_library(
 
 torch_tpu_py_test(
     # TODO: switch this to TPU-vs-GPU.
-    name = "ops_test_grad",
+    name = "ops_test_grad_vs_cpu",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
@@ -200,7 +200,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     # TODO: switch this to TPU-vs-GPU.
-    name = "foreach_ops_test_grad",
+    name = "foreach_ops_test_grad_vs_cpu",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -237,7 +237,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     # TODO: switch this to TPU-vs-GPU.
-    name = "nonzero_ops_test_grad",
+    name = "nonzero_ops_test_grad_vs_cpu",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -274,7 +274,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     # TODO: switch this to TPU-vs-GPU.
-    name = "searchsorted_ops_test_grad",
+    name = "searchsorted_ops_test_grad_vs_cpu",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -311,7 +311,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     # TODO: switch this to TPU-vs-GPU.
-    name = "ops_test_grad_v6e",
+    name = "ops_test_grad_v6e_vs_cpu",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
@@ -347,7 +347,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     # TODO: switch this to TPU-vs-GPU.
-    name = "foreach_ops_test_grad_v6e",
+    name = "foreach_ops_test_grad_v6e_vs_cpu",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
@@ -381,7 +381,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     # TODO: switch this to TPU-vs-GPU.
-    name = "nonzero_ops_test_grad_v6e",
+    name = "nonzero_ops_test_grad_v6e_vs_cpu",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
@@ -415,7 +415,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     # TODO: switch this to TPU-vs-GPU.
-    name = "searchsorted_ops_test_grad_v6e",
+    name = "searchsorted_ops_test_grad_v6e_vs_cpu",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
@@ -448,7 +448,7 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "ops_test_tpu_vs_gpu_compiled",
+    name = "ops_test_compiled",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
@@ -485,7 +485,7 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "ops_test_tpu_vs_gpu",
+    name = "ops_test",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -526,7 +526,7 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "foreach_ops_test_tpu_vs_gpu",
+    name = "foreach_ops_test",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -567,7 +567,7 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "nonzero_ops_test_tpu_vs_gpu",
+    name = "nonzero_ops_test",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -608,7 +608,7 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "searchsorted_ops_test_tpu_vs_gpu",
+    name = "searchsorted_ops_test",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -649,7 +649,7 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "ops_test_tpu_vs_gpu_v6e",
+    name = "ops_test_v6e",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -687,7 +687,7 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "foreach_ops_test_tpu_vs_gpu_v6e",
+    name = "foreach_ops_test_v6e",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -723,7 +723,7 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "nonzero_ops_test_tpu_vs_gpu_v6e",
+    name = "nonzero_ops_test_v6e",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -759,7 +759,7 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "searchsorted_ops_test_tpu_vs_gpu_v6e",
+    name = "searchsorted_ops_test_v6e",
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
@@ -844,7 +844,8 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "ops_test_dynamic",
+    # TODO: switch to TPU-vs-GPU mode.
+    name = "ops_test_dynamic_vs_cpu",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
