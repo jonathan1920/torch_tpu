@@ -122,6 +122,8 @@ pytype_strict_library(
         # fail without this in the wheel build.
         "//torch_tpu/_internal/utils:test_utils",
         "//torch_tpu/_internal/utils:tracer_utils",
+        "//torch_tpu/ops",
+        "//torch_tpu/ops:splash_attention",
     ],
     visibility = ["//visibility:public"],
 )

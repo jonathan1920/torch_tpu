@@ -82,6 +82,45 @@ class Gemma4ModelTest(absltest.TestCase):
 
     self.assertEqual(output.shape, (2, 10, config.hidden_size))
 
+  def test_sliding_attention_cpu_fallback(self):
+    config = model.Gemma4Config(
+        num_hidden_layers=1,
+        hidden_size=128,
+        intermediate_size=256,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=32,
+        sliding_window=16,
+        layer_types=['sliding_attention'],
+    )
+    attn = model.Gemma4Attention(config, layer_idx=0)
+    hidden_states = torch.randn(2, 32, config.hidden_size)
+    position_ids = torch.arange(32).unsqueeze(0).expand(2, -1)
+
+    # On CPU, query_states.device.type is 'cpu'. use_splash must be False.
+    output, _ = attn(hidden_states, position_ids)
+    self.assertEqual(output.shape, (2, 32, config.hidden_size))
+
+  def test_sliding_attention_with_custom_attention_mask(self):
+    config = model.Gemma4Config(
+        num_hidden_layers=1,
+        hidden_size=128,
+        intermediate_size=256,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=32,
+        sliding_window=16,
+        layer_types=['sliding_attention'],
+    )
+    attn = model.Gemma4Attention(config, layer_idx=0)
+    hidden_states = torch.randn(2, 32, config.hidden_size)
+    position_ids = torch.arange(32).unsqueeze(0).expand(2, -1)
+    attention_mask = torch.zeros(2, 1, 32, 32)
+
+    # When attention_mask is passed, use_splash must be False.
+    output, _ = attn(hidden_states, position_ids, attention_mask=attention_mask)
+    self.assertEqual(output.shape, (2, 32, config.hidden_size))
+
 
 if __name__ == '__main__':
   absltest.main()

@@ -24,11 +24,16 @@ efficiency.
 """
 
 import math
+import types
 
 import torch
 from torch import nn
 import torch.nn.functional as F
-from examples.gemma4 import splash_attention
+
+try:
+  from torch_tpu.ops import splash_attention
+except (ImportError, ModuleNotFoundError):
+  splash_attention = None
 
 
 class Gemma4Config:
@@ -306,15 +311,15 @@ class Gemma4Attention(nn.Module):
     )
 
     use_splash = (
-        query_states.device.type in ('xla', 'tpu')
+        splash_attention is not None
+        and query_states.device.type in ('xla', 'tpu')
         and self.is_sliding
         and not skip_sliding_mask
         and attention_mask is None
     )
 
-    # Note: Splash attention SWA kernel for TPU will be integrated once
-    # available; using standard attention stub on CPU.
-    if use_splash:
+    # Use TPU Splash attention SWA kernel on TPU/XLA devices.
+    if use_splash and splash_attention is not None:
       enable_gqa = self.num_heads != self.current_kv_heads
       attn_output = splash_attention.splash_sdpa(
           query_states,
@@ -685,7 +690,9 @@ class Gemma4ForCausalLM(nn.Module):
       input_ids,
       position_ids=None,
       attention_mask=None,
+      labels=None,
       skip_sliding_mask=None,
+      return_logits=True,
   ):
     hidden_states = self.model(
         input_ids,
@@ -694,4 +701,16 @@ class Gemma4ForCausalLM(nn.Module):
         skip_sliding_mask=skip_sliding_mask,
     )
     logits = torch.matmul(hidden_states, self.model.embed_tokens.weight.t())
+    loss = None
+    if labels is not None:
+      shift_logits = logits[..., :-1, :].contiguous()
+      shift_labels = labels[..., 1:].contiguous()
+      loss = F.cross_entropy(
+          shift_logits.view(-1, shift_logits.size(-1)),
+          shift_labels.view(-1),
+      )
+      if not return_logits:
+        logits = None
+    if loss is not None:
+      return types.SimpleNamespace(loss=loss, logits=logits)
     return logits

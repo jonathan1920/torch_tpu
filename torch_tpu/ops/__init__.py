@@ -12,9 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Stub for splash_attention.py to satisfy model imports on CPU."""
-
-
-def splash_sdpa(*args, **kwargs):
-  del args, kwargs
-  raise NotImplementedError("Splash attention is not implemented yet.")
+"""TorchTPU operators package."""

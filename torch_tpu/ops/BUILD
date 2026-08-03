@@ -17,6 +17,7 @@ load(
     "torch_tpu_cc_library",
     "torch_tpu_cc_test",
     "torch_tpu_package_end",
+    "torch_tpu_py_library",
 )
 
 package(
@@ -634,6 +635,24 @@ torch_tpu_cc_library(
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "ops",
+    srcs = ["__init__.py"],
+)
+
+torch_tpu_py_library(
+    name = "splash_attention",
+    srcs = ["splash_attention.py"],
+    deps = [
+        "//shims/absl_py/logging",
+        "//shims/jax:pallas_tpu_ops",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/pallas",
+        "@pypi//jax",
+        "@pypi//torchax",  # build_cleaner: keep
     ],
 )
 

@@ -25,16 +25,11 @@ package(
 )
 
 torch_tpu_py_library(
-    name = "splash_attention",
-    srcs = ["splash_attention.py"],
-)
-
-torch_tpu_py_library(
     name = "model",
     srcs = ["model.py"],
     deps = [
-        ":splash_attention",
         "//shims/torch:pytorch",
+        "//torch_tpu/ops:splash_attention",
     ],
 )
 
@@ -62,6 +57,22 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
         "@pypi//transformers",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "correctness_tpu_test",
+    srcs = ["correctness_tpu_test.py"],
+    tags = [
+        "requires-tpu-v5p",
+    ],
+    deps = [
+        ":model",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils:test_utils",
+        "//torch_tpu/ops:splash_attention",
     ],
 )
 
