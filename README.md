@@ -66,15 +66,27 @@ pip install --pre --index-url "https://oauth2accesstoken:$(gcloud auth print-acc
 Wheels can be built via:
 
 ```bash
-bazel build -c opt //ci/wheel:torch_tpu_wheel
+bazel build -c opt --config=wheel_common //ci/wheel:torch_tpu_wheel
 ```
 
-(Alternative) For building without Remote Execution (RBE) caching, use bazel
-command below:
+`--config=wheel_common` is required, and the build fails at build time without
+it. The config sets `--//:wheel_build=True`, which routes the shared XLA/MLIR
+backend through the `torch_version`-reset transition so that pywrap factors it
+into a single `libxla_base.so`; built without the flag, every per-version common
+ships its own copy of the backend and the resulting wheel aborts on `import
+torch` with duplicate static registrations.
+
+`wheel_common` also turns on the Remote Build Execution (RBE) remote cache and
+remote executor. If you do not have RBE credentials, append `--config=no_rbe` to
+strip those flags back out:
 
 ```bash
-bazel build -c opt //ci/wheel:torch_tpu_wheel --config=no_rbe
+bazel build -c opt --config=wheel_common //ci/wheel:torch_tpu_wheel --config=no_rbe
 ```
+
+The order matters here: `--config=no_rbe` has to come after
+`--config=wheel_common`, because the later config is the one that wins for the
+remote-cache and remote-executor flags they both set.
 
 Install wheel via:
 
