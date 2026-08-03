@@ -38,16 +38,61 @@
 #include "absl/types/span.h"
 #include "c10/core/Device.h"
 #include "c10/core/Stream.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/current_stream.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/traversal.h"
+#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/python_context.h"
 #include "xla/future.h"
 
 namespace torch_tpu {
 
 namespace {
+
+// Creates a new deferred DeviceBufferList which represents a data dependency
+// but no actual computation.
+//
+// This is used to enforce device-side execution timing across event snapshots.
+//
+// The created op can take any number of inputs (which may be zero), ensuring
+// that any executable containing them will not begin executing until the prior
+// execution has completed. The returned value will be zero-sized; awaiting its
+// materialization will enforce timing without actual execution or memory use.
+//
+// Note however that any input will still be kept alive by this op, which may
+// delay memory freeing if the awaited input could otherwise have been freed.
+// NOLINTNEXTLINE:add usage in future CL
+SharedDeviceBufferList CreateNoOpDependency(
+    absl::Span<const DeviceBufferRef> wait_for = {}) {
+  std::vector<Shape> output_shapes = {Shape({0}, mlir::ElementType::UI8)};
+
+  auto op_name = OpName::kTorchTpuInternalDataDependency;
+  ScopedPythonContextCapturer capturer(op_name);
+  auto op_builder = [](mlir::MlirBuilder& builder,
+                       absl::Span<mlir::MlirOp> inputs)
+      -> absl::StatusOr<DynamicMlirOpResults> {
+    // Intentionally do not check the number of inputs and discard them.
+    auto ranked_tensor_type =
+        mlir::makeTensorType(builder.getContext(), {0}, mlir::ElementType::UI8);
+    auto dense_elements_attr =
+        mlir::DenseElementsAttr::getFromRawBuffer(ranked_tensor_type, {});
+    return DynamicMlirOpResults{
+        mlir::stablehlo::Constant(builder, dense_elements_attr)};
+  };
+  auto refs_or = DeviceBufferList::CreateDeferred(
+      op_name, std::move(op_builder), /*inputs=*/{}, OpParamCacheKeys::Empty(),
+      std::move(output_shapes));
+  ABSL_CHECK_OK(refs_or);  // CRASH_OK
+  return refs_or->at(0).device_buffer_list();
+}
 
 // A singleton class that records events related to the creation and destruction
 // of c10::DataPtrs referencing DeviceBufferRefs.s
