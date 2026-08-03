@@ -32,7 +32,6 @@ import torch.distributed.tensor as dt
 from torch.nn import parallel
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import ragged_moe
-from examples.deepseek import model as deepseek_model
 from tests import module_registry
 import transformers
 from transformers import activations
@@ -1507,59 +1506,6 @@ def ml_layer_model_builder(
         return self.m(x, position_ids)  # returns cos, sin
 
     model = Qwen3RotaryEmbeddingWrapper(model)
-
-  elif model_name.startswith("DeepSeek"):
-    dim = kwargs["dim"]
-    args = deepseek_model.ModelArgs(
-        max_batch_size=batch_size,
-        max_seq_len=sequence_length,
-        vocab_size=kwargs["vocab_size"],
-        dim=dim,
-        inter_dim=kwargs["inter_dim"],
-        moe_inter_dim=kwargs["moe_inter_dim"],
-        n_layers=kwargs["n_layers"],
-        n_dense_layers=kwargs["n_dense_layers"],
-        n_heads=kwargs["n_heads"],
-        n_routed_experts=kwargs["n_routed_experts"],
-        n_shared_experts=kwargs["n_shared_experts"],
-        n_activated_experts=kwargs["n_activated_experts"],
-    )
-
-    if model_name == "DeepSeekParallelEmbedding":
-      model = deepseek_model.ParallelEmbedding(args.vocab_size, args.dim).to(
-          dtype=weights_dtype
-      )
-      example_inputs = torch.randint(
-          0, args.vocab_size, (batch_size, sequence_length), device=device
-      )
-
-    elif model_name == "DeepSeekRMSNorm":
-      model = deepseek_model.RMSNorm(args.dim).to(dtype=weights_dtype)
-      example_inputs = torch.randn(
-          batch_size,
-          sequence_length,
-          args.dim,
-          dtype=weights_dtype,
-          device=device,
-      )
-
-    elif model_name == "DeepSeekExpert":
-      model = deepseek_model.Expert(args.dim, args.moe_inter_dim).to(
-          dtype=weights_dtype
-      )
-      example_inputs = torch.randn(
-          batch_size,
-          sequence_length,
-          args.dim,
-          dtype=weights_dtype,
-          device=device,
-      )
-
-    else:
-      raise ValueError(f"Unknown DeepSeek layer: {model_name}")
-
-    if model_name not in ["DeepSeekParallelEmbedding"]:
-      model = model.to(dtype=weights_dtype)
 
   elif model_name == "nn.f.scaled_dot_product_attention":
     embed_dim = kwargs["embed_dim"]

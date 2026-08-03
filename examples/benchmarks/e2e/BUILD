@@ -540,7 +540,6 @@ torch_tpu_py_library(
     deps = [
         ":benchmark_utils",
         ":ragged_moe",
-        "//examples/deepseek",
         "//shims/torch:pytorch",
         "//tests:module_registry",
         "@pypi//fairscale",

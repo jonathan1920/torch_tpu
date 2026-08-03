@@ -57,9 +57,6 @@ _QWEN3_ATTENTION_BENCHMARK_NAME = "qwen3_attention"
 _QWEN3_RMSNORM_BENCHMARK_NAME = "qwen3_rms_norm"
 _QWEN3_MLP_BENCHMARK_NAME = "qwen3_mlp"
 _QWEN3_ROTARY_EMBEDDING_BENCHMARK_NAME = "qwen3_rotary_embedding"
-_DEEPSEEK_PARALLEL_EMBEDDING_BENCHMARK_NAME = "deepseek_parallel_embedding"
-_DEEPSEEK_RMSNORM_BENCHMARK_NAME = "deepseek_rms_norm"
-_DEEPSEEK_EXPERT_BENCHMARK_NAME = "deepseek_expert"
 _SDPA_LAYER_BENCHMARK_NAME = "sdpa"
 _LINEAR_TIMM_LAYER_BENCHMARK_NAME = "linear_timm"
 _CONV2D_TIMM_LAYER_BENCHMARK_NAME = "conv2d_timm"
@@ -173,15 +170,6 @@ _DYNAMIC_SKIPS = {
     ),
     "SiLUActivation": (
         "SiLUActivation dynamic input generation not yet updated."
-    ),
-    "DeepSeekParallelEmbedding": (
-        "DeepSeekParallelEmbedding dynamic input generation not yet updated."
-    ),
-    "DeepSeekRMSNorm": (
-        "DeepSeekRMSNorm dynamic input generation not yet updated."
-    ),
-    "DeepSeekExpert": (
-        "DeepSeekExpert dynamic input generation not yet updated."
     ),
 }
 
@@ -887,130 +875,6 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
     self.run_performance_benchmark_test(
         config, _QWEN3_ROTARY_EMBEDDING_BENCHMARK_NAME, microbenchmark_name
-    )
-
-  @parameterized.named_parameters(
-      test_utils.generate_layer_test_configs(
-          _ALL_RUN_MODES, (True, False), layer_configs.DEEPSEEK_CONFIGS
-      )
-  )
-  def test_deepseek_parallel_embedding(
-      self, run_mode, is_training, layer_config
-  ):
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            common.Platform.GFC_1X1X1,
-            common.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_factory=model_utils.ml_layer_model_builder,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="DeepSeekParallelEmbedding",
-            batch_size=layer_config.batch_size,
-            sequence_length=layer_config.seq_len,
-            custom_kwargs={
-                "vocab_size": layer_config.vocab_size,
-                "dim": layer_config.dim,
-                "inter_dim": layer_config.inter_dim,
-                "moe_inter_dim": layer_config.moe_inter_dim,
-                "n_layers": layer_config.n_layers,
-                "n_dense_layers": layer_config.n_dense_layers,
-                "n_heads": layer_config.n_heads,
-                "n_routed_experts": layer_config.n_routed_experts,
-                "n_shared_experts": layer_config.n_shared_experts,
-                "n_activated_experts": layer_config.n_activated_experts,
-                "in_features": layer_config.in_features,
-                "out_features": layer_config.out_features,
-            },
-        ),
-    )
-    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
-    self.run_performance_benchmark_test(
-        config,
-        _DEEPSEEK_PARALLEL_EMBEDDING_BENCHMARK_NAME,
-        microbenchmark_name,
-    )
-
-  @parameterized.named_parameters(
-      test_utils.generate_layer_test_configs(
-          _ALL_RUN_MODES, (True, False), layer_configs.DEEPSEEK_CONFIGS
-      )
-  )
-  def test_deepseek_rms_norm(self, run_mode, is_training, layer_config):
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            common.Platform.GFC_1X1X1,
-            common.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_factory=model_utils.ml_layer_model_builder,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="DeepSeekRMSNorm",
-            batch_size=layer_config.batch_size,
-            sequence_length=layer_config.seq_len,
-            custom_kwargs={
-                "vocab_size": layer_config.vocab_size,
-                "dim": layer_config.dim,
-                "inter_dim": layer_config.inter_dim,
-                "moe_inter_dim": layer_config.moe_inter_dim,
-                "n_layers": layer_config.n_layers,
-                "n_dense_layers": layer_config.n_dense_layers,
-                "n_heads": layer_config.n_heads,
-                "n_routed_experts": layer_config.n_routed_experts,
-                "n_shared_experts": layer_config.n_shared_experts,
-                "n_activated_experts": layer_config.n_activated_experts,
-                "in_features": layer_config.in_features,
-                "out_features": layer_config.out_features,
-            },
-        ),
-    )
-    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
-    self.run_performance_benchmark_test(
-        config, _DEEPSEEK_RMSNORM_BENCHMARK_NAME, microbenchmark_name
-    )
-
-  @parameterized.named_parameters(
-      test_utils.generate_layer_test_configs(
-          _ALL_RUN_MODES, (True, False), layer_configs.DEEPSEEK_CONFIGS
-      )
-  )
-  def test_deepseek_expert(self, run_mode, is_training, layer_config):
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            common.Platform.GFC_1X1X1,
-            common.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_factory=model_utils.ml_layer_model_builder,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="DeepSeekExpert",
-            batch_size=layer_config.batch_size,
-            sequence_length=layer_config.seq_len,
-            custom_kwargs={
-                "vocab_size": layer_config.vocab_size,
-                "dim": layer_config.dim,
-                "inter_dim": layer_config.inter_dim,
-                "moe_inter_dim": layer_config.moe_inter_dim,
-                "n_layers": layer_config.n_layers,
-                "n_dense_layers": layer_config.n_dense_layers,
-                "n_heads": layer_config.n_heads,
-                "n_routed_experts": layer_config.n_routed_experts,
-                "n_shared_experts": layer_config.n_shared_experts,
-                "n_activated_experts": layer_config.n_activated_experts,
-                "in_features": layer_config.in_features,
-                "out_features": layer_config.out_features,
-            },
-        ),
-    )
-    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
-    self.run_performance_benchmark_test(
-        config, _DEEPSEEK_EXPERT_BENCHMARK_NAME, microbenchmark_name
     )
 
   @parameterized.named_parameters(

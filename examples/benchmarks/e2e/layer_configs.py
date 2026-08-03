@@ -1087,26 +1087,6 @@ GLU_CONFIGS = (
 )
 
 
-@dataclasses.dataclass
-class DeepSeekConfig:
-  batch_size: int
-  seq_len: int
-  vocab_size: int = 1024
-  dim: int = 128
-  inter_dim: int = 512
-  moe_inter_dim: int = 64
-  n_layers: int = 1
-  n_dense_layers: int = 1
-  n_heads: int = 4
-  n_routed_experts: int = 4
-  n_shared_experts: int = 2
-  n_activated_experts: int = 2
-  in_features: int = 128
-  out_features: int = 128
-
-
-DEEPSEEK_CONFIGS = (DeepSeekConfig(batch_size=1, seq_len=128),)
-
 
 @dataclasses.dataclass
 class Conv1dConfig:

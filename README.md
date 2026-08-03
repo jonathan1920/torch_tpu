@@ -13,8 +13,7 @@ inference.
 *   PyTorch ATen kernel implementation for TPU.
 *   Compilation cache for optimized execution of XLA computations.
 *   Support for distributed training (Data Parallelism, Tensor Parallelism).
-*   Examples for various models (DeepSeek, Llama, Qwen, ResNet, DLRM, minGPT,
-    UNet).
+*   Examples for various models (Llama, Qwen, ResNet, DLRM, minGPT, UNet).
 *   Integration with `torch.compile()` for graph mode execution.
 *   Utilities for debugging and benchmarking.
 
