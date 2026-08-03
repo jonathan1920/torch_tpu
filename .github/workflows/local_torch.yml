@@ -47,6 +47,79 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'main' }}
 
 jobs:
+  # Presubmit coverage for the local-torch build: build the wheel against a
+  # local PyTorch and run the wheel smoke tests on every PR, so breakage in
+  # the TORCH_SOURCE=local configuration (historically only exercised by the
+  # schedule / the ci:local-torch label, and therefore invisible in
+  # presubmit) surfaces before merge. Failures are soft (warning
+  # annotations, green check) until the configuration is reliably green; the
+  # full bazel test suite still runs only under the old conditions below.
+  presubmit_build_and_smoke:
+    name: "Presubmit Local Torch Build and Smoke Test"
+    # The full job below already covers labeled PRs.
+    if: >-
+      github.event_name == 'pull_request' &&
+      !contains(github.event.pull_request.labels.*.name, 'ci:local-torch')
+    # A CPU runner, deliberately: the job exists to catch local-torch *build
+    # and ABI* breakage, which the CPU smoke tests (against the xla_cpu
+    # backend) already surface, and TPU runner capacity is scarce. The full
+    # job below still exercises the local-torch build on real TPUs.
+    runs-on: linux-x86-n4-16
+    container:
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
+    steps:
+      - name: Checkout TorchTPU
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+      - name: Wait for Connection
+        uses: google-ml-infra/actions/ci_connection@9f8d7d8d9954430d0fef4a8cce2cb4e3844c200d
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      - name: Download PyTorch Nightly Wheel
+        run: |
+          # dist/local is reserved for the torch wheel this flow builds
+          # against: the cpu-local nox session below picks the wheel up from
+          # there, and a dedicated directory guarantees it was put there by
+          # this process rather than being a leftover in the standard dist/
+          # location.
+          mkdir -p dist/local
+          # Presubmit builds against the exact nightly snapshot pinned in
+          # requirements/requirements_torch_nightly.txt (the same pin the
+          # wheel's nightly glue and the nightly-pinned smoke tests use), so
+          # the check is deterministic: upstream nightlies drift
+          # C++-signature-incompatibly between snapshots, and chasing that
+          # drift is the unpinned scheduled job's role below, not
+          # presubmit's.
+          TORCH_PIN=$(grep '^torch==' requirements/requirements_torch_nightly.txt)
+          pip download --no-deps --pre "${TORCH_PIN}" --index-url https://download.pytorch.org/whl/nightly/cpu -d dist/local
+          ls -lh dist/local/
+
+          WHEEL_PATH=$(ls $(pwd)/dist/local/torch-*.whl | head -n 1)
+          echo "TORCH_SOURCE=$WHEEL_PATH" >> $GITHUB_ENV
+          echo "Exported TORCH_SOURCE=$WHEEL_PATH"
+      - name: Build TorchTPU wheel
+        id: build_wheel
+        continue-on-error: true
+        run: |
+          bazel build -c opt //ci/wheel:torch_tpu_wheel \
+            --config=wheel_common \
+            --define TORCH_SOURCE=local \
+            --repo_env=TORCH_SOURCE=$TORCH_SOURCE
+
+          cp bazel-bin/ci/wheel/torch_tpu-*.whl dist/
+      - name: Surface a soft-failed build as a warning
+        if: steps.build_wheel.outcome == 'failure'
+        run: echo "::warning title=Local-torch wheel build failed (allowed)::Building the wheel with TORCH_SOURCE=local failed; this presubmit check is a soft failure while the local-torch configuration is stabilized."
+      # The smoke tests install the freshly built wheel together with the
+      # local torch wheel it was built against and exercise it on the CPU.
+      - name: Run smoke tests via nox
+        id: nox_smoke
+        if: steps.build_wheel.outcome == 'success'
+        continue-on-error: true
+        run: uvx nox --force-python 3.12 -s "smoke_test(cpu-local)"
+      - name: Surface soft-failed smoke tests as a warning
+        if: steps.nox_smoke.outcome == 'failure'
+        run: echo "::warning title=Local-torch smoke test failed (allowed)::The wheel smoke tests against a local PyTorch failed; this presubmit check is a soft failure while the local-torch configuration is stabilized."
+
   build_and_test_wheel:
     name: "Build and Test Wheel on ${{ matrix.job_info.name || matrix.job_info.runner }}"
     # Run nightly, or on PRs explicitly tagged with 'ci:local-torch'.
