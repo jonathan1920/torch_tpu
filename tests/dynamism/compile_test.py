@@ -865,5 +865,31 @@ class DynamicSliceTest(absltest.TestCase):
     utils.assert_close(out, expected)
 
 
+class DynamicErrorHandlingTest(absltest.TestCase):
+
+  def test_mlir_lowering_failure_raises_not_implemented_error(self):
+    def simple(x):
+      return x + 1.0
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    with mock.patch.object(
+        _backend.compiler.StaticCompiler,
+        "__call__",
+        side_effect=RuntimeError("MLIR lowering failed"),
+    ):
+      compiled = torch.compile(simple, backend=tpu_backend)
+      device = torch.accelerator.current_accelerator()
+      t = torch.ones(4, device=device)
+      torch._dynamo.mark_dynamic(t, 0, min=2, max=8)
+      with self.assertRaises(
+          (NotImplementedError, torch._dynamo.exc.BackendCompilerFailed)
+      ) as ctx:
+        compiled(t)
+      self.assertIn(
+          "torch.compile(..., dynamic=False, ...)", str(ctx.exception)
+      )
+      self.assertIn("MLIR lowering failed", str(ctx.exception))
+
+
 if __name__ == "__main__":
   absltest.main()

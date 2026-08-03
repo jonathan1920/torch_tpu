@@ -430,13 +430,21 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
           " Compiling new executable.",
           layout_key,
       )
-      executable = self.static_compiler(
-          self.graph_module,
-          self.model_example_inputs,
-          is_fwd=self.is_fwd,
-          bounds=self.aligned_bounds,
-          argument_layouts=argument_layouts,
-      )
+      try:
+        executable = self.static_compiler(
+            self.graph_module,
+            self.model_example_inputs,
+            is_fwd=self.is_fwd,
+            bounds=self.aligned_bounds,
+            argument_layouts=argument_layouts,
+        )
+      except (RuntimeError, ValueError) as e:
+        raise NotImplementedError(
+            "Failed to lower FX graph with dynamic shapes to MLIR with error:"
+            f" {e}. Please set torch.compile(..., dynamic=False, ...) and try"
+            " again."
+        ) from e
+
       logging.debug(
           "[DynamicTpuBackend] Compiled model executable layouts %s",
           executable.parameter_layouts,  # type: ignore[attr-defined]
@@ -550,13 +558,20 @@ class DynamicCompiler(compiler.Compiler):
     ]
 
     # Create a model executable using the provided example inputs and bounds.
-    default_executable = self.static_compiler(
-        graph_module,
-        model_example_inputs,
-        is_fwd=is_fwd,
-        bounds=aligned_bounds,
-        dynamic_outputs=dynamic_outputs,
-    )
+    try:
+      default_executable = self.static_compiler(
+          graph_module,
+          model_example_inputs,
+          is_fwd=is_fwd,
+          bounds=aligned_bounds,
+          dynamic_outputs=dynamic_outputs,
+      )
+    except (RuntimeError, ValueError) as e:
+      raise NotImplementedError(
+          "Failed to lower FX graph with dynamic shapes to MLIR with error:"
+          f" {e}. Please set torch.compile(..., dynamic=False, ...) and try"
+          " again."
+      ) from e
 
     logging.debug(
         "[DynamicTpuBackend] Static Model Executable MLIR: %s",
