@@ -100,7 +100,7 @@ class TestMode(enum.Enum):
 
 
 _TEST_MODE: Final[flags.FlagHolder[TestMode]] = flags.DEFINE_enum_class(
-    "test_mode", TestMode.TORCH_TPU_VS_CPU, TestMode, "Mode to run the test in."
+    "test_mode", TestMode.TORCH_TPU_VS_GPU, TestMode, "Mode to run the test in."
 )
 
 # The --dtypes flag accepts a comma-separated list of dtypes. We define this

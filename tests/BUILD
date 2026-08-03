@@ -168,6 +168,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
+        "--test_mode=torch_tpu_vs_cpu",
         "--test_categories=-foreach,-nonzero,-searchsorted",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
@@ -205,6 +206,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
+        "--test_mode=torch_tpu_vs_cpu",
         "--test_categories=foreach",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
@@ -242,6 +244,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
+        "--test_mode=torch_tpu_vs_cpu",
         "--test_categories=nonzero",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
@@ -279,6 +282,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
+        "--test_mode=torch_tpu_vs_cpu",
         "--test_categories=searchsorted",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
@@ -316,6 +320,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
+        "--test_mode=torch_tpu_vs_cpu",
         "--test_categories=-foreach,-nonzero,-searchsorted",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
@@ -352,6 +357,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
+        "--test_mode=torch_tpu_vs_cpu",
         "--test_categories=foreach",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
@@ -386,6 +392,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
+        "--test_mode=torch_tpu_vs_cpu",
         "--test_categories=nonzero",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
@@ -420,6 +427,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
+        "--test_mode=torch_tpu_vs_cpu",
         "--test_categories=searchsorted",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
@@ -453,7 +461,6 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--use_compiled=True",
-        "--test_mode=torch_tpu_vs_gpu",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
     data = [
@@ -489,7 +496,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
-        "--test_mode=torch_tpu_vs_gpu",
         "--test_categories=-foreach,-nonzero,-searchsorted",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
@@ -530,7 +536,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
-        "--test_mode=torch_tpu_vs_gpu",
         "--test_categories=foreach",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
@@ -571,7 +576,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
-        "--test_mode=torch_tpu_vs_gpu",
         "--test_categories=nonzero",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
@@ -612,7 +616,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
-        "--test_mode=torch_tpu_vs_gpu",
         "--test_categories=searchsorted",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
@@ -653,7 +656,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
-        "--test_mode=torch_tpu_vs_gpu",
         "--test_categories=-foreach,-nonzero,-searchsorted",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
@@ -691,7 +693,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
-        "--test_mode=torch_tpu_vs_gpu",
         "--test_categories=foreach",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
@@ -727,7 +728,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
-        "--test_mode=torch_tpu_vs_gpu",
         "--test_categories=nonzero",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
@@ -763,7 +763,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
-        "--test_mode=torch_tpu_vs_gpu",
         "--test_categories=searchsorted",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
@@ -850,6 +849,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--check_dynamism_using_seed=-1",
+        "--test_mode=torch_tpu_vs_cpu",
         "--print_op_inputs=1",
         "--max_samples_per_op_dtype=1",  # No need to test many samples to catch dynamism bugs.
     ],
