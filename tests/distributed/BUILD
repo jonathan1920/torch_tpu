@@ -116,6 +116,7 @@ torch_tpu_py_test(
 # Like collective_ops_test, but uses a remote filesystem for the tier-3 cache.
 torch_tpu_py_test(
     name = "collective_ops_remote_cache_test",
+    timeout = "long",
     srcs = ["collective_ops_test.py"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
