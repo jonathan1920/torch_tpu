@@ -15,10 +15,12 @@
 """Determine bounds of symbolic integers."""
 
 from __future__ import annotations
+from typing import Any
 from absl import logging
 import sympy
 import torch
 from torch.utils._sympy.numbers import int_oo
+from torch_tpu._internal.compile.dynamic import sym_utils
 
 
 def _is_valid_bound(s: sympy.Expr) -> bool:
@@ -99,3 +101,15 @@ def get_symint_bounds(sym_int: torch.SymInt) -> tuple[int, int]:
       upper_bound,
   )
   return lower_bound, upper_bound  # pyrefly: ignore[bad-return]
+
+
+def get_upper_bound(val: Any) -> int:
+  """Extracts concrete integer upper bound for a value, int, or SymInt node."""
+  if sym_utils.is_symint(val):
+    symint = val.meta["val"] if sym_utils.is_symint_node(val) else val
+    _, upper = get_symint_bounds(symint)
+    assert upper is not None, f"Failed to get upper bound for SymInt {symint}"
+    return upper
+  elif isinstance(val, int):
+    return val
+  raise ValueError(f"Unexpected type for upper bound extraction: {type(val)}")

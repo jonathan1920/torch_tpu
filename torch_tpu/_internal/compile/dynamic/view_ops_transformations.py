@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 from collections.abc import Sequence
+import sys
 from typing import Any
 from absl import logging
 import torch
@@ -23,6 +24,13 @@ import torch.utils._pytree as pytree
 from torch_tpu._internal.compile.dynamic import sym_utils
 from torch_tpu._internal.compile.dynamic import symbol_bounds
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
+
+
+def _get_node_val(arg: Any) -> Any:
+  """Unwraps an FX Node to its metadata value ('val') if present."""
+  if isinstance(arg, torch.fx.Node) and "val" in arg.meta:
+    return arg.meta["val"]
+  return arg
 
 
 def _extract_shape_tensors_and_bounds(
@@ -37,7 +45,7 @@ def _extract_shape_tensors_and_bounds(
   is_dynamic = []
 
   for arg in target_shape:
-    if sym_utils.is_symint_node(arg) or isinstance(arg, torch.SymInt):
+    if sym_utils.is_symint(arg):
       is_dynamic.append(True)
       symint = arg.meta["val"] if sym_utils.is_symint_node(arg) else arg
       _, upper = symbol_bounds.get_symint_bounds(symint)
@@ -107,9 +115,7 @@ class HandleReshapeLikeOpsPass:
     )
 
     num_dynamic_dims = sum(
-        1
-        for arg in target_shape
-        if sym_utils.is_symint_node(arg) or isinstance(arg, torch.SymInt)
+        1 for arg in target_shape if sym_utils.is_symint(arg)
     )
     if num_dynamic_dims == 0:
       return
@@ -171,9 +177,7 @@ class HandleBroadcastLikeOpsPass:
     )
 
     num_dynamic_dims = sum(
-        1
-        for arg in target_shape
-        if sym_utils.is_symint_node(arg) or isinstance(arg, torch.SymInt)
+        1 for arg in target_shape if sym_utils.is_symint(arg)
     )
     if num_dynamic_dims == 0:
       return
@@ -203,6 +207,191 @@ class HandleBroadcastLikeOpsPass:
 
     node.replace_all_uses_with(dynamic_broadcast_node)
     graph_module.graph.erase_node(node)
+
+
+class HandleSliceLikeOpsPass:
+  """Slice-like ops transformation pass.
+
+  Detects slice operations (such as aten.slice.Tensor) that have dynamic
+  dimensions (SymInt or SymInt expressions) as end or step input (with start=0)
+  and calculates the dynamic size of the sliced dimension using tensor
+  arithmetic, then applies set_dimension_logical_size.
+  """
+
+  def __init__(self, sym_shape_manager: SymShapeManager):
+    self._sym_shape_manager = sym_shape_manager
+    self._op_handlers = {
+        torch.ops.aten.slice.Tensor: self._process_slice_op,
+        torch.ops.aten.slice_backward.default: self._process_slice_backward_op,
+    }
+
+  def _extract_slice_args(
+      self, node: torch.fx.Node, offset: int = 0
+  ) -> tuple[int, Any, Any, Any]:
+    """Extracts (dim, start, end, step) from slice or slice_backward node args/kwargs."""
+    dim = (
+        node.args[1 + offset]
+        if len(node.args) > 1 + offset
+        else node.kwargs.get("dim", 0)
+    )
+    start = _get_node_val(
+        node.args[2 + offset]
+        if len(node.args) > 2 + offset
+        else node.kwargs.get("start", 0)
+    )
+    end = _get_node_val(
+        node.args[3 + offset]
+        if len(node.args) > 3 + offset
+        else node.kwargs.get("end", None)
+    )
+    step = _get_node_val(
+        node.args[4 + offset]
+        if len(node.args) > 4 + offset
+        else node.kwargs.get("step", 1)
+    )
+    return dim, start, end, step
+
+  def _replace_node_with_set_logical_size(
+      self,
+      graph_module: torch.fx.GraphModule,
+      node: torch.fx.Node,
+      new_op_node: torch.fx.Node,
+      dim: int,
+      size_tensor_node: torch.fx.Node,
+  ) -> None:
+    """Wraps new_op_node with set_dimension_logical_size, replaces all uses, and erases node."""
+    with graph_module.graph.inserting_before(node):
+      new_op_node.meta = node.meta.copy()
+      set_dim_size_node = graph_module.graph.call_function(
+          torch.ops.tpu.set_dimension_logical_size,
+          args=(new_op_node, dim, size_tensor_node),
+      )
+      set_dim_size_node.meta = node.meta.copy()
+
+    node.replace_all_uses_with(set_dim_size_node)
+    graph_module.graph.erase_node(node)
+
+  def __call__(self, graph_module: torch.fx.GraphModule) -> None:
+    """Runs the slice-like ops transformation pass."""
+    for node in list(graph_module.graph.nodes):
+      if node.op == "call_function":
+        handler = self._op_handlers.get(node.target)
+        if handler:
+          handler(graph_module, node)
+
+  def _process_slice_op(
+      self,
+      graph_module: torch.fx.GraphModule,
+      node: torch.fx.Node,
+  ) -> None:
+    """Processes slice op node and applies set_dimension_logical_size if end or step is dynamic."""
+    inp = node.args[0]
+    dim, start, end, step = self._extract_slice_args(node, offset=0)
+
+    if sym_utils.is_symint(start) or (start is not None and start != 0):
+      return
+
+    inp_val = _get_node_val(inp)
+
+    # If end is omitted (None or sys.maxsize), default to full dimension size.
+    if end is None or (isinstance(end, int) and end >= sys.maxsize):
+      if hasattr(inp_val, "shape"):
+        end = inp_val.shape[dim]
+
+    if step is None:
+      step = 1
+
+    if not (sym_utils.is_symint(end) or sym_utils.is_symint(step)):
+      return
+
+    # Normalize negative dim and end indices to absolute indices.
+    if hasattr(inp_val, "shape"):
+      if isinstance(dim, int) and dim < 0:
+        dim = dim + len(inp_val.shape)
+      if isinstance(end, int) and end < 0:
+        end = inp_val.shape[dim] + end
+
+    # Convert end, step, and constant 1 values into 0D int32 tensors.
+    end_tensor = self._sym_shape_manager.ensure_tensor(
+        graph_module, end, node, dtype=torch.int32
+    )
+    step_tensor = self._sym_shape_manager.ensure_tensor(
+        graph_module, step, node, dtype=torch.int32
+    )
+    one_tensor = self._sym_shape_manager.ensure_tensor(
+        graph_module, 1, node, dtype=torch.int32
+    )
+
+    # Determine static integer upper bounds for the static slice op.
+    if hasattr(inp_val, "shape") and sym_utils.is_symint(inp_val.shape[dim]):
+      end_upper = symbol_bounds.get_upper_bound(inp_val.shape[dim])
+    else:
+      end_upper = symbol_bounds.get_upper_bound(end)
+    step_upper = symbol_bounds.get_upper_bound(step)
+
+    # Determine sliced dimension logical size via tensor arithmetic:
+    # (end + step - 1) // step
+    with graph_module.graph.inserting_before(node):
+      p_end = torch.fx.Proxy(end_tensor)
+      p_step = torch.fx.Proxy(step_tensor)
+      p_one = torch.fx.Proxy(one_tensor)
+      p_size = ((p_end + p_step - p_one) // p_step).to(dtype=torch.int32)
+      size_tensor_node = p_size.node
+
+      new_slice_node = graph_module.graph.call_function(
+          torch.ops.aten.slice.Tensor,
+          args=(inp, dim, start, end_upper, step_upper),
+      )
+
+    self._replace_node_with_set_logical_size(
+        graph_module, node, new_slice_node, dim, size_tensor_node
+    )
+
+  def _process_slice_backward_op(
+      self,
+      graph_module: torch.fx.GraphModule,
+      node: torch.fx.Node,
+  ) -> None:
+    """Processes slice_backward op node and applies set_dimension_logical_size if parameters are dynamic."""
+    grad_output, input_sizes = node.args[0], node.args[1]
+    dim, start, end, step = self._extract_slice_args(node, offset=1)
+
+    if sym_utils.is_symint(start):
+      return
+
+    has_dynamic = (
+        sym_utils.is_symint(end)
+        or sym_utils.is_symint(step)
+        or any(sym_utils.is_symint(s) for s in input_sizes)
+    )
+    if not has_dynamic:
+      return
+
+    input_sizes_upper = [symbol_bounds.get_upper_bound(s) for s in input_sizes]
+    end_upper = symbol_bounds.get_upper_bound(end)
+    step_upper = symbol_bounds.get_upper_bound(step)
+
+    input_size_sym = input_sizes[dim]
+    size_tensor_node = self._sym_shape_manager.ensure_tensor(
+        graph_module, input_size_sym, node, dtype=torch.int32
+    )
+
+    with graph_module.graph.inserting_before(node):
+      new_slice_bwd_node = graph_module.graph.call_function(
+          torch.ops.aten.slice_backward.default,
+          args=(
+              grad_output,
+              input_sizes_upper,
+              dim,
+              start,
+              end_upper,
+              step_upper,
+          ),
+      )
+
+    self._replace_node_with_set_logical_size(
+        graph_module, node, new_slice_bwd_node, dim, size_tensor_node
+    )
 
 
 class ReplaceDynamicOutputBroadcastOpsPreGradPass:

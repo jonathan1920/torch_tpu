@@ -170,9 +170,9 @@ class HandleGenerativeOpsPass:
     ), "Failed to extract step parameter from arange node context"
 
     is_dynamic = (
-        sym_utils.is_symint_node(start)
-        or sym_utils.is_symint_node(end)
-        or sym_utils.is_symint_node(step)
+        sym_utils.is_symint(start)
+        or sym_utils.is_symint(end)
+        or sym_utils.is_symint(step)
     )
     if not is_dynamic:
       return
@@ -302,13 +302,9 @@ class HandleGenerativeOpsPass:
     has_symint = False
 
     for dim, arg in enumerate(sizes_list):
-      if sym_utils.is_symint_node(arg) or isinstance(arg, torch.SymInt):
+      if sym_utils.is_symint(arg):
         has_symint = True
-        symint = arg.meta["val"] if sym_utils.is_symint_node(arg) else arg
-        _, upper = get_symint_bounds(symint)
-        assert (
-            upper is not None
-        ), f"Failed to extract upper bound for SymInt {symint}"
+        upper = symbol_bounds.get_upper_bound(arg)
         new_sizes.append(upper)
 
         tensor_node = self._sym_shape_manager.ensure_tensor(

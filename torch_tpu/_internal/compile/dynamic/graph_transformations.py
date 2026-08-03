@@ -17,6 +17,7 @@
 from __future__ import annotations
 from collections.abc import Sequence
 import operator
+import re
 from typing import Any
 import torch
 from torch.fx.passes import graph_transform_observer
@@ -164,9 +165,14 @@ class ScanInputsCreatePlaceholdersPass:
     for node in self._placeholders:
       if sym_utils.is_symint_node(node):
         sym_str = str(node.meta["val"])
+        sanitized_sym_str = re.sub(r"\W+", "_", sym_str).strip("_")
         count = seen_counts.get(sym_str, 0)
         seen_counts[sym_str] = count + 1
-        ph_name = f"{sym_str}_size" if count == 0 else f"{sym_str}_size_{count}"
+        ph_name = (
+            f"{sanitized_sym_str}_size"
+            if count == 0
+            else f"{sanitized_sym_str}_size_{count}"
+        )
 
         # Create a new placeholder next to it (always create to keep
         # signature match).
@@ -219,14 +225,13 @@ class HandleSymIntUsagesPass:
 
         if changed:
           node.args = tuple(new_args)
-
       elif node.op == "output":
         if node.args and isinstance(node.args[0], (tuple, list)):
           new_ret_args = []
           changed = False
           symint_output_indices = []
           for idx, arg in enumerate(node.args[0]):
-            if isinstance(arg, torch.fx.Node) and sym_utils.is_symint_node(arg):
+            if sym_utils.is_symint_node(arg):
               symint_output_indices.append(idx)
               tensor_node = self._sym_shape_manager.ensure_tensor(
                   graph_module, arg, node
@@ -296,9 +301,7 @@ class DetectSymIntUsagesPass:
         continue
       flat_args, _ = _pytree.tree_flatten((node.args, node.kwargs))
       for arg in flat_args:
-        if isinstance(arg, torch.SymInt) or (
-            isinstance(arg, torch.fx.Node) and sym_utils.is_symint_node(arg)
-        ):
+        if sym_utils.is_symint(arg):
           unhandled_usages.append((node, arg))
 
     return unhandled_usages
@@ -341,6 +344,11 @@ def apply_dynamism_transformations(
       graph_module, "handle_broadcast_like_ops"
   ).apply_gm_pass(
       view_ops_transformations.HandleBroadcastLikeOpsPass(sym_shape_manager)
+  )
+
+  # Updates slice operations that have dynamic inputs.
+  GraphTransformObserver(graph_module, "handle_slice_like_ops").apply_gm_pass(
+      view_ops_transformations.HandleSliceLikeOpsPass(sym_shape_manager)
   )
 
   # Replaces remaining usages of SymInt nodes in standard tensor operations.

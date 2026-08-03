@@ -16,6 +16,7 @@
 
 from collections.abc import Mapping
 import operator
+from typing import Any
 from absl import logging
 import sympy
 import torch
@@ -27,20 +28,36 @@ CUSTOM_SYMPY_FUNCS = {
 }
 
 
-def is_symint_node(node: torch.fx.Node) -> bool:
+def is_symint_node(node: Any) -> bool:
   """Checks if the FX node evaluates to a symbolic integer (SymInt).
 
   Args:
-    node: The FX node to check.
+    node: The object or FX node to check.
 
   Returns:
-    True if the node represents a symbolic integer, False otherwise.
+    True if the node is an FX node representing a symbolic integer, False
+    otherwise.
   """
   return (
-      hasattr(node, "meta")
+      isinstance(node, torch.fx.Node)
+      and hasattr(node, "meta")
       and "val" in node.meta
       and isinstance(node.meta["val"], torch.SymInt)
   )
+
+
+def is_symint(val: Any) -> bool:
+  """Checks if a value or FX node represents a symbolic integer (SymInt).
+
+  Args:
+    val: The value or FX node to check.
+
+  Returns:
+    True if val is a SymInt or an FX node whose 'val' meta is a SymInt.
+  """
+  if isinstance(val, torch.SymInt):
+    return True
+  return isinstance(val, torch.fx.Node) and is_symint_node(val)
 
 
 def is_symexpr_node(node: torch.fx.Node) -> bool:

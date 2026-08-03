@@ -23,6 +23,7 @@ torch_tpu_py_library(
     name = "symbol_bounds",
     srcs = ["symbol_bounds.py"],
     deps = [
+        ":sym_utils",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "@pypi//sympy",
