@@ -27,8 +27,15 @@ set -exu -o history -o allexport
 
 echo "===> Starting Python wheel build in Kokoro..."
 
+# Prepare wheel version string with metadata date suffix (similar to GitHub)
+WHEEL_VERSION_EXTRAS="${WHEEL_VERSION_EXTRAS:-.dev$(date +%Y%m%d%H%M%S)}"
+export WHEEL_VERSION_EXTRAS
+echo "WHEEL_VERSION_EXTRAS: ${WHEEL_VERSION_EXTRAS}"
+export TORCH_TPU_SRC="$(pwd)"
+
 # Define target wheel dir inside Kokoro artifacts folder
 KOKORO_ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR:-$(pwd)/../../artifacts}"
+export KOKORO_ARTIFACTS_DIR
 WHEEL_DIR="${KOKORO_ARTIFACTS_DIR}/dist"
 mkdir -p "${WHEEL_DIR}"
 
@@ -58,11 +65,50 @@ else
   exit 1
 fi
 
-# Perform inline Twine checks to ensure metadata meets general quality rule
-echo "===> Running Twine check over built wheels..."
+# Perform fatal inline Twine checks over primary torch_tpu wheels
+echo "===> Running Twine check over torch_tpu wheels..."
 docker run --rm \
   -v "${WHEEL_DIR}:/dist" \
   "${CONTAINER_IMAGE}" \
-  bash -c "uv run --isolated --with twine twine check /dist/*.whl"
+  bash -c "uv run --isolated --with twine twine check /dist/torch_tpu-*.whl"
+
+echo "===> torch_tpu wheel build and verification successful!"
+
+# ==============================================================================
+# NON-FATAL SECONDARY STAGE: tpu_raiden Python Wheel Build & Verification
+# ==============================================================================
+# All raiden wheel generation and metadata checks are grouped below and run in a
+# non-fatal warning construct. If raiden build or metadata check fails, broken
+# artifacts are removed from WHEEL_DIR and execution continues so torch_tpu upload
+# is never blocked.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RAIDEN_DIR="${RAIDEN_DIR:-${SCRIPT_DIR}/../../tpu_raiden}"
+
+if [[ -f "${RAIDEN_DIR}/ci/build_wheel.sh" ]]; then
+  echo "===> [Non-Fatal Stage] Invoking tpu_raiden wheel build: ${RAIDEN_DIR}/ci/build_wheel.sh..."
+  (
+    export WITH_TORCH=1
+    export KOKORO_ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}"
+    export WHEEL_DIR="${WHEEL_DIR}"
+    bash "${RAIDEN_DIR}/ci/build_wheel.sh"
+  ) || {
+    echo "WARNING: tpu_raiden wheel build failed. Continuing with torch_tpu wheels only..." >&2
+  }
+
+  # Warn-only Twine check on generated tpu_raiden wheels (remove broken wheel if invalid)
+  if ls "${WHEEL_DIR}"/tpu_raiden_torch-*.whl >/dev/null 2>&1; then
+    echo "===> [Non-Fatal Stage] Running Twine check over tpu_raiden wheels..."
+    docker run --rm \
+      -v "${WHEEL_DIR}:/dist" \
+      "${CONTAINER_IMAGE}" \
+      bash -c "uv run --isolated --with twine twine check /dist/tpu_raiden_torch-*.whl" || {
+        echo "WARNING: tpu_raiden wheel failed Twine metadata check. Removing broken wheel so torch_tpu upload proceeds..." >&2
+        rm -f "${WHEEL_DIR}"/tpu_raiden_torch-*.whl
+      }
+  fi
+else
+  echo "WARNING: RAIDEN_DIR/ci/build_wheel.sh not found at '${RAIDEN_DIR}'. Skipping tpu_raiden wheel build." >&2
+fi
+# ==============================================================================
 
 echo "===> Kokoro wheel build successful!"

@@ -34,7 +34,7 @@ if [[ "${UPLOAD_WHEEL_TO_AR}" == "true" ]]; then
       uv run --isolated \
         --with twine \
         --with keyrings.google-artifactregistry-auth \
-        twine upload --repository-url https://us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-testing-registry/ /dist/torch_tpu-*.whl
+        twine upload --repository-url https://us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-testing-registry/ /dist/*.whl
     "
   echo "===> Wheels uploaded successfully to Artifact Registry!"
 fi
