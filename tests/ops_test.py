@@ -2884,6 +2884,11 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_lu_factor_ex(self):
     self.do_test_op(
         "linalg.lu_factor_ex",
+        # TODO(b/528412744): Unskip float64 and complex128 when libtpu has been upreved.
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=unsupported 64-bit dtypes in older libtpu
+            torch.float64,
+            torch.complex128,
+        ),
         skip_if=_linalg_lu_without_pivot_gpu,
     )
 
