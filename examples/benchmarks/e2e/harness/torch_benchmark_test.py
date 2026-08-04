@@ -37,7 +37,8 @@ from examples.benchmarks.e2e.harness import metrics as metrics_lib
 from examples.benchmarks.e2e.harness import mode as mode_lib
 from examples.benchmarks.e2e.harness import models
 from examples.benchmarks.e2e.harness import registry as registry_lib
-from examples.benchmarks.e2e.harness import step_fn as step_fn_lib
+from examples.benchmarks.e2e.harness import step_lib
+from examples.benchmarks.e2e.harness import steps
 from examples.benchmarks.e2e.harness import target as target_lib
 from examples.benchmarks.e2e.harness import torch_device_ops
 
@@ -50,6 +51,7 @@ _PLATFORM = target_lib.platform_from_env()
 
 # Import all models and trigger registration of benchmarks.
 failures = discovery_lib.import_submodules(models)
+failures = discovery_lib.import_submodules(steps)
 
 
 def _cases() -> (
@@ -71,7 +73,7 @@ def _make_run_step(
     spec: registry_lib.BenchmarkSpec,
     ctx: context_lib.Context,
     mode: common.RunMode,
-) -> measure_lib.RunStep:
+) -> step_lib.Stepper:
   """Collapse every axis into one bound zero-arg callable.
 
   Seeding lives here before construction so deterministic init is a harness
@@ -79,19 +81,14 @@ def _make_run_step(
   than passed through.
   """
   common.seed_rngs()
-  model, input_args, input_kwargs, optimizer = spec.factory(ctx)
-  step = step_fn_lib.resolve_step_fn(spec.step_fn, **spec.step_fn_kwargs)
+  runner = step_lib.resolve_stepper(spec.stepper, **spec.stepper_kwargs)
+  runner.init_with_benchmark_args(*spec.factory(ctx))
 
   if common.is_torch_compile(mode):
     compile_config = spec.compile_config or compile_lib.CompileConfig()
-    if compile_config.scope == compile_lib.Scope.MODEL:
-      model = compile_config.apply(model, ctx.target)
-    elif compile_config.scope == compile_lib.Scope.STEP:
-      step = compile_config.apply(step, ctx.target)
-    else:
-      raise ValueError(f"Unsupported compile scope: {compile_config.scope}")
+    runner.compile(compile_config, ctx.target)
 
-  return lambda: step(model, input_args, input_kwargs, optimizer)
+  return runner
 
 
 class BenchmarkTest(parameterized.TestCase):

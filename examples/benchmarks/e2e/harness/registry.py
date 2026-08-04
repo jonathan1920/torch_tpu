@@ -17,7 +17,7 @@
 A benchmark wrapped in a @register_benchmark decorator is added to a global
 dictionary. The spec holds only properties of a benchmark:
 
-    factory, step_fn (+ kwargs), topology, requires_kind
+    factory, step (+ kwargs), topology, requires_kind
 
 Things that are properties of the run like target/platform, run scope, eager
 mode vs compiled, profiling are chosen per invocation. This lets one
@@ -33,7 +33,7 @@ import dataclasses
 from typing import Any, Callable, Dict, Mapping, Sequence, Tuple
 
 from examples.benchmarks.e2e.harness import compile as compile_lib
-from examples.benchmarks.e2e.harness import step_fn as step_fn_lib
+from examples.benchmarks.e2e.harness import step_lib
 from examples.benchmarks.e2e.harness import target as target_lib
 
 # factory returns (model, input_args, input_kwargs, optimizer | None)
@@ -51,8 +51,8 @@ class BenchmarkSpec:
 
   name: str
   factory: Factory
-  step_fn: step_fn_lib.StepFn
-  step_fn_kwargs: Mapping[str, Any] = dataclasses.field(default_factory=dict)
+  stepper: step_lib.StepperType
+  stepper_kwargs: Mapping[str, Any] = dataclasses.field(default_factory=dict)
   dtype: target_lib.DType = target_lib.DType.BF16
   compile_config: compile_lib.CompileConfig | None = None
 
@@ -61,24 +61,24 @@ REGISTRY: Dict[str, BenchmarkSpec] = {}
 
 
 def register_benchmark(
-    step_fn: step_fn_lib.StepFn,
-    step_fn_kwargs: Mapping[str, Any] | None = None,
+    stepper: step_lib.StepperType,
+    stepper_kwargs: Mapping[str, Any] | None = None,
     dtype: target_lib.DType = target_lib.DType.BF16,
     compile_config: compile_lib.CompileConfig | None = None,
 ) -> Callable[[Factory], Factory]:
   """Decorator to wrap a benchmark factory and add its spec to REGISTRY.
 
   Args:
-    step_fn: The step function type to use for this benchmark.
-    step_fn_kwargs: Optional keyword arguments to pass when resolving step_fn.
+    stepper: The stepper type to use for this benchmark.
+    stepper_kwargs: Optional keyword arguments to pass when resolving stepper.
     dtype: The data type for running the benchmark (defaults to BF16).
     compile_config: Optional compile configuration (defaults to None).
 
   Returns:
     A decorator that registers the factory function and returns it unchanged.
   """
-  if step_fn_kwargs is None:
-    step_fn_kwargs = {}
+  if stepper_kwargs is None:
+    stepper_kwargs = {}
 
   def deco(factory: Factory) -> Factory:
     key = getattr(factory, "__name__", str(factory))
@@ -90,8 +90,8 @@ def register_benchmark(
     REGISTRY[key] = BenchmarkSpec(
         name=key,
         factory=factory,
-        step_fn=step_fn,
-        step_fn_kwargs=dict(step_fn_kwargs),
+        stepper=stepper,
+        stepper_kwargs=dict(stepper_kwargs),
         dtype=dtype,
         compile_config=compile_config,
     )

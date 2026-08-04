@@ -18,15 +18,14 @@ import contextlib
 import dataclasses
 import gc
 import time
-from typing import Any, Callable, Iterator
+from typing import Iterator
 
 from absl import flags
 from absl import logging
 import numpy as np
 from examples.benchmarks.e2e.harness import device_ops as device_ops_lib
 from examples.benchmarks.e2e.harness import metrics
-
-RunStep = Callable[[], Any]
+from examples.benchmarks.e2e.harness import step_lib
 
 MAX_WARMUP_STEPS = flags.DEFINE_integer(
     "max_warmup_steps", 20, "Maximum number of warmup steps.", lower_bound=0
@@ -115,7 +114,7 @@ def _get_warmup_overhead(timings: np.ndarray, num_warmup_steps: int) -> float:
 
 
 def _warmup_run(
-    run_step: RunStep,
+    step_fn: step_lib.StepFn,
     device_ops: device_ops_lib.DeviceOps,
     *,
     name: str,
@@ -150,7 +149,7 @@ def _warmup_run(
   with gc_disabled():
     for step in range(MAX_WARMUP_STEPS.value):
       start_time = time.perf_counter()
-      out = run_step()
+      out = step_fn()
       device_ops.await_result(out)
       timings[step] = time.perf_counter() - start_time
       compile_count[step] = device_ops.compile_count()
@@ -174,7 +173,7 @@ def _warmup_run(
 
 
 def _post_warmup_run(
-    run_step: RunStep,
+    step_fn: step_lib.StepFn,
     device_ops: device_ops_lib.DeviceOps,
     *,
     name: str,
@@ -203,7 +202,7 @@ def _post_warmup_run(
   with gc_disabled():
     for step in range(POST_WARMUP_STEPS.value):
       start_time = time.perf_counter()
-      out = run_step()
+      out = step_fn()
       device_ops.await_result(out)
       elapsed = time.perf_counter() - start_time
       timings[step] = elapsed
@@ -226,26 +225,29 @@ def _post_warmup_run(
 
 
 def measure(
-    run_step: RunStep,
+    stepper: step_lib.Stepper,
     device_ops: device_ops_lib.DeviceOps,
     *,
     name: str,
 ) -> metrics.PerformanceMetrics:
-
   result_kwargs = {}
   start_time = time.perf_counter()
+
+  stepper.pre_warmup_init()
+
   result_kwargs |= dataclasses.asdict(
       _warmup_run(
-          run_step,
+          stepper.get_step_fn(),
           device_ops,
           name=name,
       )
   )
 
   if _do_post_warmup():
+    stepper.post_warmup_hook()
     result_kwargs |= dataclasses.asdict(
         _post_warmup_run(
-            run_step,
+            stepper.get_step_fn(),
             device_ops,
             name=name,
         )

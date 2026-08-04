@@ -24,19 +24,21 @@ package(
 )
 
 torch_tpu_py_library(
-    name = "models",
+    name = "steps",
     srcs = [
         "__init__.py",
-        "llama.py",
+        "common.py",
+        "decode.py",
+        "forward.py",
+        "train.py",
     ],
     allow_multiple_srcs = True,
     deps = [
-        "//examples/benchmarks/e2e/harness:context",
-        "//examples/benchmarks/e2e/harness:registry",
+        "//examples/benchmarks/e2e/harness:compile",
+        "//examples/benchmarks/e2e/harness:loss",
         "//examples/benchmarks/e2e/harness:step_lib",
-        "//examples/benchmarks/e2e/harness:torch_device_ops",
+        "//examples/benchmarks/e2e/harness:target",
         "//shims/torch:pytorch",
-        "//tests:module_registry",
     ],
 )
 
