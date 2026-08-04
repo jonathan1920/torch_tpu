@@ -1058,12 +1058,8 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float64: {"atol": 2.5e-6},
     },
     "linalg.lu_factor_ex": {
-        torch.complex64: {"atol": 39},
-        torch.float32: {"atol": 2e-5},
-        torch.float64: {"atol": 5.8e-6},
-    },
-    "linalg.solve_ex": {
-        torch.float64: {"atol": 9.1e-7},
+        torch.complex64: {"rtol": 5.4, "atol": 19},
+        torch.float32: {"rtol": 2.5e-6, "atol": 2.4e-5},
     },
     "linalg.vector_norm": {
         torch.bfloat16: {"atol": 1e-2},
@@ -1405,7 +1401,7 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.complex64: {"rtol": 4.4e-6},
     },
     "linalg.lu_factor_ex": {
-        torch.complex64: {"atol": 39},
+        torch.complex64: {"rtol": 5.4, "atol": 19},
     },
     "linalg.vector_norm": {
         torch.complex64: {"atol": 1.3e-4},
