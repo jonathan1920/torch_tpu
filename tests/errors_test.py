@@ -864,6 +864,62 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.mm(t1, t2)
 
+  def test_native_batch_norm_complex(self):
+    """Tests native_batch_norm and native_batch_norm_backward with complex dtype."""
+    input_dtype = torch.complex64
+    stats_dtype = torch.float32
+    n, c, h, w = 2, 4, 4, 4
+    input_val = torch.randn(n, c, h, w, dtype=input_dtype, device=et.device())
+    weight = torch.randn(c, dtype=stats_dtype, device=et.device())
+    bias = torch.randn(c, dtype=stats_dtype, device=et.device())
+    running_mean = torch.randn(c, dtype=stats_dtype, device=et.device())
+    running_var = torch.rand(c, dtype=stats_dtype, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_batch_norm(): expected input to be floating point, got complex64""",
+        gpu=re.compile(
+            r"(native_batch_norm: expected input to be floating point, got"
+            r" complex64|\".*batch_norm.*\" not implemented for"
+            r" 'ComplexFloat')"
+        ),
+    ):
+      torch.ops.aten.native_batch_norm(
+          input_val,
+          weight,
+          bias,
+          running_mean,
+          running_var,
+          training=True,
+          momentum=0.1,
+          eps=1e-5,
+      )
+
+    grad_out = torch.randn(n, c, h, w, dtype=input_dtype, device=et.device())
+    save_mean = torch.randn(c, dtype=stats_dtype, device=et.device())
+    save_invstd = torch.rand(c, dtype=stats_dtype, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_batch_norm_backward(): expected input to be floating point, got complex64""",
+        gpu=re.compile(
+            r"(native_batch_norm_backward: expected input to be floating point,"
+            r" got complex64|\".*batch_norm.*\" not implemented for"
+            r" 'ComplexFloat')"
+        ),
+    ):
+      torch.ops.aten.native_batch_norm_backward(
+          grad_out,
+          input_val,
+          weight,
+          running_mean,
+          running_var,
+          save_mean,
+          save_invstd,
+          train=True,
+          eps=1e-5,
+          output_mask=[True, True, True],
+      )
+
   def test_nll_loss_unsupported_input_dtype(self):
     t = torch.ones(3, 5, device=et.device(), dtype=torch.int32)
     target = torch.tensor([1, 0, 4], device=et.device(), dtype=torch.long)

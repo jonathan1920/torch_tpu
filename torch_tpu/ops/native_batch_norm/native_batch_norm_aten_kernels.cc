@@ -19,6 +19,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -27,8 +28,10 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Resize.h"
 #include "absl/log/absl_log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/common/aten_utils.h"
@@ -37,6 +40,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -49,11 +53,21 @@ namespace torch_tpu {
 
 namespace {
 
+absl::Status CheckIsFloating(const at::Tensor& tensor,
+                             const std::string_view arg_name) {
+  TT_RET_CHECK(c10::isFloatingType(tensor.scalar_type()),
+               error::kInvalidArgument)
+      << "expected " << arg_name << " to be floating point, got "
+      << ToString(tensor.scalar_type());
+  return absl::OkStatus();
+}
+
 absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     const at::Tensor& input, std::optional<at::Tensor> weight,
     std::optional<at::Tensor> bias, std::optional<at::Tensor> running_mean,
     std::optional<at::Tensor> running_variance, bool training, double momentum,
     double eps, OpParamCacheKeys param_keys) {
+  TT_RETURN_IF_ERROR(CheckIsFloating(input, /*arg_name=*/"input"));
   ABSL_VLOG(1) << "TpuBatchNorm weight: " << !!weight << ", bias: " << !!bias
                << ", running_mean: " << !!running_mean
                << ", running_variance: " << !!running_variance
@@ -100,7 +114,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     auto op_builder = [training, momentum, eps,
                        acc_dtype](FixedSizeSpan<mlir::MlirOp, 4> inputs) {
       auto& [input, bias, running_mean, running_variance] = inputs;
-      return BuildBatchNorm(input, /*weight=*/{}, bias, running_mean,
+      return BuildBatchNorm(input, /*weight_opt=*/{}, bias, running_mean,
                             running_variance, training, momentum, eps,
                             acc_dtype);
     };
@@ -116,7 +130,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     auto op_builder = [training, momentum, eps,
                        acc_dtype](FixedSizeSpan<mlir::MlirOp, 4> inputs) {
       auto& [input, weight, running_mean, running_variance] = inputs;
-      return BuildBatchNorm(input, weight, /*bias=*/{}, running_mean,
+      return BuildBatchNorm(input, weight, /*bias_opt=*/{}, running_mean,
                             running_variance, training, momentum, eps,
                             acc_dtype);
     };
@@ -131,9 +145,9 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     auto op_builder = [training, momentum, eps,
                        acc_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
       auto& [input, running_mean, running_variance] = inputs;
-      return BuildBatchNorm(input, /*weight=*/{}, /*bias=*/{}, running_mean,
-                            running_variance, training, momentum, eps,
-                            acc_dtype);
+      return BuildBatchNorm(input, /*weight_opt=*/{}, /*bias_opt=*/{},
+                            running_mean, running_variance, training, momentum,
+                            eps, acc_dtype);
     };
     TT_ASSIGN_OR_RETURN(
         results,
@@ -144,9 +158,10 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
                            .op_param_cache_keys = std::move(param_keys)})));
   } else if (!weight && !bias && !running_mean && !running_variance) {
     auto op_builder = [training, momentum, eps, acc_dtype](mlir::MlirOp input) {
-      return BuildBatchNorm(input, /*weight=*/{}, /*bias=*/{},
-                            /*running_mean=*/{}, /*running_variance=*/{},
-                            training, momentum, eps, acc_dtype);
+      return BuildBatchNorm(input, /*weight_opt=*/{}, /*bias_opt=*/{},
+                            /*running_mean_opt=*/{},
+                            /*running_variance_opt=*/{}, training, momentum,
+                            eps, acc_dtype);
     };
     TT_ASSIGN_OR_RETURN(
         results,
@@ -158,9 +173,9 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     auto op_builder = [training, momentum, eps,
                        acc_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
       auto& [input, weight, bias] = inputs;
-      return BuildBatchNorm(input, weight, bias,
-                            /*running_mean=*/{}, /*running_variance=*/{},
-                            training, momentum, eps, acc_dtype);
+      return BuildBatchNorm(input, weight, bias, /*running_mean_opt=*/{},
+                            /*running_variance_opt=*/{}, training, momentum,
+                            eps, acc_dtype);
     };
     TT_ASSIGN_OR_RETURN(
         results,
@@ -192,6 +207,9 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNormBackward(
     std::optional<at::Tensor> save_mean, std::optional<at::Tensor> save_invstd,
     bool training, double eps, std::array<bool, 3> output_mask,
     OpParamCacheKeys param_keys) {
+  TT_RETURN_IF_ERROR(CheckIsFloating(input, /*arg_name=*/"input"));
+  TT_RETURN_IF_ERROR(CheckIsFloating(grad_out, /*arg_name=*/"grad_out"));
+
   std::vector<at::Tensor> inputs;
   inputs.reserve(7);  // Max inputs
   inputs.push_back(grad_out);

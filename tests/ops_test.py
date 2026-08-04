@@ -3242,7 +3242,6 @@ class TestOps(TorchTpuTestBase):
                 torch.float64,
             )
         },
-        skip_if=_batch_norm_complex64_compiled_gpu,
     )
 
   def test_native_batch_norm_legit(self):
@@ -3261,7 +3260,6 @@ class TestOps(TorchTpuTestBase):
                 torch.float64,
             ),
         },
-        skip_if=_batch_norm_complex64_compiled_gpu,
     )
 
   def test_native_group_norm(self):
