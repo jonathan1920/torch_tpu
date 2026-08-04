@@ -34,6 +34,7 @@ torch_tpu_py_library(
     deps = [
         "//shims/absl_py/flags",
         "//shims/torch:pytorch",
+        "//torch_tpu",
     ],
 )
 
@@ -540,6 +541,7 @@ torch_tpu_py_library(
     deps = [
         ":benchmark_utils",
         ":ragged_moe",
+        "//examples/gemma4:model",
         "//shims/torch:pytorch",
         "//tests:module_registry",
         "@pypi//fairscale",

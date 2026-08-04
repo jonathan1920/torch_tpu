@@ -329,6 +329,13 @@ class Gemma4Attention(nn.Module):
           is_causal=True,
           local_window_size=self.config.sliding_window - 1,
           enable_gqa=enable_gqa,
+          block_q=1024,
+          block_kv=1024,
+          block_dkv=1024,
+          block_kv_compute=1024,
+          block_q_dkv=1024,
+          block_kv_dkv=1024,
+          block_kv_dkv_compute=1024,
       )
       attn_output = (
           attn_output.transpose(1, 2).contiguous().view(bsz, seq_len, -1)
@@ -630,6 +637,13 @@ class Gemma4Model(nn.Module):
       self.audio_proj = Gemma4MultiModalProjector(
           config.audio_proj_dim, config.hidden_size
       )
+    self.gradient_checkpointing = False
+
+  def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
+    self.gradient_checkpointing = True
+    if gradient_checkpointing_kwargs is None:
+      gradient_checkpointing_kwargs = {'use_reentrant': False}
+    self._gradient_checkpointing_kwargs = gradient_checkpointing_kwargs
 
   def forward(
       self,
@@ -666,12 +680,25 @@ class Gemma4Model(nn.Module):
             self.config.use_bidirectional_attention == 'vision'
             and layer.self_attn.is_sliding
         )
-      hidden_states = layer(
-          hidden_states,
-          position_ids,
-          attention_mask,
-          skip_sliding_mask=layer_skip_sliding_mask,
-      )
+      if getattr(self, 'gradient_checkpointing', False) and self.training:
+        ckpt_kwargs = getattr(
+            self, '_gradient_checkpointing_kwargs', {'use_reentrant': False}
+        )
+        hidden_states = torch.utils.checkpoint.checkpoint(
+            layer,
+            hidden_states,
+            position_ids,
+            attention_mask,
+            skip_sliding_mask=layer_skip_sliding_mask,
+            **ckpt_kwargs,
+        )
+      else:
+        hidden_states = layer(
+            hidden_states,
+            position_ids,
+            attention_mask,
+            skip_sliding_mask=layer_skip_sliding_mask,
+        )
 
     hidden_states = self.norm(hidden_states)
 
@@ -684,6 +711,11 @@ class Gemma4ForCausalLM(nn.Module):
   def __init__(self, config: Gemma4Config):
     super().__init__()
     self.model = Gemma4Model(config)
+
+  def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
+    self.model.gradient_checkpointing_enable(
+        gradient_checkpointing_kwargs=gradient_checkpointing_kwargs
+    )
 
   def forward(
       self,

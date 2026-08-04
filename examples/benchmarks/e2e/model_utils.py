@@ -2133,3 +2133,63 @@ def gemma_ragged_moe_model_builder(
     example_inputs.pop("pixel_values", None)
     example_inputs.pop("image_position_ids", None)
   return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
+def gemma4_custom_standalone_model_builder(
+    model_and_input_args: Any,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    is_training: bool = False,
+) -> ModelAndInput:
+  """Builder for the Gemma 4 custom standalone SWA model."""
+  from examples.gemma4 import model as gemma4_standalone_model
+
+  model_preset = model_and_input_args.custom_kwargs.get("preset", "e2b")
+  num_layers = model_and_input_args.custom_kwargs.get("num_layers", 35)
+  vocab_size = model_and_input_args.custom_kwargs.get("vocab_size", 262144)
+
+  if model_preset == "e2b":
+    config = gemma4_standalone_model.Gemma4Config(
+        vocab_size=vocab_size,
+        hidden_size=1536,
+        intermediate_size=6144,
+        num_hidden_layers=num_layers,
+        num_attention_heads=8,
+        num_key_value_heads=1,
+        head_dim=256,
+        sliding_window=min(512, model_and_input_args.sequence_length),
+        use_bidirectional_attention=None,
+    )
+  else:
+    config = gemma4_standalone_model.Gemma4Config(
+        vocab_size=vocab_size,
+        hidden_size=512,
+        intermediate_size=2048,
+        num_hidden_layers=num_layers,
+        num_attention_heads=8,
+        num_key_value_heads=2,
+        head_dim=64,
+        sliding_window=1024,
+        use_bidirectional_attention=None,
+    )
+
+  torch.manual_seed(1234)
+  model = (
+      gemma4_standalone_model.Gemma4ForCausalLM(config)
+      .to(weights_dtype)
+      .to(device)
+  )
+
+  bs = model_and_input_args.batch_size
+  seq_len = model_and_input_args.sequence_length
+
+  def _create_input(b: int, s: int):
+    torch.manual_seed(1234)
+    input_ids = torch.randint(0, vocab_size, (b, s), device=device)
+    if is_training:
+      labels = torch.randint(0, vocab_size, (b, s), device=device)
+      return {"input_ids": input_ids, "labels": labels}
+    return input_ids
+
+  example_inputs = _generate_inputs(bs, seq_len, _create_input)
+  return ModelAndInput(model=model, example_inputs=example_inputs)

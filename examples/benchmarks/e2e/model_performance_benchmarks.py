@@ -19,6 +19,7 @@ import functools
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch.multiprocessing as mp
+import torch_tpu
 from examples.benchmarks.e2e import benchmark_function_db
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import common
@@ -32,6 +33,7 @@ _HF_LLAMA_3_2_1B_BENCHMARK_NAME = "hf_llama_3_2_1b"
 _HF_GEMMA_3_270M_BENCHMARK_NAME = "hf_gemma_3_270m"
 _HF_GEMMA_4_31B_BENCHMARK_NAME = "hf_gemma_4_31b"
 _HF_GEMMA_4_E2B_BENCHMARK_NAME = "hf_gemma_4_e2b"
+_GEMMA_4_CUSTOM_STANDALONE_BENCHMARK_NAME = "gemma_4_custom_standalone"
 _META_LLAMA_3_2_8B_BENCHMARK_NAME = "meta_llama_3_2_8b"
 _HF_QWEN3_1_7B_BENCHMARK_NAME = "hf_qwen3_1_7b"
 _HF_GPT_OSS_20B_BENCHMARK_NAME = "hf_gpt_oss_20b"
@@ -622,6 +624,35 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
 
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_gemma_4_custom_standalone_forward(self, run_mode):
+    """Tests forward pass of custom standalone Gemma4 SWA model."""
+    if self._is_torchax_backend():
+      self.skipTest(
+          "Gemma 4 custom standalone SWA is not supported on TorchAX."
+      )
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.INTERNAL_MODEL,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="gemma-4-custom-standalone",
+            sequence_length=2048,
+            batch_size=8,
+            custom_kwargs={
+                "preset": "e2b",
+            },
+        ),
+        model_and_input_factory=model_utils.gemma4_custom_standalone_model_builder,
+        eval_factory=benchmark_function_db.simple_eval_factory,
+    )
+    self.run_performance_benchmark_test(
+        config, _GEMMA_4_CUSTOM_STANDALONE_BENCHMARK_NAME
+    )
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_mllama_11b_forward(self, run_mode):
     """Tests the forward pass of mLlama-11B-Vision."""
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -1005,6 +1036,39 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
+  def test_gemma_4_custom_standalone_train_1_step(self, run_mode):
+    """Tests training of custom standalone Gemma4 SWA model."""
+    if self._is_torchax_backend():
+      self.skipTest(
+          "Gemma 4 custom standalone SWA is not supported on TorchAX."
+      )
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.INTERNAL_MODEL,
+        run_mode=run_mode,
+        is_training=True,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="gemma-4-custom-standalone",
+            sequence_length=256,
+            batch_size=2,
+            custom_kwargs={
+                "preset": "e2b",
+                "num_layers": 35,
+            },
+        ),
+        model_and_input_factory=model_utils.gemma4_custom_standalone_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.generic_train_factory,
+            grad_accumulation_steps=1,
+        ),
+    )
+    self.run_performance_benchmark_test(
+        config, _GEMMA_4_CUSTOM_STANDALONE_BENCHMARK_NAME
+    )
 
   # ============================================================================
 
