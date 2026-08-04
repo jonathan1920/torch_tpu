@@ -952,6 +952,7 @@ torch_tpu_py_test(
     name = "ops_unit_test",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_unit_test.py"],
+    args = ["--test_mode=torch_tpu_vs_cpu"],
     main = "ops_unit_test.py",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 20,
@@ -984,6 +985,7 @@ torch_tpu_py_test(
     name = "ops_unit_test_v6e",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_unit_test.py"],
+    args = ["--test_mode=torch_tpu_vs_cpu"],
     main = "ops_unit_test.py",
     nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
     notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
@@ -1050,6 +1052,7 @@ torch_tpu_py_test(
     name = "ops_unit_test_tier3_cache",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_unit_test.py"],
+    args = ["--test_mode=torch_tpu_vs_cpu"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
     },
@@ -1084,6 +1087,7 @@ torch_tpu_py_test(
     name = "ops_unit_test_tier3_cache_no_backup",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_unit_test.py"],
+    args = ["--test_mode=torch_tpu_vs_cpu"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK": "0",

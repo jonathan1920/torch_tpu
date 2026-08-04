@@ -1422,7 +1422,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           op_testing.OpInput(FakeSample("s", torch.zeros(1), (), {})),
           op_testing.OpOutput(torch.zeros(1)),
       )
-      op_testing._GOLDEN_GPU_DATA["add"] = {torch.float32: [fake_sample]}
+      op_testing._GOLDEN_GPU_DATA[self._testMethodName] = {
+          op_testing.OpVariant.BASE.value: {torch.float32: [fake_sample]}
+      }
       res = self._get_golden_input_output_pairs(
           op=op,
           dtype=torch.float32,
@@ -9599,11 +9601,6 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
   """Tests for the op_testing framework itself."""
 
   def test_accuracy_runs_use_different_seeds(self):
-    if self.golden_device_type != "cpu":
-      self.skipTest(
-          "Only runs in CPU mode where inputs are generated dynamically."
-      )
-
     abs_op = next(op for op in op_db if op.name == "abs")
 
     # 1. Verify uniqueness within a single run (loop)
@@ -9640,11 +9637,6 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
     self.assertFalse(all_equal, "Inputs within the loop were identical!")
 
   def test_accuracy_runs_are_unique_across_runs(self):
-    if self.golden_device_type != "cpu":
-      self.skipTest(
-          "Only runs in CPU mode where inputs are generated dynamically."
-      )
-
     abs_op = next(op for op in op_db if op.name == "abs")
 
     # Run with base seed 1234
@@ -9683,11 +9675,6 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
     )
 
   def test_accuracy_runs_are_deterministic_with_same_seed(self):
-    if self.golden_device_type != "cpu":
-      self.skipTest(
-          "Only runs in CPU mode where inputs are generated dynamically."
-      )
-
     abs_op = next(op for op in op_db if op.name == "abs")
 
     # Run 1 with base seed 1234
@@ -9745,11 +9732,6 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
     self.assert_close_tpu_vs_cpu(test_fn)
 
   def test_float4_e2m1fn_x2_sample_generation(self):
-    if self.golden_device_type != "cpu":
-      self.skipTest(
-          "Only need to verify sample generation in one mode (e.g. CPU)."
-      )
-
     abs_op = next(op for op in op_db if op.name == "abs")
     pairs = self._get_golden_input_output_pairs(
         op=abs_op,
