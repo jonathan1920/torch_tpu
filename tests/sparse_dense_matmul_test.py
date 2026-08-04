@@ -20,6 +20,7 @@ import numpy as np
 import torch
 from torch_tpu._internal.utils.hardware import get_tpu_version
 from torch_tpu._internal.utils.hardware import TpuVersion
+from torch_tpu._internal.utils.utils import assert_close
 from torch_tpu.ops.experimental.sparse_dense_matmul import preprocessing_config_pb2
 from tests import op_testing
 
@@ -29,7 +30,28 @@ def preprocess_sparse_dense_matmul_input(
     input_offsets: dict[str, list[torch.Tensor]],
     stacked_tables_config: dict[str, list[dict[str, Any]]],
     options: dict[str, Any] | None = None,
-) -> dict[str, dict[str, torch.Tensor]]:
+) -> tuple[
+    dict[str, dict[str, torch.Tensor]], dict[str, dict[str, torch.Tensor]]
+]:
+  """Preprocesses sparse dense matmul input tensors into CSR buffers and stats.
+
+  Args:
+    input_indices: Dict mapping table name to list of index tensors.
+    input_offsets: Dict mapping table name to list of offset tensors.
+    stacked_tables_config: Dict specifying configuration for stacked tables.
+    options: Optional dict specifying preprocessing options.
+
+  Returns:
+    A tuple of (outputs, stats_dict):
+      outputs: Dict[table_name, Dict[buffer_name, Tensor]] containing CSR
+        buffers ("row_pointers", "embedding_ids", "sample_ids", "gains").
+      stats_dict: Dict[stat_name, Dict[table_name, Tensor]] containing:
+        - "max_ids_per_partition": Max ID count per SparseCore partition.
+        - "max_unique_ids_per_partition": Max unique ID count per partition.
+        - "required_buffer_sizes": Required buffer size per SparseCore
+        partition.
+        - "dropped_id_count": Count of dropped IDs per table.
+  """
   config_proto = preprocessing_config_pb2.StackedTablesConfig()
   for table_name, features in stacked_tables_config.items():
     feature_list = config_proto.tables[table_name]
@@ -156,7 +178,7 @@ class SparseDenseMatmulTest(
         "allow_id_dropping": True,
     }
 
-    outputs = preprocess_sparse_dense_matmul_input(
+    outputs, _ = preprocess_sparse_dense_matmul_input(
         input_indices, input_offsets, stacked_tables_config, options
     )
 
@@ -239,7 +261,7 @@ class SparseDenseMatmulTest(
         "allow_id_dropping": True,
     }
 
-    outputs = preprocess_sparse_dense_matmul_input(
+    outputs, _ = preprocess_sparse_dense_matmul_input(
         input_indices, input_offsets, stacked_tables_config, options
     )
 
@@ -259,6 +281,64 @@ class SparseDenseMatmulTest(
     self.assertEqual(e_ids.dtype, torch.int32)
     self.assertEqual(s_ids.dtype, torch.int32)
     self.assertEqual(gains.dtype, torch.float32)
+
+  def test_input_preprocessing_stats(self):
+    """Tests that preprocess_sparse_dense_matmul_input returns stats dict."""
+    val_f0 = torch.arange(20, dtype=torch.int32)
+    off_f0 = torch.tensor([0, 10, 20], dtype=torch.int32)
+
+    input_indices = {"table_0": [val_f0]}
+    input_offsets = {"table_0": [off_f0]}
+
+    stacked_tables_config = {
+        "table_0": [{
+            "name": "f0",
+            "feature_index": 0,
+            "max_ids_per_partition": 2,
+            "max_unique_ids_per_partition": 2,
+            "row_offset": 0,
+            "col_offset": 0,
+            "col_shift": 0,
+            "batch_size": 2,
+            "suggested_coo_buffer_size_per_device": 32,
+            "combiner": "sum",
+        }]
+    }
+
+    options = {
+        "local_device_count": 1,
+        "global_device_count": 1,
+        "num_sc_per_device": _get_num_sc_per_device(),
+        "allow_id_dropping": True,
+    }
+
+    outputs, stats = preprocess_sparse_dense_matmul_input(
+        input_indices, input_offsets, stacked_tables_config, options
+    )
+
+    self.assertIn("table_0", outputs)
+    self.assertIn("dropped_id_count", stats)
+    self.assertIn("max_ids_per_partition", stats)
+    self.assertIn("max_unique_ids_per_partition", stats)
+    self.assertIn("required_buffer_sizes", stats)
+
+    num_sc = _get_num_sc_per_device()
+    assert_close(
+        stats["dropped_id_count"]["table_0"],
+        torch.tensor([12], dtype=torch.int32),
+    )
+    assert_close(
+        stats["max_ids_per_partition"]["table_0"],
+        torch.full((num_sc,), 10 // num_sc, dtype=torch.int32),
+    )
+    assert_close(
+        stats["max_unique_ids_per_partition"]["table_0"],
+        torch.full((num_sc,), 10 // num_sc, dtype=torch.int32),
+    )
+    assert_close(
+        stats["required_buffer_sizes"]["table_0"],
+        torch.full((num_sc,), 32 // num_sc, dtype=torch.int32),
+    )
 
   def _get_inputs(self, device):
     row_pointers = torch.tensor(
@@ -1417,6 +1497,7 @@ class SparseDenseMatmulTest(
               f" Expected: {expected_vel_np[r]}"
           ),
       )
+
 
 if __name__ == "__main__":
   absltest.main()
