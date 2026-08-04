@@ -1192,14 +1192,13 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float32: {"rtol": 6.7e-4, "atol": 6.6e-4},
     },
     "nn.functional.hardsigmoid": {
-        torch.bfloat16: {"rtol": 2.6e-1, "atol": 4e-3},
-        torch.float16: {"atol": 6.2e-5},
+        torch.bfloat16: {"atol": 4.7e-3},
     },
     "nn.functional.logsigmoid": {
         torch.float32: {"atol": 3.3e-5},
     },
     "nn.functional.mse_loss": {
-        torch.float32: {"atol": 2.6e-4},
+        torch.float32: {"rtol": 2.3e-6},
     },
     "nn.functional.nll_loss": {
         torch.float16: {"atol": 1e-1},
@@ -1490,7 +1489,7 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.float16: {"atol": 2.5e-1},
     },
     "nn.functional.mse_loss": {
-        torch.float32: {"atol": 2.6e-4},
+        torch.float32: {"rtol": 2.3e-6},
     },
     "nn.functional.nll_loss": {
         torch.bfloat16: {"rtol": 5e-2, "atol": 0},
