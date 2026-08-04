@@ -3268,7 +3268,7 @@ class TestOps(TorchTpuTestBase):
         # complex dtypes (it should fail).
         # TODO: b/470458807 look into why native_group_norm() returns NaN values
         # when using float16 dtype, while GPU succeeds.
-        exclude_dtypes=INTEGRAL_DTYPES
+        exclude_dtypes=(torch.uint8, torch.int8, torch.int16)
         + (torch.complex64,)
         + (torch.float16,)
         + (torch.float64,),
@@ -3357,7 +3357,7 @@ class TestOps(TorchTpuTestBase):
         #    to not contain X64 element types, XLA encountered an HLO for which
         #    this rewriting is not implemented: %convolution [...]"
         exclude_dtypes=COMPLEX_DTYPES
-        + (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64),
+        + (torch.uint8, torch.int8, torch.int16, torch.int32),
     )
 
   def test_nn_functional_conv2d(self):
@@ -3366,7 +3366,7 @@ class TestOps(TorchTpuTestBase):
         # TODO: fix nn.functional.conv*d() failing with integral and complex
         # dtypes. See comments in test_nn_functional_conv1d.
         exclude_dtypes=COMPLEX_DTYPES
-        + (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64),
+        + (torch.uint8, torch.int8, torch.int16, torch.int32),
     )
 
   # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
@@ -3398,7 +3398,7 @@ class TestOps(TorchTpuTestBase):
         #    to not contain X64 element types, XLA encountered an HLO for which
         #    this rewriting is not implemented: %convolution [...]"
         exclude_dtypes=COMPLEX_DTYPES
-        + (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64),
+        + (torch.uint8, torch.int8, torch.int16, torch.int32),
     )
 
   # TODO(gleasonk): why does compilation time out on this input?
@@ -3424,7 +3424,8 @@ class TestOps(TorchTpuTestBase):
         # TODO: fix relu() succeeding with integral dtypes (it
         # should fail).  xla_cuda has no support for complex64::min()
         # xla_cuda: https://github.com/openxla/stablehlo/issues/560
-        exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
+        exclude_dtypes=(torch.uint8, torch.int8, torch.int16, torch.bool)
+        + COMPLEX_DTYPES,
     )
 
   def test_nn_functional_rms_norm(self):
@@ -3443,9 +3444,7 @@ class TestOps(TorchTpuTestBase):
     with attention.sdpa_kernel(attention.SDPBackend.MATH):
       self.do_test_op(
           "nn.functional.scaled_dot_product_attention",
-          # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
-          # but on tpu it succeeds. Remove this once we fix bmm on tpu.
-          exclude_dtypes=INTEGRAL_DTYPES + (torch.int64,),
+          exclude_dtypes=(torch.uint8, torch.int8, torch.int16),
       )
 
   # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
@@ -3465,9 +3464,6 @@ class TestOps(TorchTpuTestBase):
     ):
       self.do_test_op(
           "nn.functional.scaled_dot_product_attention",
-          # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
-          # but on tpu it succeeds. Remove this once we fix bmm on tpu.
-          exclude_dtypes=(torch.int64,),
       )
 
   # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
@@ -3483,9 +3479,6 @@ class TestOps(TorchTpuTestBase):
     ):
       self.do_test_op(
           "nn.functional.scaled_dot_product_attention",
-          # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
-          # but on tpu it succeeds. Remove this once we fix bmm on tpu.
-          exclude_dtypes=(torch.int64,),
       )
 
   # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
@@ -3501,9 +3494,6 @@ class TestOps(TorchTpuTestBase):
     ):
       self.do_test_op(
           "nn.functional.scaled_dot_product_attention",
-          # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
-          # but on tpu it succeeds. Remove this once we fix bmm on tpu.
-          exclude_dtypes=(torch.int64,),
       )
 
   def test_nn_functional_batch_norm(self):
@@ -3516,10 +3506,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("nn.functional.gelu")
 
   def test_nn_functional_glu(self):
-    self.do_test_op(
-        "nn.functional.glu",
-        exclude_dtypes=(torch.bfloat16,),
-    )
+    self.do_test_op("nn.functional.glu")
 
   def test_nn_functional_prelu(self):
     self.do_test_op(
@@ -3568,8 +3555,6 @@ class TestOps(TorchTpuTestBase):
             torch.uint8,
             torch.int8,
             torch.int16,
-            torch.int32,
-            torch.int64,
         )
         + COMPLEX_DTYPES
         + (torch.float64,),
