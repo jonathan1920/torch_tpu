@@ -1672,7 +1672,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "compilation_cache_stress_test",
     srcs = ["compilation_cache_stress_test.py"],
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],
