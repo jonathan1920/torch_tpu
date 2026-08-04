@@ -807,9 +807,15 @@ for _op_info in _ADDITIONAL_TORCH_TPU_OPS:
   ):
     _op_info.use_ref_for_cpu_golden = True
 
-# Used in the gen_gpu_golden mode to collect the golden results for each op.
-# The key is the op name, and the value is a dictionary from dtype to a list
-# of input-output pairs.
+# Used in the gen_gpu_golden mode to collect the golden results for each op
+# test. The key is the test_case_name, and the value is a dictionary from op
+# variant (e.g. BASE, INPLACE, or OUT) to a dictionary from dtype to a list of
+# input-output pairs. Or, in short:
+#
+# test_case_name -> op_variant -> dtype -> [(input, output)].
+#
+# This means each test case can contain at most one `do_test_op()`, which is
+# enforced.
 #
 # In the torch_tpu_vs_gpu mode, we will populate this with results read from the
 # GPU golden file and then use it when comparing the TorchTPU results against
@@ -818,8 +824,13 @@ for _op_info in _ADDITIONAL_TORCH_TPU_OPS:
 # We cannot use a defaultdict here because it contains a function object, which
 # cannot be pickled.
 _GOLDEN_GPU_DATA: MutableMapping[
-    str,
-    MutableMapping[torch.dtype, MutableSequence[tuple["OpInput", "OpOutput"]]],
+    str,  # test_case_name
+    MutableMapping[
+        str,  # OpVariant name
+        MutableMapping[
+            torch.dtype, MutableSequence[tuple["OpInput", "OpOutput"]]
+        ],
+    ],
 ] = {}
 
 # The full list of known ops. We will test a subset of these.
@@ -1757,17 +1768,24 @@ class OpOutput:
 
 
 def _add_golden_result(
-    op_name: str,
+    test_case_name: str,
+    variant: OpVariant,
     dtype: torch.dtype,
     op_input: OpInput,
     op_output: OpOutput,
 ) -> None:
   """Adds the golden result to _GOLDEN_GPU_DATA."""
-  if op_name not in _GOLDEN_GPU_DATA:
-    _GOLDEN_GPU_DATA[op_name] = {}
-  dtype_to_pairs = _GOLDEN_GPU_DATA[op_name]
+  if test_case_name not in _GOLDEN_GPU_DATA:
+    _GOLDEN_GPU_DATA[test_case_name] = {}
+
+  variant_to_dtype = _GOLDEN_GPU_DATA[test_case_name]
+  if variant.value not in variant_to_dtype:
+    variant_to_dtype[variant.value] = {}
+
+  dtype_to_pairs = variant_to_dtype[variant.value]
   if dtype not in dtype_to_pairs:
     dtype_to_pairs[dtype] = []
+
   pairs = dtype_to_pairs[dtype]
   pairs.append((op_input, op_output))
 
@@ -2004,6 +2022,8 @@ class TorchTpuTestBase(TestCase):
 
   def setUp(self) -> None:
     super().setUp()
+    # Make sure we call `do_test_op()` method only once.
+    self._do_test_op_called = False
     tt_testing.reset_eager_state()
     # Show long diffs in assertEqual.
     self.maxDiff = None  # pylint: disable=invalid-name
@@ -2292,7 +2312,11 @@ class TorchTpuTestBase(TestCase):
       )
 
     if _torch_tpu_vs_gpu_mode():
-      samples = _GOLDEN_GPU_DATA.get(op_name, {}).get(dtype, [])
+      samples = (
+          _GOLDEN_GPU_DATA.get(self._testMethodName, {})
+          .get(variant.value, {})
+          .get(dtype, [])
+      )
       # TODO(b/540887166): Enable this check for compiled mode too when the bug
       # is fixed.
       if not samples and not is_compiled_mode():
@@ -2358,7 +2382,9 @@ class TorchTpuTestBase(TestCase):
       golden_output = OpOutput(golden_result)
       pairs.append((golden_input, golden_output))
       if _gen_gpu_golden_mode():
-        _add_golden_result(op_name, dtype, golden_input, golden_output)
+        _add_golden_result(
+            self._testMethodName, variant, dtype, golden_input, golden_output
+        )
     return pairs
 
   def _run_op(
@@ -3100,7 +3126,21 @@ class TorchTpuTestBase(TestCase):
         variant_test_name field of the OpInfo, when named variants are
         available. If None, the base variant set, filtering only on the op_name,
         will be tested.
+
+    Raises:
+      RuntimeError: If this is called twice in the same test method.
     """
+
+    # Each test method must call do_test_op() at most once because the test
+    # method name is used as the key to store and retrieve GPU golden results.
+    # Calling it multiple times would cause different operations or variants
+    # to share the same key, corrupting the golden data structure.
+    if self._do_test_op_called:
+      raise RuntimeError(
+          f"do_test_op() was called multiple times in {self._testMethodName}. "
+          "Each test method must call do_test_op() at most once."
+      )
+    self._do_test_op_called = True
 
     if check_value == CheckValueMode.LOOSE:
       raise ValueError(
@@ -3247,10 +3287,18 @@ def _save_golden_file() -> None:
 
   def to_plistlib_pytree(
       golden_data: Mapping[
-          str, Mapping[torch.dtype, Sequence[tuple[OpInput, OpOutput]]]
+          str,  # test_case_name
+          Mapping[
+              str,  # OpVariant name
+              Mapping[torch.dtype, Sequence[tuple[OpInput, OpOutput]]],
+          ],
       ],
   ) -> Mapping[
-      str, Mapping[str, Sequence[tuple[_pytree.PyTree, _pytree.PyTree]]]
+      str,  # test_case_name
+      Mapping[
+          str,  # OpVariant name
+          Mapping[str, Sequence[tuple[_pytree.PyTree, _pytree.PyTree]]],
+      ],
   ]:
     """Converts the golden data to a plistlib-compatible pytree."""
 
@@ -3263,11 +3311,14 @@ def _save_golden_file() -> None:
     # tree_map() never translates dict keys (doing so may break the structure of
     # the dict), so we have to translate the dtypes in the dict keys separately.
     data_with_str_dtypes = {
-        op: {
-            str(dt).split(".")[-1]: samples
-            for dt, samples in dt_to_samples.items()
+        test_case_name: {
+            variant_name: {
+                str(dt).split(".")[-1]: samples
+                for dt, samples in dt_to_samples.items()
+            }
+            for variant_name, dt_to_samples in variant_to_dtype.items()
         }
-        for op, dt_to_samples in golden_data.items()
+        for test_case_name, variant_to_dtype in golden_data.items()
     }
     return _pytree.tree_map(
         leaf_func,
@@ -3313,17 +3364,20 @@ def _load_golden_files() -> None:
       plist_ptree = plistlib.load(
           f, fmt=typing.cast(plistlib.PlistFormat, plistlib.FMT_BINARY)
       )
-    for op, dt_to_encoded_samples in plist_ptree.items():
-      if op not in _GOLDEN_GPU_DATA:
-        _GOLDEN_GPU_DATA[op] = {}
-      for dtype_name, encoded_samples in dt_to_encoded_samples.items():
-        dtype = getattr(torch, dtype_name)
-        samples = []
-        for encoded_op_input, encoded_op_output in encoded_samples:
-          op_input = OpInput.from_plistlib_pytree(encoded_op_input)
-          op_output = OpOutput.from_plistlib_pytree(encoded_op_output)
-          samples.append((op_input, op_output))
-        _GOLDEN_GPU_DATA[op][dtype] = samples
+    for test_case_name, variant_to_dt in plist_ptree.items():
+      if test_case_name not in _GOLDEN_GPU_DATA:
+        _GOLDEN_GPU_DATA[test_case_name] = {}
+      for variant_name, dt_to_encoded_samples in variant_to_dt.items():
+        if variant_name not in _GOLDEN_GPU_DATA[test_case_name]:
+          _GOLDEN_GPU_DATA[test_case_name][variant_name] = {}
+        for dtype_name, encoded_samples in dt_to_encoded_samples.items():
+          dtype = getattr(torch, dtype_name)
+          samples = []
+          for encoded_op_input, encoded_op_output in encoded_samples:
+            op_input = OpInput.from_plistlib_pytree(encoded_op_input)
+            op_output = OpOutput.from_plistlib_pytree(encoded_op_output)
+            samples.append((op_input, op_output))
+          _GOLDEN_GPU_DATA[test_case_name][variant_name][dtype] = samples
 
 
 def float_random_perm(num_elem: int, dtype: torch.dtype) -> torch.Tensor | None:

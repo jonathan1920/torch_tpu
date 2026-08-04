@@ -2800,8 +2800,11 @@ class TestOps(TorchTpuTestBase):
                 torch.float16,
             ),
         },
+        # TODO(b/542534758): `histc()` does not support dynamism.
+        check_dynamism=False,
     )
 
+  def test_histc_skip_value_check_due_to_precision_variations(self):
     # NOTE: Verify output shapes and dtypes of previously excluded dtypes that
     # lead to binning errors due to precision variations.
     self.do_test_op(
@@ -2818,6 +2821,8 @@ class TestOps(TorchTpuTestBase):
             ),
         },
         check_value=CheckValueMode.SKIP,
+        # TODO(b/542534758): `histc()` does not support dynamism.
+        check_dynamism=False,
     )
 
   def test_index_add(self):
