@@ -781,7 +781,7 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "environment_test",
     srcs = ["environment_test.cc"],
-    notest_oss = "Disabled during switch from opt-in to opt-out",
+    requires_libtpu = True,
     deps = [
         ":env_vars",
         ":environment",
