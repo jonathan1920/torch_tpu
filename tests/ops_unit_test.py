@@ -9789,6 +9789,17 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
     self.assertEqual(restored["enum_arg"], test_enum)
     self.assertEqual(restored["tuple_arg"][0], test_enum)
 
+  def test_plistlib_exception_serialization(self):
+    """Tests that golden exceptions preserve their type and message."""
+    output = op_testing.OpOutput(ValueError("bad value: 42"))
+    restored = op_testing.OpOutput.from_plistlib_pytree(
+        output.to_plistlib_pytree()
+    )
+
+    self.assertIsInstance(restored.output_value, ValueError)
+    self.assertEqual(type(restored.output_value).__name__, "ValueError")
+    self.assertEqual(str(restored.output_value), "bad value: 42")
+
 
 if __name__ == "__main__":
   absltest.main()

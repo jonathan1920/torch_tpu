@@ -17,6 +17,7 @@
 See go/torch-tpu-op-test for more details.
 """
 
+import builtins
 import collections
 from collections.abc import Callable, Iterable, Mapping, MutableMapping, MutableSequence, Sequence
 import copy
@@ -1481,7 +1482,8 @@ def _to_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
       dict.
     - An enum (Python or pybind11) is converted to a {"$$enum": ...} dict.
     - A complex number is converted to a {"$$real": ..., "$$imag": ...} dict.
-    - An Exception is serialized to a {"$$exception": ""} dict.
+    - An Exception is serialized to a {"$$exception": {"type": ...,
+      "message": ...}} dict.
 
   The "$$" prefix is used to avoid name conflicts with the keys in the
   original PyTree.
@@ -1533,9 +1535,9 @@ def _to_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
           }
       }
     if isinstance(x, Exception):
-      # We don't care about the actual exception, but just need to know it's
-      # an exception. Therefore we use a dummy value.
-      return {"$$exception": ""}
+      # Preserve the exception type and message separately so the harness can
+      # enforce exception parity between the golden device and TPU.
+      return {"$$exception": {"type": type(x).__name__, "message": str(x)}}
     return x
 
   def is_leaf(obj: Any) -> bool:
@@ -1593,6 +1595,30 @@ def _resolve_enum_class(mod_name: str, class_name: str) -> Any:
   return None
 
 
+def _deserialize_exception(payload: Any) -> Exception:
+  """Deserializes an Exception object from a serialized "$$exception" payload."""
+  # TODO(b/542331196): remove this check once exceptions are consistently in dict
+  # format after golden updates.
+  if not isinstance(payload, dict):
+    return Exception(payload or "")
+
+  type_name = str(payload.get("type", "Exception"))
+  message = payload.get("message", "")
+
+  builtin_exception = getattr(builtins, type_name, None)
+  if isinstance(builtin_exception, type) and issubclass(
+      builtin_exception, Exception
+  ):
+    try:
+      return builtin_exception(message)
+    except Exception:  # pylint: disable=broad-except
+      # Some builtins cannot be built from a message alone, so fall back to
+      # the synthetic exception.
+      pass
+
+  return type(type_name, (Exception,), {})(message)
+
+
 def _from_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
   """Converts a plistlib-compatible PyTree to the original PyTree.
 
@@ -1605,7 +1631,8 @@ def _from_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
     - A {"$$memory_format": ...} dict is deserialized to a torch.memory_format.
     - A {"$$enum": ...} dict is deserialized to an enum instance.
     - A {"$$real": ..., "$$imag": ...} dict is deserialized to a complex number.
-    - A {"$$exception": ""} dict is deserialized to an Exception.
+    - A {"$$exception": {"type": ..., "message": ...}} dict is deserialized to
+      an Exception of the recorded type carrying the message.
 
   Args:
     ptree: The PyTree to convert.
@@ -1661,7 +1688,7 @@ def _from_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
       if "$$real" in x and "$$imag" in x:
         return complex(x["$$real"], x["$$imag"])
       if "$$exception" in x:
-        return Exception()
+        return _deserialize_exception(x["$$exception"])
       return {k: _from_plistlib_compatible(v) for k, v in x.items()}
     return x
 
@@ -2682,6 +2709,21 @@ class TorchTpuTestBase(TestCase):
           f"{torch_tpu_printable_input}\n"
           f"{self.golden_device_name()} result: {golden_result}",
       )
+    elif golden_thrown and torch_tpu_thrown:
+      golden_type = type(golden_result).__name__
+      torch_tpu_type = type(torch_tpu_result).__name__
+
+      if golden_type != torch_tpu_type:
+        pass
+        # TODO(b/542331196): enable it once exceptions are recorded in the
+        # structured dict format.
+        # self.fail(
+        #     f"\n{op_description} failed on both {self.golden_device_name()} and"
+        #     " TorchTPU, but raised different exception types.\n"
+        #     f"{self.golden_device_name()}: {golden_type}: {golden_result}\n"
+        #     f"TorchTPU: {torch_tpu_type}: {torch_tpu_result}\n"
+        #     f"{torch_tpu_printable_input}",
+        # )
 
   def _assert_structure_consistency(
       self, *, golden_result: Any, torch_tpu_result: Any
