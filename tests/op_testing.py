@@ -2270,9 +2270,8 @@ class TorchTpuTestBase(TestCase):
       if not samples and not is_compiled_mode():
         self.fail(
             f"No GPU golden samples found for {op_name}() with dtype {dtype}."
-            " Please re-generate the GPU golden files using the"
-            " update-gpu-golden-files-and-tolerances skill to cover the new"
-            " (op, dtype)."
+            " Please re-generate the GPU golden files to cover"
+            " the new (op, dtype)."
         )
       return samples
 
