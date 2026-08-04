@@ -88,6 +88,27 @@ def _seed_rngs(seed: int) -> None:
   torch.manual_seed(seed)
 
 
+def _validate_tolerances(
+    rtol: Tolerance | None = None,
+    atol: Tolerance | None = None,
+) -> None:
+  """Validates that rtol and atol, if specified, are > 0."""
+  if rtol is not None and isinstance(rtol, (int, float)) and not (rtol > 0):
+    raise ValueError(f"rtol must be > 0, got {rtol}")
+  if atol is not None and isinstance(atol, (int, float)) and not (atol > 0):
+    raise ValueError(f"atol must be > 0, got {atol}")
+
+
+def _validate_accuracy_overrides(overrides: AccuracyOverrides) -> None:
+  """Validates that all tolerances in the overrides are > 0."""
+  for op_overrides in overrides.values():
+    for tol_dict in op_overrides.values():
+      _validate_tolerances(
+          rtol=tol_dict.get("rtol"),
+          atol=tol_dict.get("atol"),
+      )
+
+
 class TestMode(enum.Enum):
   """Mode to run the test in."""
 
@@ -2033,6 +2054,9 @@ class TorchTpuTestBase(TestCase):
 
     To be called by a subclass's setUp() method.
     """
+    _validate_accuracy_overrides(tpu_cpu_overrides)
+    _validate_accuracy_overrides(tpu_gpu_overrides)
+    _validate_accuracy_overrides(grad_overrides)
     self.tpu_cpu_accuracy_overrides = tpu_cpu_overrides
     self.tpu_gpu_accuracy_overrides = tpu_gpu_overrides
     self.grad_accuracy_overrides = grad_overrides
@@ -2106,6 +2130,8 @@ class TorchTpuTestBase(TestCase):
           "LOOSE mode is the default. Please omit the check_value argument."
       )
 
+    _validate_tolerances(rtol=rtol, atol=atol)
+
     if _perf_mode():
       return
 
@@ -2172,6 +2198,8 @@ class TorchTpuTestBase(TestCase):
       raise ValueError(
           "LOOSE mode is the default. Please omit the check_value argument."
       )
+
+    _validate_tolerances(rtol=rtol, atol=atol)
 
     cpu_result = None
     cpu_thrown = None
@@ -2700,6 +2728,11 @@ class TorchTpuTestBase(TestCase):
       raise ValueError(
           "LOOSE mode is the default. Please omit the check_value argument."
       )
+
+    _validate_tolerances(
+        rtol=accuracy_override.get("rtol"),
+        atol=accuracy_override.get("atol"),
+    )
 
     golden_result_tuple = _to_tuple(golden_result)
     torch_tpu_result_tuple = _to_tuple(torch_tpu_result)

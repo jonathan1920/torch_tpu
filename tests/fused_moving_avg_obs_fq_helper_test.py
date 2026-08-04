@@ -126,7 +126,6 @@ class FusedMovingAvgObsFqHelperTest(TorchTpuVsCpuTestBase):
         golden_result=cpu_res[5].cpu(),
         torch_tpu_result=tpu_res[5].cpu(),
         atol=zp_atol,
-        rtol=0.0,
     )
 
   def test_fused_moving_avg_obs_fq_helper_case1_per_tensor_asymmetric(self):

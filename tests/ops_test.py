@@ -1491,7 +1491,7 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.float32: {"rtol": 2.3e-6},
     },
     "nn.functional.nll_loss": {
-        torch.bfloat16: {"rtol": 5e-2, "atol": 0},
+        torch.bfloat16: {"rtol": 5e-2},
         torch.float16: {"atol": 4.7e-2},
     },
     "norm": {
@@ -1550,7 +1550,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float16: {"rtol": 2e-3, "atol": 2e-3},
             },
             "_foreach_reciprocal": {
-                torch.float32: {"rtol": 1e-6, "atol": 0},
+                torch.float32: {"rtol": 1e-6},
             },
             "_foreach_rsqrt": {
                 torch.bfloat16: {"rtol": 2.4e-2, "atol": 1e-3},

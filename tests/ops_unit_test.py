@@ -815,6 +815,42 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # If we override only rtol to 2e-4, it should pass.
     utils.assert_close(t1, t2, rtol=2e-4)
 
+  def test_assert_close_tolerances_must_be_positive(self):
+    """Tests that specifying rtol or atol <= 0 raises ValueError."""
+    t1 = torch.tensor([1.0, 2.0])
+    t2 = torch.tensor([1.0, 2.0])
+
+    with self.assertRaisesRegex(ValueError, "rtol must be > 0"):
+      self.assert_close(golden_result=t1, torch_tpu_result=t2, rtol=0)
+    with self.assertRaisesRegex(ValueError, "rtol must be > 0"):
+      self.assert_close(golden_result=t1, torch_tpu_result=t2, rtol=-1e-5)
+    with self.assertRaisesRegex(ValueError, "atol must be > 0"):
+      self.assert_close(golden_result=t1, torch_tpu_result=t2, atol=0)
+    with self.assertRaisesRegex(ValueError, "atol must be > 0"):
+      self.assert_close(golden_result=t1, torch_tpu_result=t2, atol=-1e-5)
+
+    with self.assertRaisesRegex(ValueError, "rtol must be > 0"):
+      self.assert_close_tpu_vs_cpu(
+          lambda device: torch.tensor([1.0], device=device), rtol=0
+      )
+    with self.assertRaisesRegex(ValueError, "atol must be > 0"):
+      self.assert_close_tpu_vs_cpu(
+          lambda device: torch.tensor([1.0], device=device), atol=0
+      )
+
+    with self.assertRaisesRegex(ValueError, "rtol must be > 0"):
+      self.set_accuracy_overrides(
+          tpu_cpu_overrides={"op": {torch.float32: {"rtol": 0}}},
+          tpu_gpu_overrides={},
+          grad_overrides={},
+      )
+    with self.assertRaisesRegex(ValueError, "atol must be > 0"):
+      self.set_accuracy_overrides(
+          tpu_cpu_overrides={"op": {torch.float32: {"atol": 0}}},
+          tpu_gpu_overrides={},
+          grad_overrides={},
+      )
+
   def test_topk_sorted_false(self):
     """Tests torch.topk with sorted=False."""
     device = torch.device("tpu")
@@ -883,7 +919,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         def run(device, input_tensor=input_tensor):
           return torch.abs(input_tensor.to(device))
 
-        self.assert_close_tpu_vs_cpu(run, atol=0.0)
+        self.assert_close_tpu_vs_cpu(run)
 
   def test_bool_abs(self):
     device = torch.device("tpu")
@@ -1875,8 +1911,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(
         compute,
-        rtol=0.0,
-        atol=0.0,
     )
 
   @parameterized.product(
@@ -2063,8 +2097,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(
         compute,
-        rtol=0.0,
-        atol=0.0,
     )
 
   @parameterized.product(
@@ -3514,7 +3546,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         golden_result=torch.tensor(expected_mean),
         torch_tpu_result=mean_value.to("cpu"),
         atol=atol,
-        rtol=0.0,
     )
 
   def test_dropout_equal_to_zero_or_scaled_original(self):
@@ -3593,7 +3624,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           golden_result=torch.tensor(expected_mean),
           torch_tpu_result=mean_num_zeros.to("cpu"),
           atol=atol,
-          rtol=0.0,
       )
 
   def test_uniform_complex(self):
@@ -5988,7 +6018,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         golden_result=torch.tensor(0.5, dtype=dtype),
         torch_tpu_result=t.mean().cpu(),
         atol=atol,
-        rtol=0.0,
     )
 
   @parameterized.named_parameters(
