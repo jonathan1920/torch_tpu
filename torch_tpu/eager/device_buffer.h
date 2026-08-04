@@ -25,7 +25,6 @@
 #include <optional>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -545,7 +544,9 @@ class DeviceBufferList {
   // Creates a DeviceBufferList that represents a pending materialized buffer.
   // This is used to hold the output of calling a precompiled executable, such
   // as for torch.compile mode.
-  static absl::StatusOr<DeviceBufferRef> CreatePending(const Shape& shape);
+  static absl::StatusOr<DeviceBufferRef> CreatePending(
+      const Shape& shape, c10::DeviceIndex device_index,
+      c10::StreamId stream_id);
 
   // Sets the DeviceBufferList to a pending-materialized state.
   // If the DeviceBufferList is already materialized, this is a no-op.
@@ -786,12 +787,16 @@ class DeviceBufferList {
   //
   // If placeholder is false, the buffer is in the pending materialization
   // state and can later be materialized.
-  DeviceBufferList(Dimensions dimensions, const mlir::ElementType element_type,
-                   bool placeholder)
+  DeviceBufferList(
+      Dimensions dimensions, const mlir::ElementType element_type,
+      bool placeholder,
+      std::optional<c10::DeviceIndex> device_index_override = std::nullopt,
+      std::optional<c10::StreamId> stream_id_override = std::nullopt)
       : data_(placeholder) {
-    const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
-    device_index_ = device_index;
-    stream_id_ = stream_id;
+    const auto [current_device_index, current_stream_id] =
+        GetCurrentDeviceStreamId();
+    device_index_ = device_index_override.value_or(current_device_index);
+    stream_id_ = stream_id_override.value_or(current_stream_id);
     creation_index_ = g_creation_index_.fetch_add(1);
 
     shapes_.emplace_back(std::move(dimensions), element_type);
@@ -800,10 +805,15 @@ class DeviceBufferList {
                  << ", Type: " << ToString(shapes_[0].dtype());
   }
 
-  DeviceBufferList(const Shape& shape, bool placeholder) : data_(placeholder) {
-    const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
-    device_index_ = device_index;
-    stream_id_ = stream_id;
+  DeviceBufferList(
+      const Shape& shape, bool placeholder,
+      std::optional<c10::DeviceIndex> device_index_override = std::nullopt,
+      std::optional<c10::StreamId> stream_id_override = std::nullopt)
+      : data_(placeholder) {
+    const auto [current_device_index, current_stream_id] =
+        GetCurrentDeviceStreamId();
+    device_index_ = device_index_override.value_or(current_device_index);
+    stream_id_ = stream_id_override.value_or(current_stream_id);
     creation_index_ = g_creation_index_.fetch_add(1);
 
     shapes_.push_back(shape);

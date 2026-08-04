@@ -340,6 +340,7 @@ torch_tpu_cc_library(
         "materialize.h",
     ],
     deps = [
+        ":current_stream",
         ":device_buffer",
         ":eager_mode",
         ":events_queue",
@@ -348,6 +349,7 @@ torch_tpu_cc_library(
         ":structured_log_buffer",
         ":traversal",
         "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
         "//torch_tpu/common:compilation",
         "//torch_tpu/common:compilation_spec",
         "//torch_tpu/common:context_manager",

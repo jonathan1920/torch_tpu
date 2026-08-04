@@ -23,7 +23,6 @@
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <queue>
 #include <string>
 #include <string_view>
@@ -44,6 +43,8 @@
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "c10/core/Device.h"
+#include "c10/core/Stream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
@@ -51,6 +52,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/status_builder.h"
+#include "torch_tpu/eager/current_stream.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/events_queue.h"
@@ -248,16 +250,19 @@ class MaterializationWorker {
   absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
       SharedLoadedExecutableWithMetadata executable,
       std::vector<DeviceBufferRef> arguments,
-      absl::Span<const Shape> output_shapes, std::string_view task_name = "") {
+      absl::Span<const Shape> output_shapes, std::string_view task_name,
+      c10::DeviceIndex device_index, c10::StreamId stream_id) {
     // Create a set of output DeviceBufferRefs to hold the materialized results.
     std::vector<DeviceBufferRef> outputs;
     outputs.reserve(output_shapes.size());
     for (const auto& shape : output_shapes) {
       // Create pending buffer lists to hold the results.
-      TT_ASSIGN_OR_RETURN(DeviceBufferRef output_ref,
-                          DeviceBufferList::CreatePending(shape));
+      TT_ASSIGN_OR_RETURN(
+          DeviceBufferRef output_ref,
+          DeviceBufferList::CreatePending(shape, device_index, stream_id));
       outputs.push_back(std::move(output_ref));
     }
+    RecordBackgroundMaterialization(outputs);
 
     // Intentional copy on outputs; we need to both include them in the task
     // and return them to the caller.
@@ -479,8 +484,12 @@ absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
     SharedLoadedExecutableWithMetadata executable,
     std::vector<DeviceBufferRef> arguments,
     absl::Span<const Shape> output_shapes, std::string_view task_name) {
+  // Get the stream from the calling thread, not from the execution worker
+  // thread.
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
   return GetMaterializationWorker().EnqueueExecutable(
-      std::move(executable), std::move(arguments), output_shapes, task_name);
+      std::move(executable), std::move(arguments), output_shapes, task_name,
+      device_index, stream_id);
 }
 
 }  // namespace torch_tpu
