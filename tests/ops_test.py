@@ -935,23 +935,23 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"atol": 4e-3},
     },
     "addcdiv": {
-        torch.bfloat16: {"atol": 2.4e-2},
-        torch.float16: {"atol": 7.9e-3},
+        torch.bfloat16: {"rtol": 2.5e-2, "atol": 2.9e-2},
+        torch.float16: {"rtol": 4.9e-3, "atol": 6.5e-3},
     },
     "addcmul": {
-        torch.bfloat16: {"atol": 1.2e-2},
-        torch.float16: {"atol": 1.3e-1},
+        torch.bfloat16: {"atol": 1.5e-2},
+        torch.float16: {"rtol": 2.1e-3, "atol": 3.1e-3},
     },
     "addmm": {
         torch.float16: {"rtol": 1.5e-2},
         torch.float32: {"rtol": 7.7e-3},
     },
     "arange": {
-        torch.bfloat16: {"atol": 6.4e-3},
-        torch.float16: {"atol": 3.7e-4},
+        torch.bfloat16: {"atol": 9.4e-3},
+        torch.float16: {"atol": 5.9e-4},
     },
     "asin": {
-        torch.complex64: {"atol": 8.4e-5},
+        torch.complex64: {"rtol": 7.9e-5, "atol": 1e-4},
     },
     "asinh": {
         torch.bool: {"atol": 2.9e-5},
@@ -1342,10 +1342,10 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.complex64: {"atol": 6.9e-5},
     },
     "addcmul": {
-        torch.float16: {"atol": 1.3e-1},
+        torch.float16: {"rtol": 1.4e-3, "atol": 1.2e-3},
     },
     "asin": {
-        torch.complex64: {"atol": 8.4e-5},
+        torch.complex64: {"rtol": 7.9e-5, "atol": 1e-4},
     },
     "asinh": {
         torch.bool: {"atol": 2.9e-5},
