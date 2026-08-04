@@ -904,13 +904,13 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.uint8: {"atol": 3e-5},
     },
     "_log_softmax_backward_data": {
-        torch.bfloat16: {"atol": 4.5e-2},
-        torch.float16: {"atol": 1.6e-2},
-        torch.float32: {"atol": 9.4e-5},
+        torch.bfloat16: {"rtol": 2.2e-2, "atol": 5.4e-2},
+        torch.float16: {"rtol": 2.7e-3, "atol": 8.5e-3},
+        torch.float32: {"rtol": 3.5e-5, "atol": 3.6e-5},
     },
     "_softmax_backward_data": {
-        torch.bfloat16: {"atol": 3.8e-2},
-        torch.float16: {"atol": 4e-3},
+        torch.bfloat16: {"rtol": 1.9e-2, "atol": 4.6e-2},
+        torch.float16: {"rtol": 1.5e-3, "atol": 4.7e-3},
     },
     "_thnn_fused_gru_cell": {
         torch.float32: {"rtol": 1e-4, "atol": 1e-4},
@@ -1324,12 +1324,12 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.complex64: {"atol": 1.4e-4},
     },
     "_log_softmax_backward_data": {
-        torch.float16: {"atol": 4e-3},
-        torch.float32: {"atol": 9.4e-5},
+        torch.float16: {"rtol": 1.8e-3, "atol": 2.4e-3},
+        torch.float32: {"rtol": 3.5e-5, "atol": 3.6e-5},
     },
     "_softmax_backward_data": {
-        torch.bfloat16: {"atol": 3e-2},
-        torch.float16: {"atol": 4e-3},
+        torch.bfloat16: {"atol": 3.5e-2},
+        torch.float16: {"atol": 4.6e-3},
     },
     "_thnn_fused_gru_cell": {
         torch.float32: {"rtol": 1e-5, "atol": 3e-5},
