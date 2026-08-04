@@ -2902,7 +2902,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_logit(self):
-    self.do_test_op("logit", check_grad=False)
+    self.do_test_op("logit")
 
   def test_lu_unpack(self):
     self.do_test_op(

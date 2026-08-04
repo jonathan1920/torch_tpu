@@ -734,6 +734,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kLogicalOrOut>(m, AtenLogicalOrOut);
   ImplStable<OpName::kLogicalXorOut>(m, AtenLogicalXorOut);
   ImplStable<OpName::kLogit>(m, AtenLogit);
+  ImplStable<OpName::kLogitBackwardGradInput>(m, AtenLogitBackwardGradInput);
   ImplStable<OpName::kLogitOut>(m, AtenLogitOut);
   ImplStable<OpName::kLogit_>(m, AtenLogit_);
   ImplStable<OpName::kLshiftScalar>(m, AtenLshiftScalar);

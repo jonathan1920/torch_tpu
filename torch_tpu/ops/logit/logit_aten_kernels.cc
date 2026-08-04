@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/logit/logit_aten_kernels.h"
 
 #include <array>
+#include <limits>
 #include <optional>
 #include <utility>
 
@@ -135,6 +136,79 @@ absl::StatusOr<DeviceBufferRef> BuildLogitBuffer(const at::Tensor& self,
                         .op_param_cache_keys = std::move(param_keys)});
 }
 
+absl::StatusOr<mlir::MlirOp> BuildLogitBackwardShlo(
+    mlir::MlirOp grad_output_op, mlir::MlirOp self_op, mlir::MlirOp eps_op,
+    mlir::ElementType output_dtype) {
+  // Formula:
+  //   lo = eps
+  //   hi = 1 - eps
+  //   grad = grad_output / (self * (1 - self))
+  //
+  //   If eps >= 0:
+  //     If self >= lo and self <= hi, return grad
+  //     Else return 0 (since forward pass clamped to constant)
+  //   Else:
+  //     If self >= 0 and self <= 1, return grad
+  //     Else return NaN
+  TT_ASSIGN_OR_RETURN(const mlir::ElementType computation_dtype,
+                      InferComputationDtype(output_dtype));
+  TT_ASSIGN_OR_RETURN(const mlir::MlirOp computation_grad_output_op,
+                      CastIfNeeded(grad_output_op, computation_dtype));
+  TT_ASSIGN_OR_RETURN(const mlir::MlirOp computation_self_op,
+                      CastIfNeeded(self_op, computation_dtype));
+  TT_ASSIGN_OR_RETURN(const mlir::MlirOp computation_eps_op,
+                      CastIfNeeded(eps_op, computation_dtype));
+
+  std::array<mlir::MlirOp, 3> broadcasted_inputs;
+  TT_ASSIGN_OR_RETURN(
+      broadcasted_inputs,
+      ApplyBroadcastIfNeeded(computation_grad_output_op, computation_self_op,
+                             computation_eps_op));
+  mlir::MlirOp grad_output_bcst = broadcasted_inputs[0];
+  mlir::MlirOp self_bcst = broadcasted_inputs[1];
+  mlir::MlirOp eps_bcst = broadcasted_inputs[2];
+
+  mlir::MlirOp k_zero = MakeConstantLike(self_bcst, 0.0);
+  mlir::MlirOp k_one = MakeConstantLike(self_bcst, 1.0);
+  mlir::MlirOp k_nan =
+      MakeConstantLike(self_bcst, std::numeric_limits<double>::quiet_NaN());
+
+  // grad_output / (self * (1 - self))
+  mlir::MlirOp one_minus_self = mlir::stablehlo::Subtract(k_one, self_bcst);
+  mlir::MlirOp denom = mlir::stablehlo::Mul(self_bcst, one_minus_self);
+  mlir::MlirOp div_res = mlir::stablehlo::Div(grad_output_bcst, denom);
+
+  // eps >= 0 case
+  mlir::MlirOp lo = eps_bcst;
+  mlir::MlirOp hi = mlir::stablehlo::Subtract(k_one, eps_bcst);
+
+  // Check if self is in range: lo <= self <= hi
+  mlir::MlirOp ge_lo = mlir::stablehlo::Compare(
+      self_bcst, lo, mlir::stablehlo::ComparisonDirection::GE);
+  mlir::MlirOp le_hi = mlir::stablehlo::Compare(
+      self_bcst, hi, mlir::stablehlo::ComparisonDirection::LE);
+  mlir::MlirOp in_range_eps = mlir::stablehlo::And(ge_lo, le_hi);
+
+  mlir::MlirOp res_eps = mlir::stablehlo::Select(in_range_eps, div_res, k_zero);
+
+  // eps < 0 case
+  mlir::MlirOp ge_zero = mlir::stablehlo::Compare(
+      self_bcst, k_zero, mlir::stablehlo::ComparisonDirection::GE);
+  mlir::MlirOp le_one = mlir::stablehlo::Compare(
+      self_bcst, k_one, mlir::stablehlo::ComparisonDirection::LE);
+  mlir::MlirOp in_range_no_eps = mlir::stablehlo::And(ge_zero, le_one);
+  mlir::MlirOp res_no_eps =
+      mlir::stablehlo::Select(in_range_no_eps, div_res, k_nan);
+
+  // Select between eps >= 0 and eps < 0
+  mlir::MlirOp compare_ge_zero = mlir::stablehlo::Compare(
+      eps_bcst, k_zero, mlir::stablehlo::ComparisonDirection::GE);
+  mlir::MlirOp final_res =
+      mlir::stablehlo::Select(compare_ge_zero, res_eps, res_no_eps);
+
+  return mlir::stablehlo::ConvertElementType(final_res, output_dtype);
+}
+
 }  // namespace
 
 at::Tensor AtenLogit(const at::Tensor& self, std::optional<double> eps) {
@@ -174,6 +248,47 @@ at::Tensor& AtenLogit_(at::Tensor& self, std::optional<double> eps) {
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
     return self;
   });
+}
+
+at::Tensor& AtenLogitBackwardGradInput(const at::Tensor& grad_output,
+                                       const at::Tensor& self,
+                                       std::optional<double> eps,
+                                       at::Tensor& grad_input) {
+  PromotedScalar promoted_eps = PromoteScalar(at::Scalar(eps.value_or(-1.0)));
+  TT_KERNEL(
+      OpName::kLogitBackwardGradInput, param_keys,
+      (grad_output, self, promoted_eps, grad_input), {
+        const c10::ScalarType out_type = grad_input.scalar_type();
+        const c10::ScalarType self_dtype = self.scalar_type();
+        TT_CHECK_THROW(!c10::isComplexType(self_dtype),
+                       error::kPythonNotImplementedError)
+            << "complex dtypes are not supported, got " << ToString(self_dtype);
+
+        TT_ASSIGN_OR_THROW(const auto out_dtype,
+                           ConvertTo<mlir::ElementType>(out_type));
+
+        TT_ASSIGN_OR_THROW(const at::Tensor eps_tensor,
+                           promoted_eps.GetTensor(out_type));
+
+        auto op_builder = [out_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+            -> absl::StatusOr<mlir::MlirOp> {
+          const auto [grad_output_op, self_op, eps_op] = inputs;
+          return BuildLogitBackwardShlo(grad_output_op, self_op, eps_op,
+                                        out_dtype);
+        };
+
+        TT_ASSIGN_OR_THROW(
+            DeviceBufferRef result_buf,
+            DispatchOp<3>(std::move(op_builder),
+                          {grad_output, self, eps_tensor},
+                          {.out_dtype = out_dtype,
+                           .out_dims = CopyIntVector(self.sizes()),
+                           .op_param_cache_keys = std::move(param_keys)}));
+
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(result_buf), grad_input));
+        return grad_input;
+      });
 }
 
 }  // namespace torch_tpu

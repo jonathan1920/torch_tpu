@@ -475,6 +475,7 @@ enum class OpName {
   kLogicalOrOut,
   kLogicalXorOut,
   kLogit,
+  kLogitBackwardGradInput,
   kLogitOut,
   kLogit_,
   kLshiftScalar,

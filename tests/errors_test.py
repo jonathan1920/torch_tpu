@@ -2285,6 +2285,7 @@ Device-side assertion tracking was not enabled by user.""",
         (lambda: torch.logit(t), "logit()"),
         (lambda: torch.logit(t, out=out), "logit()"),
         (lambda: torch.logit_(t), "logit_()"),
+        (lambda: torch.ops.aten.logit_backward(t, t), "logit_backward()"),
     ]
     for func, op_prefix in funcs:
       with et.assert_raises_message(

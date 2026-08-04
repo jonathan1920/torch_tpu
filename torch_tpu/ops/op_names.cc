@@ -923,6 +923,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "logical_xor.out";
     case OpName::kLogit:
       return "logit";
+    case OpName::kLogitBackwardGradInput:
+      return "logit_backward.grad_input";
     case OpName::kLogitOut:
       return "logit.out";
     case OpName::kLogit_:
