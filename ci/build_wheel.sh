@@ -84,6 +84,13 @@ echo "===> torch_tpu wheel build and verification successful!"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RAIDEN_DIR="${RAIDEN_DIR:-${SCRIPT_DIR}/../../tpu_raiden}"
 
+if [[ ! -d "${RAIDEN_DIR}" ]]; then
+  echo "===> [Non-Fatal Stage] tpu_raiden directory not found at '${RAIDEN_DIR}'. Cloning from GitHub..."
+  git clone https://github.com/google/tpu-raiden.git "${RAIDEN_DIR}" || {
+    echo "WARNING: Failed to clone tpu-raiden from GitHub." >&2
+  }
+fi
+
 if [[ -f "${RAIDEN_DIR}/ci/build_wheel.sh" ]]; then
   echo "===> [Non-Fatal Stage] Invoking tpu_raiden wheel build: ${RAIDEN_DIR}/ci/build_wheel.sh..."
   (
