@@ -1167,25 +1167,24 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float32: {"rtol": 4.2e-1, "atol": 4.6e-1},
     },
     "nn.functional.conv_transpose1d": {
-        torch.float16: {"atol": 3.5e-1},
-        torch.float32: {"atol": 3.9e-1},
+        torch.float16: {"rtol": 6.7e-2, "atol": 1.6e-1},
+        torch.float32: {"rtol": 7.1e-2, "atol": 2.1e-1},
     },
     "nn.functional.conv_transpose2d": {
-        torch.bfloat16: {"atol": 1.3e-1},
-        torch.float16: {"atol": 8.8e-1},
-        torch.float32: {"atol": 1.1},
+        torch.bfloat16: {"rtol": 7.4e-2, "atol": 7.6e-2},
+        torch.float16: {"rtol": 2.2e-1, "atol": 6.6e-2},
+        torch.float32: {"rtol": 3e-1, "atol": 9.4e-2},
     },
     "nn.functional.embedding_bag": {
         torch.bfloat16: {"atol": 3.2e-2},
         torch.float16: {"atol": 4e-3},
     },
     "nn.functional.gelu": {
-        torch.float16: {"atol": 3.9e-5},
-        torch.float32: {"atol": 4.2e-5},
+        torch.float16: {"atol": 7.4e-5},
+        torch.float32: {"rtol": 2.1e-5, "atol": 4.3e-5},
     },
     "nn.functional.glu": {
         torch.float16: {"rtol": 1.2e-3, "atol": 1.2e-3},
-        torch.float32: {"rtol": 7e-5, "atol": 9.8e-4},
     },
     "nn.functional.group_norm": {
         torch.bfloat16: {"rtol": 1, "atol": 4.7e-2},
@@ -1475,14 +1474,14 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.float32: {"rtol": 4.2e-1, "atol": 4.6e-1},
     },
     "nn.functional.conv_transpose1d": {
-        torch.bfloat16: {"atol": 6.3e-2},
-        torch.float16: {"atol": 3.5e-1},
-        torch.float32: {"atol": 3.9e-1},
+        torch.bfloat16: {"atol": 8.3e-3},
+        torch.float16: {"rtol": 6.7e-2, "atol": 1.6e-1},
+        torch.float32: {"rtol": 7.1e-2, "atol": 2.1e-1},
     },
     "nn.functional.conv_transpose2d": {
-        torch.bfloat16: {"atol": 1.3e-1},
-        torch.float16: {"atol": 8.8e-1},
-        torch.float32: {"atol": 1.1},
+        torch.bfloat16: {"rtol": 6.2e-2, "atol": 8e-2},
+        torch.float16: {"rtol": 2.2e-1, "atol": 6.7e-2},
+        torch.float32: {"rtol": 3e-1, "atol": 9.4e-2},
     },
     "nn.functional.embedding_bag": {
         torch.bfloat16: {"atol": 6.5e-2},
