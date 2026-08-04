@@ -72,7 +72,18 @@ try:
 except ImportError:
   _HAS_TRANSFORMERS = False
 
-_AUDIO_MODEL_TYPES = ("whisper", "wav2vec2", "audio", "hubert")
+_AUDIO_MODEL_TYPES = (
+    "whisper",
+    "wav2vec2",
+    "audio",
+    "hubert",
+    "vits",
+    "wavlm",
+    "speech",
+    "clap",
+    "musicgen",
+    "data2vec",
+)
 _VISION_MODEL_TYPES = (
     "vit",
     "vision",
