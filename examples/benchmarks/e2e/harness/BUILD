@@ -121,6 +121,17 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_library(
+    name = "cases",
+    srcs = ["cases.py"],
+    deps = [
+        ":mode",
+        ":registry",
+        ":target",
+        "//examples/benchmarks/e2e:common",
+    ],
+)
+
 torch_tpu_py_test(
     name = "torch_benchmark_test",
     timeout = "long",
@@ -134,12 +145,15 @@ torch_tpu_py_test(
     env = {
         "BENCHMARK_PLATFORM": "v5e_1x1",
     },
+    nolocal = "user requested to run this manually",
     notest_oss = "requires huggingface configs from internal infra",
+    shard_count = 50,
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":cases",
         ":compile",
         ":context",
         ":discovery",
@@ -153,6 +167,7 @@ torch_tpu_py_test(
         "//examples/benchmarks/e2e:common",
         "//examples/benchmarks/e2e/harness/models",
         "//examples/benchmarks/e2e/harness/steps",
+        "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",

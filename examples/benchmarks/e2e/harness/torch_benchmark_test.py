@@ -25,10 +25,12 @@ Environment & Flags:
 """
 
 from typing import Iterator, Tuple
+from absl import flags
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 from examples.benchmarks.e2e import common
+from examples.benchmarks.e2e.harness import cases
 from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import context as context_lib
 from examples.benchmarks.e2e.harness import discovery as discovery_lib
@@ -48,25 +50,30 @@ _FRAMEWORK = mode_lib.Framework.TORCH
 # Resolved once at import/collection time without acquiring device handles.
 _PLATFORM = target_lib.platform_from_env()
 
+# Some benchmarks may be registered but known to fail. This can be used to
+# define the desired behavior when encountering such benchmarks.
+_SKIP_BEHAVIOR = flags.DEFINE_enum(
+    "skip_behavior",
+    "skip",
+    ["skip", "assert_raise", "ignore", "run_skipped"],
+    "Behavior for run modes that are marked as skipped in the config."
+    " Options:\n  skip: Skips the test if the benchmark is marked as skipped.\n"
+    "  assert_raise: Runs the test and expects it to raise an exception if"
+    " skipped.\n  ignore: Runs the test normally even if it is marked as"
+    " skipped.\n  run_skipped: Only runs skipped tests (skips those not marked"
+    " as skipped).",
+)
+
 
 # Import all models and trigger registration of benchmarks.
 failures = discovery_lib.import_submodules(models)
-failures = discovery_lib.import_submodules(steps)
+failures += discovery_lib.import_submodules(steps)
 
 
 def _cases() -> (
     Iterator[Tuple[str, registry_lib.BenchmarkSpec, common.RunMode]]
 ):
-  """One case per (benchmark, applicable mode).
-
-  The mode matrix is resolved here, at collection, so generated cases match the
-  cell exactly: a CPU run never emits an eager_optimized case just to skip it.
-  """
-  target_kind = target_lib.make_target(_PLATFORM).device_kind
-  for name in sorted(registry_lib.REGISTRY):
-    spec = registry_lib.REGISTRY[name]
-    for mode in mode_lib.modes_for(_FRAMEWORK, target_kind):
-      yield f"{spec.name}_{mode.value}", spec, mode
+  return cases.get_cases(_PLATFORM, _FRAMEWORK)
 
 
 def _make_run_step(
@@ -109,12 +116,31 @@ class BenchmarkTest(parameterized.TestCase):
   def test_benchmark(
       self, spec: registry_lib.BenchmarkSpec, mode: common.RunMode
   ):
+    is_skipped = mode.value in spec.skipped_run_modes
+
+    if is_skipped and _SKIP_BEHAVIOR.value == "skip":
+      self.skipTest(
+          f"Benchmark {spec.name} explicitly skips run mode {mode.value}"
+      )
+    if not is_skipped and _SKIP_BEHAVIOR.value == "run_skipped":
+      self.skipTest(
+          f"Benchmark {spec.name} is not skipped for run mode {mode.value},"
+          " skipping due to skip_behavior=run_skipped"
+      )
+
     target = target_lib.make_target(_PLATFORM, dtype=spec.dtype)
     device_ops = torch_device_ops.TorchDeviceOps(target)
     ctx = context_lib.Context(
         target=target, run_scope=context_lib.RUN_SCOPE.value
     )
 
+    if is_skipped and _SKIP_BEHAVIOR.value == "assert_raise":
+      with self.assertRaises(Exception):
+        self._run_and_measure(spec, mode, target, device_ops, ctx)
+    else:
+      self._run_and_measure(spec, mode, target, device_ops, ctx)
+
+  def _run_and_measure(self, spec, mode, target, device_ops, ctx):
     try:
       with mode_lib.run_mode_context(mode, target):
         run_step = _make_run_step(spec, ctx, mode)

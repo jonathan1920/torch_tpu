@@ -55,9 +55,58 @@ class BenchmarkSpec:
   stepper_kwargs: Mapping[str, Any] = dataclasses.field(default_factory=dict)
   dtype: target_lib.DType = target_lib.DType.BF16
   compile_config: compile_lib.CompileConfig | None = None
+  skipped_run_modes: frozenset[str] = dataclasses.field(
+      default_factory=frozenset
+  )
 
 
 REGISTRY: Dict[str, BenchmarkSpec] = {}
+
+
+def add_benchmark(
+    factory: Factory,
+    stepper: step_lib.StepperType,
+    stepper_kwargs: Mapping[str, Any] | None = None,
+    dtype: target_lib.DType = target_lib.DType.BF16,
+    compile_config: compile_lib.CompileConfig | None = None,
+    name: str | None = None,
+    skipped_run_modes: frozenset[str] | set[str] | None = None,
+) -> None:
+  """Adds a benchmark spec to REGISTRY.
+
+  Args:
+    factory: The factory function for the benchmark.
+    stepper: The step function type to use for this benchmark.
+    stepper_kwargs: Optional keyword arguments to pass when resolving step.
+    dtype: The data type for running the benchmark (defaults to BF16).
+    compile_config: Optional compile configuration (defaults to None).
+    name: Optional explicit name for the benchmark. If not provided, the
+      factory's name is used.
+    skipped_run_modes: Optional set of run modes to skip for this benchmark.
+  """
+  if stepper_kwargs is None:
+    stepper_kwargs = {}
+
+  if skipped_run_modes is None:
+    skipped_run_modes = frozenset()
+  elif not isinstance(skipped_run_modes, frozenset):
+    skipped_run_modes = frozenset(skipped_run_modes)
+
+  key = name if name is not None else getattr(factory, "__name__", str(factory))
+  if key in REGISTRY:
+    raise ValueError(
+        f"duplicate benchmark name {key!r} (already registered from "
+        f"{REGISTRY[key].factory.__module__})"
+    )
+  REGISTRY[key] = BenchmarkSpec(
+      name=key,
+      factory=factory,
+      stepper=stepper,
+      stepper_kwargs=dict(stepper_kwargs),
+      dtype=dtype,
+      compile_config=compile_config,
+      skipped_run_modes=skipped_run_modes,
+  )
 
 
 def register_benchmark(
@@ -65,6 +114,7 @@ def register_benchmark(
     stepper_kwargs: Mapping[str, Any] | None = None,
     dtype: target_lib.DType = target_lib.DType.BF16,
     compile_config: compile_lib.CompileConfig | None = None,
+    skipped_run_modes: frozenset[str] | set[str] | None = None,
 ) -> Callable[[Factory], Factory]:
   """Decorator to wrap a benchmark factory and add its spec to REGISTRY.
 
@@ -73,6 +123,7 @@ def register_benchmark(
     stepper_kwargs: Optional keyword arguments to pass when resolving stepper.
     dtype: The data type for running the benchmark (defaults to BF16).
     compile_config: Optional compile configuration (defaults to None).
+    skipped_run_modes: Optional set of run modes to skip for this benchmark.
 
   Returns:
     A decorator that registers the factory function and returns it unchanged.
@@ -81,19 +132,13 @@ def register_benchmark(
     stepper_kwargs = {}
 
   def deco(factory: Factory) -> Factory:
-    key = getattr(factory, "__name__", str(factory))
-    if key in REGISTRY:
-      raise ValueError(
-          f"duplicate benchmark name {key!r} (already registered from "
-          f"{REGISTRY[key].factory.__module__})"
-      )
-    REGISTRY[key] = BenchmarkSpec(
-        name=key,
+    add_benchmark(
         factory=factory,
         stepper=stepper,
         stepper_kwargs=dict(stepper_kwargs),
         dtype=dtype,
         compile_config=compile_config,
+        skipped_run_modes=skipped_run_modes,
     )
     return factory
 
