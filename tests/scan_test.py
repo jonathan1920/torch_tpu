@@ -211,13 +211,10 @@ class ScanOpTest(parameterized.TestCase):
     x = torch.empty(0, 1, device="tpu")
     init = torch.tensor([5.0], device="tpu")
 
-    # The wrapper's validation should raise this error during tracing.
-    with self.assertRaisesRegex(
-        RuntimeError,
-        "All xs leaves must at least have 'dim' number of dimensions and scan"
-        " dimension > 0",
-    ):
-      _compile_and_run(scan, fn, init, x, dim=0)
+    out_carry, out_outputs = _compile_and_run(scan, fn, init, x, dim=0)
+
+    utils.assert_close(out_carry.cpu(), init.cpu())
+    utils.assert_close(out_outputs.cpu(), x.cpu())
 
   def test_scan_with_rnn(self):
     hidden_size = 8

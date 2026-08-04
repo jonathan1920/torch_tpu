@@ -127,7 +127,7 @@ UNREGISTERED_OPS = frozenset([
     '_scaled_dot_product_flash_attention.quantized',
     '_scaled_dot_product_flash_attention_backward',
     '_scaled_grouped_mm',
-    '_scaled_grouped_mm_v2',
+    '_scaled_grouped_mm_v2.out',
     '_segment_reduce_backward',
     '_slow_conv2d_backward.grad_input',
     '_slow_conv2d_backward.output_mask',

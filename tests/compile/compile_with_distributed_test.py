@@ -255,7 +255,7 @@ def run_reduce_scatter_with_torch_compile() -> None:
   execs = compile_and_assert_outputs(
       func, inputs=(inputs,), expected_outputs=(expected,)
   )
-  assert len(execs) == 2, f"Expected 2 graphs, got {len(execs)}"
+  assert len(execs) == 3, f"Expected 3 graphs, got {len(execs)}"
 
 
 def run_gather_with_torch_compile() -> None:
