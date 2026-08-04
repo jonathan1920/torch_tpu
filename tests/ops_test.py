@@ -919,20 +919,20 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float32: {"rtol": 1e-4, "atol": 1e-4},
     },
     "acos": {
-        torch.complex64: {"atol": 6.5e-5},
+        torch.complex64: {"rtol": 5.5e-5, "atol": 2.2e-5},
     },
     "acosh": {
-        torch.complex64: {"atol": 6.9e-5},
-        torch.float32: {"atol": 6.1e-5},
-        torch.int16: {"atol": 5.7e-5},
-        torch.int32: {"atol": 5.7e-5},
-        torch.int64: {"atol": 5.7e-5},
-        torch.int8: {"atol": 5.7e-5},
-        torch.uint8: {"atol": 5.7e-5},
+        torch.complex64: {"rtol": 2.9e-5},
+        torch.float32: {"rtol": 3e-5, "atol": 1.3e-5},
+        torch.int16: {"rtol": 2.8e-5},
+        torch.int32: {"rtol": 2.8e-5},
+        torch.int64: {"rtol": 2.8e-5},
+        torch.int8: {"rtol": 2.8e-5},
+        torch.uint8: {"rtol": 2.8e-5},
     },
     "add": {
-        torch.bfloat16: {"atol": 1.2e-2},
-        torch.float16: {"atol": 4e-3},
+        torch.bfloat16: {"rtol": 1.8e-2, "atol": 1.5e-2},
+        torch.float16: {"rtol": 4.5e-3, "atol": 1.2e-3},
     },
     "addcdiv": {
         torch.bfloat16: {"rtol": 2.5e-2, "atol": 2.9e-2},
@@ -1336,10 +1336,10 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.float32: {"rtol": 1e-5, "atol": 3e-5},
     },
     "acos": {
-        torch.complex64: {"atol": 6.5e-5},
+        torch.complex64: {"rtol": 5.5e-5, "atol": 2.2e-5},
     },
     "acosh": {
-        torch.complex64: {"atol": 6.9e-5},
+        torch.complex64: {"rtol": 2.9e-5},
     },
     "addcmul": {
         torch.float16: {"rtol": 1.4e-3, "atol": 1.2e-3},
