@@ -216,6 +216,8 @@ module {
     self.do_test("Compilation/Randint_Float32_power_of_two", make_shlo)
 
   def test_compile_sort_float32(self):
+    """Tests compilation time for rank-1 sort with dtype float32."""
+
     def make_shlo(i: int) -> str:
       size = 8000 * (i + 1)
       return f"""
@@ -232,6 +234,26 @@ module {{
 }}"""
 
     self.do_test("Compilation/Sort_Float32", make_shlo)
+
+  def test_compile_sort_sublane_float32(self):
+    """Tests compilation time for sort along sublane dimension with dtype float32."""
+
+    def make_shlo(i: int) -> str:
+      size = 8000 * (i + 1)
+      return f"""
+module {{
+  func.func @main(%arg0: tensor<{size}x128xf32>) -> (tensor<{size}x128xf32>, tensor<{size}x128xi64>) {{
+    %0 = stablehlo.iota dim = 0 : tensor<{size}x128xi64>
+    %1:2 = "stablehlo.sort"(%arg0, %0) <{{dimension = 0 : i64, is_stable = false}}> ({{
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<i64>, %arg4: tensor<i64>):
+      %2 = stablehlo.compare  LT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      stablehlo.return %2 : tensor<i1>
+    }}) : (tensor<{size}x128xf32>, tensor<{size}x128xi64>) -> (tensor<{size}x128xf32>, tensor<{size}x128xi64>)
+    return %1#0, %1#1 : tensor<{size}x128xf32>, tensor<{size}x128xi64>
+  }}
+}}"""
+
+    self.do_test("Compilation/Sort_Sublane_Float32", make_shlo)
 
   def test_compile_take_float32(self):
     """Tests compilation time for take() with dtype float32."""
