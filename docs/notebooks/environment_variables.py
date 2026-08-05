@@ -45,7 +45,7 @@ def _():
       shutil.rmtree(p)
     os.makedirs(p, exist_ok=True)
 
-  os.environ["TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE"] = tier2_name
+  os.environ["TORCH_TPU_TIER2_COMPILATION_CACHE"] = tier2_name
   os.environ["TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT"] = tier3_path
   os.environ["TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK"] = (
       "1"
@@ -291,7 +291,7 @@ def _(mo):
 
     | Variable | Purpose |
     | :--- | :--- |
-    | `TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE` | Path to the tier-2 cache (local within the host). |
+    | `TORCH_TPU_TIER2_COMPILATION_CACHE` | Path to the tier-2 cache (local within the host). |
     | `TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT` | Path to the tier-3 (shared/persistent) cache. |
     | `TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK` | Enables local task to back up cache entries to Tier 3. |
 
@@ -318,9 +318,9 @@ def _(os, safe_init):
     for p in [tier2_path, tier3_path]:
       os.makedirs(p, exist_ok=True)
 
-    # TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE expects just the directory NAME
+    # TORCH_TPU_TIER2_COMPILATION_CACHE expects just the directory NAME
     # that will be created inside /dev/shm/
-    os.environ["TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE"] = tier2_name
+    os.environ["TORCH_TPU_TIER2_COMPILATION_CACHE"] = tier2_name
     os.environ["TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT"] = tier3_path
     os.environ[
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK"
@@ -382,7 +382,7 @@ def _(mo):
     | `RANK` | Launcher | `import torch` | `0`, `1`, `2`, ... (integer) |
     | `TORCH_SHOW_CPP_STACKTRACES` | Debug | `import torch` | `0` (False), `1` (True) |
     | `TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS` | Safety | `import torch` | `0` (False), `1` (True) |
-    | `TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE` | Cache | `torch.device("tpu")` | `/dev/shm/xla_cache_dir/`, `<local_path>` |
+    | `TORCH_TPU_TIER2_COMPILATION_CACHE` | Cache | `torch.device("tpu")` | `/dev/shm/xla_cache_dir/`, `<local_path>` |
     | `TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK` | Cache | `torch.device("tpu")` | `0` (False), `1` (True) |
     | `TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT` | Cache | `torch.device("tpu")` | `gs://<bucket_name>/<path_to_cache>` |
     | `TORCH_TPU_INTERNAL_XLA_OPTIONS` | XLA Tuning | `torch.device("tpu")` | `xla_optimization_level=O[0-3]`, `--xla_tpu_...` |
