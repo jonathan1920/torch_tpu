@@ -2149,6 +2149,7 @@ torch_tpu_py_test(
     srcs = ["scan_test.py"],
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":oss_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
