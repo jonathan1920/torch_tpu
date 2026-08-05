@@ -322,6 +322,9 @@ int64_t DeviceBufferList::num_elements(int64_t index) const {
 absl::Status DeviceBufferList::Synchronize() const {
   for (auto i = 0; i < size(); ++i) {
     TT_ASSIGN_OR_RETURN(auto* buffer, AwaitBuffer(i));
+    if (buffer->IsDeleted()) {
+      continue;
+    }
     auto future = buffer->GetReadyFuture();
     TT_RETURN_IF_ERROR(
         AdaptXlaError(future.Await(),
