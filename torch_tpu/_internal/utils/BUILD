@@ -162,4 +162,20 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_library(
+    name = "annotations",
+    srcs = ["annotations.py"],
+)
+
+torch_tpu_py_test(
+    name = "annotations_test",
+    srcs = ["annotations_test.py"],
+    deps = [
+        ":annotations",
+        "//shims/absl_py/testing:absltest",
+        "//torch_tpu",
+        "//torch_tpu/_internal/device:_device_module",
+    ],
+)
+
 torch_tpu_package_end()

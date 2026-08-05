@@ -28,6 +28,7 @@ from torch_tpu._internal.device import _device_ops_backend
 import torch_tpu._internal.precision as _precision_module
 from torch_tpu._internal.stream import streams
 from torch_tpu._internal.utils import hardware
+from torch_tpu._internal.utils.annotations import experimental
 
 # TODO: add more dtypes here. Initial list was chosen arbitrarily.
 _AMP_SUPPORTED_DTYPES = (
@@ -357,7 +358,16 @@ class _DeviceModule(abc.ABC):
     return streams.TpuStream(device=device, stream_id=0)
 
   @classmethod
+  @experimental(
+      "get_amp_supported_dtype() is experimental and may change or be removed "
+      "without notice."
+  )
   def get_amp_supported_dtype(cls) -> List[torch.dtype]:  # Needed for AMP.
+    """Returns the list of supported dtypes for Automatic Mixed Precision (AMP).
+
+    .. warning::
+        This API is experimental and subject to change in future releases.
+    """
     return list(_AMP_SUPPORTED_DTYPES)
 
   @classmethod
