@@ -581,6 +581,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 7.4e-2, "atol": 2.6e-2},
         torch.float16: {"rtol": 4.4e-3, "atol": 2e-3},
     },
+    "nn.functional.binary_cross_entropy": {
+        torch.float32: {"rtol": 1.4e-4, "atol": 5.1e-5},
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float16: {"rtol": 1e-2, "atol": 1e-2},
+    },
     "nn.functional.conv1d": {
         torch.bfloat16: {"rtol": 2.6e-2, "atol": 1.2e-2},
         torch.float16: {"rtol": 5e-2, "atol": 5.4e-1},
@@ -1152,6 +1157,11 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"atol": 6.3e-2},
         torch.float16: {"atol": 1.6e-2},
     },
+    "nn.functional.binary_cross_entropy": {
+        torch.bfloat16: {"rtol": 9e-3, "atol": 5.9e-3},
+        torch.float16: {"rtol": 8.5e-3, "atol": 4.4e-4},
+        torch.float32: {"rtol": 1.8e-4, "atol": 6.9e-5},
+    },
     "nn.functional.conv1d": {
         torch.float16: {"rtol": 8.2e-2},
         torch.float32: {"rtol": 9e-2},
@@ -1457,6 +1467,11 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     "nn.functional.adaptive_avg_pool2d": {
         torch.bfloat16: {"atol": 1.6e-2},
         torch.float16: {"atol": 4e-3},
+    },
+    "nn.functional.binary_cross_entropy": {
+        torch.bfloat16: {"rtol": 9e-3, "atol": 5.9e-3},
+        torch.float16: {"rtol": 8.5e-3, "atol": 4.4e-4},
+        torch.float32: {"rtol": 1.8e-4, "atol": 6.9e-5},
     },
     "nn.functional.conv1d": {
         torch.float16: {"rtol": 8.2e-2},
@@ -2053,6 +2068,18 @@ class TestOps(TorchTpuTestBase):
         check_value=CheckValueMode.SKIP,
         # GPU (CUDA) does not support complex dtypes for bernoulli.
         exclude_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_binary_cross_entropy(self):
+    self.do_test_op(
+        "nn.functional.binary_cross_entropy",
+        # Exclude non-floating dtypes as they are not supported by the op
+        # and because GPU golden sample generation fails for the integer
+        # dtypes.
+        exclude_dtypes=INTEGRAL_DTYPES  # EXCLUDE_DTYPES_OK=unsupported by op
+        + COMPLEX_DTYPES,
+        # TODO(b/540303890): remove when backwards ops are implemented.
+        check_grad=False,
     )
 
   def test_bincount(self):

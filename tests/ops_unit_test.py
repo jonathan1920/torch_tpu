@@ -439,6 +439,118 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_out)
 
+  @parameterized.product(
+      reduction=[0, 1, 2],
+      dtype=[torch.float32, torch.bfloat16, torch.float16],
+      has_weight=[True, False],
+  )
+  def test_binary_cross_entropy_simple(self, reduction, dtype, has_weight):
+    """Tests binary_cross_entropy."""
+    input_val = torch.rand(3, 3, dtype=dtype)
+    target_val = torch.rand(3, 3, dtype=dtype)
+
+    if has_weight:
+      # Test 1D weight broadcasting to 2D input
+      weight_val = torch.rand(3, dtype=dtype)
+    else:
+      weight_val = None
+
+    def compute(device):
+      w = weight_val.to(device) if weight_val is not None else None
+      return torch.ops.aten.binary_cross_entropy(
+          input_val.to(device),
+          target_val.to(device),
+          weight=w,
+          reduction=reduction,
+      )
+
+    rtol = 1e-2 if dtype != torch.float32 else 4e-5
+    atol = 1e-2 if dtype != torch.float32 else 4e-5
+
+    self.assert_close_tpu_vs_cpu(compute, rtol=rtol, atol=atol)
+
+  @parameterized.product(
+      reduction=[0, 1, 2],
+      dtype=[torch.float32, torch.bfloat16, torch.float16],
+      has_weight=[True, False],
+  )
+  def test_binary_cross_entropy_out(self, reduction, dtype, has_weight):
+    """Tests binary_cross_entropy.out."""
+    input_val = torch.rand(3, 3, dtype=dtype)
+    target_val = torch.rand(3, 3, dtype=dtype)
+
+    if has_weight:
+      weight_val = torch.rand(3, dtype=dtype)
+    else:
+      weight_val = None
+
+    if reduction != 0:
+      # Skip reduction != 0 for .out variant due to PyTorch CPU
+      # Bugs/Discrepancies:
+      # 1. Shape mismatch when has_weight=True (expects weight's broadcast
+      # shape).
+      # 2. Wrong/Inconsistent values (e.g. SUM returns MEAN values, MEAN
+      # differs from non-out).
+      return
+
+    def compute(device):
+      w = weight_val.to(device) if weight_val is not None else None
+      out_shape = input_val.shape
+      out = torch.empty(out_shape, dtype=dtype).to(device)
+      torch.ops.aten.binary_cross_entropy.out(
+          input_val.to(device),
+          target_val.to(device),
+          weight=w,
+          reduction=reduction,
+          out=out,
+      )
+      return out
+
+    rtol = 1e-2 if dtype != torch.float32 else 4e-5
+    atol = 1e-2 if dtype != torch.float32 else 4e-5
+
+    self.assert_close_tpu_vs_cpu(compute, rtol=rtol, atol=atol)
+
+  @parameterized.product(
+      reduction=[0, 1, 2],
+      dtype=[torch.float32, torch.bfloat16, torch.float16],
+      shape=[(0,), (0, 3)],
+  )
+  def test_binary_cross_entropy_empty(self, reduction, dtype, shape):
+    """Tests binary_cross_entropy with empty tensors."""
+    input_val = torch.zeros(shape, dtype=dtype)
+    target_val = torch.zeros(shape, dtype=dtype)
+
+    def compute(device):
+      return torch.ops.aten.binary_cross_entropy(
+          input_val.to(device),
+          target_val.to(device),
+          reduction=reduction,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  @parameterized.product(
+      reduction=[0, 1, 2],
+      dtype=[torch.float32, torch.bfloat16, torch.float16],
+  )
+  def test_binary_cross_entropy_boundary(self, reduction, dtype):
+    """Tests binary_cross_entropy with boundary values (0, 1)."""
+
+    def compute(device):
+      input_val = torch.tensor([0.0, 1.0, 0.0, 1.0], dtype=dtype, device=device)
+      target_val = torch.tensor(
+          [1.0, 0.0, 0.0, 1.0], dtype=dtype, device=device
+      )
+      return torch.ops.aten.binary_cross_entropy(
+          input_val, target_val, reduction=reduction
+      )
+
+    rtol = 1e-2 if dtype != torch.float32 else 4e-5
+    atol = 1e-2 if dtype != torch.float32 else 4e-5
+
+    self.assert_close_tpu_vs_cpu(compute, rtol=rtol, atol=atol)
+
   # --- Fused RNN-cell ops (_thnn_fused_lstm_cell / _thnn_fused_gru_cell) -----
   # These are the ops stock nn.LSTM / nn.GRU lower to on the TPU backend. They
   # are CUDA-only in ATen (no CPU kernel), so they are exercised through the

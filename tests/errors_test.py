@@ -920,6 +920,43 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
           output_mask=[True, True, True],
       )
 
+  def test_binary_cross_entropy_invalid_input_dtype(self):
+    """Tests binary_cross_entropy with non-floating point input."""
+    input_val = torch.randint(
+        0, 2, (3, 3), dtype=torch.int32, device=et.device()
+    )
+    target_val = torch.rand(3, 3, dtype=torch.float32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""binary_cross_entropy(): expected floating point input, got int32""",
+        gpu="""Found dtype Float but expected Int""",
+    ):
+      torch.ops.aten.binary_cross_entropy(input_val, target_val)
+
+  def test_binary_cross_entropy_invalid_target_dtype(self):
+    """Tests binary_cross_entropy with non-floating point target."""
+    input_val = torch.rand(3, 3, dtype=torch.float32, device=et.device())
+    target_val = torch.randint(
+        0, 2, (3, 3), dtype=torch.int32, device=et.device()
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""binary_cross_entropy(): expected floating point target, got int32""",
+        gpu="""Found dtype Int but expected Float""",
+    ):
+      torch.ops.aten.binary_cross_entropy(input_val, target_val)
+
+  def test_binary_cross_entropy_mismatched_shapes(self):
+    """Tests binary_cross_entropy with mismatched shapes."""
+    input_val = torch.rand(3, 3, dtype=torch.float32, device=et.device())
+    target_val = torch.rand(3, 4, dtype=torch.float32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""binary_cross_entropy(): expected input and target shapes to match, got [3, 3] vs [3, 4]""",
+        gpu="""The size of tensor a (3) must match the size of tensor b (4) at non-singleton dimension 1""",
+    ):
+      torch.ops.aten.binary_cross_entropy(input_val, target_val)
+
   def test_nll_loss_unsupported_input_dtype(self):
     t = torch.ones(3, 5, device=et.device(), dtype=torch.int32)
     target = torch.tensor([1, 0, 4], device=et.device(), dtype=torch.long)

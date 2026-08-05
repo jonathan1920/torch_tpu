@@ -151,6 +151,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "bernoulli_.Tensor";
     case OpName::kBinCount:
       return "bincount";
+    case OpName::kBinaryCrossEntropy:
+      return "binary_cross_entropy";
+    case OpName::kBinaryCrossEntropyOut:
+      return "binary_cross_entropy.out";
     case OpName::kBitwiseAnd:
       return "bitwise_and";
     case OpName::kBitwiseAndOut:
