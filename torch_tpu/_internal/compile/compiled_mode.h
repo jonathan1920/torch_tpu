@@ -34,6 +34,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
+#include "torch_tpu/common/layout_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 
@@ -98,7 +99,7 @@ struct TraverseAndCompileOptions {
   // inputs
   bool use_stablehlo_bounds = false;
   // Forced layouts for arguments.
-  std::vector<Indices> argument_layouts;
+  std::vector<std::optional<LayoutAnnotation>> argument_layouts;
 };
 
 // Traverses the graph from outputs to arguments and compiles it.

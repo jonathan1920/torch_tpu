@@ -14,29 +14,8 @@
 
 """API for providing XLA specific annotations on torch tensors."""
 
-import dataclasses
-from typing import List
 from torch_tpu._internal.device_utils import annotations_py
-
-field = dataclasses.field
-dataclass = dataclasses.dataclass
-
-
-@dataclass
-class TpuLayout:
-  """Mimics layout class from xla/layout.h.
-
-  Attributes:
-    minor_to_major: The minor-to-major ordering of dimensions.
-    tiles: The tiling of the layout. Each tile is a list of integers
-      representing the tile dimensions.
-    element_size_in_bits: The size of the element in bits, if it is a sub-byte
-      type.
-  """
-
-  minor_to_major: List[int]
-  tiles: List[List[int]] = field(default_factory=list)
-  element_size_in_bits: int = 0
+from torch_tpu._internal.device_utils.annotations_py import TpuLayout
 
 
 class LayoutContext:
@@ -65,11 +44,7 @@ class LayoutContext:
     self._layout = layout
 
   def __enter__(self):
-    annotations_py.enter_layout_context(
-        self._layout.minor_to_major,
-        self._layout.tiles,
-        self._layout.element_size_in_bits,
-    )
+    annotations_py.enter_layout_context(self._layout)
 
   def __exit__(self, *args):
     annotations_py.exit_layout_context()
