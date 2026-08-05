@@ -885,7 +885,7 @@ absl::StatusOr<mlir::MlirOp> BuildCtcLossBackwardShlo(
       log_probs, gather_indices,
       GetGatherDimensionNumbers(&builder.getContext(), {}, {0, 1, 2}, {}, {},
                                 {0, 1, 2}, 3),
-      {1, 1, 1}, false);
+      {1, 1, 1}, /*indices_are_sorted=*/false);
 
   log_prob_term = mlir::stablehlo::Subtract(log_prob_term, log_probs_ntl);
 

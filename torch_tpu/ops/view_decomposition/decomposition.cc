@@ -1359,7 +1359,8 @@ absl::StatusOr<Dimensions> GetContiguousBaseShape(
   TT_ASSIGN_OR_RETURN(
       auto one_d_view_sequence,
       DecomposeIntoViewSequence({min_numel}, mlir::ElementType::BF16,
-                                view_layout, mlir::ElementType::BF16, false));
+                                view_layout, mlir::ElementType::BF16,
+                                /*is_conj=*/false));
   Simplify(one_d_view_sequence, {min_numel});
 
   if (one_d_view_sequence.empty()) {

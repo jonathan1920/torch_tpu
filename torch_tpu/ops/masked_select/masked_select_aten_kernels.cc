@@ -98,7 +98,8 @@ at::Tensor MaskedSelectWithKnownOutputShape(const at::Tensor& self,
   TT_ASSIGN_OR_THROW(at::Tensor result, MakeEmptyTensor(sliced_indices.sizes(),
                                                         self_flat.scalar_type(),
                                                         self_flat.device()));
-  return AtenGatherOut(self_flat, 0, sliced_indices, false, result);
+  return AtenGatherOut(self_flat, 0, sliced_indices, /*sparse_grad=*/false,
+                       result);
 }
 
 // PrepareOutTensor validates that the out tensor is on TPU, resizes it to match

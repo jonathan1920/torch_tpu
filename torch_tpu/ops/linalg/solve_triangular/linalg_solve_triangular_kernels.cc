@@ -67,16 +67,15 @@ absl::Status CheckDimensions(const at::Tensor& a, const at::Tensor& b,
 
 }  // namespace
 
-NAryMlirOpBuilder<2, 1> LinalgSolveTriangularBuilder(bool upper, bool left,
-                                                     bool unitriangular,
-                                                     bool adjoint = false) {
-  return [upper, left, unitriangular,
-          adjoint](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+NAryMlirOpBuilder<2, 1> LinalgSolveTriangularBuilder(
+    SolveTriangularOptions options) {
+  return [options](FixedSizeSpan<mlir::MlirOp, 2> inputs)
              -> absl::StatusOr<mlir::MlirOp> {
     auto& [a_op, b_op] = inputs;
     mlir::MlirBuilder& builder = a_op.getBuilder();
-    ABSL_VLOG(1) << "triangular solve: " << "upper:" << upper
-                 << " left:" << left << " unitriangular:" << unitriangular;
+    ABSL_VLOG(1) << "triangular solve: " << "upper:" << options.upper
+                 << " left:" << options.left
+                 << " unitriangular:" << options.unitriangular;
     auto a_type = GetTensorTypeOrDie(a_op);
     auto b_type = GetTensorTypeOrDie(b_op);
     auto a_batch_shape = a_type.getShape().slice(0, a_type.getRank() - 2);
@@ -94,9 +93,10 @@ NAryMlirOpBuilder<2, 1> LinalgSolveTriangularBuilder(bool upper, bool left,
     TT_ASSIGN_OR_RETURN(b_op, BroadcastIfNeeded(b_op, b_broadcasted_shape));
     auto triangular_solve_op =
         builder.create<mlir::stablehlo::TriangularSolveOp>(
-            a_op.getValue(), b_op.getValue(), left, !upper, unitriangular,
-            adjoint ? mlir::stablehlo::Transpose::ADJOINT
-                    : mlir::stablehlo::Transpose::NO_TRANSPOSE);
+            a_op.getValue(), b_op.getValue(), options.left, !options.upper,
+            options.unitriangular,
+            options.adjoint ? mlir::stablehlo::Transpose::ADJOINT
+                            : mlir::stablehlo::Transpose::NO_TRANSPOSE);
     return triangular_solve_op;
   };
 }
@@ -105,70 +105,76 @@ at::Tensor& AtenLinalgSolveTriangularOut(const at::Tensor& a,
                                          const at::Tensor& b, bool upper,
                                          bool left, bool unitriangular,
                                          at::Tensor& out) {
-  TT_KERNEL(OpName::kLinalgSolveTriangularOut, param_keys,
-            (a, b, upper, left, unitriangular, out), {
-              TT_THROW_IF_ERROR(CheckDimensions(a, b, left));
-              TT_CHECK_THROW(a.scalar_type() != c10::ScalarType::BFloat16 &&
-                                 a.scalar_type() != c10::ScalarType::Half &&
-                                 !at::isIntegralType(a.scalar_type(),
-                                                     /*includeBool=*/true),
-                             error::kInvalidArgument)
-                  << "triangular solve not supported for dtype "
-                  << ToString(a.scalar_type());
+  TT_KERNEL(
+      OpName::kLinalgSolveTriangularOut, param_keys,
+      (a, b, upper, left, unitriangular, out), {
+        TT_THROW_IF_ERROR(CheckDimensions(a, b, left));
+        TT_CHECK_THROW(a.scalar_type() != c10::ScalarType::BFloat16 &&
+                           a.scalar_type() != c10::ScalarType::Half &&
+                           !at::isIntegralType(a.scalar_type(),
+                                               /*includeBool=*/true),
+                       error::kInvalidArgument)
+            << "triangular solve not supported for dtype "
+            << ToString(a.scalar_type());
 
-              at::ScalarType out_scalar_type =
-                  c10::promoteTypes(a.scalar_type(), b.scalar_type());
+        at::ScalarType out_scalar_type =
+            c10::promoteTypes(a.scalar_type(), b.scalar_type());
 
-              TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
-                                 ConvertTo<mlir::ElementType>(out_scalar_type));
+        TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
+                           ConvertTo<mlir::ElementType>(out_scalar_type));
 
-              TT_ASSIGN_OR_THROW(
-                  auto result_buffer,
-                  DispatchOp<2>(
-                      LinalgSolveTriangularBuilder(upper, left, unitriangular),
-                      {a, b},
-                      {.out_dtype = out_dtype,
-                       .out_dims = CopyIntVector(b.sizes()),
-                       .op_param_cache_keys = std::move(param_keys)}));
+        TT_ASSIGN_OR_THROW(
+            auto result_buffer,
+            DispatchOp<2>(
+                LinalgSolveTriangularBuilder({.upper = upper,
+                                              .left = left,
+                                              .unitriangular = unitriangular}),
+                {a, b},
+                {.out_dtype = out_dtype,
+                 .out_dims = CopyIntVector(b.sizes()),
+                 .op_param_cache_keys = std::move(param_keys)}));
 
-              TT_THROW_IF_ERROR(
-                  ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
-              TT_THROW_IF_ERROR(
-                  AssignBufferToAtTensor(std::move(result_buffer), out));
-              return out;
-            });
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(result_buffer), out));
+        return out;
+      });
 }
 
 at::Tensor AtenLinalgSolveTriangular(const at::Tensor& a, const at::Tensor& b,
                                      bool upper, bool left,
                                      bool unitriangular) {
-  TT_KERNEL(OpName::kLinalgSolveTriangular, param_keys,
-            (a, b, upper, left, unitriangular), {
-              TT_THROW_IF_ERROR(CheckDimensions(a, b, left));
-              TT_CHECK_THROW(a.scalar_type() != c10::ScalarType::BFloat16 &&
-                                 a.scalar_type() != c10::ScalarType::Half &&
-                                 !at::isIntegralType(a.scalar_type(),
-                                                     /*includeBool=*/true),
-                             error::kInvalidArgument)
-                  << "triangular solve not supported for dtype "
-                  << ToString(a.scalar_type());
+  TT_KERNEL(
+      OpName::kLinalgSolveTriangular, param_keys,
+      (a, b, upper, left, unitriangular), {
+        TT_THROW_IF_ERROR(CheckDimensions(a, b, left));
+        TT_CHECK_THROW(a.scalar_type() != c10::ScalarType::BFloat16 &&
+                           a.scalar_type() != c10::ScalarType::Half &&
+                           !at::isIntegralType(a.scalar_type(),
+                                               /*includeBool=*/true),
+                       error::kInvalidArgument)
+            << "triangular solve not supported for dtype "
+            << ToString(a.scalar_type());
 
-              at::ScalarType out_scalar_type =
-                  c10::promoteTypes(a.scalar_type(), b.scalar_type());
+        at::ScalarType out_scalar_type =
+            c10::promoteTypes(a.scalar_type(), b.scalar_type());
 
-              TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
-                                 ConvertTo<mlir::ElementType>(out_scalar_type));
+        TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
+                           ConvertTo<mlir::ElementType>(out_scalar_type));
 
-              TT_ASSIGN_OR_THROW(
-                  auto result_buffer,
-                  DispatchOp<2>(
-                      LinalgSolveTriangularBuilder(upper, left, unitriangular),
-                      {a, b},
-                      {.out_dtype = out_dtype,
-                       .out_dims = CopyIntVector(b.sizes()),
-                       .op_param_cache_keys = std::move(param_keys)}));
-              return MakeTensor(std::move(result_buffer));
-            });
+        TT_ASSIGN_OR_THROW(
+            auto result_buffer,
+            DispatchOp<2>(
+                LinalgSolveTriangularBuilder({.upper = upper,
+                                              .left = left,
+                                              .unitriangular = unitriangular}),
+                {a, b},
+                {.out_dtype = out_dtype,
+                 .out_dims = CopyIntVector(b.sizes()),
+                 .op_param_cache_keys = std::move(param_keys)}));
+        return MakeTensor(std::move(result_buffer));
+      });
 }
 
 }  // namespace torch_tpu

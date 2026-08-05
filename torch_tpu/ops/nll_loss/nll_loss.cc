@@ -65,9 +65,9 @@ absl::StatusOr<MlirOpResults<2>> BuildNllLossForwardOutShlo(
 
   // loss = - self[target]
   TT_ASSIGN_OR_RETURN(mlir::MlirOp target_unsqueeze, Unsqueeze(target, 1));
-  TT_ASSIGN_OR_RETURN(
-      mlir::MlirOp gathered_unsqueeze,
-      BuildGatherShlo(self, 1, target_unsqueeze, false, self_dtype));
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp gathered_unsqueeze,
+                      BuildGatherShlo(self, 1, target_unsqueeze,
+                                      /*sparse_grad=*/false, self_dtype));
   TT_ASSIGN_OR_RETURN(mlir::MlirOp gathered, Squeeze(gathered_unsqueeze, {1}));
   // loss_no_reduction is of shape [batch], which contains the loss for each
   // sample.

@@ -262,7 +262,7 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
   //   C_out = out_channels
   TT_RETURN_IF_ERROR(CheckConvolutionWeight(
       weight_type.getShape(), num_spatial_dims, in_channels, groups,
-      /* transposed= */ false));
+      /*transposed=*/false));
 
   // Spatial dims are all but the first two dimensions.
   Dimensions input_spatial_dims(num_spatial_dims);

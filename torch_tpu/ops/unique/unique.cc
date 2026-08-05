@@ -102,7 +102,8 @@ absl::StatusOr<mlir::MlirOp> BuildUniqueGetOutputSizeShlo(
   auto& builder = input.getBuilder();
   mlir::MlirOp flattened_input = FlattenIfNeeded(input);
   mlir::MlirOp sorted_input =
-      BuildSortShlo(flattened_input, false, 0, false).values;
+      BuildSortShlo(flattened_input, /*stable=*/false, 0, /*descending=*/false)
+          .values;
 
   TT_ASSIGN_OR_RETURN(mlir::MlirOp mask,
                       BuildUniqueMask(builder, sorted_input));
@@ -152,7 +153,8 @@ absl::StatusOr<BuildUniqueShloOutputs> BuildUnique2Shlo(int64_t output_size,
   }
 
   // 1. Sort input and get permutation indices
-  SortShloOutputs sorted_res = BuildSortShlo(flattened_input, false, 0, false);
+  SortShloOutputs sorted_res =
+      BuildSortShlo(flattened_input, /*stable=*/false, 0, /*descending=*/false);
   mlir::MlirOp sorted_input = sorted_res.values;
   mlir::MlirOp p_indices =
       mlir::stablehlo::ConvertElementType(sorted_res.indices, i64_type);
@@ -172,7 +174,7 @@ absl::StatusOr<BuildUniqueShloOutputs> BuildUnique2Shlo(int64_t output_size,
   auto s_iota_type = mlir::makeTensorType(builder.getContext(), {n}, i64_type);
   auto s_iota = mlir::stablehlo::Iota(builder, s_iota_type, 0);
   auto unique_indices_sort = mlir::stablehlo::Sort(
-      builder, {mask, s_iota}, mask_sort_comparator, 0, false);
+      builder, {mask, s_iota}, mask_sort_comparator, 0, /*is_stable=*/false);
   mlir::MlirOp s_unique_indices =
       mlir::stablehlo::Slice(unique_indices_sort[1], {0}, {output_size}, {1});
 
@@ -182,8 +184,9 @@ absl::StatusOr<BuildUniqueShloOutputs> BuildUnique2Shlo(int64_t output_size,
         {i64_type}, mlir::stablehlo::ComparisonDirection::LT, std::nullopt,
         &rb.getRegion(), &body_builder);
   };
-  s_unique_indices = mlir::stablehlo::Sort(builder, {s_unique_indices},
-                                           i64_lt_comparator, 0, false)[0];
+  s_unique_indices =
+      mlir::stablehlo::Sort(builder, {s_unique_indices}, i64_lt_comparator, 0,
+                            /*is_stable=*/false)[0];
 
   auto gather_dims_attr = mlir::stablehlo::GatherDimensionNumbersAttr::get(
       &builder.getContext(),
@@ -213,8 +216,9 @@ absl::StatusOr<BuildUniqueShloOutputs> BuildUnique2Shlo(int64_t output_size,
           {i64_type, i64_type}, mlir::stablehlo::ComparisonDirection::LT,
           std::nullopt, &rb.getRegion(), &body_builder);
     };
-    auto unsorted = mlir::stablehlo::Sort(builder, {p_indices, cumsum_mask},
-                                          i64_i64_lt_comparator, 0, false);
+    auto unsorted =
+        mlir::stablehlo::Sort(builder, {p_indices, cumsum_mask},
+                              i64_i64_lt_comparator, 0, /*is_stable=*/false);
     outputs.inverse_indices = unsorted[1];
     const mlir::RankedTensorType original_input_type =
         GetTensorTypeOrDie(input);

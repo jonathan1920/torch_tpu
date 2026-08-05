@@ -132,8 +132,8 @@ absl::StatusOr<int64_t> GetArangeNumElements(
                << ", step_val=" << step.toDouble()
                << ", dtype=" << output_dtype;
 
-  const bool bounds_are_integral =
-      start.isIntegral(true) && end.isIntegral(true);
+  const bool bounds_are_integral = start.isIntegral(/*includeBool=*/true) &&
+                                   end.isIntegral(/*includeBool=*/true);
   const double step_f64 = step.toDouble();
 
   // Watch out for int64_t to double conversion issue.

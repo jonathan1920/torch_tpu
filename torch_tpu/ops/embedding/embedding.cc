@@ -69,11 +69,16 @@ absl::StatusOr<mlir::MlirOp> BuildEmbeddingGather(mlir::MlirBuilder& builder,
 }
 
 // Builds a simple scatter operation.
+enum class HasWindow {
+  kNo,
+  kYes,
+};
+
 mlir::MlirOp BuildSimpleScatter(mlir::MlirBuilder& builder,
                                 mlir::MlirOp operand, mlir::MlirOp indices,
-                                mlir::MlirOp updates, bool has_window) {
+                                mlir::MlirOp updates, HasWindow has_window) {
   llvm::SmallVector<int64_t, 1> update_window_dims;
-  if (has_window) {
+  if (has_window == HasWindow::kYes) {
     for (int64_t i = 1; i < GetTensorTypeOrDie(operand).getRank(); ++i) {
       update_window_dims.push_back(i);
     }
@@ -116,7 +121,7 @@ absl::StatusOr<mlir::MlirOp> BuildOffset2Bag(mlir::MlirBuilder& builder,
   }
   TT_ASSIGN_OR_RETURN(auto scatter_indices, Unsqueeze(active_offsets, 1));
   auto bag_starts = BuildSimpleScatter(builder, init, scatter_indices,
-                                       ones_updates, /*has_window=*/false);
+                                       ones_updates, HasWindow::kNo);
   TT_ASSIGN_OR_RETURN(auto cumsum,
                       BuildCumsumShlo(0, std::nullopt, bag_starts));
   auto one_scalar = MakeScalarConstant(builder, 1, i64_type);
@@ -391,22 +396,20 @@ absl::StatusOr<MlirOpResults<4>> BuildEmbeddingBagShlo(
           mlir::stablehlo::Select(is_padding, zero_i64_bcst, ones_indices);
     }
     return BuildSimpleScatter(builder, bag_size_init, scatter_indices,
-                              ones_indices, /*has_window=*/false);
+                              ones_indices, HasWindow::kNo);
   };
 
   switch (bag_mode) {
     case EmbeddingBagMode::kSum: {
-      output =
-          BuildSimpleScatter(builder, output_init, scatter_indices, gathered,
-                             /*has_window=*/true);
+      output = BuildSimpleScatter(builder, output_init, scatter_indices,
+                                  gathered, HasWindow::kYes);
       final_bag_size = bag_size_init;
       max_indices = bag_size_init;
       break;
     }
     case EmbeddingBagMode::kMean: {
-      output =
-          BuildSimpleScatter(builder, output_init, scatter_indices, gathered,
-                             /*has_window=*/true);
+      output = BuildSimpleScatter(builder, output_init, scatter_indices,
+                                  gathered, HasWindow::kYes);
       TT_ASSIGN_OR_RETURN(final_bag_size, build_bag_size());
       max_indices = final_bag_size;
 
@@ -609,8 +612,8 @@ absl::StatusOr<mlir::MlirOp> BuildEmbeddingBagBackwardShlo(
         builder, mlir::DenseElementsAttr::get(
                      mlir::RankedTensorType::get({num_indices}, i64_type),
                      builder.getOpBuilder().getIntegerAttr(i64_type, 1)));
-    auto counts =
-        BuildSimpleScatter(builder, counts_init, fi_u, ones_indices_v, false);
+    auto counts = BuildSimpleScatter(builder, counts_init, fi_u, ones_indices_v,
+                                     HasWindow::kNo);
     auto counts_acc =
         mlir::stablehlo::ConvertElementType(counts, acc_elem_type);
     TT_ASSIGN_OR_RETURN(auto ci_g, BuildEmbeddingGather(builder, counts_acc,
@@ -628,7 +631,7 @@ absl::StatusOr<mlir::MlirOp> BuildEmbeddingBagBackwardShlo(
   }
   TT_ASSIGN_OR_RETURN(auto si_v, Unsqueeze(flattened_indices, 1));
   auto grad_weight = BuildSimpleScatter(builder, grad_weight_init, si_v,
-                                        grad_indices, /*has_window=*/true);
+                                        grad_indices, HasWindow::kYes);
   if (needs_upcast) {
     grad_weight =
         mlir::stablehlo::ConvertElementType(grad_weight, grad_elem_type);
@@ -681,7 +684,7 @@ absl::StatusOr<mlir::MlirOp> BuildEmbeddingDenseBackwardShlo(
     fg = mlir::stablehlo::Select(mb, zb, fg);
   }
   TT_ASSIGN_OR_RETURN(auto si, Unsqueeze(fi, 1));
-  auto gw = BuildSimpleScatter(builder, gwi, si, fg, true);
+  auto gw = BuildSimpleScatter(builder, gwi, si, fg, HasWindow::kYes);
   if (scale_grad_by_freq) {
     auto ci = mlir::stablehlo::Constant(
         builder,
@@ -691,7 +694,8 @@ absl::StatusOr<mlir::MlirOp> BuildEmbeddingDenseBackwardShlo(
         builder, mlir::DenseElementsAttr::get(
                      mlir::RankedTensorType::get({ni}, i64),
                      builder.getOpBuilder().getIntegerAttr(i64, 1)));
-    auto cou = BuildSimpleScatter(builder, ci, si, ones_indices_v, false);
+    auto cou =
+        BuildSimpleScatter(builder, ci, si, ones_indices_v, HasWindow::kNo);
     auto ca = mlir::stablehlo::ConvertElementType(cou, at);
     TT_ASSIGN_OR_RETURN(auto cau, Unsqueeze(ca, 1));
     TT_ASSIGN_OR_RETURN(auto cb, BroadcastIfNeeded(cau, gw));

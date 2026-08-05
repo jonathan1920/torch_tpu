@@ -51,7 +51,8 @@ namespace {
 // the vector p-norm of a tensor over specified dimensions.
 absl::StatusOr<at::Tensor> PNorm(const at::Tensor& self,
                                  MaybePromotedScalar& promoted_ord, double ord,
-                                 at::OptionalIntArrayRef dim, bool keepdim,
+                                 at::OptionalIntArrayRef dim,
+                                 ReductionMode reduction_mode,
                                  std::optional<at::ScalarType> dtype,
                                  OpParamCacheKeys op_cache_keys) {
   c10::ScalarType out_dtype =
@@ -61,8 +62,6 @@ absl::StatusOr<at::Tensor> PNorm(const at::Tensor& self,
     out_dtype = c10::get_default_dtype_as_scalartype();
   }
 
-  const ReductionMode reduction_mode =
-      keepdim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
   TT_ASSIGN_OR_RETURN(Dimensions canonical_dims, CanonicalizeDims(self, dim));
 
   const Dimensions output_dims =
@@ -106,12 +105,14 @@ at::Tensor AtenNativeNormScalar(const at::Tensor& self, const at::Scalar& p) {
       if (c10::isIntegralType(out_dtype, /*includeBool=*/true)) {
         out_dtype = c10::get_default_dtype_as_scalartype();
       }
-      return at::sum(self.ne(0), at::IntArrayRef{}, false, out_dtype);
+      return at::sum(self.ne(0), at::IntArrayRef{}, /*keepdim=*/false,
+                     out_dtype);
     } else {
       TT_THROW_IF_ERROR(op_cache_keys.SetParam("p", p));
       TT_ASSIGN_OR_THROW(at::Tensor res,
                          PNorm(self, promoted_ord, p.toDouble(), std::nullopt,
-                               false, std::nullopt, std::move(op_cache_keys)));
+                               ReductionMode::kDropDims, std::nullopt,
+                               std::move(op_cache_keys)));
       return res;
     }
   });
@@ -139,7 +140,9 @@ at::Tensor AtenNativeNormScalarOptDimDtype(
                 TT_THROW_IF_ERROR(op_cache_keys.SetParam("p", ord));
                 TT_ASSIGN_OR_THROW(
                     at::Tensor res,
-                    PNorm(self, promoted_ord, ord.toDouble(), dim, keepdim,
+                    PNorm(self, promoted_ord, ord.toDouble(), dim,
+                          keepdim ? ReductionMode::kKeepDims
+                                  : ReductionMode::kDropDims,
                           dtype, std::move(op_cache_keys)));
                 return res;
               }

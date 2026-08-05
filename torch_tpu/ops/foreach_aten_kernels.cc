@@ -1642,10 +1642,13 @@ std::vector<at::Tensor> AtenForeachAddList(at::TensorList self,
         // Check for invalid input types.
         size_t num_tensors = self.size();
         for (size_t i = 0; i < num_tensors; ++i) {
-          TT_CHECK_THROW(!(c10::isIntegralType(self[i].scalar_type(), true) &&
-                           c10::isIntegralType(other[i].scalar_type(), true) &&
-                           !c10::isIntegralType(alpha.type(), true)),
-                         error::kInvalidArgument)
+          TT_CHECK_THROW(
+              !(c10::isIntegralType(self[i].scalar_type(),
+                                    /*includeBool=*/true) &&
+                c10::isIntegralType(other[i].scalar_type(),
+                                    /*includeBool=*/true) &&
+                !c10::isIntegralType(alpha.type(), /*includeBool=*/true)),
+              error::kInvalidArgument)
               << "expected alpha to be integral for integral input tensors, "
                  "got "
               << ToString(alpha.type());

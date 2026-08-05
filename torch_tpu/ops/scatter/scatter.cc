@@ -354,7 +354,8 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
     };
     mlir::MlirOp total_count = mlir::stablehlo::Scatter(
         {initial_count}, scatter_indices, {ones_updates}, count_reducer,
-        scatter_dimension_numbers, false, false)[0];
+        scatter_dimension_numbers, /*indices_are_sorted=*/false,
+        /*unique_indices=*/false)[0];
 
     // To avoid division by zero (for include_self=false and unindexed
     // locations), use the original self for selection.

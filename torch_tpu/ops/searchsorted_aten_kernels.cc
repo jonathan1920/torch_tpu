@@ -172,9 +172,9 @@ absl::StatusOr<mlir::MlirOp> ApplySorterIfPresent(
   auto sorted_type = GetTensorTypeOrDie(sorted);
   int64_t gather_dim =
       (query_type.getRank() == 0) ? 0 : (sorted_type.getRank() - 1);
-  TT_ASSIGN_OR_RETURN(
-      auto result,
-      BuildGatherShlo(sorted, gather_dim, s_op, false, sorted_seq_elem_type));
+  TT_ASSIGN_OR_RETURN(auto result, BuildGatherShlo(sorted, gather_dim, s_op,
+                                                   /*sparse_grad=*/false,
+                                                   sorted_seq_elem_type));
   return result;
 }
 
@@ -224,9 +224,9 @@ absl::StatusOr<mlir::MlirOp> BuildSearchsortedLoopShlo(
     if (query_type.getRank() == 0) {
       gather_index = stablehlo::Reshape(clamped_mid, {1});
     }
-    TT_ASSIGN_OR_RETURN(auto val,
-                        BuildGatherShlo(sorted, gather_dim, gather_index, false,
-                                        sorted_seq_elem_type));
+    TT_ASSIGN_OR_RETURN(
+        auto val, BuildGatherShlo(sorted, gather_dim, gather_index,
+                                  /*sparse_grad=*/false, sorted_seq_elem_type));
     if (query_type.getRank() == 0) {
       val = stablehlo::Reshape(val, {});
     }
