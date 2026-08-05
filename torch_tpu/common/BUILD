@@ -525,6 +525,55 @@ torch_tpu_cc_test(
     ],
 )
 
+# Tests that the tier-2 cache can be explicitly enabled via public env var for world size 1.
+torch_tpu_cc_test(
+    name = "tier2_compilation_cache_enablement_test_enabled_one_device_public",
+    srcs = ["tier2_compilation_cache_enablement_test.cc"],
+    args = [
+        "--expected_tier2_cache_name=my_cache",
+    ],
+    env = {
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "my_cache",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
+    notest_oss = "TODO(wan): make this work in OSS",
+    deps = [
+        ":flags",
+        ":tier2_compilation_cache",
+        "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Tests that TORCH_TPU_TIER2_COMPILATION_CACHE takes precedence over TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE.
+torch_tpu_cc_test(
+    name = "tier2_compilation_cache_enablement_test_precedence",
+    srcs = ["tier2_compilation_cache_enablement_test.cc"],
+    args = [
+        "--expected_tier2_cache_name=my_cache",
+    ],
+    env = {
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "my_cache",
+        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "internal_cache",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
+    notest_oss = "TODO(wan): make this work in OSS",
+    deps = [
+        ":flags",
+        ":tier2_compilation_cache",
+        "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 torch_tpu_cc_library(
     name = "tier3_compilation_cache",
     srcs = ["tier3_compilation_cache.cc"],
@@ -693,8 +742,22 @@ torch_tpu_cc_library(
     srcs = ["env_vars.cc"],
     hdrs = ["env_vars.h"],
     deps = [
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/util:base",
+        "//shims/torch/c10/util:base_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "env_vars_test",
+    srcs = ["env_vars_test.cc"],
+    deps = [
+        ":env_vars",
+        "//shims/torch",  # build_cleaner: keep for c10::WarningUtils
+        "//shims/torch/c10/util:base",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

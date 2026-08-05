@@ -20,8 +20,10 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "absl/base/no_destructor.h"
+#include "c10/util/Exception.h"
 
 namespace torch_tpu {
 
@@ -107,6 +109,17 @@ inline constexpr char kTorchTpuInternalTier3CompilationCacheRootEnvVar[] =
 // via XLA_FLAGS.
 inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
     "TORCH_TPU_INTERNAL_XLA_OPTIONS";
+// The name of the tier-2 compilation cache. The special name "disabled" can be
+// used to disable the tier-2 cache. If not set, TorchTPU decides whether to use
+// the tier-2 cache or not based on the world size: if the world size is 1, the
+// tier-2 cache is disabled; otherwise, it is enabled and the name is set to
+// "default".
+//
+// If both TORCH_TPU_TIER2_COMPILATION_CACHE and
+// TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE are set,
+// TORCH_TPU_TIER2_COMPILATION_CACHE takes precedence.
+inline constexpr char kTorchTpuTier2CompilationCacheEnvVar[] =
+    "TORCH_TPU_TIER2_COMPILATION_CACHE";
 // If set, enables structured logging for tlparse.
 inline constexpr char kTorchTraceEnvVar[] = "TORCH_TRACE";
 inline constexpr char kTpuChipsPerHostBoundsEnvVar[] =
@@ -164,6 +177,12 @@ const std::optional<std::string>& GetEnvOnce() {
         const char* const env_var =  //
             std::getenv(name);       // GETENV_OK=implementing GetEnvOnce().
         if (env_var == nullptr) return std::nullopt;
+        if (std::string_view(name) == kTorchTpuTier2CompilationCacheEnvVar &&
+            env_var[0] != '\0') {
+          TORCH_WARN_ONCE(
+              "TORCH_TPU_TIER2_COMPILATION_CACHE is an experimental feature "
+              "and may change or be removed without notice.");
+        }
         return std::string(env_var);
       }());
   return *env_var;
