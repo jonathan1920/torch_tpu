@@ -893,16 +893,18 @@ class TopKConfig:
   seq_len: int
   num_features: int
   k: int
-  dim: int
+  dim: int | None = None
+  largest: bool = True
+  sorted: bool = True
 
 
 TOPK_CONFIGS = (
+    # Default config for smoke test.
     TopKConfig(
         batch_size=1,
         seq_len=128,
         num_features=128,
         k=10,
-        dim=-1,
     ),
     TopKConfig(
         batch_size=32,
@@ -910,6 +912,47 @@ TOPK_CONFIGS = (
         num_features=8192,
         k=100,
         dim=-1,
+    ),
+    TopKConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+        k=10,
+    ),
+    TopKConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+        k=100,
+    ),
+    TopKConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+        k=5,
+        dim=1,
+    ),
+    TopKConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+        k=5,
+        largest=False,
+    ),
+    TopKConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+        k=5,
+        sorted=False,
+    ),
+    TopKConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+        k=5,
+        largest=False,
+        sorted=False,
     ),
 )
 
@@ -1085,7 +1128,6 @@ GLU_CONFIGS = (
         dim=1,
     ),
 )
-
 
 
 @dataclasses.dataclass

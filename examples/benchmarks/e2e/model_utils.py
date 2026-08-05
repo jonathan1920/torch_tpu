@@ -1707,6 +1707,52 @@ def ml_layer_model_builder(
         ),
     )
 
+  elif model_name == "torch.topk":
+    k = kwargs["k"]
+    dim = kwargs.get("dim", None)
+    largest = kwargs.get("largest", True)
+    sorted_out = kwargs.get("sorted", True)
+    num_features = kwargs["num_features"]
+
+    class TopKModel(torch.nn.Module):
+
+      def __init__(self, k, dim, largest, sorted_out):
+        super().__init__()
+        self.k = k
+        self.dim = dim
+        self.largest = largest
+        self.sorted_out = sorted_out
+
+      def forward(self, x):
+        if self.dim is None:
+          values, indices = torch.topk(
+              x,
+              self.k,
+              largest=self.largest,
+              sorted=self.sorted_out,
+          )
+        else:
+          values, indices = torch.topk(
+              x,
+              self.k,
+              dim=self.dim,
+              largest=self.largest,
+              sorted=self.sorted_out,
+          )
+        return values, indices
+
+    model = TopKModel(k, dim, largest, sorted_out)
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            (bs, seq, num_features),
+            dtype=weights_dtype,
+            device=device,
+            requires_grad=is_training,
+        ),
+    )
+
   else:
     raise ValueError(f"Unknown ML layer model: {model_name}")
 
