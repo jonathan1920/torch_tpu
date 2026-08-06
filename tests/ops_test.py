@@ -818,12 +818,6 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.int8: {"rtol": 4.4e-6, "atol": 7.9e-7},
         torch.uint8: {"rtol": 4.4e-6},
     },
-    "_foreach_frac": {
-        torch.bfloat16: {"atol": 1.3},
-        torch.float16: {"atol": 1.3},
-        torch.float32: {"atol": 1.3},
-        torch.float64: {"atol": 1.3},
-    },
     "_foreach_lerp": {
         torch.bfloat16: {"atol": 9.4e-2},
         torch.float16: {"atol": 1.3e-1},

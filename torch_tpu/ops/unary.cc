@@ -356,8 +356,9 @@ absl::StatusOr<mlir::MlirOp> BuildErfcShlo(mlir::MlirOp input,
 };
 
 absl::StatusOr<mlir::MlirOp> BuildFracShlo(mlir::MlirOp input) {
-  mlir::MlirOp floor_val = mlir::stablehlo::Floor(input);
-  return mlir::stablehlo::Subtract(input, floor_val);
+  // PyTorch defines frac(x) = x - trunc(x)
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp trunc_val, BuildTruncShlo(input));
+  return mlir::stablehlo::Subtract(input, trunc_val);
 }
 
 }  // namespace torch_tpu
