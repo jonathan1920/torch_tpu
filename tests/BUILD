@@ -1931,7 +1931,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/execution_mode",
-        "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/tracing",
     ],
 )
@@ -1951,7 +1950,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/execution_mode",
-        "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/tracing",
         "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
         "@xla//xla/stream_executor:cuda_platform",
@@ -1970,7 +1968,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/execution_mode",
-        "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/tracing",
     ],
 )
