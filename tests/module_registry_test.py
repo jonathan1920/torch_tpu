@@ -517,6 +517,29 @@ class ModuleRegistryTest(absltest.TestCase):
     self.assertEqual(kwargs["token_type_ids"].shape[-1], 7)
     self.assertLen(kwargs["token_type_ids"].shape, 3)
 
+  def test_transformers_model_and_inputs_dtype_alignment(self):
+    def modify_config(config):
+      config.torch_dtype = "bfloat16"
+      return config
+
+    module_spec = self.module_registry.get_module_spec(
+        "transformers",
+        "google/gemma-3-270m",
+        load_weights=False,
+        modify_config_hook=modify_config,
+    )
+    model = module_spec.module_factory()
+    _, kwargs = module_spec.sample_inputs_factory()
+
+    # Check model parameter dtypes
+    for param in model.parameters():
+      self.assertEqual(param.dtype, torch.bfloat16)
+
+    # Check input floating-point tensor dtypes
+    for _, v in kwargs.items():
+      if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
+        self.assertEqual(v.dtype, torch.bfloat16)
+
 
 if __name__ == "__main__":
   absltest.main()

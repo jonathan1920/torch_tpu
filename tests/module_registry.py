@@ -617,6 +617,31 @@ def _generate_gemma4_inputs(
   input_kwargs["input_ids"][:, :num_features] = image_token_id
 
 
+def _extract_target_dtype(config: Any) -> torch.dtype:
+  """Extracts target torch_dtype from root or nested transformer configs."""
+  dtype = getattr(config, "torch_dtype", None)
+  if dtype is None:
+    dtype = getattr(config, "dtype", None)
+
+  text_config = getattr(config, "text_config", None)
+  if dtype is None and text_config is not None:
+    dtype = getattr(
+        text_config, "torch_dtype", getattr(text_config, "dtype", None)
+    )
+
+  vision_config = getattr(config, "vision_config", None)
+  if dtype is None and vision_config is not None:
+    dtype = getattr(
+        vision_config, "torch_dtype", getattr(vision_config, "dtype", None)
+    )
+
+  if isinstance(dtype, str):
+    return getattr(torch, dtype, torch.float32)
+  elif isinstance(dtype, torch.dtype):
+    return dtype
+  return torch.float32
+
+
 def _generate_transformers_inputs(
     config: Any,
     modality: Modality,
@@ -795,6 +820,12 @@ def _generate_transformers_inputs(
         dtype=torch.long,
     )
 
+  target_dtype = _extract_target_dtype(config)
+
+  for k, v in list(input_kwargs.items()):
+    if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
+      input_kwargs[k] = v.to(dtype=target_dtype)
+
   return input_kwargs
 
 
@@ -952,11 +983,19 @@ class TransformersProvider(BaseProvider):
               architectures[0],
           )
 
-      model_fn = lambda: (
-          model_cls.from_config(config)
-          if hasattr(model_cls, "from_config")
-          else model_cls(config)
-      )
+      target_dtype = _extract_target_dtype(config)
+
+      def _create_model():
+        m = (
+            model_cls.from_config(config)
+            if hasattr(model_cls, "from_config")
+            else model_cls(config)
+        )
+        if target_dtype != torch.float32:
+          m = m.to(dtype=target_dtype)
+        return m
+
+      model_fn = _create_model
       preprocessor_fn = None
 
     def _input_fn(
