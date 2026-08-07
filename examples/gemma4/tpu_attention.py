@@ -77,7 +77,7 @@ def torch_tpu_gemma4_attention_forward(
 
   # Check if we can use Splash Attention (requires TPU and large enough sequence)
   use_splash = (
-      device_type in ("xla", "tpu")
+      device_type == "tpu"
       and splash_attention is not None
       and use_swa
       and sliding_window is not None

@@ -44,6 +44,25 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_library(
+    name = "model_baseline",
+    srcs = ["model_baseline.py"],
+    deps = [
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "model_baseline_test",
+    srcs = ["model_baseline_test.py"],
+    deps = [
+        ":model_baseline",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
 torch_tpu_py_test(
     name = "model_test",
     srcs = ["model_test.py"],
@@ -84,6 +103,27 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
         "//torch_tpu/ops:splash_attention",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "gemma4_hf_example",
+    srcs = ["gemma4_hf_example.py"],
+    shuffle_tests = False,  # This script doesn't understand --test_randomize_ordering_seed.
+    tags = [
+        "requires-tpu-v5p",
+    ],
+    deps = [
+        "//examples:paths",
+        "//examples/huggingface_transformers:model_configs",
+        "//shims/absl_py:app",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils:log_utils",
+        "//torch_tpu/_internal/utils:test_utils",
+        "@pypi//transformers",
     ],
 )
 

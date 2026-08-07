@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Gemma4 model architecture implementation for TorchTPU.
+"""Native Gemma4 model baseline implementation (pure PyTorch, no Pallas kernels).
 
-This implementation adapts HuggingFace Gemma4 for TorchTPU execution. Key
-differences from HF Gemma4 include:
-- Direct integration with custom Pallas TPU kernels (e.g. Splash SWA attention).
-- Standalone Torch/TorchTPU execution without runtime dependency on Hugging Face
-  transformers.
-- TPU-optimized tensor layouts, per-layer-input slice handling, and memory
-efficiency.
+This standalone native PyTorch implementation mirrors the Gemma4 model
+architecture
+using standard PyTorch operators (F.scaled_dot_product_attention, RMSNorm,
+Linear)
+without any Pallas kernels or external library runtime dependencies.
 """
 
 import math
@@ -29,11 +27,6 @@ import types
 import torch
 from torch import nn
 import torch.nn.functional as F
-
-try:
-  from torch_tpu.ops import splash_attention
-except (ImportError, ModuleNotFoundError):
-  splash_attention = None
 
 
 class Gemma4Config:
@@ -100,7 +93,6 @@ class Gemma4Config:
     self.use_post_ffw_norm = use_post_ffw_norm
 
     if layer_types is None:
-      # Default pattern: 5 sliding, 1 global
       self.layer_types = []
       for i in range(num_hidden_layers):
         if (i + 1) % 6 == 0:
@@ -149,7 +141,6 @@ class Gemma4RotaryEmbedding(nn.Module):
     self.head_dim = config.head_dim
     self.rope_angles = int(self.rope_proportion * self.head_dim // 2)
 
-    # Compute inv_freq for rotated part
     inv_freq = 1.0 / (
         self.base
         ** (
@@ -158,7 +149,6 @@ class Gemma4RotaryEmbedding(nn.Module):
         )
     )
 
-    # Pad with zeros for non-rotated part
     nope_angles = self.head_dim // 2 - self.rope_angles
     if nope_angles > 0:
       inv_freq = torch.cat(
@@ -168,7 +158,6 @@ class Gemma4RotaryEmbedding(nn.Module):
     self.register_buffer('inv_freq', inv_freq, persistent=False)
 
   def forward(self, x, position_ids):
-    # position_ids: [B, S]
     inv_freq_expanded = (
         self.inv_freq[None, :, None]
         .float()
@@ -229,7 +218,7 @@ class Gemma4MLP(nn.Module):
 
 
 class Gemma4Attention(nn.Module):
-  """Gemma4 Attention."""
+  """Native PyTorch Gemma4 Attention (pure PyTorch SDPA, no Pallas kernels)."""
 
   def __init__(self, config: Gemma4Config, layer_idx: int):
     super().__init__()
@@ -241,8 +230,6 @@ class Gemma4Attention(nn.Module):
     self.num_heads = config.num_attention_heads
     self.num_kv_heads = config.num_key_value_heads
     self.num_global_kv_heads = config.num_global_kv_heads
-    # Gemma4 supports differing numbers of key/value heads between global
-    # and sliding layers.
     if not self.is_sliding and self.num_global_kv_heads is not None:
       self.current_kv_heads = self.num_global_kv_heads
     else:
@@ -310,102 +297,48 @@ class Gemma4Attention(nn.Module):
         query_states, key_states, cos, sin
     )
 
-    use_splash = (
-        splash_attention is not None
-        and query_states.device.type == 'tpu'
-        and self.is_sliding
-        and not skip_sliding_mask
-        and attention_mask is None
+    num_key_value_groups = self.num_heads // self.current_kv_heads
+    if num_key_value_groups > 1:
+      key_states = key_states.repeat_interleave(num_key_value_groups, dim=1)
+      value_states = value_states.repeat_interleave(num_key_value_groups, dim=1)
+
+    attn_mask = attention_mask
+    is_causal = attention_mask is None
+
+    if self.is_sliding and not skip_sliding_mask:
+      indices = torch.arange(seq_len, device=query_states.device)
+      q_idx = indices.unsqueeze(1)
+      kv_idx = indices.unsqueeze(0)
+      allowed = (kv_idx <= q_idx) & (
+          kv_idx > q_idx - self.config.sliding_window
+      )
+      swa_mask = torch.where(allowed, 0.0, float('-inf'))
+      swa_mask = swa_mask.view(1, 1, seq_len, seq_len)
+      if attn_mask is not None:
+        attn_mask = attn_mask + swa_mask
+      else:
+        attn_mask = swa_mask
+      is_causal = False
+
+    attn_output = F.scaled_dot_product_attention(
+        query_states,
+        key_states,
+        value_states,
+        attn_mask=attn_mask,
+        is_causal=is_causal,
+        scale=1.0,
     )
 
-    # Use TPU Splash attention SWA kernel on TPU devices.
-    if use_splash and splash_attention is not None:
-      enable_gqa = self.num_heads != self.current_kv_heads
-      attn_output = splash_attention.splash_sdpa(
-          query_states,
-          key_states,
-          value_states,
-          scale=1.0,
-          is_causal=True,
-          local_window_size=self.config.sliding_window - 1,
-          enable_gqa=enable_gqa,
-          block_q=1024,
-          block_kv=1024,
-          block_dkv=1024,
-          block_kv_compute=1024,
-          block_q_dkv=1024,
-          block_kv_dkv=1024,
-          block_kv_dkv_compute=1024,
-      )
-      attn_output = (
-          attn_output.transpose(1, 2).contiguous().view(bsz, seq_len, -1)
-      )
-      attn_output = self.o_proj(attn_output)
-      return attn_output, None
-    else:
-      num_key_value_groups = self.num_heads // self.current_kv_heads
+    attn_output = (
+        attn_output.transpose(1, 2).contiguous().view(bsz, seq_len, -1)
+    )
+    attn_output = self.o_proj(attn_output)
 
-      if num_key_value_groups > 1:
-        key_states = key_states.repeat_interleave(num_key_value_groups, dim=1)
-        value_states = value_states.repeat_interleave(
-            num_key_value_groups, dim=1
-        )
-
-      attn_mask = attention_mask
-      is_causal = attention_mask is None
-
-      if self.is_sliding and not skip_sliding_mask:
-        indices = torch.arange(seq_len, device=query_states.device)
-        q_idx = indices.unsqueeze(1)
-        kv_idx = indices.unsqueeze(0)
-        allowed = (kv_idx <= q_idx) & (
-            kv_idx > q_idx - self.config.sliding_window
-        )
-        swa_mask = torch.where(allowed, 0.0, float('-inf'))
-        swa_mask = swa_mask.view(1, 1, seq_len, seq_len)
-        if attn_mask is not None:
-          attn_mask = attn_mask + swa_mask
-        else:
-          attn_mask = swa_mask
-        is_causal = False
-
-      attn_output = F.scaled_dot_product_attention(
-          query_states,
-          key_states,
-          value_states,
-          attn_mask=attn_mask,
-          is_causal=is_causal,
-          scale=1.0,
-      )
-
-      attn_output = (
-          attn_output.transpose(1, 2).contiguous().view(bsz, seq_len, -1)
-      )
-
-      attn_output = self.o_proj(attn_output)
-
-      return attn_output, None
+    return attn_output, None
 
 
-def _cpu_ragged_dot(
-    lhs: torch.Tensor, rhs: torch.Tensor, group_sizes: torch.Tensor
-) -> torch.Tensor:
-  """CPU fallback for TPU ragged_dot operation."""
-  outputs = []
-  start = 0
-  for e, size in enumerate(group_sizes):
-    size_int = int(size.item())
-    end = start + size_int
-    if size_int > 0:
-      outputs.append(torch.matmul(lhs[start:end], rhs[e]))
-    start = end
-  if outputs:
-    return torch.cat(outputs, dim=0)
-  return torch.empty((0, rhs.shape[-1]), device=lhs.device, dtype=lhs.dtype)
-
-
-class Gemma4MoERagged(nn.Module):
-  """Mixture of Experts (MoE) module with top-k routing using ragged_dot."""
+class Gemma4MoE(nn.Module):
+  """Native PyTorch MoE module (standard matmul routing, no custom ops)."""
 
   def __init__(self, config: Gemma4Config):
     super().__init__()
@@ -430,12 +363,6 @@ class Gemma4MoERagged(nn.Module):
     )
 
     self.act_fn = GELUTanh()
-    if hasattr(torch.ops, 'torch_tpu') and hasattr(
-        torch.ops.torch_tpu, 'ragged_dot'
-    ):
-      self.ragged_dot_impl = torch.ops.torch_tpu.ragged_dot
-    else:
-      self.ragged_dot_impl = _cpu_ragged_dot
     self.per_expert_scale = nn.Parameter(torch.ones(config.num_experts))
     self.router_norm = Gemma4RMSNorm(
         config.hidden_size, eps=config.rms_norm_eps, with_scale=False
@@ -451,7 +378,6 @@ class Gemma4MoERagged(nn.Module):
     batch_fused = batch_size * sequence_length
     h = x.view(batch_fused, hidden_size)
 
-    # Router: norm, scale, then logits
     router_input = self.router_norm(h)
     router_input = (
         router_input * self.root_size * self.router_scale.to(router_input.dtype)
@@ -469,8 +395,8 @@ class Gemma4MoERagged(nn.Module):
     )
     selected_weights = selected_weights.to(dtype=h.dtype)
 
-    selected_indices = selected_indices.flatten()
-    sortidx = torch.argsort(selected_indices)
+    selected_indices_flat = selected_indices.flatten()
+    sortidx = torch.argsort(selected_indices_flat)
     reverse_sortidx = torch.argsort(sortidx)
 
     group_sizes = torch.zeros(
@@ -478,35 +404,71 @@ class Gemma4MoERagged(nn.Module):
     )
     group_sizes.scatter_add_(
         dim=0,
-        index=selected_indices,
+        index=selected_indices_flat,
         src=torch.ones(
             batch_fused * self.top_k, dtype=torch.int32, device=h.device
         ),
     )
 
-    h = h.view(batch_fused, 1, hidden_size).broadcast_to(
+    h_expanded = h.view(batch_fused, 1, hidden_size).broadcast_to(
         batch_fused, self.top_k, hidden_size
     )
-    h = h.reshape(-1, hidden_size)
-    h = h[sortidx, :]
+    h_expanded = h_expanded.reshape(-1, hidden_size)
+    h_sorted = h_expanded[sortidx, :]
 
-    h_up = self.ragged_dot_impl(h, self.up, group_sizes)
-    h_gate = self.ragged_dot_impl(h, self.gate, group_sizes)
-    h = h_up * self.act_fn(h_gate)
-    h = self.ragged_dot_impl(h, self.down, group_sizes)
+    # Pure PyTorch matmul per expert
+    outputs_up = []
+    outputs_gate = []
+    start = 0
+    for e in range(self.num_experts):
+      sz = int(group_sizes[e].item())
+      end = start + sz
+      if sz > 0:
+        outputs_up.append(torch.matmul(h_sorted[start:end], self.up[e]))
+        outputs_gate.append(torch.matmul(h_sorted[start:end], self.gate[e]))
+      start = end
 
-    # Avoid CPU fallback by using sortidx to get expert indices
-    expert_indices = selected_indices[sortidx]
-    h = h * self.per_expert_scale[expert_indices, None]
+    h_up = (
+        torch.cat(outputs_up, dim=0)
+        if outputs_up
+        else torch.empty((0, self.expert_dim), device=h.device, dtype=h.dtype)
+    )
+    h_gate = (
+        torch.cat(outputs_gate, dim=0)
+        if outputs_gate
+        else torch.empty((0, self.expert_dim), device=h.device, dtype=h.dtype)
+    )
 
-    h = h[reverse_sortidx, :].view(batch_fused, self.top_k, hidden_size)
-    h = (h * selected_weights.view(batch_fused, self.top_k, 1)).sum(dim=1)
+    h_activated = h_up * self.act_fn(h_gate)
 
-    return h.view(batch_size, sequence_length, hidden_size)
+    outputs_down = []
+    start = 0
+    for e in range(self.num_experts):
+      sz = int(group_sizes[e].item())
+      end = start + sz
+      if sz > 0:
+        outputs_down.append(torch.matmul(h_activated[start:end], self.down[e]))
+      start = end
+
+    h_out = (
+        torch.cat(outputs_down, dim=0)
+        if outputs_down
+        else torch.empty((0, hidden_size), device=h.device, dtype=h.dtype)
+    )
+
+    expert_indices = selected_indices_flat[sortidx]
+    h_out = h_out * self.per_expert_scale[expert_indices, None]
+
+    h_out = h_out[reverse_sortidx, :].view(batch_fused, self.top_k, hidden_size)
+    h_out = (h_out * selected_weights.view(batch_fused, self.top_k, 1)).sum(
+        dim=1
+    )
+
+    return h_out.view(batch_size, sequence_length, hidden_size)
 
 
 class Gemma4DecoderLayer(nn.Module):
-  """Gemma4 decoder layer."""
+  """Gemma4 decoder layer baseline (pure PyTorch, no Pallas kernels)."""
 
   def __init__(self, config: Gemma4Config, layer_idx: int):
     super().__init__()
@@ -515,7 +477,7 @@ class Gemma4DecoderLayer(nn.Module):
     self.self_attn = Gemma4Attention(config, layer_idx)
 
     if config.enable_moe:
-      self.moe = Gemma4MoERagged(config)
+      self.moe = Gemma4MoE(config)
       self.mlp2 = Gemma4MLP(
           config, intermediate_size=config.moe_dense_hidden_dim
       )
@@ -572,17 +534,14 @@ class Gemma4DecoderLayer(nn.Module):
     residual = hidden_states
 
     if self.config.enable_moe:
-      # Dense shared branch
       dense_in = self.pre_ffw2_norm(hidden_states)
       dense_out = self.mlp2(dense_in)
       dense_out = self.post_ffw2_norm(dense_out)
 
-      # MoE branch
       moe_in = self.pre_feedforward_layernorm(hidden_states)
       moe_out = self.moe(moe_in)
       moe_out = self.post_ffw1_norm(moe_out)
 
-      # Combine
       hidden_states = dense_out + moe_out
       hidden_states = self.post_feedforward_layernorm(hidden_states)
     else:
@@ -612,7 +571,7 @@ class Gemma4MultiModalProjector(nn.Module):
 
 
 class Gemma4Model(nn.Module):
-  """Gemma4 Model."""
+  """Native Gemma4 Model (pure PyTorch, no Pallas kernels)."""
 
   def __init__(self, config: Gemma4Config):
     super().__init__()
@@ -663,15 +622,7 @@ class Gemma4Model(nn.Module):
       ).unsqueeze(0)
 
     hidden_states = self.embed_tokens(input_ids)
-
-    # Gemma scales embeddings by sqrt(hidden_size)
     hidden_states = hidden_states * math.sqrt(self.config.hidden_size)
-
-    # TODO(peterpc): Implement multimodal embedding merging here if needed.
-    # This typically involves projecting pixel_values/audio_features and
-    # interleaving them with hidden_states based on mm_token_type_ids.
-    # For now, we assume input_ids already contains the correct sequence
-    # and we are just processing the embeddings.
 
     for layer in self.layers:
       layer_skip_sliding_mask = skip_sliding_mask
@@ -706,7 +657,7 @@ class Gemma4Model(nn.Module):
 
 
 class Gemma4ForCausalLM(nn.Module):
-  """Gemma4 Causal LM."""
+  """Native Gemma4 Causal LM (pure PyTorch, no Pallas kernels)."""
 
   def __init__(self, config: Gemma4Config):
     super().__init__()
