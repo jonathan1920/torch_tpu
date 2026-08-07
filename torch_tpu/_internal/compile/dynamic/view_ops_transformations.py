@@ -87,6 +87,9 @@ class HandleReshapeLikeOpsPass:
         torch.ops.aten.view.default: self._process_view_op,
         torch.ops.aten._unsafe_view.default: self._process_view_op,
         torch.ops.aten.reshape.default: self._process_view_op,
+        torch.ops.aten.view_copy.default: self._process_view_op,
+        torch.ops.aten._reshape_alias.default: self._process_view_op,
+        torch.ops.aten._reshape_alias_copy.default: self._process_view_op,
     }
 
   def __call__(self, graph_module: torch.fx.GraphModule) -> None:
@@ -117,7 +120,13 @@ class HandleReshapeLikeOpsPass:
     num_dynamic_dims = sum(
         1 for arg in target_shape if sym_utils.is_symint(arg)
     )
-    if num_dynamic_dims == 0:
+    inp_has_dynamic = (
+        isinstance(inp, torch.fx.Node)
+        and "val" in inp.meta
+        and hasattr(inp.meta["val"], "shape")
+        and any(sym_utils.is_symint(d) for d in inp.meta["val"].shape)
+    )
+    if num_dynamic_dims == 0 and not inp_has_dynamic:
       return
 
     shape_tensors, static_shape, is_dynamic = _extract_shape_tensors_and_bounds(

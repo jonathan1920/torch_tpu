@@ -20,6 +20,7 @@ import torch
 from torch._dynamo.backends.common import aot_autograd
 from torch_tpu._internal.compile.dynamic import graph_transformations
 from torch_tpu._internal.compile.dynamic import sym_shape_manager
+from torch_tpu._internal.compile.dynamic import view_ops_transformations
 
 
 class GraphTransformationsTest(absltest.TestCase):
@@ -255,6 +256,88 @@ class GraphTransformationsTest(absltest.TestCase):
     self.assertEqual(size_input_0, size_input_1)
     self.assertEqual(size_input_0.op, "placeholder")
     self.assertTrue(size_input_0.name.endswith("_size"))
+
+  def test_handle_reshape_like_ops_pass_dynamic_input_trailing_static_dim(self):
+    captured_gm = None
+    captured_sm = None
+
+    def fw_compiler(graph_module, example_inputs):
+      nonlocal captured_gm, captured_sm
+      captured_gm = graph_module
+      captured_sm = sym_shape_manager.SymShapeManager(
+          graph_module, example_inputs
+      )
+      return graph_module
+
+    @torch.compile(backend=aot_autograd(fw_compiler=fw_compiler), dynamic=True)
+    def f(x):
+      return x.view(x.shape[0], 4, 2)
+
+    t = torch.ones(4, 8)
+    torch._dynamo.mark_dynamic(t, 0, min=2, max=16)
+
+    f(t)
+
+    self.assertIsNotNone(captured_gm)
+    self.assertIsNotNone(captured_sm)
+
+    placeholders = list(
+        captured_gm.graph.find_nodes(op="placeholder", sort=True)
+    )
+    graph_transformations.ScanInputsCreatePlaceholdersPass(
+        captured_sm, placeholders
+    )(captured_gm)
+
+    view_ops_transformations.HandleReshapeLikeOpsPass(captured_sm)(captured_gm)
+
+    dynamic_reshape_nodes = list(
+        captured_gm.graph.find_nodes(
+            op="call_function",
+            target=torch.ops.tpu.dynamic_reshape,
+        )
+    )
+    self.assertLen(dynamic_reshape_nodes, 1)
+
+  def test_handle_reshape_like_ops_pass_view_copy(self):
+    captured_gm = None
+    captured_sm = None
+
+    def fw_compiler(graph_module, example_inputs):
+      nonlocal captured_gm, captured_sm
+      captured_gm = graph_module
+      captured_sm = sym_shape_manager.SymShapeManager(
+          graph_module, example_inputs
+      )
+      return graph_module
+
+    @torch.compile(backend=aot_autograd(fw_compiler=fw_compiler), dynamic=True)
+    def f(x):
+      return torch.ops.aten.view_copy.default(x, [x.shape[0], 4, 2])
+
+    t = torch.ones(4, 8)
+    torch._dynamo.mark_dynamic(t, 0, min=2, max=16)
+
+    f(t)
+
+    self.assertIsNotNone(captured_gm)
+    self.assertIsNotNone(captured_sm)
+
+    placeholders = list(
+        captured_gm.graph.find_nodes(op="placeholder", sort=True)
+    )
+    graph_transformations.ScanInputsCreatePlaceholdersPass(
+        captured_sm, placeholders
+    )(captured_gm)
+
+    view_ops_transformations.HandleReshapeLikeOpsPass(captured_sm)(captured_gm)
+
+    dynamic_reshape_nodes = list(
+        captured_gm.graph.find_nodes(
+            op="call_function",
+            target=torch.ops.tpu.dynamic_reshape,
+        )
+    )
+    self.assertLen(dynamic_reshape_nodes, 1)
 
 
 if __name__ == "__main__":

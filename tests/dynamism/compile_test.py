@@ -662,6 +662,57 @@ class DynamicReshapeTest(absltest.TestCase):
     )
     utils.assert_close(out1, expected)
 
+  def test_unflatten_dynamic_input_trailing_static_dim(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.view(x.shape[0], 4, 2)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    # Dynamic dim 0 with trailing dims [8] unflattened to [4, 2]
+    x1 = torch.arange(32, dtype=torch.float32, device="tpu").reshape(4, 8)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected1 = (
+        torch.arange(32, dtype=torch.float32, device="tpu")
+        .reshape(4, 8)
+        .view(4, 4, 2)
+    )
+    utils.assert_close(out1, expected1)
+
+    # Verify dynamism with a different size at runtime
+    x2 = torch.arange(48, dtype=torch.float32, device="tpu").reshape(6, 8)
+    out2 = compiled(x2)
+    expected2 = (
+        torch.arange(48, dtype=torch.float32, device="tpu")
+        .reshape(6, 8)
+        .view(6, 4, 2)
+    )
+    utils.assert_close(out2, expected2)
+
+  def test_view_copy_dynamic_input(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.ops.aten.view_copy.default(x, [x.shape[0], 5, 2])
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.arange(20, dtype=torch.float32, device="tpu").reshape(2, 10)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=10)
+
+    out1 = compiled(x1)
+    expected = (
+        torch.arange(20, dtype=torch.float32, device="tpu")
+        .reshape(2, 10)
+        .view(2, 5, 2)
+    )
+    utils.assert_close(out1, expected)
+
   def test_multi_dynamic_reshape_unambiguous(self):
     class Model(torch.nn.Module):
 
