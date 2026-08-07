@@ -18,6 +18,7 @@ This module provides APIs to call Pallas kernels from PyTorch. Note that use
 of these APIs requires that your environment also has JAX/Pallas installed.
 """
 
+import hashlib
 import inspect
 import pathlib
 import types
@@ -492,9 +493,18 @@ class JaxCallable:
     """
 
     self.name = name
+    # TODO: Make trace_key stable across processes or remove it.
     self.trace_key = trace_key
     self.jit_fn = jit_fn
     self.output_shapes = {}  # cache output shapes per kernel specialization
+    # Maps a process-local kernel key (representing the Python function,
+    # argument shapes, and static arguments) to its content-addressable MLIR
+    # module fingerprint.
+    # Because `kernel_key` can vary across processes for the same Python
+    # function, this mapping bridges process-dependent kernel keys to a
+    # stable, deterministic fingerprint so that compilation caches can be
+    # shared across processes.
+    self.kernel_key_to_mlir_fingerprint = {}
     self.mesh = mesh
     self.input_partition_specs = input_partition_specs
     self.static_argnums = static_argnums
@@ -609,16 +619,29 @@ class JaxCallable:
         self.trace_key, args, kwargs, self.static_argnums
     )
     output_shapes, out_tree = self.output_shapes.get(kernel_key, (None, None))
-    kernel_exists = tpu_torch_pallas.lookup_custom_kernel(self.name, kernel_key)
+    mlir_fingerprint = self.kernel_key_to_mlir_fingerprint.get(kernel_key)
+    kernel_exists = (
+        mlir_fingerprint is not None
+        and tpu_torch_pallas.lookup_custom_kernel(self.name, mlir_fingerprint)
+    )
     if not output_shapes or not kernel_exists:
       jax_args = jax_placeholders(
           args, mesh=self.mesh, partition_specs=self.input_partition_specs
       )
       with jax._src.config.export_ignore_forward_compatibility(True):
         lowered = self.exported(*jax_args, **kwargs)
+      # BLAKE2 is significantly faster than SHA-256, and 128 bits (16 bytes)
+      # provides enough collision resistance before being fingerprinted down to
+      # 64 bits in lower layers.
+      mlir_fingerprint = hashlib.blake2b(
+          lowered.mlir_module_serialized,
+          digest_size=16,
+      ).hexdigest()
+      self.kernel_key_to_mlir_fingerprint[kernel_key] = mlir_fingerprint
+
       tpu_torch_pallas.register_custom_kernel(
           self.name,
-          kernel_key,
+          mlir_fingerprint,
           serialized_mlir_module=lowered.mlir_module_serialized,
       )
       # Use out_tree to format the outputs shapes - i.e. pack in tuple, nested
@@ -637,7 +660,7 @@ class JaxCallable:
 
     results = tpu_torch_pallas.call_custom_kernel(
         self.name,
-        kernel_key,
+        mlir_fingerprint,
         inputs=tensor_args,
         output_shapes=output_shapes,
         donate_argnums=self.donate_argnums,
