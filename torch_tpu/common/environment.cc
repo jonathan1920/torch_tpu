@@ -17,6 +17,7 @@
 #include "torch_tpu/common/environment.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -24,6 +25,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "torch_tpu/common/device_utils.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
@@ -43,7 +45,18 @@ absl::Status InitializeDistributedEnvironment(
   std::vector<std::string> addresses = absl::StrSplit(config.sb_addrs, ',');
   int slice_rank = config.rank % static_cast<int>(addresses.size());
   SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(slice_rank));
-  SetEnv(kTpuVisibleChipsEnvVar, absl::StrCat(config.local_rank));
+
+  const auto& visible_chips_env = GetEnvOnce<kTpuVisibleChipsEnvVar>();
+  const auto& visible_devices_env = GetEnvOnce<kTpuVisibleDevicesEnvVar>();
+  if (visible_chips_env.has_value() &&
+      IsSingleDeviceSpecified(*visible_chips_env)) {
+    // Preserve existing TPU_VISIBLE_CHIPS setting.
+  } else if (visible_devices_env.has_value() &&
+             IsSingleDeviceSpecified(*visible_devices_env)) {
+    SetEnv(kTpuVisibleChipsEnvVar, *visible_devices_env);
+  } else {
+    SetEnv(kTpuVisibleChipsEnvVar, absl::StrCat(config.local_rank));
+  }
 
   std::vector<std::string> topology_dims = absl::StrSplit(config.topology, ',');
   std::string chips_bounds = (topology_dims.size() == 4) ? "1,1,1,1" : "1,1,1";

@@ -887,10 +887,19 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
+    name = "device_utils",
+    hdrs = ["device_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "environment",
     srcs = ["environment.cc"],
     hdrs = ["environment.h"],
     deps = [
+        ":device_utils",
         ":env_vars",
         ":error_utils",
         "//torch_tpu/distributed/slicebuilder:discovery",

@@ -16,6 +16,8 @@
 
 #include "torch_tpu/common/environment.h"
 
+#include <unistd.h>
+
 #include <cstdlib>
 #include <string>
 
@@ -27,112 +29,335 @@
 namespace torch_tpu {
 namespace {
 
-TEST(EnvironmentTest,
-     InitializeDistributedEnvironmentSetsAllowMultipleLibtpuLoad) {
-  unsetenv(kAllowMultipleLibtpuLoadEnvVar);
-  unsetenv(kTpuProcessAddressesEnvVar);
-  unsetenv(kTpuHostBoundsEnvVar);
-  unsetenv(kTpuChipsPerHostBoundsEnvVar);
-  unsetenv(kTpuProcessBoundsEnvVar);
-  unsetenv(kTpuChipsPerProcessBoundsEnvVar);
-  DistributedWorkerConfiguration config;
-  config.rank = 0;
-  config.local_rank = 0;
-  config.sb_port = "1234";
-  config.sb_addrs = "localhost:1234";
-  config.topology = "1,1,1";
+using testing::ExitedWithCode;
 
-  EXPECT_EQ(InitializeDistributedEnvironment(config), absl::OkStatus());
+TEST(EnvironmentDeathTest,
+     InitializeDistributedEnvironment_PopulatesSlicebuilderAddresses) {
+  EXPECT_EXIT(
+      {
+        unsetenv(kTpuProcessAddressesEnvVar);
+        unsetenv(kTpuProcessPortEnvVar);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "host0:1234,host1:1234";
+        config.topology = "1,1,1";
 
-  const char* env_val = std::getenv(kAllowMultipleLibtpuLoadEnvVar);
-  ASSERT_NE(env_val, nullptr);
-  EXPECT_STREQ(env_val, "1");
-
-  const char* addr_val = std::getenv(kTpuProcessAddressesEnvVar);
-  ASSERT_NE(addr_val, nullptr);
-  EXPECT_STREQ(addr_val, "localhost:1234");
-
-  const char* host_bounds_val = std::getenv(kTpuHostBoundsEnvVar);
-  ASSERT_NE(host_bounds_val, nullptr);
-  EXPECT_STREQ(host_bounds_val, "1,1,1");
-
-  const char* host_chips_val = std::getenv(kTpuChipsPerHostBoundsEnvVar);
-  ASSERT_NE(host_chips_val, nullptr);
-  EXPECT_STREQ(host_chips_val, "1,1,1");
-
-  const char* proc_bounds_val = std::getenv(kTpuProcessBoundsEnvVar);
-  ASSERT_NE(proc_bounds_val, nullptr);
-  EXPECT_STREQ(proc_bounds_val, "1,1,1");
-
-  const char* proc_chips_val = std::getenv(kTpuChipsPerProcessBoundsEnvVar);
-  ASSERT_NE(proc_chips_val, nullptr);
-  EXPECT_STREQ(proc_chips_val, "1,1,1");
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        const char* addrs = std::getenv(kTpuProcessAddressesEnvVar);
+        ASSERT_NE(addrs, nullptr);
+        EXPECT_STREQ(addrs, "host0:1234,host1:1234");
+        const char* port = std::getenv(kTpuProcessPortEnvVar);
+        ASSERT_NE(port, nullptr);
+        EXPECT_STREQ(port, "1234");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
 }
 
-TEST(EnvironmentTest,
+TEST(EnvironmentDeathTest,
+     InitializeDistributedEnvironment_PopulatesSingleDeviceProcessAddresses) {
+  EXPECT_EXIT(
+      {
+        unsetenv(kTpuProcessAddressesEnvVar);
+        unsetenv(kTpuProcessPortEnvVar);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "5678";
+        config.sb_addrs = "host0:5678";
+        config.topology = "1,1,1";
+
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        const char* addrs = std::getenv(kTpuProcessAddressesEnvVar);
+        ASSERT_NE(addrs, nullptr);
+        EXPECT_STREQ(addrs, "host0:5678");
+        const char* port = std::getenv(kTpuProcessPortEnvVar);
+        ASSERT_NE(port, nullptr);
+        EXPECT_STREQ(port, "5678");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest, InitializeDistributedEnvironment_ResolvesBnsPort) {
+  EXPECT_EXIT(
+      {
+        unsetenv(kTpuProcessPortEnvVar);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "1,1,1";
+
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        const char* port = std::getenv(kTpuProcessPortEnvVar);
+        ASSERT_NE(port, nullptr);
+        EXPECT_STREQ(port, "1234");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitializeDistributedEnvironment_FailsOnEmptySlicebuilderAddresses) {
+  EXPECT_EXIT(
+      {
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "";
+        config.topology = "1,1,1";
+
+        EXPECT_FALSE(InitializeDistributedEnvironment(config).ok());
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitializeDistributedEnvironment_FailsOnNegativeRank) {
+  EXPECT_EXIT(
+      {
+        DistributedWorkerConfiguration config;
+        config.rank = -1;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "1,1,1";
+
+        EXPECT_FALSE(InitializeDistributedEnvironment(config).ok());
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitializeDistributedEnvironment_OverridesXlaBarrierFlags) {
+  EXPECT_EXIT(
+      {
+        setenv(kLibtpuInitArgsEnvVar,
+               "--xla_tpu_use_enhanced_launch_barrier=true", 1);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "1,1,1";
+
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        const char* val = std::getenv(kLibtpuInitArgsEnvVar);
+        ASSERT_NE(val, nullptr);
+        EXPECT_NE(std::string(val).find(
+                      "--xla_tpu_use_enhanced_launch_barrier=false"),
+                  std::string::npos);
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitializeDistributedEnvironment_SetsAllowMultipleLibtpuLoad) {
+  EXPECT_EXIT(
+      {
+        unsetenv(kAllowMultipleLibtpuLoadEnvVar);
+        unsetenv(kTpuProcessAddressesEnvVar);
+        unsetenv(kTpuHostBoundsEnvVar);
+        unsetenv(kTpuChipsPerHostBoundsEnvVar);
+        unsetenv(kTpuProcessBoundsEnvVar);
+        unsetenv(kTpuChipsPerProcessBoundsEnvVar);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "1,1,1";
+
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        EXPECT_STREQ(std::getenv(kAllowMultipleLibtpuLoadEnvVar), "1");
+        EXPECT_STREQ(std::getenv(kTpuProcessAddressesEnvVar), "localhost:1234");
+        EXPECT_STREQ(std::getenv(kTpuHostBoundsEnvVar), "1,1,1");
+        EXPECT_STREQ(std::getenv(kTpuChipsPerHostBoundsEnvVar), "1,1,1");
+        EXPECT_STREQ(std::getenv(kTpuProcessBoundsEnvVar), "1,1,1");
+        EXPECT_STREQ(std::getenv(kTpuChipsPerProcessBoundsEnvVar), "1,1,1");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
      InitializeDistributedEnvironmentSetsChipsBoundsFor4DTopology) {
-  unsetenv(kAllowMultipleLibtpuLoadEnvVar);
-  unsetenv(kTpuProcessAddressesEnvVar);
-  unsetenv(kTpuHostBoundsEnvVar);
-  unsetenv(kTpuChipsPerHostBoundsEnvVar);
-  unsetenv(kTpuProcessBoundsEnvVar);
-  unsetenv(kTpuChipsPerProcessBoundsEnvVar);
-  DistributedWorkerConfiguration config;
-  config.rank = 0;
-  config.local_rank = 0;
-  config.sb_port = "1234";
-  config.sb_addrs = "localhost:1234";
-  config.topology = "2,2,1,2";
+  EXPECT_EXIT(
+      {
+        unsetenv(kAllowMultipleLibtpuLoadEnvVar);
+        unsetenv(kTpuProcessAddressesEnvVar);
+        unsetenv(kTpuHostBoundsEnvVar);
+        unsetenv(kTpuChipsPerHostBoundsEnvVar);
+        unsetenv(kTpuProcessBoundsEnvVar);
+        unsetenv(kTpuChipsPerProcessBoundsEnvVar);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "2,2,1,2";
 
-  EXPECT_EQ(InitializeDistributedEnvironment(config), absl::OkStatus());
-
-  const char* host_chips_val = std::getenv(kTpuChipsPerHostBoundsEnvVar);
-  ASSERT_NE(host_chips_val, nullptr);
-  EXPECT_STREQ(host_chips_val, "1,1,1,1");
-
-  const char* proc_chips_val = std::getenv(kTpuChipsPerProcessBoundsEnvVar);
-  ASSERT_NE(proc_chips_val, nullptr);
-  EXPECT_STREQ(proc_chips_val, "1,1,1,1");
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        EXPECT_STREQ(std::getenv(kTpuChipsPerHostBoundsEnvVar), "1,1,1,1");
+        EXPECT_STREQ(std::getenv(kTpuChipsPerProcessBoundsEnvVar), "1,1,1,1");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
 }
 
-TEST(EnvironmentTest, InitializeDistributedEnvironmentUnsetsAddressesFirst) {
-  setenv(kTpuProcessAddressesEnvVar, "old_address", 1);
-  DistributedWorkerConfiguration config;
-  config.rank = 0;
-  config.local_rank = 0;
-  config.sb_port = "1234";
-  config.sb_addrs = "new_address";
-  config.topology = "1,1,1";
+TEST(EnvironmentDeathTest,
+     InitializeDistributedEnvironmentUnsetsAddressesFirst) {
+  EXPECT_EXIT(
+      {
+        setenv(kTpuProcessAddressesEnvVar, "old_address", 1);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "new_address";
+        config.topology = "1,1,1";
 
-  EXPECT_EQ(InitializeDistributedEnvironment(config), absl::OkStatus());
-
-  const char* addr_val = std::getenv(kTpuProcessAddressesEnvVar);
-  ASSERT_NE(addr_val, nullptr);
-  EXPECT_STREQ(addr_val, "new_address");
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        EXPECT_STREQ(std::getenv(kTpuProcessAddressesEnvVar), "new_address");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
 }
 
-TEST(EnvironmentTest,
+TEST(EnvironmentDeathTest,
      InitializeDistributedEnvironmentSetsTaskIdUsingSliceRankForMultislice) {
-  unsetenv(kAllowMultipleLibtpuLoadEnvVar);
-  unsetenv(kTpuProcessAddressesEnvVar);
-  unsetenv(kTpuHostBoundsEnvVar);
-  unsetenv(kTpuChipsPerHostBoundsEnvVar);
-  unsetenv(kTpuProcessBoundsEnvVar);
-  unsetenv(kTpuChipsPerProcessBoundsEnvVar);
-  unsetenv(kCloudTpuTaskIdEnvVar);
+  EXPECT_EXIT(
+      {
+        unsetenv(kAllowMultipleLibtpuLoadEnvVar);
+        unsetenv(kTpuProcessAddressesEnvVar);
+        unsetenv(kTpuHostBoundsEnvVar);
+        unsetenv(kTpuChipsPerHostBoundsEnvVar);
+        unsetenv(kTpuProcessBoundsEnvVar);
+        unsetenv(kTpuChipsPerProcessBoundsEnvVar);
+        unsetenv(kCloudTpuTaskIdEnvVar);
 
-  DistributedWorkerConfiguration config;
-  config.rank = 5;
-  config.local_rank = 0;
-  config.sb_port = "1234";
-  config.sb_addrs = "host0:1234,host1:1234";
-  config.topology = "1,1,1";
+        DistributedWorkerConfiguration config;
+        config.rank = 5;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "host0:1234,host1:1234";
+        config.topology = "1,1,1";
 
-  EXPECT_EQ(InitializeDistributedEnvironment(config), absl::OkStatus());
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        EXPECT_STREQ(std::getenv(kCloudTpuTaskIdEnvVar), "1");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
 
-  const char* task_id_val = std::getenv(kCloudTpuTaskIdEnvVar);
-  ASSERT_NE(task_id_val, nullptr);
-  EXPECT_STREQ(task_id_val, "1");
+TEST(EnvironmentDeathTest,
+     InitializeDistributedEnvironment_FallsBackOnMalformedVisibleChips) {
+  EXPECT_EXIT(
+      {
+        unsetenv("TPU_VISIBLE_DEVICES");
+        setenv(kTpuVisibleChipsEnvVar, "invalid_dev", 1);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 1;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "1,1,1";
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        const char* val = std::getenv(kTpuVisibleChipsEnvVar);
+        EXPECT_NE(val, nullptr);
+        EXPECT_STREQ(val, "1");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitializeDistributedEnvironment_FallsBackOnNegativeVisibleDevices) {
+  EXPECT_EXIT(
+      {
+        unsetenv(kTpuVisibleChipsEnvVar);
+        setenv("TPU_VISIBLE_DEVICES", "-5", 1);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 2;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "1,1,1";
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        const char* val = std::getenv(kTpuVisibleChipsEnvVar);
+        EXPECT_NE(val, nullptr);
+        EXPECT_STREQ(val, "2");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitDistEnv_RespectsExistingSingleTpuVisibleChipsEnvVar) {
+  EXPECT_EXIT(
+      {
+        unsetenv("TPU_VISIBLE_DEVICES");
+        setenv(kTpuVisibleChipsEnvVar, "2", 1);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "1,1,1";
+
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "2");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitDistEnv_RespectsExistingSingleTpuVisibleDevicesEnvVar) {
+  EXPECT_EXIT(
+      {
+        unsetenv(kTpuVisibleChipsEnvVar);
+        setenv("TPU_VISIBLE_DEVICES", "3", 1);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "1,1,1";
+
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "3");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitDistEnv_OverwritesMultiDeviceTpuVisibleChipsEnvVar) {
+  EXPECT_EXIT(
+      {
+        unsetenv("TPU_VISIBLE_DEVICES");
+        setenv(kTpuVisibleChipsEnvVar, "0,1,2,3", 1);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 1;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "1,1,1";
+
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "1");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
 }
 
 }  // namespace

@@ -157,8 +157,10 @@ inline constexpr char kTpuSlicebuilderAddressesEnvVar[] =
     "TORCH_TPU_SLICEBUILDER_ADDRESSES";  // Set by Torch TPU specific launchers.
 inline constexpr char kTpuTopologyEnvVar[] =
     "TORCH_TPU_TOPOLOGY";  // Set by Torch TPU specific launchers.
-inline constexpr char kTpuVisibleChipsEnvVar[] =
-    "TPU_VISIBLE_CHIPS";  // Read by Google Cloud.
+// Specifies which TPU chips are visible to this process. Read by Google Cloud.
+inline constexpr char kTpuVisibleChipsEnvVar[] = "TPU_VISIBLE_CHIPS";
+// Specifies which TPU devices are visible to this process.
+inline constexpr char kTpuVisibleDevicesEnvVar[] = "TPU_VISIBLE_DEVICES";
 // How many devices are in this process group. Set by launchers like
 // torchrun.
 inline constexpr char kWorldSizeEnvVar[] = "WORLD_SIZE";
