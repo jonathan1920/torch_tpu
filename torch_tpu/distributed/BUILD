@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -43,12 +43,12 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:env_vars",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:fingerprint_utils",
         "//torch_tpu/common:flags",
         "//torch_tpu/common:shape",
         "//torch_tpu/common:to_string",
         "//torch_tpu/common:utils",
         "//torch_tpu/eager:device_buffer",
-        "//torch_tpu/eager:materialize",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/eager:structured_log_buffer",
         "//torch_tpu/eager:tensor_to_buffer",
@@ -77,8 +77,25 @@ torch_tpu_cc_library(
 
 torch_tpu_cc_library(
     name = "types",
+    srcs = [
+        "types.cc",
+    ],
     hdrs = [
         "types.h",
+    ],
+    deps = [
+        "//torch_tpu/common:fingerprint_utils",
+        "//torch_tpu/common:to_string",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "types_test",
+    srcs = ["types_test.cc"],
+    deps = [
+        ":types",
+        "//torch_tpu/common:fingerprint_utils",
+        "//torch_tpu/common:oss_test_main",
     ],
 )
 

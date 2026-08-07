@@ -281,7 +281,6 @@ class ProcessGroupTpu : public c10d::Backend {
       const std::vector<int64_t>& output_split_sizes,  // INT_VEC_OK
       const std::vector<int64_t>& input_split_sizes);  // INT_VEC_OK
 
- private:
   // Extracts receive descriptors from store_ and sends buffers to a
   // remote device.
   absl::StatusOr<c10::intrusive_ptr<c10::ivalue::Future>> CrossHostSendBuffers(
@@ -299,12 +298,6 @@ class ProcessGroupTpu : public c10d::Backend {
 
   std::vector<int64_t> device_ids_;  // All the TPUs in the slice. INT_VEC_OK
   int64_t addressable_device_id_;    // The TPU 'assigned' to this process.
-
-  // The unique (local) identifier of this ProcessGroup.
-  //
-  // This should be included in the op param cache keys, to distinguish
-  // different process groups that may have the same op arguments.
-  const int64_t pg_id_ = this->getID();
 
   // List of TPU device ids in this process group (which could be a subgroup),
   // ordered by the corresponding PyTorch rank value.

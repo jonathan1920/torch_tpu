@@ -23,7 +23,6 @@
 #include <exception>
 #include <memory>
 #include <numeric>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -76,7 +75,6 @@
 #include "torch_tpu/distributed/types.h"
 #include "torch_tpu/distributed/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -526,7 +524,8 @@ ProcessGroupTpu::ProcessGroupTpu(c10::intrusive_ptr<c10d::Store> store,
     for (int i = 0; i < group_size; ++i) {
       rank_to_logical_device_id[i] = GetLogicalDeviceId(rank_to_device_id_[i]);
     }
-    subgroup_device_ids_.push_back(std::move(rank_to_logical_device_id));
+    subgroup_device_ids_ =
+        DeviceGroupList({std::move(rank_to_logical_device_id)});
   } else {
     // This new group is a proper subgroup. The `c10d::Store` allows us to
     // exchange membership information *within* this subgroup, which is
@@ -543,9 +542,10 @@ ProcessGroupTpu::ProcessGroupTpu(c10::intrusive_ptr<c10d::Store> store,
                << ", all subgroups: " << ToString(subgroup_device_ids_);
 }
 
-// Sets the process group ID in the given param cache keys.
-#define TT_SET_PROCESS_GROUP_ID(param_keys) \
-  TT_THROW_IF_ERROR(param_keys.SetParam("pg_id", pg_id_))
+// Sets the subgroups fingerprint in the given param cache keys.
+#define TT_SET_SUBGROUPS_FINGERPRINT(param_keys) \
+  TT_THROW_IF_ERROR(                             \
+      param_keys.SetParam("subgroups_fingerprint", subgroup_device_ids_))
 
 const DeviceGroupList& ProcessGroupTpu::GetSubgroupDeviceIds() const {
   return subgroup_device_ids_;
@@ -554,7 +554,7 @@ const DeviceGroupList& ProcessGroupTpu::GetSubgroupDeviceIds() const {
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allreduce(
     std::vector<at::Tensor>& tensors, const c10d::AllreduceOptions& opts) {
   TT_KERNEL(OpName::kDistributedAllReduce, param_keys, (tensors, opts), {
-    TT_SET_PROCESS_GROUP_ID(param_keys);
+    TT_SET_SUBGROUPS_FINGERPRINT(param_keys);
     // TODO(vladbelous): Implement support for multiple input/output
     // tensors:
     TT_CHECK_THROW(tensors.size() == 1, error::kPythonNotImplementedError)
@@ -738,7 +738,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
   TT_KERNEL(
       OpName::kDistributedAllGather, param_keys,
       (output_tensors, input_tensors, opts), {
-        TT_SET_PROCESS_GROUP_ID(param_keys);
+        TT_SET_SUBGROUPS_FINGERPRINT(param_keys);
         const int64_t group_size = getSize();
         TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch only ever passes
                          // single-element input lists.
@@ -827,7 +827,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::_allgather_base(
   TT_KERNEL(
       OpName::kDistributedAllGatherIntoTensor, param_keys,
       (output_tensor, input_tensor, opts), {
-        TT_SET_PROCESS_GROUP_ID(param_keys);
+        TT_SET_SUBGROUPS_FINGERPRINT(param_keys);
         const int64_t world_size = getSize();
         auto input_sizes = input_tensor.sizes();
         auto output_sizes = output_tensor.sizes();
@@ -963,7 +963,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::gather(
   TT_KERNEL(
       OpName::kDistributedGather, param_keys,
       (output_tensors, input_tensors, opts), {
-        TT_SET_PROCESS_GROUP_ID(param_keys);
+        TT_SET_SUBGROUPS_FINGERPRINT(param_keys);
         const int64_t rank = getRank();
         const int64_t root_rank = opts.rootRank;
         TT_CHECK_THROW(input_tensors.size() == 1, error::kInvalidArgument)
@@ -1169,7 +1169,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::_reduce_scatter_base(
   TT_KERNEL(
       OpName::kDistributedReduceScatterTensor, param_keys,
       (output, input, opts), {
-        TT_SET_PROCESS_GROUP_ID(param_keys);
+        TT_SET_SUBGROUPS_FINGERPRINT(param_keys);
         TT_THROW_IF_ERROR(
             ValidateReductionOp(opts.reduceOp, input.scalar_type()));
 
@@ -1312,7 +1312,8 @@ absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseEqualSplits(
       << "for equal splits, shape of input and output must be the same,"
       << " got " << input.sizes() << " and " << output.sizes();
 
-  TT_ASSIGN_OR_RETURN(auto param_keys, TT_MAKE_OP_PARAM_CACHE_KEYS(pg_id_));
+  TT_ASSIGN_OR_RETURN(auto param_keys,
+                      TT_MAKE_OP_PARAM_CACHE_KEYS(subgroup_device_ids_));
 
   auto op_builder = [device_groups = subgroup_device_ids_](mlir::MlirOp input) {
     return BuildDistributedAllToAllBaseShlo(input, device_groups);
@@ -1350,7 +1351,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(
         const bool async = opts.asyncOp;
         TT_THROW_IF_ERROR(param_keys.SetParam("rank", rank));
         TT_THROW_IF_ERROR(param_keys.SetParam("async", async));
-        TT_SET_PROCESS_GROUP_ID(param_keys);
+        TT_SET_SUBGROUPS_FINGERPRINT(param_keys);
         TT_CHECK_THROW(output_tensors.size() == input_tensors.size(),
                        error::kInvalidArgument)
             << "output and input tensors must have the same number of tensors, "
@@ -1453,7 +1454,9 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::barrier(
 
 DeviceGroupList ProcessGroupTpu::GatherAllSubgroups() {
   TT_KERNEL(OpName::kTorchTpuInternalGatherAllSubgroups, param_keys, (), {
-    TT_SET_PROCESS_GROUP_ID(param_keys);
+    // We do not add subgroup_device_ids_ to param_keys here because this
+    // function computes the subgroup_device_ids_.
+    // Instead, `world_group` is added to param_keys below.
     TT_THROW_IF_ERROR(param_keys.SetParam("device_ids", device_ids_));
     int64_t world_size = device_ids_.size();  // All devices in the TPU slice
     int64_t group_size = getSize();  // Devices in this particular process group
@@ -1488,7 +1491,9 @@ DeviceGroupList ProcessGroupTpu::GatherAllSubgroups() {
     // subgroup list.
     DeviceGroup logical_device_ids(world_size);
     std::iota(logical_device_ids.begin(), logical_device_ids.end(), 0);
-    auto world_group = DeviceGroupList(1, std::move(logical_device_ids));
+    auto world_group = DeviceGroupList({std::move(logical_device_ids)});
+    TT_THROW_IF_ERROR(
+        param_keys.SetParam("subgroups_fingerprint", world_group));
     auto op_builder = [group = std::move(world_group)](mlir::MlirOp input) {
       return BuildDistributedAllReduceShlo(input, c10d::ReduceOp::SUM, group);
     };
@@ -1511,16 +1516,14 @@ DeviceGroupList ProcessGroupTpu::GatherAllSubgroups() {
                  << ", subgroups: " << subgroups;
 
     // Convert from at::Tensor to a non-pytorch type.
-    auto result = DeviceGroupList(world_size, DeviceGroup(group_size));
+    std::vector<DeviceGroup> result(world_size, DeviceGroup(group_size));
     for (int i = 0; i < world_size; ++i) {
       for (int j = 0; j < group_size; ++j) {
         result[i][j] = subgroups.index({i, j}).item().toLong();
       }
     }
 
-    // Sort (lexicographic order) and deduplicate the subgroups.
-    std::set<DeviceGroup> subgroups_set(result.cbegin(), result.cend());
-    return DeviceGroupList(subgroups_set.cbegin(), subgroups_set.cend());
+    return DeviceGroupList(std::move(result));
   });
 }
 
