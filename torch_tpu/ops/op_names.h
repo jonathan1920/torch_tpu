@@ -90,6 +90,8 @@ enum class OpName {
   kBernoulli_Tensor,
   kBinCount,
   kBinaryCrossEntropy,
+  kBinaryCrossEntropyBackward,
+  kBinaryCrossEntropyBackwardGradInput,
   kBinaryCrossEntropyOut,
   kBitwiseAnd,
   kBitwiseAndOut,

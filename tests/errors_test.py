@@ -957,6 +957,90 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.ops.aten.binary_cross_entropy(input_val, target_val)
 
+  def test_binary_cross_entropy_backward_grad_input_invalid_dtype(self):
+    """Tests binary_cross_entropy_backward.grad_input with invalid grad_input dtype."""
+    grad_output = torch.rand(3, 3, dtype=torch.float32, device=et.device())
+    input_val = torch.rand(3, 3, dtype=torch.float32, device=et.device())
+    target_val = torch.rand(3, 3, dtype=torch.float32, device=et.device())
+    grad_input = torch.empty(3, 3, dtype=torch.int32, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""binary_cross_entropy_backward(): expected grad_input dtype float32, got int32""",
+        gpu="""Found dtype Int but expected Float""",
+    ):
+      torch.ops.aten.binary_cross_entropy_backward.grad_input(
+          grad_output, input_val, target_val, None, 0, grad_input=grad_input
+      )
+
+  @parameterized.named_parameters(
+      # (testcase_name, invalid_arg)
+      ("grad_dtype", "grad_output"),
+      ("input_dtype", "input"),
+      ("target_dtype", "target"),
+  )
+  def test_binary_cross_entropy_backward_invalid_dtypes(self, invalid_arg: str):
+    """Tests binary_cross_entropy_backward with non-floating point dtypes."""
+
+    def make_tensor(is_valid):
+      if is_valid:
+        return torch.rand(3, 3, dtype=torch.float32, device=et.device())
+      else:
+        return torch.randint(
+            0, 2, (3, 3), dtype=torch.int32, device=et.device()
+        )
+
+    grad_output = make_tensor(invalid_arg != "grad_output")
+    input_val = make_tensor(invalid_arg != "input")
+    target_val = make_tensor(invalid_arg != "target")
+
+    tpu_error = (
+        "binary_cross_entropy_backward(): expected floating point"
+        f" {invalid_arg}, got int32"
+    )
+    gpu_error = (
+        "Found dtype Float but expected Int"
+        if invalid_arg == "grad_output"
+        else "Found dtype Int but expected Float"
+    )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=tpu_error,
+        gpu=gpu_error,
+    ):
+      torch.ops.aten.binary_cross_entropy_backward(
+          grad_output, input_val, target_val
+      )
+
+  def test_binary_cross_entropy_backward_mismatched_shapes(self):
+    """Tests binary_cross_entropy_backward with mismatched shapes."""
+    grad_output = torch.rand(3, 3, dtype=torch.float32, device=et.device())
+    input_val = torch.rand(3, 3, dtype=torch.float32, device=et.device())
+    target_val = torch.rand(3, 4, dtype=torch.float32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""binary_cross_entropy_backward(): expected input and target shapes to match, got [3, 3] vs [3, 4]""",
+        gpu="""The size of tensor a (3) must match the size of tensor b (4) at non-singleton dimension 1""",
+    ):
+      torch.ops.aten.binary_cross_entropy_backward(
+          grad_output, input_val, target_val
+      )
+
+  def test_binary_cross_entropy_backward_grad_output_non_broadcastable(self):
+    """Tests binary_cross_entropy_backward with non-broadcastable grad_output."""
+    grad_output = torch.rand(3, 4, dtype=torch.float32, device=et.device())
+    input_val = torch.rand(3, 3, dtype=torch.float32, device=et.device())
+    target_val = torch.rand(3, 3, dtype=torch.float32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""binary_cross_entropy_backward(): expected grad_output to be broadcastable to input shape, got [3, 4] vs [3, 3]""",
+        gpu="""The expanded size of the tensor (3) must match the existing size (4) at non-singleton dimension 1.  Target sizes: [3, 3].  Tensor sizes: [3, 4]""",
+    ):
+      torch.ops.aten.binary_cross_entropy_backward(
+          grad_output, input_val, target_val
+      )
+
   def test_nll_loss_unsupported_input_dtype(self):
     t = torch.ones(3, 5, device=et.device(), dtype=torch.int32)
     target = torch.tensor([1, 0, 4], device=et.device(), dtype=torch.long)

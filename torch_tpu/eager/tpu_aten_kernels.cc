@@ -371,6 +371,10 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kBernoulli_Tensor>(m, AtenBernoulli_Tensor);
   ImplStable<OpName::kBinCount>(m, AtenBinCount);
   ImplStable<OpName::kBinaryCrossEntropy>(m, AtenBinaryCrossEntropy);
+  ImplStable<OpName::kBinaryCrossEntropyBackward>(
+      m, AtenBinaryCrossEntropyBackward);
+  ImplStable<OpName::kBinaryCrossEntropyBackwardGradInput>(
+      m, AtenBinaryCrossEntropyBackwardGradInput);
   ImplStable<OpName::kBinaryCrossEntropyOut>(m, AtenBinaryCrossEntropyOut);
   ImplStable<OpName::kBitwiseAndTensorOut>(m, AtenBitwiseAndTensorOut);
   ImplStable<OpName::kBitwiseLeftShiftTensorOut>(m,

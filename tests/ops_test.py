@@ -2114,8 +2114,6 @@ class TestOps(op_testing.OpInfoTestBase):
         # dtypes.
         exclude_dtypes=INTEGRAL_DTYPES  # EXCLUDE_DTYPES_OK=unsupported by op
         + COMPLEX_DTYPES,
-        # TODO(b/540303890): remove when backwards ops are implemented.
-        check_grad=False,
     )
 
   def test_bincount(self):

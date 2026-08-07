@@ -35,6 +35,16 @@ at::Tensor& AtenBinaryCrossEntropyOut(const at::Tensor& self,
                                       const std::optional<at::Tensor>& weight,
                                       int64_t reduction, at::Tensor& out);
 
+at::Tensor AtenBinaryCrossEntropyBackward(
+    const at::Tensor& grad_output, const at::Tensor& self,
+    const at::Tensor& target, const std::optional<at::Tensor>& weight,
+    int64_t reduction);
+
+at::Tensor& AtenBinaryCrossEntropyBackwardGradInput(
+    const at::Tensor& grad_output, const at::Tensor& self,
+    const at::Tensor& target, const std::optional<at::Tensor>& weight,
+    int64_t reduction, at::Tensor& grad_input);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_BINARY_CROSS_ENTROPY_BINARY_CROSS_ENTROPY_ATEN_KERNELS_H_
