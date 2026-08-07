@@ -299,18 +299,15 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
-    name = "tier2_compilation_cache",
-    srcs = ["tier2_compilation_cache.cc"],
-    hdrs = ["tier2_compilation_cache.h"],
+    name = "compilation_cache_utils",
+    srcs = ["compilation_cache_utils.cc"],
+    hdrs = ["compilation_cache_utils.h"],
     deps = [
         ":cache_key",
         ":compilation",
-        ":env_vars",
         ":error_utils",
         ":fingerprint_utils",
-        ":unique_file_descriptor",
         "//torch_tpu/pjrt:pjrt_state",
-        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
@@ -318,10 +315,31 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/time",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/tsl/platform:env",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "tier2_compilation_cache",
+    srcs = ["tier2_compilation_cache.cc"],
+    hdrs = ["tier2_compilation_cache.h"],
+    deps = [
+        ":cache_key",
+        ":compilation",
+        ":compilation_cache_utils",
+        ":env_vars",
+        ":error_utils",
+        ":unique_file_descriptor",
+        "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -335,6 +353,7 @@ torch_tpu_cc_test(
     deps = [
         ":cache_key",
         ":compilation",
+        ":compilation_cache_utils",
         ":compilation_spec",
         ":dimension_types",
         ":env_vars",
@@ -581,6 +600,7 @@ torch_tpu_cc_library(
     deps = [
         ":cache_key",
         ":compilation",
+        ":compilation_cache_utils",
         ":env_vars",
         ":error_utils",
         ":tier2_compilation_cache",
@@ -1036,6 +1056,7 @@ torch_tpu_cc_library(
     deps = [
         ":cache_key",
         ":compilation",
+        ":compilation_cache_utils",
         ":compilation_spec",
         ":compile_options_key",
         ":context_manager",
@@ -1297,11 +1318,11 @@ torch_tpu_cc_test(
     deps = [
         ":cache_key",
         ":compilation",
+        ":compilation_cache_utils",
         ":compilation_spec",
         ":dimension_types",
         ":env_vars",
         ":error_utils",
-        ":tier2_compilation_cache",
         ":tier3_compilation_cache",
         "//torch_tpu/common:oss_test_main",
         "//torch_tpu/pjrt:pjrt_state",
@@ -1332,11 +1353,11 @@ torch_tpu_cc_test(
     deps = [
         ":cache_key",
         ":compilation",
+        ":compilation_cache_utils",
         ":compilation_spec",
         ":dimension_types",
         ":env_vars",
         ":error_utils",
-        ":tier2_compilation_cache",
         ":tier3_compilation_cache",
         "//torch_tpu/common:oss_test_main",
         "//torch_tpu/pjrt:pjrt_state",
@@ -1366,6 +1387,7 @@ torch_tpu_cc_test(
     deps = [
         ":cache_key",
         ":compilation",
+        ":compilation_cache_utils",
         ":compilation_spec",
         ":env_vars",
         ":tier2_compilation_cache",  # buildcleaner: keep

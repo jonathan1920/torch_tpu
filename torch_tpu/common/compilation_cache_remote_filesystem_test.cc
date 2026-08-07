@@ -25,6 +25,7 @@
 #include "gtest/gtest.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_cache_utils.h"
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/tier3_compilation_cache.h"
@@ -35,7 +36,6 @@ namespace torch_tpu {
 
 absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
                                     const std::string& serialized_data);
-absl::Status EnsureDirExistsRecursively(const std::string& path);
 
 namespace {
 

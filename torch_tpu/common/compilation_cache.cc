@@ -55,6 +55,7 @@
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_cache_utils.h"
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/contain.h"
