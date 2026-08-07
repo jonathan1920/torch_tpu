@@ -2097,11 +2097,10 @@ oss_target(
     srcs = ["run_upstream_example.py"],
     env = {
         "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "regression/main.py",
-        "TORCH_TPU_INTERNAL_TEST_DEVICE": "tpu",
     },
     main = "run_upstream_example.py",
     nolocal = "This test requires downloading the raw PyTorch examples tree.",
-    nonightly_oss = "Test requires downloading raw PyTorch examples.",
+    nonightly_oss = "Test in development. To be added to nightly once stable.",
     nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
     tags = [
         "requires-tpu-v5lite",
@@ -2123,11 +2122,10 @@ oss_target(
     srcs = ["run_upstream_example.py"],
     env = {
         "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "fx/invert.py",
-        "TORCH_TPU_INTERNAL_TEST_DEVICE": "tpu",
     },
     main = "run_upstream_example.py",
     nolocal = "This test requires downloading the raw PyTorch examples tree.",
-    nonightly_oss = "Test requires downloading raw PyTorch examples.",
+    nonightly_oss = "Test in development. To be added to nightly once stable.",
     nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
     tags = [
         "requires-tpu-v5lite",
@@ -2149,11 +2147,10 @@ oss_target(
     srcs = ["run_upstream_example.py"],
     env = {
         "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "fx/module_tracer.py",
-        "TORCH_TPU_INTERNAL_TEST_DEVICE": "tpu",
     },
     main = "run_upstream_example.py",
     nolocal = "This test requires downloading the raw PyTorch examples tree.",
-    nonightly_oss = "Test requires downloading raw PyTorch examples.",
+    nonightly_oss = "Test in development. To be added to nightly once stable.",
     nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
     tags = [
         "requires-tpu-v5lite",
@@ -2164,6 +2161,32 @@ oss_target(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "@pypi//torchvision",
+    ],
+)
+
+# TODO(b/543942649): Improve pytorch GAT example to of taking in datasets as an argument.
+oss_target(
+    torch_tpu_py_test,
+    name = "run_upstream_example_gat_tpu",
+    srcs = ["run_upstream_example.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_EXAMPLE_ARGS": "--dry-run",
+        "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "gat/main.py",
+    },
+    main = "run_upstream_example.py",
+    nolocal = "This test requires downloading the raw PyTorch examples tree.",
+    nonightly_oss = "Test in development. To be added to nightly once stable.",
+    nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
+    tags = [
+        "requires-tpu-v5lite",
+        "wheel_test_excluded",
+    ],
+    deps = [
+        "//shims/absl_py:app",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "@pypi//numpy",
+        "@pypi//requests",
     ],
 )
 
