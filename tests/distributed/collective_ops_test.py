@@ -44,7 +44,7 @@ if __name__ == "__main__":  # We are in the parent process.
   date = time.strftime("%Y-%m-%d", time.localtime())
   random_seed = os.environ.get("TEST_RANDOM_SEED", "0")
   os.environ[
-      "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT"
+      "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT"
   ] += f"/{date}.{random_seed}"
 # pylint: disable=g-code-after-main
 

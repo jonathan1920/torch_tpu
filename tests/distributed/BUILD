@@ -88,7 +88,7 @@ torch_tpu_py_test(
     name = "collective_ops_test",
     srcs = ["collective_ops_test.py"],
     env = {
-        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/collective_ops_test",
+        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "/tmp/collective_ops_test",
     },
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 12,
@@ -119,7 +119,7 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["collective_ops_test.py"],
     env = {
-        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
+        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT":
         # Alternatively, set it to a GCS directory.
         # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/collective_ops_remote_cache_test"
         "",
@@ -637,7 +637,7 @@ torch_tpu_py_test(
     env = {
         # We explicitly disable the compilation cache because we rely on every rank compiling for itself so that we can definitively confirm that every rank produces the same MLIR.
         "TORCH_TPU_TIER2_COMPILATION_CACHE": "disabled",
-        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "",
+        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "",
     },
     notest_oss = "TODO(b/537411907): Re-enable in OSS once fixed.",
     tags = if_oss(

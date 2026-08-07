@@ -82,8 +82,8 @@ TEST_F(Tier3CompilationCacheTest, GetTier3CacheEntryPath) {
 
   // Expected path format: <root>/<fingerprint>/<key>.bin
   const std::string expected_prefix = absl::StrCat(
-      GetEnvOnce<kTorchTpuInternalTier3CompilationCacheRootEnvVar>().value(),
-      "/", absl::Hex(GetTorchTpuBinaryFingerprint(), absl::kZeroPad16), "/");
+      GetEnvOnce<kTorchTpuTier3CompilationCacheRootEnvVar>().value(), "/",
+      absl::Hex(GetTorchTpuBinaryFingerprint(), absl::kZeroPad16), "/");
 
   ASSERT_THAT(path, StartsWith(expected_prefix));
   const std::string suffix = path.substr(expected_prefix.size());

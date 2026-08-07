@@ -184,7 +184,7 @@ class CacheTest(absltest.TestCase):
     """Tests Tier-2 persistent compilation caching in shared memory."""
     self.assertEqual(_TEST_MODE.value, TestMode.TIER2)
     cache_dir = get_tier2_cache_dir(
-        os.environ.get("TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE")
+        os.environ.get("TORCH_TPU_TIER2_COMPILATION_CACHE")
     )
     empty_dir(cache_dir)
     self._run_persistent_cache_logic(cache_dir)
@@ -193,7 +193,7 @@ class CacheTest(absltest.TestCase):
     """Tests Tier-3 persistent compilation caching in a temporary root dir."""
     self.assertEqual(_TEST_MODE.value, TestMode.TIER3)
     cache_dir = pathlib.Path(
-        os.environ.get("TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT")
+        os.environ.get("TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT")
     )
     empty_dir(cache_dir)
     self._run_persistent_cache_logic(cache_dir)
@@ -316,9 +316,7 @@ class MasterCacheTest(absltest.TestCase):
     self._run_sub_test(
         TestMode.TIER2,
         {
-            "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": (
-                "compile_cache_test_tier2"
-            ),
+            "TORCH_TPU_TIER2_COMPILATION_CACHE": "compile_cache_test_tier2",
         },
     )
 
@@ -327,8 +325,8 @@ class MasterCacheTest(absltest.TestCase):
     self._run_sub_test(
         TestMode.TIER3,
         {
-            "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "default",
-            "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": str(
+            "TORCH_TPU_TIER2_COMPILATION_CACHE": "default",
+            "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": str(
                 self.create_tempdir().full_path
             ),
         },

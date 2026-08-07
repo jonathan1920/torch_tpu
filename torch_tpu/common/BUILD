@@ -376,7 +376,7 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "tier2_compilation_cache_enablement_test_default_one_device",
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
-    # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
+    # Do not set the TORCH_TPU_TIER2_COMPILATION_CACHE environment variable.
     args = [
         "--expected_tier2_cache_name=",
     ],
@@ -401,10 +401,10 @@ torch_tpu_cc_test(
     args = [
         "--expected_tier2_cache_name=default",
     ],
-    # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
+    # Do not set the TORCH_TPU_TIER2_COMPILATION_CACHE environment variable.
     env = {
         # This should force enable tier-2.
-        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/cache",
+        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "/tmp/cache",
     },
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
@@ -424,7 +424,7 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "tier2_compilation_cache_enablement_test_default_multi_device",
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
-    # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
+    # Do not set the TORCH_TPU_TIER2_COMPILATION_CACHE environment variable.
     args = [
         "--expected_tier2_cache_name=default",
     ],
@@ -454,7 +454,7 @@ torch_tpu_cc_test(
         "--expected_tier2_cache_name=",
     ],
     env = {
-        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "disabled",
     },
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
@@ -478,7 +478,7 @@ torch_tpu_cc_test(
         "--expected_tier2_cache_name=",
     ],
     env = {
-        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "disabled",
         "WORLD_SIZE": "4",
         "TORCH_TPU_TOPOLOGY": "2,2,1",
     },
@@ -504,7 +504,7 @@ torch_tpu_cc_test(
         "--expected_tier2_cache_name=my_cache",
     ],
     env = {
-        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache",
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "my_cache",
     },
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
@@ -528,7 +528,7 @@ torch_tpu_cc_test(
         "--expected_tier2_cache_name=my_cache2",
     ],
     env = {
-        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache2",
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "my_cache2",
         "WORLD_SIZE": "4",
         "TORCH_TPU_TOPOLOGY": "2,2,1",
     },
@@ -1342,7 +1342,7 @@ torch_tpu_cc_test(
     name = "tier3_compilation_cache_test",
     srcs = ["tier3_compilation_cache_test.cc"],
     env = {
-        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
+        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
     },
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
@@ -1373,7 +1373,7 @@ torch_tpu_cc_test(
     name = "remote_tier3_compilation_cache_test",
     srcs = ["tier3_compilation_cache_test.cc"],
     env = {
-        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
+        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT":
         # Alternatively, set it to a GCS directory.
         # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/remote_tier3_compilation_cache_test"
         "",
@@ -1407,7 +1407,7 @@ torch_tpu_cc_test(
     name = "compilation_cache_remote_filesystem_test",
     srcs = ["compilation_cache_remote_filesystem_test.cc"],
     env = {
-        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
+        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT":
         # Alternatively, set it to a GCS directory.
         # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/compilation_cache_remote_filesystem_test"
         "",

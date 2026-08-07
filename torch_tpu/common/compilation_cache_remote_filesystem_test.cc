@@ -61,10 +61,9 @@ class RemoteCacheTest : public testing::Test {
  protected:
   void SetUp() override {
     test_dir_ =
-        GetEnvOnce<kTorchTpuInternalTier3CompilationCacheRootEnvVar>().value_or(
-            "");
+        GetEnvOnce<kTorchTpuTier3CompilationCacheRootEnvVar>().value_or("");
     ASSERT_FALSE(test_dir_.empty())
-        << "The TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT env var must "
+        << "The TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT env var must "
            "be set.";
   }
 
