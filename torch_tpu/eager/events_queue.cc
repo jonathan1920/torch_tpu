@@ -17,6 +17,7 @@
 #include "torch_tpu/eager/events_queue.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <iterator>
@@ -37,7 +38,6 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "c10/core/Device.h"
-#include "c10/core/Stream.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -56,6 +56,8 @@
 namespace torch_tpu {
 
 namespace {
+
+constexpr int kMaxTorchDevices = 8;
 
 // Creates a new deferred DeviceBufferList which represents a data dependency
 // but no actual computation.
@@ -604,18 +606,6 @@ PrepareMaterializationTraversals(
 }
 
 namespace {
-struct StreamState {
-  absl::Mutex mutex;
-  absl::flat_hash_map<std::pair<  // STD_PAIR_OK=use default absl::Hash impl
-                          c10::DeviceIndex, int64_t>,
-                      std::vector<xla::Future<void>>>
-      pending_futures ABSL_GUARDED_BY(mutex);
-};
-
-StreamState& GetStreamState() {
-  static absl::NoDestructor<StreamState> state;
-  return *state;
-}
 
 void PruneCompletedFutures(std::vector<xla::Future<void>>& futures) {
   futures.erase(std::remove_if(futures.begin(), futures.end(),
@@ -625,38 +615,114 @@ void PruneCompletedFutures(std::vector<xla::Future<void>>& futures) {
                 futures.end());
 }
 
-void WaitForFutures(c10::DeviceIndex dev_idx, int64_t stream_id,
-                    const std::vector<xla::Future<void>>& futures) {
-  for (auto& future : futures) {
-    if (future.IsValid()) {
-      absl::Status s = future.Await();
-      if (!s.ok()) {
-        ABSL_LOG(ERROR) << "Stream synchronization failed for device "
-                        << static_cast<int>(dev_idx) << " stream " << stream_id
-                        << ": " << s;
-      }
+struct StreamState {
+  void MarkActive(std::vector<xla::Future<void>>&& new_futures) {
+    if (new_futures.empty()) {
+      return;
     }
+    absl::MutexLock lock(mutex);
+    if (futures.size() + new_futures.size() > futures.capacity()) {
+      PruneCompletedFutures(futures);
+    }
+    futures.insert(futures.end(), std::make_move_iterator(new_futures.begin()),
+                   std::make_move_iterator(new_futures.end()));
   }
+
+  xla::Future<void> JoinFutures() {
+    absl::MutexLock lock(mutex);
+    if (!futures.empty()) {
+      PruneCompletedFutures(futures);
+    }
+    if (futures.empty()) {
+      return xla::Future<void>(absl::OkStatus());
+    }
+    auto join_future = xla::JoinFutures(futures);
+    futures.clear();
+    futures.push_back(join_future);  // intentional copy
+    return join_future;
+  }
+
+  absl::Mutex mutex;
+  std::vector<xla::Future<void>> futures ABSL_GUARDED_BY(mutex);
+};
+
+struct DeviceState {
+  StreamState* absl_nonnull GetOrCreateStreamState(int64_t stream_id);
+
+  std::vector<StreamState* absl_nonnull> GetAllStreamStates() {
+    absl::MutexLock lock(mutex);
+    std::vector<StreamState* absl_nonnull> including_default;
+    including_default.reserve(stream_states.size() + 1);
+    including_default.push_back(&default_stream_state);
+    for (const auto& stream_state : stream_states) {
+      including_default.push_back(stream_state.get());
+    }
+    return including_default;
+  }
+
+  StreamState default_stream_state;
+  absl::Mutex mutex;
+  // TODO: currently this vector only grows and never deallocates a StreamState
+  // once created. This could cause host-side OOMs if the user creates new
+  // streams in a loop.
+  // Possible alternatives:
+  //   - Allocate a fixed number of stream states and reuse them; this is the
+  //     approach used by XPU. This may have unexpected behavior for users with
+  //     many streams, as multiple Python streams will actually be the same C++
+  //     stream.
+  //   - Use a destructor on the TorchTPU specific torch.tpu.Stream object with
+  //     a free-list to reuse streams. This will *not* work for the generic
+  //     c10::Stream object as this has no destructor we can hook into, so
+  //     torch.Stream(device="tpu") objects cannot be reused.
+  std::vector<std::unique_ptr<StreamState>> stream_states
+      ABSL_GUARDED_BY(mutex);
+};
+
+StreamState* absl_nonnull DeviceState::GetOrCreateStreamState(
+    int64_t stream_id) {
+  ABSL_CHECK(stream_id >= 0);  // CRASH_OK
+  if (stream_id == 0) {
+    return &default_stream_state;
+  }
+  auto stream_index = stream_id - 1;
+  absl::MutexLock lock(mutex);
+  while (stream_states.size() <= stream_index) {
+    stream_states.push_back(std::make_unique<StreamState>());
+  }
+  return stream_states[stream_index].get();
 }
 
-struct StreamFutures {
-  c10::StreamId stream_id;
-  std::vector<xla::Future<void>> futures;
+struct StreamStates {
+  DeviceState& GetDeviceState(c10::DeviceIndex device_index) {
+    ABSL_CHECK(device_index >= 0 &&  // CRASH_OK
+               device_index < kMaxTorchDevices);
+    return device_states[device_index];
+  }
+
+  std::array<DeviceState, kMaxTorchDevices> device_states;
 };
+
+StreamStates& GetStreamStates() {
+  static absl::NoDestructor<StreamStates> states;
+  return *states;
+}
+
+StreamState* absl_nonnull GetOrCreateStreamState(c10::DeviceIndex device_index,
+                                                 int64_t stream_id) {
+  return GetStreamStates()
+      .GetDeviceState(device_index)
+      .GetOrCreateStreamState(stream_id);
+}
+
+std::vector<StreamState* absl_nonnull> GetDeviceStreamStates(
+    c10::DeviceIndex device_index) {
+  return GetStreamStates().GetDeviceState(device_index).GetAllStreamStates();
+}
 
 void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
                       std::vector<xla::Future<void>>&& new_futures) {
-  if (new_futures.empty()) {
-    return;
-  }
-  StreamState& state = GetStreamState();
-  absl::MutexLock lock(state.mutex);
-  auto& futures = state.pending_futures[{device_index, stream_id}];
-  if (futures.size() + new_futures.size() > futures.capacity()) {
-    PruneCompletedFutures(futures);
-  }
-  futures.insert(futures.end(), std::make_move_iterator(new_futures.begin()),
-                 std::make_move_iterator(new_futures.end()));
+  GetOrCreateStreamState(device_index, stream_id)
+      ->MarkActive(std::move(new_futures));
 }
 
 void MarkStreamActive(std::vector<xla::Future<void>>&& new_futures) {
@@ -699,32 +765,14 @@ void RecordAsyncDeviceToHost(xla::Future<void> to_literal_future) {
 void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id) {
   ABSL_VLOG(1) << "SynchronizeStream: device=" << static_cast<int>(device_index)
                << ", stream=" << stream_id;
-  StreamState& state = GetStreamState();
-  std::vector<xla::Future<void>> futures;
-  {
-    absl::MutexLock lock(state.mutex);
-    auto it = state.pending_futures.find({device_index, stream_id});
-    if (it == state.pending_futures.end()) {
-      // No pending futures for this device and stream.
-      return;
-    }
-    futures = it->second;
-  }
-  for (auto& future : futures) {
-    if (future.IsValid()) {
-      absl::Status s = future.Await();
-      if (!s.ok()) {
-        ABSL_LOG(ERROR) << "Stream synchronization failed for device "
-                        << static_cast<int>(device_index) << " stream "
-                        << stream_id << ": " << s;
-      }
-    }
-  }
-  {
-    absl::MutexLock lock(state.mutex);
-    auto it = state.pending_futures.find({device_index, stream_id});
-    if (it != state.pending_futures.end()) {
-      PruneCompletedFutures(it->second);
+  auto stream_future =
+      GetOrCreateStreamState(device_index, stream_id)->JoinFutures();
+  if (stream_future.IsValid()) {
+    absl::Status s = stream_future.Await();
+    if (!s.ok()) {
+      ABSL_LOG(ERROR) << "Stream synchronization failed for device "
+                      << static_cast<int>(device_index) << " stream "
+                      << stream_id << ": " << s;
     }
   }
 }
@@ -732,26 +780,15 @@ void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id) {
 void SynchronizeDevice(c10::DeviceIndex device_index) {
   ABSL_VLOG(1) << "SynchronizeDevice: device="
                << static_cast<int>(device_index);
-  StreamState& state = GetStreamState();
-  std::vector<StreamFutures> all_stream_futures;
-  {
-    absl::MutexLock lock(state.mutex);
-    for (const auto& [key, stream_futures] : state.pending_futures) {
-      if (key.first == device_index) {
-        all_stream_futures.push_back({key.second, stream_futures});
-      }
-    }
-  }
-
-  for (const auto& sf : all_stream_futures) {
-    WaitForFutures(device_index, sf.stream_id, sf.futures);
-  }
-
-  {
-    absl::MutexLock lock(state.mutex);
-    for (auto& [key, stream_futures] : state.pending_futures) {
-      if (key.first == device_index) {
-        PruneCompletedFutures(stream_futures);
+  auto device_streams = GetDeviceStreamStates(device_index);
+  for (int64_t stream_id = 0; stream_id < device_streams.size(); ++stream_id) {
+    auto stream_future = device_streams[stream_id]->JoinFutures();
+    if (stream_future.IsValid()) {
+      absl::Status s = stream_future.Await();
+      if (!s.ok()) {
+        ABSL_LOG(ERROR) << "Stream synchronization failed for device "
+                        << static_cast<int>(device_index) << " stream "
+                        << stream_id << ": " << s;
       }
     }
   }
@@ -759,22 +796,8 @@ void SynchronizeDevice(c10::DeviceIndex device_index) {
 
 std::shared_ptr<EventSnapshot> EventSnapshot::Record(
     c10::DeviceIndex device_index, int64_t stream_id) {
-  StreamState& state = GetStreamState();
-  absl::MutexLock lock(state.mutex);
-  auto it = state.pending_futures.find({device_index, stream_id});
-  if (it == state.pending_futures.end()) {
-    return std::shared_ptr<EventSnapshot>(
-        new EventSnapshot(xla::Future<void>(absl::OkStatus())));
-  }
-  PruneCompletedFutures(it->second);
-  if (it->second.empty()) {
-    return std::shared_ptr<EventSnapshot>(
-        new EventSnapshot(xla::Future<void>(absl::OkStatus())));
-  }
-  auto join_future = JoinFutures(it->second);
-  it->second.clear();
-  it->second.push_back(join_future);  // intentional copy
-
+  auto join_future =
+      GetOrCreateStreamState(device_index, stream_id)->JoinFutures();
   // Can't use make_shared because the constructor is private.
   return std::shared_ptr<EventSnapshot>(
       new EventSnapshot(std::move(join_future)));
