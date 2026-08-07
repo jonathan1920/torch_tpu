@@ -79,9 +79,8 @@ const std::string& GetTier2CacheName() {
             : kTorchTpuInternalTier2CompilationCacheEnvVar;
     if (!tier2_cache.has_value() || tier2_cache->empty()) {
       // If tier-3 is enabled, we must enable tier-2 as well.
-      const auto& tier3_cache_root =
-          GetEnvOnce<kTorchTpuInternalTier3CompilationCacheRootEnvVar>();
-      if (tier3_cache_root.has_value() && !tier3_cache_root->empty()) {
+      const std::string& tier3_cache_root = GetTier3CacheRootDir();
+      if (!tier3_cache_root.empty()) {
         ABSL_LOG(INFO) << "Tier-2 compilation cache is enabled with name '"
                        << kDefaultCacheName << "' because tier-3 is enabled.";
         return std::string(kDefaultCacheName);

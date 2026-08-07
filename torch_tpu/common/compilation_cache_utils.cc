@@ -28,6 +28,7 @@
 #include <string_view>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -36,6 +37,7 @@
 #include "absl/strings/str_cat.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
@@ -205,6 +207,22 @@ absl::Status AtomicWriteToCacheFile(
 absl::Status EnsureDirExistsRecursively(const std::string& path) {
   tsl::Env* const env = tsl::Env::Default();
   return env->RecursivelyCreateDir(path);
+}
+
+const std::string& GetTier3CacheRootDir() {
+  static const absl::NoDestructor<std::string> root_dir([]() {
+    const auto& tier3_cache_public =
+        GetEnvOnce<kTorchTpuTier3CompilationCacheRootEnvVar>();
+    const auto& tier3_cache_internal =
+        GetEnvOnce<kTorchTpuInternalTier3CompilationCacheRootEnvVar>();
+    const auto& tier3_cache = tier3_cache_public.has_value()
+                                  ? tier3_cache_public
+                                  : tier3_cache_internal;
+    const std::string root_dir = tier3_cache.value_or("");
+    ABSL_LOG(INFO) << "Tier-3 compilation cache root directory: " << root_dir;
+    return root_dir;
+  }());
+  return *root_dir;
 }
 
 }  // namespace torch_tpu

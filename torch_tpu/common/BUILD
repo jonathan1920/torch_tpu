@@ -305,9 +305,11 @@ torch_tpu_cc_library(
     deps = [
         ":cache_key",
         ":compilation",
+        ":env_vars",
         ":error_utils",
         ":fingerprint_utils",
         "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
@@ -613,6 +615,31 @@ torch_tpu_cc_library(
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform/cloud:gcs_file_system",  # buildcleaner: keep - for GCS support
     ] + add_internal_filesystem_dependencies(),
+)
+
+# Tests that TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT takes precedence over TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT.
+torch_tpu_cc_test(
+    name = "tier3_compilation_cache_enablement_test_precedence",
+    srcs = ["tier3_compilation_cache_enablement_test.cc"],
+    args = [
+        "--expected_tier3_cache_root=/tmp/my_cache",
+    ],
+    env = {
+        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
+        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/internal_cache",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
+    requires_libtpu = True,
+    deps = [
+        ":compilation_cache_utils",
+        ":flags",
+        "//torch_tpu/common:oss_test_main",
+        "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+    ],
 )
 
 torch_tpu_cc_library(

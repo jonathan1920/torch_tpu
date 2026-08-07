@@ -120,6 +120,14 @@ inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
 // TORCH_TPU_TIER2_COMPILATION_CACHE takes precedence.
 inline constexpr char kTorchTpuTier2CompilationCacheEnvVar[] =
     "TORCH_TPU_TIER2_COMPILATION_CACHE";
+// The root path of the tier-3 compilation cache. If not set, the tier-3
+// compilation cache is disabled.
+//
+// If both TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT and
+// TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT are set,
+// TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT takes precedence.
+inline constexpr char kTorchTpuTier3CompilationCacheRootEnvVar[] =
+    "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT";
 // If set, enables structured logging for tlparse.
 inline constexpr char kTorchTraceEnvVar[] = "TORCH_TRACE";
 inline constexpr char kTpuChipsPerHostBoundsEnvVar[] =
@@ -182,6 +190,13 @@ const std::optional<std::string>& GetEnvOnce() {
           TORCH_WARN_ONCE(
               "TORCH_TPU_TIER2_COMPILATION_CACHE is an experimental feature "
               "and may change or be removed without notice.");
+        }
+        if (std::string_view(name) ==
+                kTorchTpuTier3CompilationCacheRootEnvVar &&
+            env_var[0] != '\0') {
+          TORCH_WARN_ONCE(
+              "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT is an experimental "
+              "feature and may change or be removed without notice.");
         }
         return std::string(env_var);
       }());

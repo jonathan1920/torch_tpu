@@ -70,6 +70,13 @@ absl::Status AtomicWriteToCacheFile(
     const std::string& cache_entry_path,
     const SharedLoadedExecutableWithMetadata& executable);
 
+// Returns the root directory of the tier-3 compilation cache, as set by the
+// TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT (or
+// TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT) environment variable.
+//
+// This function is memoized so that it's cheap to call this multiple times.
+[[nodiscard]] const std::string& GetTier3CacheRootDir();
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_COMMON_COMPILATION_CACHE_UTILS_H_
