@@ -86,6 +86,8 @@ jobs:
     runs-on: ${{ matrix.job_info.runner }}
     container:
       image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
+      # Disable ipc isolation to prevent shm limit issues.
+      options: --ipc=host
 
     steps:
       # Clone the GitHub repository to runner's environment $GITHUB_WORKSPACE, making its files

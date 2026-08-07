@@ -89,6 +89,8 @@ jobs:
     runs-on: ${{ matrix.job_info.runner }}
     container:
       image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
+      # Disable ipc isolation to prevent shm limit issues.
+      options: --ipc=host
     steps:
       - run: echo "Start running tests."
       # Clone the GitHub repository to runner's environment $GITHUB_WORKSPACE, making its files
@@ -140,6 +142,8 @@ jobs:
     runs-on: linux-x86-n4-16
     container:
       image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
+      # Disable ipc isolation to prevent shm limit issues.
+      options: --ipc=host
     outputs:
       gcs_wheel_path: ${{ steps.build.outputs.gcs_wheel_path }}
       gcs_wheel_dir: ${{ steps.build.outputs.gcs_wheel_dir }}
@@ -160,6 +164,8 @@ jobs:
     runs-on: linux-x86-tpu7x-224-4tpu
     container:
       image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
+      # Disable ipc isolation to prevent shm limit issues.
+      options: --ipc=host
     timeout-minutes: 180
 
     env:

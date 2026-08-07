@@ -65,6 +65,8 @@ jobs:
     runs-on: ${{ matrix.job_info.runner }}
     container:
       image: ${{ matrix.job_info.container }}
+      # Disable ipc isolation to prevent shm limit issues.
+      options: --ipc=host
     steps:
       - run: echo "Start running tests."
       # Clone the GitHub repository to runner's environment $GITHUB_WORKSPACE, making its files
