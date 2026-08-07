@@ -17,10 +17,9 @@
 This module provides decorators (@experimental, @stable, @deprecated) to mark
 the lifecycle stage of TorchTPU Python APIs. These decorators attach stage
 metadata (__tt_api_stage__, __tt_api_stage_reason__,
-__tt_api_deprecated_version__) to
-functions, methods, or classes for automatic inspection by scanner tools, and
-emit standard Python runtime warnings (UserWarning, DeprecationWarning) on the
-first invocation per process.
+__tt_api_deprecated_version__) to functions, methods, or classes for automatic
+inspection by scanner tools, and emit standard Python runtime warnings
+(UserWarning, DeprecationWarning) on the first invocation per process.
 """
 
 import enum
@@ -79,13 +78,83 @@ def _safe_setattr(target: Any, name: str, value: Any) -> None:
     pass
 
 
+def _attach_stage_metadata(
+    target: Any,
+    stage: str,
+    reason: str,
+    version: Optional[str] = None,
+) -> None:
+  """Attaches stage metadata attributes to a target.
+
+  Args:
+    target: The target object to modify.
+    stage: The lifecycle stage of the target.
+    reason: Explanation for the stage.
+    version: The version string when the target was deprecated (e.g. "2.13").
+      Only used for deprecated targets.
+  """
+  _safe_setattr(target, TT_API_STAGE, stage)
+  _safe_setattr(target, TT_API_STAGE_REASON, reason)
+  if version:
+    _safe_setattr(target, TT_API_DEPRECATED_VERSION, version)
+
+
+def _create_warning_wrapper(
+    fn_to_wrap: Callable[..., Any],
+    display_target: Any,
+    stage: Stage,
+    reason: str,
+    version: Optional[str] = None,
+) -> Callable[..., Any]:
+  """Wraps a callable to emit a one-time warning per process before execution.
+
+  Args:
+    fn_to_wrap: The callable to wrap.
+    display_target: The target object to display in the warning message.
+    stage: The lifecycle stage of the target.
+    reason: Explanation for the stage.
+    version: The version string when the target was deprecated (e.g. "2.13").
+      Only used for deprecated targets.
+
+  Returns:
+    The wrapped callable.
+  """
+  _warned = False
+
+  @functools.wraps(fn_to_wrap)  # type: ignore[arg-type]
+  def wrapper(*args: Any, **kwargs: Any) -> Any:
+    nonlocal _warned
+    if not _warned:
+      name = getattr(display_target, "__name__", str(display_target))
+      msg = stage.format_warning_message(name, reason, version)
+      cat = stage.warning_category
+      if cat:
+        warnings.warn(msg, category=cat, stacklevel=2)
+      _warned = True
+    return fn_to_wrap(*args, **kwargs)
+
+  return wrapper
+
+
 def _annotate_target(
     target: _T,
     stage: Stage,
     reason: str,
     version: Optional[str] = None,
 ) -> _T:
-  """Attaches stage metadata and warning wrapper to a target function.
+  """Attaches stage metadata and warning wrapper to a target function or class.
+
+  Behavior by target type:
+  1. Functions / Callables: Returns a wrapper function that emits a one-time
+     warning per process before execution, and attaches stage metadata to the
+     wrapper.
+  2. Non-Enum Classes: Wraps the class `__init__` method to emit a one-time
+     warning per process on instantiation. Class members (methods/properties)
+     are not automatically decorated, allowing individual members to be
+     explicitly annotated with their own stages if desired.
+  3. Enum Classes: Attaches stage metadata to the Enum class itself. Enum
+     members automatically inherit stage metadata via standard Python class
+     attribute lookup rules.
 
   Args:
     target: The function, method, or class to annotate.
@@ -98,47 +167,47 @@ def _annotate_target(
   Returns:
     The annotated target.
   """
+  # Always attach stage metadata to the target itself
+  _attach_stage_metadata(target, stage.value, reason, version)
+
+  # Handle Class / Enum Class
+  if isinstance(target, type):
+    # TODO(yilingyuan): Introduce _EnumProxy to trigger warnings for Enum
+    # members and corresponding tests.
+    # Attach warning wrapper to the `__init__` method
+    if stage.warning_category:
+      target.__init__ = _create_warning_wrapper(
+          target.__init__, target, stage, reason, version
+      )  # pylint: disable=protected-access
+    return target
+
+  # Handle Function / Callable
   if stage.warning_category:
-    _warned = False
-
-    @functools.wraps(target)  # type: ignore[arg-type]
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-      nonlocal _warned
-      if not _warned:
-        func_name = getattr(target, "__name__", str(target))
-        msg = stage.format_warning_message(func_name, reason, version)
-        cat = stage.warning_category
-        if cat:
-          warnings.warn(msg, category=cat, stacklevel=2)
-        _warned = True
-      return target(*args, **kwargs)  # type: ignore[operator]
-
-    _safe_setattr(wrapper, TT_API_STAGE, stage.value)
-    _safe_setattr(wrapper, TT_API_STAGE_REASON, reason)
-    if version:
-      _safe_setattr(wrapper, TT_API_DEPRECATED_VERSION, version)
+    wrapper = _create_warning_wrapper(
+        target, target, stage, reason, version  # type: ignore[arg-type]
+    )
+    # Attach stage metadata to the wrapper as well, so external reflection and
+    # scanner tools inspecting the returned wrapper can access the attributes.
+    _attach_stage_metadata(wrapper, stage.value, reason, version)
     return wrapper  # type: ignore[return-value]
 
-  _safe_setattr(target, TT_API_STAGE, stage.value)
-  _safe_setattr(target, TT_API_STAGE_REASON, reason)
-  if version:
-    _safe_setattr(target, TT_API_DEPRECATED_VERSION, version)
   return target
 
 
 def experimental(reason: str) -> Callable[[_T], _T]:
-  """Marks a TorchTPU Python API as experimental.
+  """Marks a TorchTPU Python API (function or class) as experimental.
 
   Experimental APIs are exposed under public namespaces (e.g. torch.tpu.*) for
   early trial, but their signature and behavior are subject to change.
 
-  Calling an experimental API will trigger a one-time UserWarning per process.
+  Calling an experimental function or instantiating an experimental class will
+  trigger a one-time UserWarning per process.
 
   Args:
     reason: Non-empty explanation for why the API is experimental.
 
   Returns:
-    The decorated function with experimental stage metadata attached.
+    The decorated function or class with experimental stage metadata attached.
   """
   if not isinstance(reason, str) or not reason.strip():
     raise ValueError("@experimental requires a non-empty reason string.")
@@ -149,7 +218,7 @@ def experimental(reason: str) -> Callable[[_T], _T]:
 
 
 def stable(reason: str = "") -> Callable[[_T], _T]:
-  """Marks a TorchTPU Python API as stable.
+  """Marks a TorchTPU Python API (function or class) as stable.
 
   Stable APIs are production-ready and backward compatibility is guaranteed. No
   runtime warnings are triggered.
@@ -158,7 +227,7 @@ def stable(reason: str = "") -> Callable[[_T], _T]:
     reason: Optional description or justification for stable status.
 
   Returns:
-    The decorated function with stable stage metadata attached.
+    The decorated function or class with stable stage metadata attached.
   """
 
   return lambda target: _annotate_target(
@@ -167,18 +236,18 @@ def stable(reason: str = "") -> Callable[[_T], _T]:
 
 
 def deprecated(version: str, reason: str) -> Callable[[_T], _T]:
-  """Marks a TorchTPU Python API as deprecated.
+  """Marks a TorchTPU Python API (function or class) as deprecated.
 
   Deprecated APIs will be removed in a future release. Calling a deprecated API
-  will trigger a one-time DeprecationWarning per process, pointing users to the
-  replacement API or migration guide.
+  or instantiating a deprecated class will trigger a one-time DeprecationWarning
+  per process, pointing users to the replacement API or migration guide.
 
   Args:
     version: The version string when the API was deprecated (e.g. "2.13").
     reason: Guidance on replacement APIs and planned removal timeline.
 
   Returns:
-    The decorated function with deprecated stage metadata attached.
+    The decorated function or class with deprecated stage metadata attached.
   """
   if not isinstance(version, str) or not version.strip():
     raise ValueError(
