@@ -17,7 +17,6 @@
 #ifndef TORCH_TPU_EAGER_EVENTS_QUEUE_H_
 #define TORCH_TPU_EAGER_EVENTS_QUEUE_H_
 
-#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -80,14 +79,6 @@ void RecordAsyncHostToDevice(const DeviceBufferRef& device_buffer_ref);
 // The future should be the return value from a call to PjRtBuffer::ToLiteral.
 void RecordAsyncDeviceToHost(xla::Future<void> to_literal_future);
 
-// Blocks until all pending operations on the given device and stream have
-// completed.
-void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id);
-
-// Blocks until all pending operations on ALL streams of the given device have
-// completed.
-void SynchronizeDevice(c10::DeviceIndex device_index);
-
 // An EventSnapshot is a joined XLA future that represents the state of
 // a stream at a particular point in time.
 class EventSnapshot {
@@ -109,8 +100,15 @@ class EventSnapshot {
   explicit EventSnapshot(xla::Future<void> future)
       : future_(std::move(future)) {}
 
+  friend std::vector<std::shared_ptr<EventSnapshot>> RecordDeviceSnapshots(
+      c10::DeviceIndex device_index);
+
   xla::Future<void> future_;
 };
+
+// Records one EventSnapshot for each stream on the given device.
+std::vector<std::shared_ptr<EventSnapshot>> RecordDeviceSnapshots(
+    c10::DeviceIndex device_index);
 
 }  // namespace torch_tpu
 

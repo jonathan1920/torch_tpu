@@ -106,7 +106,6 @@ torch_tpu_cc_library(
         "//torch_tpu/common:env_vars",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:utils",
-        "//torch_tpu/eager:events_queue",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",

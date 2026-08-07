@@ -222,14 +222,18 @@ void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
   // TODO(bawilson): only materialize DeferredOps on the specific stream, not
   // all streams.
   TT_THROW_IF_ERROR(MaterializeAll());
-  SynchronizeStream(stream.device_index(), stream.id());
+  auto event = EventSnapshot::Record(stream.device_index(), stream.id());
+  TT_THROW_IF_ERROR(event->Wait());
 }
 void TpuDeviceGuardImpl::synchronizeDevice(
     c10::DeviceIndex device_index) const {
   // TODO(bawilson): only materialize DeferredOps on the specific device, not
   // all devices.
   TT_THROW_IF_ERROR(MaterializeAll());
-  SynchronizeDevice(device_index);
+  auto events = RecordDeviceSnapshots(device_index);
+  for (const auto& event : events) {
+    TT_THROW_IF_ERROR(event->Wait());
+  }
 }
 void TpuDeviceGuardImpl::destroyEvent(
     void* event, const c10::DeviceIndex device_index) const noexcept {

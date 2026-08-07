@@ -757,41 +757,20 @@ void RecordAsyncDeviceToHost(xla::Future<void> to_literal_future) {
   MarkStreamActive(std::move(to_literal_future));
 }
 
-// Blocks the calling thread until all previously enqueued operations on the
-// specified device's stream have completed.
-// If multiple threads call SynchronizeStream for the same device concurrently,
-// all threads will block until the pending operations at the time of their
-// call are finished.
-void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id) {
-  ABSL_VLOG(1) << "SynchronizeStream: device=" << static_cast<int>(device_index)
-               << ", stream=" << stream_id;
-  auto stream_future =
-      GetOrCreateStreamState(device_index, stream_id)->JoinFutures();
-  if (stream_future.IsValid()) {
-    absl::Status s = stream_future.Await();
-    if (!s.ok()) {
-      ABSL_LOG(ERROR) << "Stream synchronization failed for device "
-                      << static_cast<int>(device_index) << " stream "
-                      << stream_id << ": " << s;
-    }
-  }
-}
-
-void SynchronizeDevice(c10::DeviceIndex device_index) {
-  ABSL_VLOG(1) << "SynchronizeDevice: device="
+std::vector<std::shared_ptr<EventSnapshot>> RecordDeviceSnapshots(
+    c10::DeviceIndex device_index) {
+  ABSL_VLOG(1) << "RecordDeviceSnapshots: device="
                << static_cast<int>(device_index);
   auto device_streams = GetDeviceStreamStates(device_index);
-  for (int64_t stream_id = 0; stream_id < device_streams.size(); ++stream_id) {
-    auto stream_future = device_streams[stream_id]->JoinFutures();
-    if (stream_future.IsValid()) {
-      absl::Status s = stream_future.Await();
-      if (!s.ok()) {
-        ABSL_LOG(ERROR) << "Stream synchronization failed for device "
-                        << static_cast<int>(device_index) << " stream "
-                        << stream_id << ": " << s;
-      }
-    }
+  std::vector<std::shared_ptr<EventSnapshot>> snapshots;
+  snapshots.reserve(device_streams.size());
+  for (auto& stream_state : device_streams) {
+    auto stream_future = stream_state->JoinFutures();
+    // Can't use make_shared because the constructor is private.
+    snapshots.push_back(std::shared_ptr<EventSnapshot>(
+        new EventSnapshot(std::move(stream_future))));
   }
+  return snapshots;
 }
 
 std::shared_ptr<EventSnapshot> EventSnapshot::Record(

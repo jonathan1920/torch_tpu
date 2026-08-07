@@ -57,7 +57,6 @@
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/eager/events_queue.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -476,18 +475,18 @@ absl::Status SynchronizeTpuDevicesBeforeStop() {
   ABSL_VLOG(1) << "Synchronizing TPU devices before stopping profiler.";
   TT_RETURN_IF_ERROR(torch_tpu::MaterializeAll());
 
-  int device_count = 0;
   if (c10::impl::hasDeviceGuardImpl(torch_tpu::GetPrivateUse1DeviceType())) {
     const auto* guard =
         c10::impl::getDeviceGuardImpl(torch_tpu::GetPrivateUse1DeviceType());
+    int device_count = 0;
     if (guard != nullptr) {
       device_count = guard->deviceCount();
     }
-  }
-  ABSL_VLOG(1) << "Synchronizing " << device_count
-               << " addressable TPU device stream queues.";
-  for (int i = 0; i < device_count; ++i) {
-    SynchronizeDevice(static_cast<c10::DeviceIndex>(i));
+    ABSL_VLOG(1) << "Synchronizing " << device_count
+                 << " addressable TPU device stream queues.";
+    for (int i = 0; i < device_count; ++i) {
+      guard->synchronizeDevice(static_cast<c10::DeviceIndex>(i));
+    }
   }
   return absl::OkStatus();
 }
