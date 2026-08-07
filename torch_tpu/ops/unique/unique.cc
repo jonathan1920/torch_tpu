@@ -142,13 +142,19 @@ absl::StatusOr<BuildUniqueShloOutputs> BuildUnique2Shlo(int64_t output_size,
     TT_ASSIGN_OR_RETURN(outputs.counts,
                         MakeZeroSizedTensor(builder, mlir::ElementType::I64));
 
-    // PyTorch expects empty inverse_indices shape to match the original input
-    // tensor's shape even when the input size is zero (e.g. dynamic shape with
-    // a 0-sized dimension).
-    TT_ASSIGN_OR_RETURN(
-        outputs.inverse_indices,
-        MakeZeroSizedTensor(builder, mlir::ElementType::I64,
-                            GetTensorTypeOrDie(input).getShape()));
+    if (return_inverse) {
+      // When return_inverse is true, PyTorch expects empty inverse_indices
+      // shape to match the original input tensor's shape even when the input
+      // size is zero (e.g. dynamic shape with a 0-sized dimension).
+      TT_ASSIGN_OR_RETURN(
+          outputs.inverse_indices,
+          MakeZeroSizedTensor(builder, mlir::ElementType::I64,
+                              GetTensorTypeOrDie(input).getShape()));
+    } else {
+      // When return_inverse is false, the inverse_indices shape is (0,).
+      TT_ASSIGN_OR_RETURN(outputs.inverse_indices,
+                          MakeZeroSizedTensor(builder, mlir::ElementType::I64));
+    }
     return outputs;
   }
 
