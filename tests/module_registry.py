@@ -754,6 +754,62 @@ def _generate_transformers_inputs(
       input_kwargs["input_features"] = torch.randn(
           batch_size, num_mel, 3000, device=device
       )
+    elif "clap" in model_type:
+      num_mel = getattr(config, "num_mel_bins", 64)
+      input_kwargs["input_features"] = torch.randn(
+          batch_size, 1, 1001, num_mel, device=device
+      )
+      input_kwargs["is_longer"] = torch.zeros(
+          (batch_size, 1), device=device, dtype=torch.bool
+      )
+      safe_seq_len = min(_get_max_seq_len(config), 512)
+      actual_shape = (batch_size, safe_seq_len)
+      vocab_size = getattr(config, "vocab_size", 32000)
+      input_kwargs["input_ids"] = torch.randint(
+          0, vocab_size, actual_shape, device=device, dtype=torch.long
+      )
+      input_kwargs["attention_mask"] = torch.ones(
+          actual_shape, device=device, dtype=torch.long
+      )
+    elif "ast" in model_type or "audio-spectrogram-transformer" in model_type:
+      max_length = getattr(config, "max_length", 1024)
+      num_mel = getattr(config, "num_mel_bins", 128)
+      input_kwargs["input_values"] = torch.randn(
+          batch_size, max_length, num_mel, device=device
+      )
+    elif "speecht5" in model_type:
+      safe_seq_len = min(_get_max_seq_len(config), 8)
+      actual_shape = (batch_size, safe_seq_len)
+      vocab_size = getattr(config, "vocab_size", 81)
+      max_vocab = max(3, vocab_size - 1)
+      num_mel = getattr(config, "num_mel_bins", 80)
+      dec_seq_len = 8
+      input_kwargs["input_ids"] = torch.randint(
+          2, max_vocab, actual_shape, device=device, dtype=torch.long
+      )
+      input_kwargs["attention_mask"] = torch.ones(
+          actual_shape, device=device, dtype=torch.long
+      )
+      input_kwargs["speaker_embeddings"] = torch.randn(
+          batch_size, 512, device=device
+      )
+      input_kwargs["labels"] = torch.randn(
+          batch_size, dec_seq_len, num_mel, device=device
+      )
+      input_kwargs["decoder_attention_mask"] = torch.ones(
+          (batch_size, dec_seq_len), device=device, dtype=torch.long
+      )
+    elif "vits" in model_type:
+      safe_seq_len = min(_get_max_seq_len(config), 8)
+      actual_shape = (batch_size, safe_seq_len)
+      vocab_size = getattr(config, "vocab_size", 38)
+      max_vocab = max(3, min(vocab_size, 38))
+      input_kwargs["input_ids"] = torch.randint(
+          2, max_vocab, actual_shape, device=device, dtype=torch.long
+      )
+      input_kwargs["attention_mask"] = torch.ones(
+          actual_shape, device=device, dtype=torch.long
+      )
     else:
       seq_len = shape[1] if shape and len(shape) > 1 else 16000
       input_kwargs["input_values"] = torch.randn(
@@ -798,9 +854,8 @@ def _generate_transformers_inputs(
     ):
       pass  # Handled below for all modalities
 
-  if (
-      getattr(config, "is_encoder_decoder", False)
-      and modality != Modality.VISION
+  if getattr(config, "is_encoder_decoder", False) and (
+      modality != Modality.VISION and model_type not in ("speecht5", "vits")
   ):
     vocab_size = getattr(config, "vocab_size", None)
     if vocab_size is None and hasattr(config, "text_config"):
