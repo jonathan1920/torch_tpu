@@ -186,6 +186,44 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "qwen3_dynamic_kv_cache_presubmit",
+    timeout = "moderate",
+    srcs = ["qwen3_dynamic_kv_cache.py"],
+    args = [
+        "--batch_size=1",
+        "--prefill_seq_len=128",
+        "--hf_data_path=\"\"",
+    ],
+    main = "qwen3_dynamic_kv_cache.py",
+    nolocal = "slow example",
+    # TODO(b/543897481): enable in OSS once fixed
+    notest_oss = "currently fails in OSS",
+    shuffle_tests = False,
+    tags = [
+        "cpu:4",
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//examples:paths",
+        "//shims/absl_py:app",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/etils/epath",
+        "//shims/profile_cpu:python_tracer",
+        "//shims/safetensors",  # buildcleaner: keep
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/shims/xprof:traceme",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/utils:log_utils",
+        "@pypi//transformers",
+    ],
+)
+
+torch_tpu_py_test(
     name = "qwen3_dynamic_kv_cache",
     timeout = "long",  # 15 minutes
     srcs = ["qwen3_dynamic_kv_cache.py"],
@@ -204,6 +242,7 @@ torch_tpu_py_test(
         "//shims/absl_py:app",
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
+        "//shims/etils/epath",
         "//shims/profile_cpu:python_tracer",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
@@ -269,6 +308,7 @@ torch_tpu_py_test(
         "//shims/absl_py:app",
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
+        "//shims/etils/epath",
         "//shims/gpu_cuda:cuda_runtime",
         "//shims/gpu_profiler:gpuprof_lib",  # buildcleaner: keep
         "//shims/profile_cpu:python_tracer",

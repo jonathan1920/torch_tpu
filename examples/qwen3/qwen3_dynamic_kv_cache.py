@@ -25,6 +25,7 @@ from typing import Any
 from absl import app
 from absl import flags
 from absl import logging
+from etils import epath
 import torch
 import torch._inductor.config as inductor_config
 from torch_tpu._internal import sync as tpu_sync
@@ -89,6 +90,11 @@ _MAX_BUFFER_SIZE = flags.DEFINE_integer(
     None,
     "The maximum buffer size for KV cache. Used as upper bound for dynamo"
     " mark_dynamic.",
+)
+_HF_DATA_PATH = epath.DEFINE_path(
+    "hf_data_path",
+    pathlib.Path(paths.XM_HOME) / "weights" / "huggingface",
+    "Path to HuggingFace artifacts (e.g. tokenizer config, weights).",
 )
 
 
@@ -599,19 +605,9 @@ def main(argv):
   # All Qwen3 models (from 0.6B up to 30B MoE) share the exact same
   # tokenizer vocabulary. Also, not every model has its own separate
   # tokenizer files, hence using the base 0.6B model for tokenizer.
-  tokenizer_path = (
-      pathlib.Path(paths.XM_HOME)
-      / "weights"
-      / "huggingface"
-      / "Qwen/Qwen3-0.6B"
-  )
+  tokenizer_path = _HF_DATA_PATH.value / "Qwen/Qwen3-0.6B"
 
-  model_path = (
-      pathlib.Path(paths.XM_HOME)
-      / "weights"
-      / "huggingface"
-      / _MODEL_NAME.value
-  )
+  model_path = _HF_DATA_PATH.value / _MODEL_NAME.value
 
   tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_path)
 
