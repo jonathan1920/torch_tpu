@@ -64,18 +64,32 @@ def _pinned_nightly_torch() -> str:
 
 @nox.session
 def lint(session: nox.Session) -> None:
-  """Run C++ formatting (clang-format) and Python lint (ruff) checks on modifications."""
+  """Run clang-format check, Python lint (ruff), and Bazel formatting (buildifier) on target branch modifications."""
   session.install("clang-format", "ruff")
   session.run("ci/tools/clang_format.sh", "lint", external=True)
   session.run("ci/tools/ruff_lint.sh", "lint", external=True)
+  session.run("ci/tools/buildifier_lint.sh", "lint", external=True)
 
 
 @nox.session
 def format(session: nox.Session) -> None:  # pylint: disable=redefined-builtin
-  """Apply C++ formatting (clang-format) and Python lint (ruff) fixes automatically."""
+  """Apply clang-format fixes, Python lint (ruff), and Bazel formatting (buildifier) to modified files automatically."""
   session.install("clang-format", "ruff")
   session.run("ci/tools/clang_format.sh", "format", external=True)
   session.run("ci/tools/ruff_lint.sh", "fix", external=True)
+  session.run("ci/tools/buildifier_lint.sh", "format", external=True)
+
+
+@nox.session(venv_backend="none")
+def buildifier_check(session: nox.Session) -> None:
+  """Run Buildifier formatting and lint check on modified Bazel files."""
+  session.run("ci/tools/buildifier_lint.sh", "lint", external=True)
+
+
+@nox.session(venv_backend="none")
+def buildifier(session: nox.Session) -> None:
+  """Apply Buildifier formatting fixes to modified Bazel files."""
+  session.run("ci/tools/buildifier_lint.sh", "format", external=True)
 
 
 # Use venv_backend="none" to allow running the script directly in the host.
