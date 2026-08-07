@@ -27,13 +27,22 @@ deprecated = annotations.deprecated
 
 class AnnotationsTest(absltest.TestCase):
 
+  def test_stage_enum(self):
+    """Verifies that Stage enum values are correctly defined."""
+    self.assertEqual(annotations.Stage.STABLE, "Stable")
+    self.assertEqual(annotations.Stage.EXPERIMENTAL, "Experimental")
+    self.assertEqual(annotations.Stage.DEPRECATED, "Deprecated")
+
   def test_annotated_real_api_get_amp_supported_dtype(self):
     """Verifies that real API get_amp_supported_dtype is annotated."""
     fn = getattr(_DeviceModule, "get_amp_supported_dtype", None)
     self.assertIsNotNone(fn)
-    self.assertEqual(getattr(fn, "__tt_api_stage__", None), "Experimental")
+    self.assertEqual(
+        getattr(fn, annotations.TT_API_STAGE, None), "Experimental"
+    )
     self.assertIn(
-        "get_amp_supported_dtype", getattr(fn, "__tt_stage_reason__", "")
+        "get_amp_supported_dtype",
+        getattr(fn, annotations.TT_API_STAGE_REASON, ""),
     )
 
   def test_experimental_first_call_triggers_warning(self):
@@ -41,9 +50,12 @@ class AnnotationsTest(absltest.TestCase):
     def sample_func(a: int, b: int) -> int:
       return a + b
 
-    self.assertEqual(sample_func.__tt_api_stage__, "Experimental")
     self.assertEqual(
-        sample_func.__tt_stage_reason__, "Testing experimental feature."
+        getattr(sample_func, annotations.TT_API_STAGE), "Experimental"
+    )
+    self.assertEqual(
+        getattr(sample_func, annotations.TT_API_STAGE_REASON),
+        "Testing experimental feature.",
     )
 
     with warnings.catch_warnings(record=True) as w:
@@ -106,8 +118,11 @@ class AnnotationsTest(absltest.TestCase):
     def stable_func(x: int) -> int:
       return x * 2
 
-    self.assertEqual(stable_func.__tt_api_stage__, "Stable")
-    self.assertEqual(stable_func.__tt_stage_reason__, "Production ready.")
+    self.assertEqual(getattr(stable_func, annotations.TT_API_STAGE), "Stable")
+    self.assertEqual(
+        getattr(stable_func, annotations.TT_API_STAGE_REASON),
+        "Production ready.",
+    )
 
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("always")
@@ -119,9 +134,16 @@ class AnnotationsTest(absltest.TestCase):
     def legacy_func(x: int) -> int:
       return x + 10
 
-    self.assertEqual(legacy_func.__tt_api_stage__, "Deprecated")
-    self.assertEqual(legacy_func.__tt_deprecated_version__, "2.13")
-    self.assertEqual(legacy_func.__tt_stage_reason__, "Use new_api() instead.")
+    self.assertEqual(
+        getattr(legacy_func, annotations.TT_API_STAGE), "Deprecated"
+    )
+    self.assertEqual(
+        getattr(legacy_func, annotations.TT_API_DEPRECATED_VERSION), "2.13"
+    )
+    self.assertEqual(
+        getattr(legacy_func, annotations.TT_API_STAGE_REASON),
+        "Use new_api() instead.",
+    )
 
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("always")
