@@ -921,6 +921,8 @@ def torch_tpu_py_test(
     kwargs.pop("imports", None)
 
     existing_env = kwargs.pop("env", {})
+    if "exclusive" in tags:
+        existing_env["TORCH_TPU_EXCLUSIVE_TEST"] = "1"
 
     # Opt-in to autoloading on a per-test basis
     if autoload:

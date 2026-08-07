@@ -51,6 +51,24 @@ shift; set +uo pipefail
 # *******************************************************************
 
 mkdir -p /var/lock
+
+# Multi-accelerator/distributed tests require exclusive access across all slots.
+if [ "${TORCH_TPU_EXCLUSIVE_TEST:-0}" = "1" ]; then
+  echo "Acquiring ALL accelerator locks for exclusive test $TEST_BINARY..."
+  for j in $(seq 0 $((TORCH_TPU_TESTS_PER_ACCELERATOR-1))); do
+    for i in $(seq 0 $((TORCH_TPU_ACCELERATOR_COUNT-1))); do
+      exec {fd}>/var/lock/torch_tpu_accelerator_lock_${i}_${j} || exit 1
+      flock "$fd" || exit 1
+    done
+  done
+  (
+    export TPU_VISIBLE_CHIPS="$(seq -s, 0 $((TORCH_TPU_ACCELERATOR_COUNT-1)))"
+    "$TEST_BINARY" "$@"
+  )
+  return_code=$?
+  exit $return_code
+fi
+
 # Try to acquire any of the
 # TORCH_TPU_ACCELERATOR_COUNT * TORCH_TPU_TESTS_PER_ACCELERATOR
 # slots to run a test at.
