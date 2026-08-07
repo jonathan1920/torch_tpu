@@ -506,12 +506,16 @@ class CustomKernelRegistry {
     std::string mlir_module_string;
     {
       absl::MutexLock lock(mutex_);
-      auto it =
+      const auto it =
           registry_.find(CustomKernelIdRef{.name = name, .kwargs = kernel_key});
+      // Extract the function name to a named variable to avoid a line break in
+      // the middle of the name, which breaks code search for this name.
+      static constexpr std::string_view kRegisterCustomKernelCall =
+          "torch_tpu._internal.pallas.tpu_torch_pallas.register_custom_kernel";
       TT_RET_CHECK(it != registry_.end(), error::kNotFound)
-          << "unknown custom kernel; call torch_tpu._internal.pallas."
-             "tpu_torch_pallas.register_custom_kernel()"
-             " to register the kernel before calling it";
+          << "unknown custom kernel \"" << name << "\" with key \""
+          << kernel_key << "\"; call " << kRegisterCustomKernelCall
+          << "() to register the kernel before calling it";
       mlir_module_string = it->second;
     }
 

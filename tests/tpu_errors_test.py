@@ -1083,7 +1083,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
   @et.why_tpu_only("Custom kernel is a TPU-specific feature.")
   def test_custom_kernel_not_registered(self):
     name = "not_registered_kernel_name"
-    kernel_key = "not_registered_kernel_name-(f32[2]):(f32[2])"
+    kernel_key = "some_kernel_key"
 
     inputs = [torch.ones(2, device=et.device())]
     output_shapes = [torch.ones(2, device=et.device())]
@@ -1091,7 +1091,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""custom_kernel(): materialization failed with: unknown custom kernel; call torch_tpu._internal.pallas.tpu_torch_pallas.register_custom_kernel() to register the kernel before calling it""",
+        tpu="""custom_kernel(): materialization failed with: unknown custom kernel "not_registered_kernel_name" with key "some_kernel_key"; call torch_tpu._internal.pallas.tpu_torch_pallas.register_custom_kernel() to register the kernel before calling it""",
     ):
       outputs = tpu_torch_pallas.call_custom_kernel(
           name, kernel_key, inputs=inputs, output_shapes=output_shapes
