@@ -25,17 +25,6 @@ package(
 )
 
 torch_tpu_py_library(
-    name = "tpu_attention",
-    srcs = ["tpu_attention.py"],
-    deps = [
-        "//shims/absl_py/logging",
-        "//shims/torch:pytorch",
-        "//torch_tpu/ops:splash_attention",
-        "@pypi//transformers",
-    ],
-)
-
-torch_tpu_py_library(
     name = "model",
     srcs = ["model.py"],
     deps = [
