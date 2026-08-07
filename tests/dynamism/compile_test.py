@@ -417,6 +417,25 @@ class CompileTest(absltest.TestCase):
     actual_full = compiled(prefill_cache, new_token_key)
     utils.assert_close(actual_full, expected_full)
 
+  def test_sliced_view_and_dynamic_input(self):
+    def fn(dynamic_x, sliced_y):
+      return dynamic_x + 1, sliced_y + 1
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled_fn = torch.compile(fn, backend=tpu_backend)
+
+    x = torch.randn(4, 8, device=self.device)
+    torch._dynamo.mark_dynamic(x, 0, min=2, max=10)
+
+    y_base = torch.randn(2, 1, 8, 16, device=self.device)
+    y_sliced = y_base[:, :, -3:, :]
+
+    actual_dynamic, actual_view = compiled_fn(x, y_sliced)
+    expected_dynamic, expected_view = fn(x.to("cpu"), y_sliced.to("cpu"))
+
+    utils.assert_close(actual_dynamic, expected_dynamic)
+    utils.assert_close(actual_view, expected_view)
+
 
 class SymIntArithmeticTest(absltest.TestCase):
 

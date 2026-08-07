@@ -92,15 +92,32 @@ def _get_example_inputs(
   return updated_example_inputs, aligned_bounds
 
 
+def _get_inputs_dynamic_flag(
+    example_inputs: Sequence[Any], sym_shape_manager: SymShapeManager
+) -> list[bool]:
+  """Returns a list of booleans indicating which model example inputs are dynamic."""
+  flags = []
+  for index, arg in enumerate(example_inputs):
+    if isinstance(arg, torch.Tensor):
+      flags.append(sym_shape_manager.get_num_dynamic_dims(index) > 0)
+    elif isinstance(arg, torch.SymInt):
+      flags.append(
+          False
+      )  # for scalar tensor as SymInt is replaced by scalar tensor in MLIR
+  return flags
+
+
 def _extract_minor_to_major(
     parameter_layouts: Sequence[Any] | None,
+    parameter_dynamic_flags: Sequence[bool],
 ) -> tuple[tuple[int, ...], ...]:
-  """Extracts minor_to_major layouts from XLA parameter layouts."""
+  """Extracts minor_to_major layouts from XLA parameter layouts for dynamic inputs."""
   if parameter_layouts is None:
     return ()
   layouts = []
-  for layout in parameter_layouts:
-    if layout is not None:
+  for index, layout in enumerate(parameter_layouts):
+    is_dynamic = parameter_dynamic_flags[index]
+    if is_dynamic and layout is not None:
       layouts.append(tuple(layout[0]))
     else:
       layouts.append(())
@@ -344,6 +361,9 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
       target_idx += 1
 
     self._model_inputs_template_length = target_idx
+    self._dynamic_target_indices = {
+        target_idx for _, target_idx in self._dynamic_tensor_map
+    }
 
   def _get_model_inputs(
       self,
@@ -385,16 +405,22 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
       self, model_inputs: Sequence[Any]
   ) -> tuple[tuple[tuple[int, ...], ...], list[list[int]]]:
     argument_layouts = []
-    for val in model_inputs:
+    for idx, val in enumerate(model_inputs):
       if isinstance(val, torch.Tensor):
-        layout = tpu_torch_compile.get_device_layout_if_materialized(val)
-        if layout is not None:
-          minor_to_major = layout[0]
+        is_dynamic = idx in self._dynamic_target_indices
+        if is_dynamic:
+          layout = tpu_torch_compile.get_device_layout_if_materialized(val)
+          if layout is not None:
+            minor_to_major = layout[0]
+          else:
+            default_layout_info = tpu_torch_compile.get_default_layout(
+                val.dtype, val.shape
+            )
+            minor_to_major = (
+                default_layout_info[0] if default_layout_info else []
+            )
         else:
-          default_layout_info = tpu_torch_compile.get_default_layout(
-              val.dtype, val.shape
-          )
-          minor_to_major = default_layout_info[0] if default_layout_info else []
+          minor_to_major = []
         argument_layouts.append(minor_to_major)
 
     layout_key = tuple(tuple(l) for l in argument_layouts)
@@ -578,8 +604,12 @@ class DynamicCompiler(compiler.Compiler):
         LazyString(lambda: str(getattr(default_executable, "mlir_text", None))),  # pyrefly: ignore[bad-argument-type]
     )
 
+    parameter_dynamic_flags = _get_inputs_dynamic_flag(
+        example_inputs, sym_shape_manager
+    )
     default_layout_key = _extract_minor_to_major(
         default_executable.parameter_layouts,  # type: ignore[attr-defined]
+        parameter_dynamic_flags=parameter_dynamic_flags,
     )
     logging.info(
         "[DynamicTpuBackend] Compiled default executable with layouts: %s",
