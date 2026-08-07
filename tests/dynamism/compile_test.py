@@ -396,6 +396,27 @@ class CompileTest(absltest.TestCase):
     expected = x1.to("cpu").sum() + y1.to("cpu").sum()
     utils.assert_close(out1.to("cpu"), expected)
 
+  def test_concat_attention(self):
+    def decode_step(full_attention_cache, new_token_key):
+      new_full = torch.cat([full_attention_cache, new_token_key], dim=-2)
+      return new_full
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(decode_step, backend=tpu_backend)
+
+    prefill_cache = torch.randn(
+        2, 1, 8, 16, device=self.device, dtype=torch.bfloat16
+    )
+    # Marking the prefill sequence dimension dynamic (s0)
+    torch._dynamo.mark_dynamic(prefill_cache, 2, min=4, max=16)
+    new_token_key = torch.randn(
+        2, 1, 1, 16, device=self.device, dtype=torch.bfloat16
+    )
+
+    expected_full = decode_step(prefill_cache, new_token_key)
+    actual_full = compiled(prefill_cache, new_token_key)
+    utils.assert_close(actual_full, expected_full)
+
 
 class SymIntArithmeticTest(absltest.TestCase):
 

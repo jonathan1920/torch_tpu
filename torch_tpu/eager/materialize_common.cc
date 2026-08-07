@@ -230,7 +230,8 @@ ExtractArgumentLayoutsIfDifferentFromDefault(const Traversal& traversal) {
         << "[ExtractArgumentLayoutsIfDifferentFromDefault] Argument layout "
         << ToString(minor_to_major) << " differs from PjRT default layout "
         << default_layout.ToString() << " for shape ("
-        << ToString(arg.dimensions()) << "), updating layout";
+        << ToString(arg.dimensions()) << "), setting layout to "
+        << ToString(minor_to_major);
 
     if (argument_layouts.empty()) {
       argument_layouts.resize(arguments.size());

@@ -21,6 +21,7 @@ from absl.testing import absltest
 import torch
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch_tpu._internal import execution_mode
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.device_utils import annotations
@@ -55,6 +56,26 @@ def eager_mode_defer_all():
 
 # TODO: add more test coverage for the direct compile API.
 class CompileApiTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    tt_testing.reset_eager_state()
+    self.device = torch.accelerator.current_accelerator()
+
+  def test_traverse_and_compile_with_argument_layouts(self):
+    x = torch.randn(2, 1, 8, 16, device=self.device, dtype=torch.bfloat16)
+    y = torch.randn(2, 1, 9, 16, device=self.device, dtype=torch.bfloat16)
+    with eager_mode_defer_all():
+      z = torch.cat([x, y], dim=-2)
+
+    compile_result = tpu_torch_compile.traverse_and_compile(
+        [z], [x, y], argument_layouts=[[3, 2, 1, 0], []]
+    )
+    self.assertIsNotNone(compile_result.executable)
+    results = tpu_torch_compile.execute(compile_result.executable, [x, y])
+    self.assertLen(results, 1)
+    expected = torch.cat([x.cpu(), y.cpu()], dim=-2)
+    utils.assert_close(results[0].cpu(), expected)
 
   def test_traverse_and_compile_with_forced_layout(self):
     # Case 1: Force default layout [1, 0]. Execution should PASS.

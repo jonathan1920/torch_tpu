@@ -601,6 +601,7 @@ std::vector<xla::Shape> GetXlaShapes(absl::Span<const DeviceBufferRef> buffers,
         ConvertTo<xla::PrimitiveType>(buffer.element_type());
     xla::Shape shape =
         xla::ShapeUtil::MakeShape(primitive_type, buffer.dimensions());
+    shape.clear_layout();
     if (use_stablehlo_bounds) {
       for (const auto& dynamic_dim : buffer.dynamic_dimensions()) {
         shape.set_dynamic_dimension(dynamic_dim.dimension, true);
@@ -687,7 +688,6 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
     for (size_t i = 0; i < xla_argument_shapes.size(); ++i) {
       const auto& layout_indices = argument_layouts[i];
       if (!layout_indices.empty()) {
-        xla_argument_shapes[i].clear_layout();
         *xla_argument_shapes[i].mutable_layout() =
             xla::LayoutUtil::MakeLayout(layout_indices);
       }
