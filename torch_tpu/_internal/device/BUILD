@@ -26,6 +26,7 @@ torch_tpu_py_library(
     deps = [
         ":_device_ops_backend",
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/distributed:device_mesh",
         "//torch_tpu/_internal/precision",
         "//torch_tpu/_internal/stream:streams",
         "//torch_tpu/_internal/utils:annotations",

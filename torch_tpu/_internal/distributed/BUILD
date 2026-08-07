@@ -44,6 +44,24 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_library(
+    name = "device_utils",
+    srcs = ["device_utils.py"],
+    deps = [
+        "@pypi//numpy",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "device_mesh",
+    srcs = ["device_mesh.py"],
+    deps = [
+        ":device_utils",
+        "//shims/torch:pytorch",
+        "@pypi//numpy",
+    ],
+)
+
 # This library is not used directly, but is needed for go/cclean. Without
 # this rule, cclean complains that tpu_distributed.cc has no rule depending on it.
 torch_tpu_cc_library(

@@ -688,4 +688,16 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "device_mesh_test",
+    srcs = ["device_mesh_test.py"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu:_loader",
+        "//torch_tpu/_internal/distributed:device_mesh",
+    ],
+)
+
 torch_tpu_package_end()

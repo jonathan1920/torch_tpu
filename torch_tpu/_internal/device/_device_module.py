@@ -508,6 +508,51 @@ class TpuDeviceModule(_DeviceModule):
     del device  # Unused.
     return ""
 
+  @classmethod
+  def topology_aware_mesh(
+      cls,
+      mesh_shape: tuple[int, ...],
+      *,
+      topology: str = "single_slice",
+      dcn_mesh_shape: tuple[int, ...] | None = None,
+      process_is_granule: bool = False,
+      allow_split_physical_axes: bool = False,
+      contiguous_submeshes: bool = False,
+  ) -> torch.Tensor:
+    """Computes a topology-aware rank layout tensor.
+
+    Returns an int64 tensor of global torch ranks with shape `mesh_shape` (for
+    topology="multi_slice": elementwise `dcn_mesh_shape * mesh_shape`), mapping
+    logically adjacent coordinate positions to physically adjacent TPU devices
+    on the ICI fabric.
+
+    Args:
+      mesh_shape: Logical mesh shape, ordered by increasing network intensity.
+      topology: "single_slice" (default) arranges a single slice over ICI;
+        "multi_slice" uses create_hybrid_device_mesh for meshes spanning a
+        slower outer network.
+      dcn_mesh_shape: Outer (slower network) mesh shape for "multi_slice".
+      process_is_granule: Treat processes (hosts) rather than slices as the
+        outer-network granule in "multi_slice" mode.
+      allow_split_physical_axes: Permits splitting a physical axis across
+        logical axes when required.
+      contiguous_submeshes: Forwards to create_device_mesh.
+
+    Returns:
+      An int64 tensor of global torch ranks mapping the requested layout.
+    """
+    from torch_tpu._internal.distributed import device_mesh  # pylint: disable=g-import-not-at-top
+
+    return device_mesh.topology_aware_mesh(
+        cls._device_type,
+        mesh_shape,
+        topology=topology,
+        dcn_mesh_shape=dcn_mesh_shape,
+        process_is_granule=process_is_granule,
+        allow_split_physical_axes=allow_split_physical_axes,
+        contiguous_submeshes=contiguous_submeshes,
+    )
+
 
 class XlaCudaDeviceModule(_DeviceModule):
   _device_type: Final[str] = "xla_cuda"  # pyrefly: ignore[bad-override]
