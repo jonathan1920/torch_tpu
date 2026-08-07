@@ -100,6 +100,9 @@ torch_tpu_py_test(
     srcs = ["gemma4_hf_example.py"],
     shuffle_tests = False,  # This script doesn't understand --test_randomize_ordering_seed.
     tags = [
+        "noasan",  # OOM
+        "nomsan",  # OOM
+        "notsan",  # OOM
         "requires-tpu-v5p",
     ],
     deps = [
