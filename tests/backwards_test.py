@@ -18,9 +18,10 @@ from absl.testing import parameterized
 import torch
 from torch.nn import attention
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class BackwardsTest(parameterized.TestCase):
+class BackwardsTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
 
   def test_sdpa_backward_math(self):
     torch.manual_seed(42)

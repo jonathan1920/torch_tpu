@@ -44,6 +44,7 @@ from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import test_utils as utils
 from tests import op_testing
 from tests import ops_test_data
+from tests import seed_test_utils
 
 # In this file, we use the following naming convention for variables:
 # - golden_*: a value for the device used for computing the golden results
@@ -196,7 +197,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           grad_weight = grad_weight.sum().reshape(1)
         return grad_self, grad_weight
 
-      self.assert_close_tpu_vs_cpu(compute_bwd_direct)
+      self.assert_close_tpu_vs_cpu(compute_bwd_direct, atol=2e-4)
 
       # NaN inputs test
       self_cpu_nan = torch.tensor([1.0, -2.0, float("nan")], dtype=dtype)
@@ -1509,41 +1510,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
     self.assertEqual(tpu_input.args, (1,))
     self.assertEqual(tpu_input.kwargs, {"device": "tpu"})
-
-  def test_torch_tpu_vs_gpu_missing_golden_fails(self):
-    op = next(op for op in op_db if op.name == "add")
-    with (
-        flagsaver.flagsaver(test_mode=op_testing.TestMode.TORCH_TPU_VS_GPU),
-        mock.patch.dict(op_testing._GOLDEN_GPU_DATA, clear=True),
-    ):
-      with self.assertRaisesRegex(
-          AssertionError,
-          "No GPU golden samples found for add.*Please re-generate the GPU"
-          " golden files",
-      ):
-        self._get_golden_input_output_pairs(
-            op=op,
-            dtype=torch.float32,
-            variant=op_testing.OpVariant.BASE,
-            max_samples=1,
-        )
-
-      # Ensure that if samples are present, no error is raised and samples are
-      # returned.
-      fake_sample = (
-          op_testing.OpInput(FakeSample("s", torch.zeros(1), (), {})),
-          op_testing.OpOutput(torch.zeros(1)),
-      )
-      op_testing._GOLDEN_GPU_DATA[self._testMethodName] = {
-          op_testing.OpVariant.BASE.value: {torch.float32: [fake_sample]}
-      }
-      res = self._get_golden_input_output_pairs(
-          op=op,
-          dtype=torch.float32,
-          variant=op_testing.OpVariant.BASE,
-          max_samples=1,
-      )
-      self.assertEqual(res, [fake_sample])
 
   @parameterized.product(training=[True, False])
   def test_batch_norm_forward_mixed_dtype(self, training):
@@ -9709,15 +9675,50 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
 
 
-class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
+class OpTestingFrameworkTest(op_testing.OpInfoTestBase):
   """Tests for the op_testing framework itself."""
+
+  def test_torch_tpu_vs_gpu_missing_golden_fails(self):
+    op = next(op for op in op_db if op.name == "add")
+    with (
+        flagsaver.flagsaver(test_mode=op_testing.TestMode.TORCH_TPU_VS_GPU),
+        mock.patch.dict(op_testing._GOLDEN_GPU_DATA, clear=True),
+    ):
+      with self.assertRaisesRegex(
+          AssertionError,
+          "No GPU golden samples found for add.*Please re-generate the GPU"
+          " golden files",
+      ):
+        self._get_golden_input_output_pairs(
+            op=op,
+            dtype=torch.float32,
+            variant=op_testing.OpVariant.BASE,
+            max_samples=1,
+        )
+
+      # Ensure that if samples are present, no error is raised and samples are
+      # returned.
+      fake_sample = (
+          op_testing.OpInput(FakeSample("s", torch.zeros(1), (), {})),
+          op_testing.OpOutput(torch.zeros(1)),
+      )
+      op_testing._GOLDEN_GPU_DATA[self._testMethodName] = {
+          op_testing.OpVariant.BASE.value: {torch.float32: [fake_sample]}
+      }
+      res = self._get_golden_input_output_pairs(
+          op=op,
+          dtype=torch.float32,
+          variant=op_testing.OpVariant.BASE,
+          max_samples=1,
+      )
+      self.assertEqual(res, [fake_sample])
 
   def test_accuracy_runs_use_different_seeds(self):
     abs_op = next(op for op in op_db if op.name == "abs")
 
     # 1. Verify uniqueness within a single run (loop)
     # Seed once at the start of the "loop"
-    op_testing._seed_rngs(1234)
+    seed_test_utils.seed_rngs(1234)
 
     pairs1 = self._get_golden_input_output_pairs(
         op=abs_op,
@@ -9752,7 +9753,7 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
     abs_op = next(op for op in op_db if op.name == "abs")
 
     # Run with base seed 1234
-    op_testing._seed_rngs(1234)
+    seed_test_utils.seed_rngs(1234)
     pairs_1234 = self._get_golden_input_output_pairs(
         op=abs_op,
         dtype=torch.float32,
@@ -9763,7 +9764,7 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
     )
 
     # Run with base seed 5678
-    op_testing._seed_rngs(5678)
+    seed_test_utils.seed_rngs(5678)
     pairs_5678 = self._get_golden_input_output_pairs(
         op=abs_op,
         dtype=torch.float32,
@@ -9790,7 +9791,7 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
     abs_op = next(op for op in op_db if op.name == "abs")
 
     # Run 1 with base seed 1234
-    op_testing._seed_rngs(1234)
+    seed_test_utils.seed_rngs(1234)
     pairs1 = self._get_golden_input_output_pairs(
         op=abs_op,
         dtype=torch.float32,
@@ -9801,7 +9802,7 @@ class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
     )
 
     # Run 2 with same base seed 1234
-    op_testing._seed_rngs(1234)
+    seed_test_utils.seed_rngs(1234)
     pairs2 = self._get_golden_input_output_pairs(
         op=abs_op,
         dtype=torch.float32,

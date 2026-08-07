@@ -115,10 +115,22 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_library(
+    name = "seed_test_utils",
+    testonly = True,
+    srcs = ["seed_test_utils.py"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//shims/torch:testing_internal",
+    ],
+)
+
+torch_tpu_py_library(
     name = "op_testing",
     testonly = True,
     srcs = ["op_testing.py"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/etils/epath",
@@ -975,6 +987,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
         "//shims/absl_py/testing:parameterized",
@@ -1009,6 +1022,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
         "//shims/absl_py/testing:parameterized",
@@ -1076,6 +1090,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
         "//shims/absl_py/testing:parameterized",
@@ -1111,6 +1126,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
         "//shims/absl_py/testing:parameterized",
@@ -1494,6 +1510,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
@@ -1881,6 +1898,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",  # build_cleaner: keep

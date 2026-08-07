@@ -19,11 +19,12 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.compile import tpu_torch_compile
+from tests import seed_test_utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 
 
-class AmpTest(absltest.TestCase):
+class AmpTest(seed_test_utils.RepeatableTest):
 
   def test_autocast_is_available(self):
     self.assertTrue(torch.amp.is_autocast_available("tpu"))

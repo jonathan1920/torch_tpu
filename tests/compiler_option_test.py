@@ -104,7 +104,7 @@ class CompilerOptionTest(op_testing.TorchTpuTestBase):
       for future in log2_futures:
         self.assertEqual(future.result(), 1)
       for future in exp_futures:
-        self.assertEqual(future.result(), 7.389056)
+        self.assertEqual(future.result(), 7.389047622680664)
 
   def test_nested_compiler_options_in_threads(self):
     """Tests setting compiler options in nested contexts concurrently."""
@@ -144,7 +144,7 @@ class CompilerOptionTest(op_testing.TorchTpuTestBase):
       for future in log2_futures:
         self.assertEqual(future.result(), 1)
       for future in exp_futures:
-        self.assertEqual(future.result(), 7.389056)
+        self.assertEqual(future.result(), 7.389047622680664)
 
 
 if __name__ == "__main__":

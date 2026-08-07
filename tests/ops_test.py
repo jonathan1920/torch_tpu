@@ -1839,7 +1839,7 @@ def _if_tpu_vs_gpu_compiled(true_value: Any, false_value: Any) -> Any:
   return true_value if op_testing.is_tpu_vs_gpu_compiled() else false_value
 
 
-class TestOps(TorchTpuTestBase):
+class TestOps(op_testing.OpInfoTestBase):
   """Tests for ops using randomly generated inputs."""
 
   # TODO: add tests for the following ops:

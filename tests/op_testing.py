@@ -61,6 +61,7 @@ from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.device import _device_ops_backend
 from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
+from tests import seed_test_utils
 
 # In this file, we use the following naming convention for variables:
 # - golden_*: a value for the device used for computing the golden results
@@ -77,16 +78,6 @@ AccuracyOverrides = Mapping[str, Mapping[torch.dtype, Mapping[str, Tolerance]]]
 
 FilterFn = Callable[[OpInfo, torch.Tensor, Sequence[Any]], str | None]
 MarkDynamicFn = Callable[[int, OpInfo, torch.Tensor, Sequence[Any]], None]
-
-# The seed for both Python and PyTorch RNGs. Set before the test program starts
-# and before each test method starts.
-_RANDOM_SEED: Final[int] = 0
-
-
-def _seed_rngs(seed: int) -> None:
-  """Seeds the Python and PyTorch RNGs with the given seed."""
-  random.seed(seed)
-  torch.manual_seed(seed)
 
 
 def _validate_tolerances(
@@ -2039,7 +2030,7 @@ def _compiled_supports_op(
   return key not in compiled_deny_list
 
 
-class TorchTpuTestBase(TestCase):
+class TorchTpuTestBase(seed_test_utils.RepeatableTest):
   """Base class for TorchTPU tests."""
 
   dynamism_filter_fn: FilterFn
@@ -2056,9 +2047,6 @@ class TorchTpuTestBase(TestCase):
     tt_testing.reset_eager_state()
     # Show long diffs in assertEqual.
     self.maxDiff = None  # pylint: disable=invalid-name
-
-    # Reseed the RNGs to prevent test methods from interfering with each other.
-    _seed_rngs(_RANDOM_SEED)
 
     # Device used for computing the golden results, or None if the golden
     # results are read from the golden file.
@@ -2295,6 +2283,48 @@ class TorchTpuTestBase(TestCase):
           rtol=rtol,
           atol=atol,
       )
+
+
+class VaryingSeedTest(seed_test_utils.RepeatableTest):
+  """Base class for tests that support dynamic postsubmit seeds.
+
+  This base class uses the same RNG seed as RepeatableTest in presubmit. In
+  postsubmit tpu vs cpu mode, it chooses a different seed in every run. The
+  seed resets before every test method.
+  """
+
+  @classmethod
+  def _choose_seed(cls) -> int:
+    if absltest.FLAGS["test_random_seed"].present:
+      # The user explicitly passed --test_random_seed=N, so we use that value.
+      return absltest.FLAGS.test_random_seed
+    elif (
+        _torch_tpu_vs_cpu_mode()
+        and _device_ops_backend._is_optimized_build()  # pylint: disable=protected-access
+    ):
+      # We are in postsubmit (optimized build) and comparing TPU vs CPU.
+      # We set the seed based on the time, so that we get more test coverage
+      # over time.
+      return time.time_ns() % 100000
+    else:
+      # We are either in presubmit (fastbuild) or comparing TPU vs GPU or
+      # generating GPU golden data. In these cases, we want a fixed seed for
+      # reproducible behavior. For example, we don't want presubmit to block
+      # a CL due to unrelated flakes caused by non-deterministic seeds.
+      return seed_test_utils.DEFAULT_RANDOM_SEED
+
+
+class OpInfoTestBase(VaryingSeedTest, TorchTpuTestBase):
+  """Base class for PyTorch OpInfo database matrix tests (like ops_test.py).
+
+  VaryingSeedTest precedes TorchTpuTestBase in the inheritance list so that
+  VaryingSeedTest's postsubmit time-varying seed selection (_choose_seed)
+  takes MRO precedence when overriding the default RepeatableTest behavior of
+  TorchTpuTestBase.
+
+  Extends TorchTpuTestBase with do_test_op() and OpInfo sample generation/golden
+  logic.
+  """
 
   def _get_golden_input_output_pairs(
       self,
@@ -3010,7 +3040,7 @@ class TorchTpuTestBase(TestCase):
     if use_random_exploration:
       # Seed once before the loop to establish the starting point (which may be
       # random in opt mode).
-      _seed_rngs(_RANDOM_SEED)
+      seed_test_utils.seed_rngs(self._test_random_seed)
 
     for acc_run_idx in range(_NUM_ACCURACY_TEST_RUNS.value):
       if _NUM_ACCURACY_TEST_RUNS.value > 1 and acc_run_idx % 10 == 0:
@@ -3498,35 +3528,6 @@ def float_random_perm(num_elem: int, dtype: torch.dtype) -> torch.Tensor | None:
   return float_bits.view(dtype)
 
 
-def _set_up_test_random_seed() -> None:
-  """Picks a random seed for the test and updates _RANDOM_SEED to it."""
-
-  global _RANDOM_SEED
-
-  if absltest.FLAGS["test_random_seed"].present:
-    # The user explicitly passed --test_random_seed=N, so we use that value.
-    _RANDOM_SEED = absltest.FLAGS.test_random_seed
-  elif (
-      _torch_tpu_vs_cpu_mode()
-      and _device_ops_backend._is_optimized_build()  # pylint: disable=protected-access
-  ):
-    # We are in postsubmit (optimized build) and comparing TPU vs CPU.
-    # We set the seed based on the time, so that we get more test coverage
-    # over time.
-    _RANDOM_SEED = time.time_ns() % 100000
-  else:
-    # We are either in presubmit (fastbuild) or comparing TPU vs GPU or
-    # generating GPU golden data. In these cases, we want a fixed seed for
-    # reproducible behavior. For example, we don't want presubmit to block
-    # a CL due to unrelated flakes caused by non-deterministic seeds.
-    _RANDOM_SEED = 1234
-
-  # Set the random seed for Python and Torch.
-  _seed_rngs(_RANDOM_SEED)
-  print(f"Repro with --test_random_seed={_RANDOM_SEED}", flush=True)
-  print(f"Torch initial seed: {torch.initial_seed()}", flush=True)
-
-
 def set_up_test_module() -> None:
   """Sets up the entire test module."""
 
@@ -3551,8 +3552,6 @@ def set_up_test_module() -> None:
   if _torch_tpu_vs_gpu_mode() or _gen_gpu_golden_mode():
     if is_compiled_mode():
       torch.backends.tpu.allow_excess_precision = True  # pytype: disable=module-attr
-
-  _set_up_test_random_seed()
 
   # Assert that `torch.get_default_dtype()` returns `torch.float` when `setUp`
   # and `tearDown` are called.
