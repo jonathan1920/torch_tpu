@@ -55,7 +55,7 @@ torch_tpu_py_test(
     name = "aten_op_benchmarks",
     srcs = ["aten_op_benchmarks.py"],
     args = [
-        "--mlcompass_tracking_id=torch_tpu",
+        "--mlcompass_tracking_id=torch_tpu_v2",
         "--mlcompass_execution_mode=cbuild",
         "--platform=gfc_1x1x1",
     ],
@@ -64,6 +64,7 @@ torch_tpu_py_test(
     shard_count = 10,
     tags = [
         "nomsan",  # b/516945438
+        "requires-net:external",
         "requires-tpu-v7x",
     ],
     deps = [
