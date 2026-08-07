@@ -66,6 +66,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/profiler/lib:profiler_factory",
         "@tsl//tsl/profiler/lib:profiler_interface",
@@ -91,7 +92,9 @@ torch_tpu_cc_test(
     requires_libtpu = True,
     deps = [
         ":pjrt_state",
+        "//torch_tpu/common:env_vars",
         "//torch_tpu/common:oss_test_main",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
     ],
 )

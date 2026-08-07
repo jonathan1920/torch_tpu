@@ -17,6 +17,7 @@
 #include "torch_tpu/pjrt/pjrt_state.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,6 +32,8 @@
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_replace.h"
 #include "absl/synchronization/mutex.h"
 #include "torch_tpu/common/contain.h"
 #include "torch_tpu/common/device_type.h"
@@ -58,6 +61,14 @@ namespace {
 bool IsRunningInTest() {
   return GetEnvOnce<kTestWorkspaceEnvVar>().has_value() ||
          GetEnvOnce<kTestTargetEnvVar>().has_value();
+}
+
+void TryExpandRankInEnvVar(const char* env_var_name, std::string_view rank) {
+  const char* env_val = std::getenv(env_var_name);  // GETENV_OK=Expanding rank.
+  if (env_val == nullptr || !absl::StrContains(env_val, "${RANK}")) return;
+  std::string new_val(env_val);
+  absl::StrReplaceAll({{"${RANK}", rank}}, &new_val);
+  SetEnv(env_var_name, new_val);
 }
 
 // Creates a PluginTracer instance to collect TPU profile metrics.
@@ -182,6 +193,14 @@ absl::Status PjrtBackend::EnsureInitialized() {
 }
 
 absl::Status PjrtBackend::InitializeInternal() {
+  // Expand ${RANK} to the actual rank in relevant environment variables.
+  // Required for dumping debug information separately per rank.
+  const char* rank_val =
+      std::getenv(kRankEnvVar);  // GETENV_OK=Getting rank for expansion.
+  std::string rank = rank_val != nullptr ? rank_val : "0";
+  TryExpandRankInEnvVar(kXlaFlagsEnvVar, rank);
+  TryExpandRankInEnvVar(kLibtpuInitArgsEnvVar, rank);
+
   PjRtDeviceType device_type = PjRtDeviceType::kUnknown;
   std::string plugin_name;
   if (options_.device_type == "tpu") {

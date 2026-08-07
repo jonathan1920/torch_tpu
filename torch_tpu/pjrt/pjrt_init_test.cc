@@ -15,9 +15,12 @@
  */
 
 #include <cstdlib>
+#include <string>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "gtest/gtest.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 
 namespace torch_tpu {
@@ -70,6 +73,32 @@ TEST_F(PjRtInitTest, InitializePjRtSetsCorrectDeviceCount) {
   auto device_count_or = PjrtBackend::GetInstance().GetGlobalDeviceCount();
   ASSERT_EQ(device_count_or.status(), absl::OkStatus());
   EXPECT_EQ(device_count_or.value(), 1);
+}
+
+TEST_F(PjRtInitTest, InitializeExpandsRankInEnvVars) {
+  auto cleanup = absl::MakeCleanup([] {
+    unsetenv(kXlaFlagsEnvVar);
+    unsetenv(kLibtpuInitArgsEnvVar);
+    unsetenv(kRankEnvVar);
+  });
+
+  // Use a valid XLA flag to avoid parsing errors in XLA initialization.
+  SetEnv(kXlaFlagsEnvVar, "--xla_disable_hlo_passes=some_pass_${RANK}");
+  SetEnv(kLibtpuInitArgsEnvVar, "some_args_${RANK}");
+  SetEnv(kRankEnvVar, "1234");
+
+  PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+      {.device_type = "xla_cpu"});
+  auto* client = PjrtBackend::GetInstance().GetClient();
+  ASSERT_NE(client, nullptr);
+
+  const char* xla_flags = std::getenv(kXlaFlagsEnvVar);
+  EXPECT_NE(xla_flags, nullptr);
+  EXPECT_STREQ(xla_flags, "--xla_disable_hlo_passes=some_pass_1234");
+
+  const char* libtpu_args = std::getenv(kLibtpuInitArgsEnvVar);
+  EXPECT_NE(libtpu_args, nullptr);
+  EXPECT_STREQ(libtpu_args, "some_args_1234");
 }
 
 }  // namespace
