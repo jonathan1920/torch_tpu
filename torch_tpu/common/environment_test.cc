@@ -259,11 +259,10 @@ TEST(EnvironmentDeathTest,
 }
 
 TEST(EnvironmentDeathTest,
-     InitializeDistributedEnvironment_FallsBackOnMalformedVisibleChips) {
+     InitDistEnv_FallsBackOnMalformedTpuVisibleDevicesEnvVar) {
   EXPECT_EXIT(
       {
-        unsetenv("TPU_VISIBLE_DEVICES");
-        setenv(kTpuVisibleChipsEnvVar, "invalid_dev", 1);
+        setenv(kTpuVisibleDevicesEnvVar, "invalid_dev", 1);
         DistributedWorkerConfiguration config;
         config.rank = 0;
         config.local_rank = 1;
@@ -271,20 +270,22 @@ TEST(EnvironmentDeathTest,
         config.sb_addrs = "localhost:1234";
         config.topology = "1,1,1";
         EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
-        const char* val = std::getenv(kTpuVisibleChipsEnvVar);
+        const char* val = std::getenv(kTpuVisibleDevicesEnvVar);
         EXPECT_NE(val, nullptr);
         EXPECT_STREQ(val, "1");
+        const char* chips_val = std::getenv(kTpuVisibleChipsEnvVar);
+        EXPECT_NE(chips_val, nullptr);
+        EXPECT_STREQ(chips_val, "1");
         _exit(0);
       },
       ExitedWithCode(0), "");
 }
 
 TEST(EnvironmentDeathTest,
-     InitializeDistributedEnvironment_FallsBackOnNegativeVisibleDevices) {
+     InitDistEnv_FallsBackOnNegativeTpuVisibleDevicesEnvVar) {
   EXPECT_EXIT(
       {
-        unsetenv(kTpuVisibleChipsEnvVar);
-        setenv("TPU_VISIBLE_DEVICES", "-5", 1);
+        setenv(kTpuVisibleDevicesEnvVar, "-5", 1);
         DistributedWorkerConfiguration config;
         config.rank = 0;
         config.local_rank = 2;
@@ -292,29 +293,12 @@ TEST(EnvironmentDeathTest,
         config.sb_addrs = "localhost:1234";
         config.topology = "1,1,1";
         EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
-        const char* val = std::getenv(kTpuVisibleChipsEnvVar);
+        const char* val = std::getenv(kTpuVisibleDevicesEnvVar);
         EXPECT_NE(val, nullptr);
         EXPECT_STREQ(val, "2");
-        _exit(0);
-      },
-      ExitedWithCode(0), "");
-}
-
-TEST(EnvironmentDeathTest,
-     InitDistEnv_RespectsExistingSingleTpuVisibleChipsEnvVar) {
-  EXPECT_EXIT(
-      {
-        unsetenv("TPU_VISIBLE_DEVICES");
-        setenv(kTpuVisibleChipsEnvVar, "2", 1);
-        DistributedWorkerConfiguration config;
-        config.rank = 0;
-        config.local_rank = 0;
-        config.sb_port = "1234";
-        config.sb_addrs = "localhost:1234";
-        config.topology = "1,1,1";
-
-        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
-        EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "2");
+        const char* chips_val = std::getenv(kTpuVisibleChipsEnvVar);
+        EXPECT_NE(chips_val, nullptr);
+        EXPECT_STREQ(chips_val, "2");
         _exit(0);
       },
       ExitedWithCode(0), "");
@@ -324,8 +308,7 @@ TEST(EnvironmentDeathTest,
      InitDistEnv_RespectsExistingSingleTpuVisibleDevicesEnvVar) {
   EXPECT_EXIT(
       {
-        unsetenv(kTpuVisibleChipsEnvVar);
-        setenv("TPU_VISIBLE_DEVICES", "3", 1);
+        setenv(kTpuVisibleDevicesEnvVar, "3", 1);
         DistributedWorkerConfiguration config;
         config.rank = 0;
         config.local_rank = 0;
@@ -334,6 +317,7 @@ TEST(EnvironmentDeathTest,
         config.topology = "1,1,1";
 
         EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        EXPECT_STREQ(std::getenv(kTpuVisibleDevicesEnvVar), "3");
         EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "3");
         _exit(0);
       },
@@ -341,11 +325,10 @@ TEST(EnvironmentDeathTest,
 }
 
 TEST(EnvironmentDeathTest,
-     InitDistEnv_OverwritesMultiDeviceTpuVisibleChipsEnvVar) {
+     InitDistEnv_OverwritesMultiDeviceTpuVisibleDevicesEnvVar) {
   EXPECT_EXIT(
       {
-        unsetenv("TPU_VISIBLE_DEVICES");
-        setenv(kTpuVisibleChipsEnvVar, "0,1,2,3", 1);
+        setenv(kTpuVisibleDevicesEnvVar, "0,1,2,3", 1);
         DistributedWorkerConfiguration config;
         config.rank = 0;
         config.local_rank = 1;
@@ -354,7 +337,82 @@ TEST(EnvironmentDeathTest,
         config.topology = "1,1,1";
 
         EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        EXPECT_STREQ(std::getenv(kTpuVisibleDevicesEnvVar), "1");
         EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "1");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitDistEnv_OverwritesExistingTpuVisibleChipsEnvVar) {
+  EXPECT_EXIT(
+      {
+        setenv(kTpuVisibleChipsEnvVar, "0,1,2,3", 1);
+        unsetenv(kTpuVisibleDevicesEnvVar);
+        DistributedWorkerConfiguration config;
+        config.rank = 0;
+        config.local_rank = 0;
+        config.sb_port = "1234";
+        config.sb_addrs = "localhost:1234";
+        config.topology = "1,1,1";
+
+        EXPECT_TRUE(InitializeDistributedEnvironment(config).ok());
+        EXPECT_STREQ(std::getenv(kTpuVisibleDevicesEnvVar), "0");
+        EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "0");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitSingleDevEnv_RespectsExistingSingleTpuVisibleDevicesEnvVar) {
+  EXPECT_EXIT(
+      {
+        setenv(kTpuVisibleDevicesEnvVar, "3", 1);
+        EXPECT_TRUE(InitializeSingleDeviceEnvironment().ok());
+        EXPECT_STREQ(std::getenv(kTpuVisibleDevicesEnvVar), "3");
+        EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "3");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitSingleDevEnv_OverwritesMultiDeviceTpuVisibleDevicesEnvVar) {
+  EXPECT_EXIT(
+      {
+        setenv(kTpuVisibleDevicesEnvVar, "0,1", 1);
+        EXPECT_TRUE(InitializeSingleDeviceEnvironment().ok());
+        EXPECT_STREQ(std::getenv(kTpuVisibleDevicesEnvVar), "0");
+        EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "0");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitSingleDevEnv_FallsBackOnMalformedTpuVisibleDevicesEnvVar) {
+  EXPECT_EXIT(
+      {
+        setenv(kTpuVisibleDevicesEnvVar, "invalid_dev", 1);
+        EXPECT_TRUE(InitializeSingleDeviceEnvironment().ok());
+        EXPECT_STREQ(std::getenv(kTpuVisibleDevicesEnvVar), "0");
+        EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "0");
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(EnvironmentDeathTest,
+     InitSingleDevEnv_OverwritesExistingTpuVisibleChipsEnvVar) {
+  EXPECT_EXIT(
+      {
+        setenv(kTpuVisibleChipsEnvVar, "2", 1);
+        unsetenv(kTpuVisibleDevicesEnvVar);
+        EXPECT_TRUE(InitializeSingleDeviceEnvironment().ok());
+        EXPECT_STREQ(std::getenv(kTpuVisibleDevicesEnvVar), "0");
+        EXPECT_STREQ(std::getenv(kTpuVisibleChipsEnvVar), "0");
         _exit(0);
       },
       ExitedWithCode(0), "");

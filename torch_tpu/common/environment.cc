@@ -46,17 +46,18 @@ absl::Status InitializeDistributedEnvironment(
   int slice_rank = config.rank % static_cast<int>(addresses.size());
   SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(slice_rank));
 
-  const auto& visible_chips_env = GetEnvOnce<kTpuVisibleChipsEnvVar>();
+  // TPU_VISIBLE_DEVICES is our source of truth for device visibility.
+  // Because libtpu prioritizes TPU_VISIBLE_CHIPS over TPU_VISIBLE_DEVICES when
+  // non-empty, we explicitly overwrite TPU_VISIBLE_CHIPS to match
+  // TPU_VISIBLE_DEVICES so that external settings do not override device
+  // selection.
   const auto& visible_devices_env = GetEnvOnce<kTpuVisibleDevicesEnvVar>();
-  if (visible_chips_env.has_value() &&
-      IsSingleDeviceSpecified(*visible_chips_env)) {
-    // Preserve existing TPU_VISIBLE_CHIPS setting.
-  } else if (visible_devices_env.has_value() &&
-             IsSingleDeviceSpecified(*visible_devices_env)) {
-    SetEnv(kTpuVisibleChipsEnvVar, *visible_devices_env);
-  } else {
-    SetEnv(kTpuVisibleChipsEnvVar, absl::StrCat(config.local_rank));
-  }
+  const std::string target_dev = (visible_devices_env.has_value() &&
+                                  IsSingleDeviceSpecified(*visible_devices_env))
+                                     ? *visible_devices_env
+                                     : absl::StrCat(config.local_rank);
+  SetEnv(kTpuVisibleDevicesEnvVar, target_dev);
+  SetEnv(kTpuVisibleChipsEnvVar, target_dev);
 
   std::vector<std::string> topology_dims = absl::StrSplit(config.topology, ',');
   std::string chips_bounds = (topology_dims.size() == 4) ? "1,1,1,1" : "1,1,1";
@@ -95,6 +96,22 @@ absl::Status InitializeDistributedEnvironment(
                     " --xla_tpu_use_enhanced_launch_barrier=false");
   }
   SetEnv(kLibtpuInitArgsEnvVar, libtpu_init_args_str);
+  return absl::OkStatus();
+}
+
+absl::Status InitializeSingleDeviceEnvironment() {
+  // TPU_VISIBLE_DEVICES is our source of truth for device visibility.
+  // Because libtpu prioritizes TPU_VISIBLE_CHIPS over TPU_VISIBLE_DEVICES when
+  // non-empty, we explicitly overwrite TPU_VISIBLE_CHIPS to match
+  // TPU_VISIBLE_DEVICES so that external settings do not override device
+  // selection.
+  const auto& visible_devices_env = GetEnvOnce<kTpuVisibleDevicesEnvVar>();
+  const std::string target_dev = (visible_devices_env.has_value() &&
+                                  IsSingleDeviceSpecified(*visible_devices_env))
+                                     ? *visible_devices_env
+                                     : "0";
+  SetEnv(kTpuVisibleDevicesEnvVar, target_dev);
+  SetEnv(kTpuVisibleChipsEnvVar, target_dev);
   return absl::OkStatus();
 }
 
