@@ -130,8 +130,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
         record_shapes=True,
     ) as prof:
-      c = a @ b
-      tpu_sync.synchronize(c)
+      _ = a @ b
       prof.step()
 
     self._get_and_copy_xplane(tpu_xplane_path)
@@ -169,6 +168,144 @@ class ProfilerIntegrationTest(parameterized.TestCase):
           f"XPlane missing! contents: {xplane_contents}",
       )
 
+  def _count_tpu_events(self, profile_dir: pathlib.Path) -> int:
+    xplane_files = list(profile_dir.glob("**/*.xplane.pb"))
+    if not xplane_files:
+      return 0
+    xspace = xplane_pb2.XSpace()
+    xspace.ParseFromString(xplane_files[0].read_bytes())
+    count = 0
+    for plane in xspace.planes:
+      if plane.name.startswith("/device:TPU"):
+        for line in plane.lines:
+          count += len(line.events)
+    return count
+
+  def test_native_profiler_without_explicit_sync(self):
+    """Tests that profiling without script sync captures all TPU events."""
+    device = torch.device("tpu")
+    a = torch.ones((16, 16), device=device)
+    b = torch.ones((16, 16), device=device)
+
+    # Warmup using native PyTorch accelerator synchronization
+    for _ in range(3):
+      _ = a @ b
+    torch.accelerator.synchronize()
+
+    base_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR")
+    if base_dir is None:
+      base_dir = self.create_tempdir("trace_auto_sync_tpu").full_path
+
+    dir_no_sync = os.path.join(base_dir, "no_sync")
+    dir_with_sync = os.path.join(base_dir, "with_sync")
+
+    _cleanup_profile_dir()
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
+        ],
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(dir_no_sync),
+        record_shapes=True,
+    ) as prof_no_sync:
+      for _ in range(5):
+        _ = a @ b
+      prof_no_sync.step()
+    events_no_sync = self._count_tpu_events(_get_profile_dir())
+
+    _cleanup_profile_dir()
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
+        ],
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(dir_with_sync),
+        record_shapes=True,
+    ) as prof_with_sync:
+      for _ in range(5):
+        _ = a @ b
+        torch.accelerator.synchronize()
+      prof_with_sync.step()
+    events_with_sync = self._count_tpu_events(_get_profile_dir())
+
+    self.assertGreater(
+        events_no_sync,
+        0,
+        msg=(
+            "Expected TPU trace events without explicit script sync after our"
+            " change"
+        ),
+    )
+    self.assertEqual(
+        events_no_sync,
+        events_with_sync,
+        msg="Expected identical TPU event count with and without script sync",
+    )
+
+    # Check key_averages time attribution without script sync
+    key_averages = prof_no_sync.key_averages()
+    self.assertIn("TPU time", key_averages.table())
+    has_tpu_time = any(
+        getattr(evt, "device_time_total", 0) > 0 for evt in key_averages
+    )
+    self.assertTrue(has_tpu_time, "Expected non-zero TPU time without sync")
+
+  def test_async_workload_captures_all_in_flight_events(self):
+    """Verifies that TpuKinetoProfilerSession::stop() automatically synchronizes
+
+    addressable TPU devices and captures trace events for asynchronous TPU
+    workloads that are actively executing in flight when prof.step() is called,
+    without requiring explicit user script synchronization calls.
+    """
+    device = torch.device("tpu")
+    a = torch.ones((4096, 4096), device=device)
+    b = torch.ones((4096, 4096), device=device)
+
+    # Warmup so kernel is compiled
+    _ = a @ b
+    torch.accelerator.synchronize()
+
+    _cleanup_profile_dir()
+
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
+        ],
+        record_shapes=True,
+    ) as prof:
+      # Launch async TPU workload in a background thread so operations
+      # are actively in flight when prof.step() is called on main thread.
+      ready_event = threading.Event()
+
+      def _async_workload():
+        for i in range(500):
+          _ = a @ b
+          if i == 150:
+            ready_event.set()
+
+      worker = threading.Thread(target=_async_workload)
+      worker.start()
+      ready_event.wait(timeout=10.0)
+      prof.step()
+      worker.join()
+
+    events_captured = self._count_tpu_events(_get_profile_dir())
+    logging.info(
+        "TPU events captured for in-flight asynchronous workload: %d",
+        events_captured,
+    )
+
+    self.assertGreater(
+        events_captured,
+        100,
+        msg=(
+            "Expected TPU trace events to be captured automatically when"
+            " stopping the profiler during an active asynchronous workload,"
+            " without explicit user script synchronization"
+        ),
+    )
+
   def test_kineto_key_averages_eager(self):
     device = torch.device("tpu")
 
@@ -187,8 +324,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
         ],
         record_shapes=True,
     ) as prof:
-      c = a @ b
-      tpu_sync.synchronize(c)
+      _ = a @ b
       prof.step()
 
     key_averages = prof.key_averages()
@@ -230,8 +366,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
         ],
         record_shapes=True,
     ) as prof:
-      c = compiled_func(a, b)
-      tpu_sync.synchronize(c)
+      _ = compiled_func(a, b)
       prof.step()
 
     table_str = prof.key_averages().table(
@@ -265,8 +400,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     ) as prof:
       a = torch.ones((16, 16)).to(device)
       b = torch.ones((16, 16)).to(device)
-      c = a @ b
-      tpu_sync.synchronize(c)
+      _ = a @ b
       prof.step()
 
     tpu_xplane_path = pathlib.Path(output_dir) / "xplane.pb"
@@ -304,8 +438,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
     ) as prof:
-      c = a @ b
-      tpu_sync.synchronize(c)
+      _ = a @ b
       prof.step()
 
     self.assertTrue(
@@ -353,7 +486,6 @@ class ProfilerIntegrationTest(parameterized.TestCase):
       with profiler.record_function("full_pipeline"):
         with profiler.record_function("model1_inference_tpu"):
           output1_tpu = model_tpu(inputs)
-          tpu_sync.synchronize(output1_tpu)
 
         with profiler.record_function("copy_to_cpu"):
           output1_cpu = output1_tpu.cpu()
@@ -396,8 +528,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     ):
       a = torch.ones((16, 16)).to(device)
       b = torch.ones((16, 16)).to(device)
-      c = a @ b
-      tpu_sync.synchronize(c)
+      _ = a @ b
 
     tpu_xplane_path = pathlib.Path(output_dir) / "xplane.pb"
     self._get_and_copy_xplane(tpu_xplane_path)
@@ -431,8 +562,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     ):
       a = torch.ones((16, 16)).to(device)
       b = torch.ones((16, 16)).to(device)
-      c = a @ b
-      tpu_sync.synchronize(c)
+      _ = a @ b
 
     expected_profile_dir = pathlib.Path(custom_run_dir) / "plugins" / "profile"
     self.assertTrue(
@@ -468,8 +598,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     ):
       a = torch.ones((16, 16)).to(device)
       b = torch.ones((16, 16)).to(device)
-      c = a @ b
-      tpu_sync.synchronize(c)
+      _ = a @ b
 
     self.assertTrue(
         profile_dir.exists(),
@@ -509,8 +638,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
           on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
           experimental_config=bad_config,
       ):
-        c = torch.ones((16, 16)).to(device) @ torch.ones((16, 16)).to(device)
-        tpu_sync.synchronize(c)
+        _ = torch.ones((16, 16)).to(device) @ torch.ones((16, 16)).to(device)
 
   def test_tpu_profiler_config_experimental_options(self):
     device = torch.device("tpu")
@@ -540,8 +668,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     ):
       a = torch.ones((16, 16)).to(device)
       b = torch.ones((16, 16)).to(device)
-      c = a @ b
-      tpu_sync.synchronize(c)
+      _ = a @ b
 
     xplane_files = list(output_dir.glob("**/plugins/profile/**/*.xplane.pb"))
     self.assertLen(xplane_files, 1)
@@ -601,8 +728,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
       ):
         a = torch.ones((16, 16)).to(device)
         b = torch.ones((16, 16)).to(device)
-        c = a @ b
-        tpu_sync.synchronize(c)
+        _ = a @ b
 
   def test_tpu_profiler_config_invalid_experimental_option_ignored(self):
     device = torch.device("tpu")
@@ -632,8 +758,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     ):
       a = torch.ones((16, 16)).to(device)
       b = torch.ones((16, 16)).to(device)
-      c = a @ b
-      tpu_sync.synchronize(c)
+      _ = a @ b
 
   @parameterized.named_parameters(
       dict(testcase_name="colon", key="invalid:key", value="value"),
@@ -698,7 +823,6 @@ class ProfilerIntegrationTest(parameterized.TestCase):
         record_shapes=True,
     ) as prof:
       output1_tpu = model_tpu(inputs)
-      tpu_sync.synchronize(output1_tpu)
       output1_cpu = output1_tpu.cpu()
       model_cpu(output1_cpu)
       prof.step()

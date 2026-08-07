@@ -49,7 +49,20 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "c10/core/Device.h"
+#include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "torch/csrc/profiler/api.h"
+#include "torch_tpu/_internal/profiler/xprof_callback_handler.h"
+#include "torch_tpu/_internal/sync/sync.h"
+#include "torch_tpu/common/device_type.h"
+#include "torch_tpu/common/env_vars.h"
+#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/eager/events_queue.h"
+#include "tsl/platform/path.h"
+#include "tsl/profiler/lib/profiler_session.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "xla/tsl/platform/env.h"
 
 // Forward declarations of PrivateUse1ProfilerRegistry marked as weak.
 // This allows compilation against Torch 2.10 (where these don't exist)
@@ -71,15 +84,6 @@ class PrivateUse1ProfilerRegistry {
       PrivateUse1ProfilerFactory factory);
 };
 }  // namespace torch::profiler::impl
-
-#include "torch_tpu/_internal/profiler/xprof_callback_handler.h"
-#include "torch_tpu/common/env_vars.h"
-#include "torch_tpu/common/error_utils.h"
-#include "tsl/platform/path.h"
-#include "tsl/profiler/lib/profiler_session.h"
-#include "tsl/profiler/protobuf/profiler_options.pb.h"
-#include "tsl/profiler/protobuf/xplane.pb.h"
-#include "xla/tsl/platform/env.h"
 
 namespace torch_tpu {
 
@@ -455,10 +459,55 @@ void TpuKinetoProfilerSession::start() {
   }
 }
 
+namespace {
+
+// Synchronizes all TPU devices and deferred operations before stopping trace
+// collection.
+//
+// PyTorch TPU execution is decoupled into two asynchronous layers:
+// 1. Deferred Tensor Computation Graphs (sync.cc): Compiled and synchronized
+//    via SynchronizeAll(WaitOnExecution::kYes).
+// 2. Stream Execution Futures (events_queue.h): Synchronized per-device via
+//    SynchronizeDevice(device_index).
+//
+// Synchronizing both layers before CollectData(&xspace_) ensures trace
+// completeness for asynchronous operations without requiring pjrt_state.
+absl::Status SynchronizeTpuDevicesBeforeStop() {
+  ABSL_VLOG(1) << "Synchronizing TPU devices before stopping profiler.";
+  TT_RETURN_IF_ERROR(torch_tpu::MaterializeAll());
+
+  int device_count = 0;
+  if (c10::impl::hasDeviceGuardImpl(torch_tpu::GetPrivateUse1DeviceType())) {
+    const auto* guard =
+        c10::impl::getDeviceGuardImpl(torch_tpu::GetPrivateUse1DeviceType());
+    if (guard != nullptr) {
+      device_count = guard->deviceCount();
+    }
+  }
+  ABSL_VLOG(1) << "Synchronizing " << device_count
+               << " addressable TPU device stream queues.";
+  for (int i = 0; i < device_count; ++i) {
+    SynchronizeDevice(static_cast<c10::DeviceIndex>(i));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 void TpuKinetoProfilerSession::stop() {
   absl::MutexLock lock(mutex_);
   if (session_ != nullptr) {
+    // Stop recording PyTorch frontend events immediately before synchronizing
+    // and collecting trace data so teardown operations are not captured.
     callback_handler_.reset();
+
+    absl::Status sync_status = SynchronizeTpuDevicesBeforeStop();
+    if (!sync_status.ok()) {
+      ABSL_LOG(WARNING)
+          << "Failed to synchronize TPU operations before stopping profiler: "
+          << sync_status << "; proceeding to collect available trace data.";
+    }
+
     status_ = libkineto::TraceStatus::PROCESSING;
     absl::Status status = session_->CollectData(&xspace_);
     ABSL_LOG(INFO) << "TpuKinetoProfilerSession::stop() CollectData status: "

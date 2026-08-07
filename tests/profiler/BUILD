@@ -87,6 +87,7 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "tpu_profiler_plugin_test",
     srcs = ["tpu_profiler_plugin_test.cc"],
+    requires_libtpu = True,
     deps = [
         "//shims/torch:kineto",
         "//torch_tpu/_internal/profiler:tpu_profiler_plugin_cc",
