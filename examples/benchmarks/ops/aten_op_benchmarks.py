@@ -46,7 +46,13 @@ from examples.benchmarks.ops.op_input_loader import deserialize_args
 
 DEVICE = flags.DEFINE_string("device", "tpu", "Device to run benchmarks on.")
 MIN_RUN_TIME = flags.DEFINE_float(
-    "min_run_time", 2.0, "Minimum run time for blocked_autorange."
+    "min_run_time", 0.2, "Minimum run time for blocked_autorange."
+)
+MIN_RUNS = flags.DEFINE_integer(
+    "min_runs",
+    1,
+    "Minimum number of runs/iterations for each benchmark case.",
+    lower_bound=1,
 )
 
 
@@ -337,15 +343,24 @@ class AtenOpBenchmarkBase(parameterized.TestCase):
       try:
         # Use blocked_autorange to enforce minimum run time
         measurement = timer.blocked_autorange(min_run_time=MIN_RUN_TIME.value)
+
+        # Enforce minimum iteration count (min_runs) if autorange ran fewer
+        # iterations
+        min_runs = MIN_RUNS.value
+        if min_runs > 1 and len(measurement.times) < min_runs:
+          additional_times = []
+          for _ in range(min_runs - len(measurement.times)):
+            m_extra = timer.timeit(number=1)
+            additional_times.extend(m_extra.times)
+          times = np.array(measurement.times + additional_times)
+        else:
+          times = np.array(measurement.times)
       finally:
         gc.enable()
-
-      # Calculate median and CV using numpy to avoid torch_xla2 quantile error
-      times = np.array(measurement.times)
       median_time_us = np.median(times) * 1e6
       mean_time = np.mean(times)
-      std_time = np.std(times, ddof=1)
-      cv = std_time / mean_time if mean_time > 0 else 0.0
+      std_time = np.std(times, ddof=1) if len(times) > 1 else 0.0
+      cv = (std_time / mean_time) if len(times) > 1 and mean_time > 0 else 0.0
 
       logging.info(
           f"Result for {op_name} case {case_index} ({run_mode_str}) on"

@@ -54,11 +54,17 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "aten_op_benchmarks",
     srcs = ["aten_op_benchmarks.py"],
+    args = [
+        "--mlcompass_tracking_id=torch_tpu",
+        "--mlcompass_execution_mode=cbuild",
+        "--platform=gfc_1x1x1",
+    ],
     data = glob(["captured_ops/*.json"]),
+    notap = "Tested on guitar workflow.",
     shard_count = 10,
     tags = [
         "nomsan",  # b/516945438
-        "requires-tpu-v5lite",
+        "requires-tpu-v7x",
     ],
     deps = [
         ":op_input_loader",
