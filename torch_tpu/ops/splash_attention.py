@@ -63,7 +63,7 @@ def _make_splash_attention_fn(
     q_layout: str = "HEAD_DIM_MINOR",
     k_layout: str = "HEAD_DIM_MINOR",
     v_layout: str = "HEAD_DIM_MINOR",
-    use_vmap_bwd: bool = False,
+    use_vmap_bwd: bool = True,
 ):
   """Create JAX splash attention forward and backward functions.
 
@@ -297,7 +297,10 @@ def _make_splash_attention_fn(
           (q_scaled, k, v, out, logsumexp, g),
       )
     # Chain rule: q_scaled = q * scale  =>  dq = dq_scaled * scale
-    dq = dq_scaled * scale_val
+    # TODO: b/543955134 - remove optimization barriers
+    dq = jax.lax.optimization_barrier(dq_scaled * scale_val)
+    dk = jax.lax.optimization_barrier(dk)
+    dv = jax.lax.optimization_barrier(dv)
     return dq, dk, dv
 
   return splash_fn, splash_bwd_fn
@@ -464,7 +467,7 @@ def splash_sdpa(
     block_q_dq: Optional[int] = None,
     block_kv_dq: Optional[int] = None,
     use_fused_bwd_kernel: bool = True,
-    use_vmap_bwd: bool = False,
+    use_vmap_bwd: bool = True,
     q_layout: str = "HEAD_DIM_MINOR",
     k_layout: str = "HEAD_DIM_MINOR",
     v_layout: str = "HEAD_DIM_MINOR",
@@ -495,8 +498,7 @@ def splash_sdpa(
     block_q_dq: Block size for Q in DQ.
     block_kv_dq: Block size for KV in DQ.
     use_fused_bwd_kernel: Whether to use fused backward kernel.
-    use_vmap_bwd: Whether to use vmap in backward pass. Default False (uses scan
-      for memory safety).
+    use_vmap_bwd: Whether to use vmap in backward pass. Default True.
     q_layout: Layout for Q.
     k_layout: Layout for K.
     v_layout: Layout for V.
@@ -507,6 +509,12 @@ def splash_sdpa(
 
   block_q = int(os.environ.get("SPLASH_BLOCK_Q", block_q))
   block_kv = int(os.environ.get("SPLASH_BLOCK_KV", block_kv))
+  if "SPLASH_USE_VMAP_BWD" in os.environ:
+    use_vmap_bwd = os.environ["SPLASH_USE_VMAP_BWD"].lower() in (
+        "1",
+        "true",
+        "yes",
+    )
   if block_dkv != 512:
     block_q_dkv = block_dkv
     block_kv_dkv = block_dkv
