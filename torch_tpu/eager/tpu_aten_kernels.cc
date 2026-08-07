@@ -890,6 +890,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
       m, AtenScaledDotProductFusedAttentionOverrideable);
   ImplStable<OpName::kScaledDotProductFusedAttentionOverrideableBackward>(
       m, AtenScaledDotProductFusedAttentionOverrideableBackward);
+  ImplStable<OpName::kScaledGroupedMm>(m, AtenScaledGroupedMm);
   ImplStable<OpName::kScaledMm>(m, AtenScaledMm);
   ImplStable<OpName::kScaledMmOut>(m, AtenScaledMmOut);
   ImplStable<OpName::kScaledMmV2>(m, AtenScaledMmV2);

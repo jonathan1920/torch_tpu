@@ -95,6 +95,12 @@ c10::ScalarType InferOutputDtype(const at::Tensor& self) {
 absl::StatusOr<mlir::ElementType> InferComputationDtype(
     mlir::ElementType input_dtype) {
   at::ScalarType input_type = ConvertTo<at::ScalarType>(input_dtype);
+  // at::toOpMathType preserves FP8/FP4 types, but XLA HLO operations generally
+  // require working on standard FP32 formats. We intercept FP4 here to
+  // explicitly specify F32 computation.
+  if (input_type == at::kFloat4_e2m1fn_x2) {
+    return mlir::ElementType::F32;
+  }
   at::ScalarType computation_type = at::toOpMathType(input_type);
   return ConvertTo<mlir::ElementType>(computation_type);
 }

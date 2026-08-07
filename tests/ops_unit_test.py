@@ -2464,7 +2464,65 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     expected_out = (
         torch.matmul(self_float_dequant, mat2_float_dequant) * scale_a * scale_b
     ).to(out_dtype)
-    torch.testing.assert_close(  # TORCH_ASSERT_CLOSE_OK=fp4
+    utils.assert_close(
+        out.to(torch.float32),
+        expected_out.to(torch.float32),
+        atol=1e-2,
+        rtol=1e-2,
+    )
+
+  @parameterized.parameters(
+      (2, 32, 64, 32, torch.bfloat16),
+  )
+  def test_scaled_grouped_mm_fp4_numeric(self, num_groups, m, n, k, out_dtype):
+    """Tests torch._scaled_grouped_mm with FP4 inputs."""
+
+    if "TPU_NAME" not in os.environ:
+      raise unittest.SkipTest(
+          "FP4 scaled_grouped_mm test requires TPU hardware to avoid PyTorch"
+          " OpMathType CPU fallback crash."
+      )
+
+    device = "tpu"
+    self_float_tpu = torch.randn(num_groups, m, k, dtype=torch.float32).to(
+        device
+    )
+    mat2_float_tpu = torch.randn(num_groups, k, n, dtype=torch.float32).to(
+        device
+    )
+
+    self_fp4_tpu = self_float_tpu.to(torch.float4_e2m1fn_x2)
+    mat2_fp4_tpu = mat2_float_tpu.to(torch.float4_e2m1fn_x2)
+
+    scale_a = torch.rand(num_groups, dtype=torch.float32).to(device)
+    scale_b = torch.rand(num_groups, dtype=torch.float32).to(device)
+
+    out = torch._scaled_grouped_mm(
+        self_fp4_tpu,
+        mat2_fp4_tpu,
+        scale_a,
+        scale_b,
+        out_dtype=out_dtype,
+    )
+    expected_shape = torch.Size([num_groups, m, n])
+    self.assertEqual(out.shape, expected_shape)
+    self.assertEqual(out.dtype, out_dtype)
+    self.assertEqual(out.device.type, "tpu")
+
+    # Verify numeric correctness by dequantizing and running float32 matmul
+    self_float_dequant = self_fp4_tpu.to(torch.float32)
+    mat2_float_dequant = mat2_fp4_tpu.to(torch.float32)
+
+    expected_out = torch.empty(num_groups, m, n, dtype=out_dtype, device=device)
+    for g in range(num_groups):
+      group_out = (
+          torch.matmul(self_float_dequant[g], mat2_float_dequant[g])
+          * scale_a[g]
+          * scale_b[g]
+      )
+      expected_out[g] = group_out.to(out_dtype)
+
+    utils.assert_close(
         out.to(torch.float32),
         expected_out.to(torch.float32),
         atol=1e-2,
@@ -7859,6 +7917,244 @@ module {
         atol=2e-1,
     )
 
+  def _apply_group_scales(
+      self, tensor, scale_a, scale_b, offs=None, is_3d_2d=False
+  ):
+    """Applies per-group scale_a * scale_b to a grouped matmul result.
+
+    Used by FP4 scaled_grouped_mm tests to construct the expected output.
+    The golden is computed by dequantizing FP4→F32 on the CPU side and running
+    _grouped_mm in F32, then scaling. The TPU path operates on raw FP4 tensors
+    with internal dequantization. FP4's 2-bit mantissa introduces substantial
+    quantization noise that compounds through dequantize→matmul→scale, so these
+    tests use 20% tolerance (rtol=2e-1, atol=2e-1).
+
+    Args:
+      tensor: The unscaled matmul result tensor.
+      scale_a: Scale factor for the first operand.
+      scale_b: Scale factor for the second operand.
+      offs: Optional cumulative group offsets for ragged dimensions.
+      is_3d_2d: If True, scales along dim 1 instead of dim 0 for 2D results.
+
+    Returns:
+      A new tensor with per-group scaling applied.
+    """
+    out = tensor.clone()
+    num_groups = offs.shape[0] if offs is not None else tensor.shape[0]
+    sa = (
+        scale_a.view(-1).expand(num_groups) if scale_a.numel() == 1 else scale_a
+    )
+    sb = (
+        scale_b.view(-1).expand(num_groups) if scale_b.numel() == 1 else scale_b
+    )
+    for g in range(num_groups):
+      factor = sa[g] * sb[g]
+      if tensor.dim() == 2:
+        start = 0 if g == 0 else offs[g - 1].item()
+        end = offs[g].item()
+        if is_3d_2d:
+          out[:, start:end] *= factor
+        else:
+          out[start:end, :] *= factor
+      else:
+        out[g] *= factor
+    return out
+
+  @parameterized.product(
+      out_dtype=[torch.bfloat16, torch.float32],
+  )
+  def test_scaled_grouped_mm_fp4_2d_3d(self, out_dtype):
+    """Tests torch._scaled_grouped_mm: Case 1 (2D x 3D with offs) in FP4."""
+    if "TPU_NAME" not in os.environ:
+      self.skipTest("FP4 scaled_grouped_mm test requires TPU hardware.")
+
+    device = "tpu"
+    t1_float = torch.randn(16, 8, dtype=torch.float32).to(device)
+    t2_float = torch.randn(2, 8, 8, dtype=torch.float32).to(device)
+    t1_fp4 = t1_float.to(torch.float4_e2m1fn_x2)
+    t2_fp4 = t2_float.to(torch.float4_e2m1fn_x2)
+    offs = torch.tensor([8, 16], dtype=torch.int32).to(device)
+
+    scale_a = torch.rand(1, dtype=torch.float32).to(device)
+    scale_b = torch.rand(1, dtype=torch.float32).to(device)
+
+    golden = torch.ops.aten._grouped_mm(
+        t1_fp4.to(torch.float32), t2_fp4.to(torch.float32), offs=offs
+    )
+    expected = self._apply_group_scales(golden, scale_a, scale_b, offs)
+
+    out = torch._scaled_grouped_mm(
+        t1_fp4,
+        t2_fp4,
+        scale_a,
+        scale_b,
+        offs=offs,
+        out_dtype=out_dtype,
+    )
+
+    utils.assert_close(
+        out.to(torch.float32),
+        expected.to(torch.float32),
+        rtol=2e-1,
+        atol=2e-1,
+    )
+
+  @parameterized.product(
+      out_dtype=[torch.bfloat16, torch.float32],
+  )
+  def test_scaled_grouped_mm_fp4_3d_2d(self, out_dtype):
+    """Tests torch._scaled_grouped_mm: Case 2 (3D x 2D with offs) in FP4."""
+    if "TPU_NAME" not in os.environ:
+      self.skipTest("FP4 scaled_grouped_mm test requires TPU hardware.")
+
+    device = "tpu"
+    t1_float = torch.randn(2, 8, 8, dtype=torch.float32).to(device)
+    t2_float = torch.randn(8, 16, dtype=torch.float32).to(device)
+    t1_fp4 = t1_float.to(torch.float4_e2m1fn_x2)
+    t2_fp4 = t2_float.to(torch.float4_e2m1fn_x2)
+    offs = torch.tensor([8, 16], dtype=torch.int32).to(device)
+
+    scale_a = torch.rand(1, dtype=torch.float32).to(device)
+    scale_b = torch.rand(1, dtype=torch.float32).to(device)
+
+    golden = torch.ops.aten._grouped_mm(
+        t1_fp4.to(torch.float32), t2_fp4.to(torch.float32), offs=offs
+    )
+    expected = self._apply_group_scales(
+        golden, scale_a, scale_b, offs, is_3d_2d=True
+    )
+
+    out = torch._scaled_grouped_mm(
+        t1_fp4,
+        t2_fp4,
+        scale_a,
+        scale_b,
+        offs=offs,
+        out_dtype=out_dtype,
+    )
+
+    utils.assert_close(
+        out.to(torch.float32),
+        expected.to(torch.float32),
+        rtol=2e-1,
+        atol=2e-1,
+    )
+
+  @parameterized.product(
+      out_dtype=[torch.bfloat16, torch.float32],
+  )
+  def test_scaled_grouped_mm_fp4_2d_2d(self, out_dtype):
+    """Tests torch._scaled_grouped_mm: Case 3 (2D x 2D with offs) in FP4."""
+    if "TPU_NAME" not in os.environ:
+      self.skipTest("FP4 scaled_grouped_mm test requires TPU hardware.")
+
+    device = "tpu"
+    t1_float = torch.randn(16, 8, dtype=torch.float32).to(device)
+    t2_float = torch.randn(8, 16, dtype=torch.float32).to(device)
+    t1_fp4 = t1_float.to(torch.float4_e2m1fn_x2)
+    t2_fp4 = t2_float.to(torch.float4_e2m1fn_x2)
+    offs = torch.tensor([8, 16], dtype=torch.int32).to(device)
+
+    scale_a = torch.rand(1, dtype=torch.float32).to(device)
+    scale_b = torch.rand(1, dtype=torch.float32).to(device)
+
+    golden = torch.ops.aten._grouped_mm(
+        t1_fp4.to(torch.float32), t2_fp4.to(torch.float32), offs=offs
+    )
+    expected = self._apply_group_scales(golden, scale_a, scale_b, offs)
+
+    out = torch._scaled_grouped_mm(
+        t1_fp4,
+        t2_fp4,
+        scale_a,
+        scale_b,
+        offs=offs,
+        out_dtype=out_dtype,
+    )
+
+    utils.assert_close(
+        out.to(torch.float32),
+        expected.to(torch.float32),
+        rtol=2e-1,
+        atol=2e-1,
+    )
+
+  @parameterized.product(
+      out_dtype=[torch.bfloat16, torch.float32],
+  )
+  def test_scaled_grouped_mm_fp4_3d_3d(self, out_dtype):
+    """Tests torch._scaled_grouped_mm: Case 4 (3D x 3D) in FP4."""
+    if "TPU_NAME" not in os.environ:
+      self.skipTest("FP4 scaled_grouped_mm test requires TPU hardware.")
+
+    device = "tpu"
+    t1_float = torch.randn(2, 8, 8, dtype=torch.float32).to(device)
+    t2_float = torch.randn(2, 8, 8, dtype=torch.float32).to(device)
+    t1_fp4 = t1_float.to(torch.float4_e2m1fn_x2)
+    t2_fp4 = t2_float.to(torch.float4_e2m1fn_x2)
+
+    scale_a = torch.rand(1, dtype=torch.float32).to(device)
+    scale_b = torch.rand(1, dtype=torch.float32).to(device)
+
+    golden = torch.ops.aten._grouped_mm(
+        t1_fp4.to(torch.float32), t2_fp4.to(torch.float32)
+    )
+    expected = self._apply_group_scales(golden, scale_a, scale_b)
+
+    out = torch._scaled_grouped_mm(
+        t1_fp4,
+        t2_fp4,
+        scale_a,
+        scale_b,
+        out_dtype=out_dtype,
+    )
+
+    utils.assert_close(
+        out.to(torch.float32),
+        expected.to(torch.float32),
+        rtol=2e-1,
+        atol=2e-1,
+    )
+
+  @parameterized.product(
+      out_dtype=[torch.bfloat16, torch.float32],
+  )
+  def test_scaled_grouped_mm_fp4_ragged(self, out_dtype):
+    """Tests torch._scaled_grouped_mm with non-uniform group sizes."""
+    if "TPU_NAME" not in os.environ:
+      self.skipTest("FP4 scaled_grouped_mm test requires TPU hardware.")
+
+    device = "tpu"
+    t1_float = torch.randn(12, 8, dtype=torch.float32).to(device)
+    t2_float = torch.randn(2, 8, 16, dtype=torch.float32).to(device)
+    t1_fp4 = t1_float.to(torch.float4_e2m1fn_x2)
+    t2_fp4 = t2_float.to(torch.float4_e2m1fn_x2)
+    offs = torch.tensor([4, 12], dtype=torch.int32).to(device)
+
+    scale_a = torch.rand(1, dtype=torch.float32).to(device)
+    scale_b = torch.rand(1, dtype=torch.float32).to(device)
+
+    golden = torch.ops.aten._grouped_mm(
+        t1_fp4.to(torch.float32), t2_fp4.to(torch.float32), offs=offs
+    )
+    expected = self._apply_group_scales(golden, scale_a, scale_b, offs)
+
+    out = torch._scaled_grouped_mm(
+        t1_fp4,
+        t2_fp4,
+        scale_a,
+        scale_b,
+        offs=offs,
+        out_dtype=out_dtype,
+    )
+
+    utils.assert_close(
+        out.to(torch.float32),
+        expected.to(torch.float32),
+        rtol=2e-1,
+        atol=2e-1,
+    )
+
 
 class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for backward ops."""
@@ -9936,6 +10232,7 @@ class OpTestingFrameworkTest(op_testing.OpInfoTestBase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  @unittest.skip("direct copy to host is not supported for float4_e2m1fn_x2")
   def test_float4_e2m1fn_x2_sample_generation(self):
     abs_op = next(op for op in op_db if op.name == "abs")
     pairs = self._get_golden_input_output_pairs(

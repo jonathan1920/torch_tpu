@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/grouped_mm/grouped_mm_aten_kernels.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -24,6 +25,7 @@
 
 #include "ATen/core/TensorBody.h"
 #include "absl/log/absl_check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/util/SmallVector.h"
@@ -37,6 +39,7 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
@@ -51,6 +54,10 @@
 
 namespace torch_tpu {
 namespace {
+
+bool IsScalar(const at::Tensor& t) {
+  return t.dim() == 0 || (t.dim() == 1 && t.size(0) == 1);
+}
 
 // Lowers grouped matmul to MLIR StableHLO/CHLO.
 //
@@ -96,6 +103,14 @@ absl::StatusOr<mlir::MlirOp> BuildGroupedMmShlo(
   mlir::MlirBuilder& builder = self_op.getBuilder();
   const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self_op);
   const mlir::RankedTensorType mat2_type = GetTensorTypeOrDie(mat2_op);
+
+  // Upcast input tensors to the computation precision (e.g., F32 or BF16)
+  // prior to RaggedDot/DotGeneral because CHLO RaggedDot does not natively
+  // handle sub-byte types like FP4/MXFP8 or mixed precision without explicit
+  // casts. For standard types (e.g., BF16→BF16), this is a no-op that the
+  // MLIR canonicalizer eliminates.
+  self_op = mlir::stablehlo::ConvertElementType(self_op, out_dtype);
+  mat2_op = mlir::stablehlo::ConvertElementType(mat2_op, out_dtype);
 
   const bool a_is_2d = self_type.getRank() == 2;
   const bool b_is_2d = mat2_type.getRank() == 2;
@@ -225,28 +240,107 @@ absl::StatusOr<mlir::MlirOp> BuildGroupedMmShlo(
                                        precision_config);
   }
 }
-absl::StatusOr<DeviceBufferRef> GroupedMm(
-    const at::Tensor& self, const at::Tensor& mat2,
-    const std::optional<at::Tensor>& offs,
-    const std::optional<at::Tensor>& bias,
-    std::optional<at::ScalarType> out_dtype, OpParamCacheKeys& param_keys) {
-  // In ragged grouped GEMM, adding bias inside the kernel requires
-  // expensive dynamic indexing because each expert group has an irregular
-  // token count. To optimize performance, PyTorch CUDA/CPU kernels
-  // explicitly reject bias.
-  // Eager models also perform out.add_(bias) externally.
-  TT_RET_CHECK(!bias.has_value() || !bias->defined(),
-               error::kPythonNotImplementedError)
-      << "expected bias to be undefined, got defined tensor";
 
+absl::StatusOr<mlir::MlirOp> BuildScaledGroupedMmShlo(
+    mlir::MlirOp self_op, mlir::MlirOp mat2_op, mlir::MlirOp scale_a,
+    mlir::MlirOp scale_b, std::optional<mlir::MlirOp> offs_op,
+    std::optional<mlir::MlirOp> bias, std::optional<mlir::MlirOp> scale_result,
+    mlir::ElementType out_dtype, mlir::stablehlo::Precision precision) {
+  auto self_type = GetTensorTypeOrDie(self_op);
+  TT_ASSIGN_OR_RETURN(mlir::ElementType self_elem_type,
+                      ConvertTo<mlir::ElementType>(self_type.getElementType()));
+
+  // For sub-byte types like FP4 or MXFP8, computation precision is typically
+  // elevated to F32 to preserve accuracy and because XLA does not support
+  // sub-byte math directly. Standard floating types (BF16, F32) usually map to
+  // themselves.
+  TT_ASSIGN_OR_RETURN(auto comp_dtype, InferComputationDtype(self_elem_type));
+
+  TT_ASSIGN_OR_RETURN(
+      mlir::MlirOp mm_result,
+      BuildGroupedMmShlo(self_op, mat2_op, offs_op, comp_dtype, precision));
+  TT_ASSIGN_OR_RETURN(mm_result,
+                      CastIfNeeded(mm_result, mlir::ElementType::F32));
+
+  TT_ASSIGN_OR_RETURN(auto scale_a_f32,
+                      CastIfNeeded(scale_a, mlir::ElementType::F32));
+  TT_ASSIGN_OR_RETURN(auto scale_b_f32,
+                      CastIfNeeded(scale_b, mlir::ElementType::F32));
+  // ApplyBroadcastIfNeeded is a no-op for scalar scales but required for
+  // dynamism compliance and future per-group scale support.
+  TT_ASSIGN_OR_RETURN(auto broadcasted_scales,
+                      ApplyBroadcastIfNeeded<2>({scale_a_f32, scale_b_f32}));
+  auto combined_scale =
+      mlir::stablehlo::Mul(broadcasted_scales[0], broadcasted_scales[1]);
+
+  // Currently only scalar scales are supported (enforced by IsScalar checks
+  // in ScaledGroupedMm), so the scalar path always applies. The rank-3 and
+  // error paths are retained for future per-group scaling support.
+  auto broadcast_scale_to_result =
+      [&](mlir::MlirOp scale) -> absl::StatusOr<mlir::MlirOp> {
+    auto result_type = GetTensorTypeOrDie(mm_result);
+    auto scale_type = GetTensorTypeOrDie(scale);
+    if (scale_type.getRank() == 0 ||
+        (scale_type.getRank() == 1 && scale_type.getShape()[0] == 1)) {
+      return scale;
+    }
+    if (result_type.getRank() == 3) {
+      auto bcast_type =
+          mlir::makeTensorType(scale.getContext(), result_type.getShape(),
+                               scale_type.getElementType());
+      std::vector<int64_t> bcast_dims = {0};  // INT_VEC_OK
+      return mlir::stablehlo::BroadcastInDim(bcast_type, scale, bcast_dims);
+    }
+    return TT_ERROR(  // ERROR_COV_INFEASIBLE=IsScalar rejects non-scalar scales
+               absl::StatusCode::kUnimplemented)  // STATUS_CODE_OK
+           << "Per-group scaling for 2D ragged grouped_mm is mathematically "
+           << "unsupported without scatter/gather representation.";
+  };
+
+  TT_ASSIGN_OR_RETURN(auto rank_expanded_combined_scale,
+                      broadcast_scale_to_result(combined_scale));
+
+  TT_ASSIGN_OR_RETURN(
+      auto broadcasted_mm_scale,
+      ApplyBroadcastIfNeeded<2>({mm_result, rank_expanded_combined_scale}));
+  auto scaled_result =
+      mlir::stablehlo::Mul(broadcasted_mm_scale[0], broadcasted_mm_scale[1]);
+
+  if (bias.has_value()) {
+    TT_ASSIGN_OR_RETURN(auto bias_f32,
+                        CastIfNeeded(*bias, mlir::ElementType::F32));
+    TT_ASSIGN_OR_RETURN(auto broadcasted_bias,
+                        ApplyBroadcastIfNeeded<2>({scaled_result, bias_f32}));
+    scaled_result =
+        mlir::stablehlo::Add(broadcasted_bias[0], broadcasted_bias[1]);
+  }
+
+  if (scale_result.has_value()) {
+    TT_ASSIGN_OR_RETURN(auto scale_result_f32,
+                        CastIfNeeded(*scale_result, mlir::ElementType::F32));
+    TT_ASSIGN_OR_RETURN(
+        auto broadcasted_scale_result,
+        ApplyBroadcastIfNeeded<2>({scaled_result, scale_result_f32}));
+    scaled_result = mlir::stablehlo::Mul(broadcasted_scale_result[0],
+                                         broadcasted_scale_result[1]);
+  }
+
+  scaled_result = mlir::stablehlo::ConvertElementType(scaled_result, out_dtype);
+  return scaled_result;
+}
+
+absl::StatusOr<c10::SmallVector<int64_t, 3>> GetGroupedMmOutputSize(
+    const at::Tensor& self, const at::Tensor& mat2,
+    const std::optional<at::Tensor>& offs) {
   const bool a_is_2d = self.dim() == 2;
   const bool b_is_2d = mat2.dim() == 2;
+  const bool has_offs = offs.has_value() && offs->defined();
+
   TT_RET_CHECK(self.dim() == 2 || self.dim() == 3, error::kInvalidArgument)
       << "expected self to be 2D or 3D, got " << self.dim() << "D";
   TT_RET_CHECK(mat2.dim() == 2 || mat2.dim() == 3, error::kInvalidArgument)
       << "expected mat2 to be 2D or 3D, got " << mat2.dim() << "D";
-  TT_RET_CHECK(offs.has_value() == (a_is_2d || b_is_2d),
-               error::kInvalidArgument)
+  TT_RET_CHECK(has_offs == (a_is_2d || b_is_2d), error::kInvalidArgument)
       << "expected offs to be provided if and only if either self or mat2 is "
          "2D";
 
@@ -273,6 +367,26 @@ absl::StatusOr<DeviceBufferRef> GroupedMm(
       out_size = {self.size(0), self.size(1), mat2.size(-1)};
     }
   }
+  return out_size;
+}
+
+absl::StatusOr<DeviceBufferRef> GroupedMm(
+    const at::Tensor& self, const at::Tensor& mat2,
+    const std::optional<at::Tensor>& offs,
+    const std::optional<at::Tensor>& bias,
+    std::optional<at::ScalarType> out_dtype, OpParamCacheKeys& param_keys) {
+  // In ragged grouped GEMM, adding bias inside the kernel requires
+  // expensive dynamic indexing because each expert group has an irregular
+  // token count. To optimize performance, PyTorch CUDA/CPU kernels
+  // explicitly reject bias.
+  // Eager models also perform out.add_(bias) externally.
+  TT_RET_CHECK(!bias.has_value() || !bias->defined(),
+               error::kPythonNotImplementedError)
+      << "expected bias to be undefined, got defined tensor";
+
+  const bool has_offs = offs.has_value() && offs->defined();
+
+  TT_ASSIGN_OR_RETURN(auto out_size, GetGroupedMmOutputSize(self, mat2, offs));
 
   at::ScalarType target_dtype = out_dtype.value_or(self.scalar_type());
   TT_ASSIGN_OR_RETURN(mlir::ElementType output_elem_type,
@@ -283,7 +397,7 @@ absl::StatusOr<DeviceBufferRef> GroupedMm(
   const auto current_precision = GetAndAddPrecisionTo(param_keys);
 
   std::vector<at::Tensor> inputs = {self, mat2};
-  if (offs.has_value()) {
+  if (has_offs) {
     inputs.push_back(*offs);
   }
 
@@ -309,6 +423,84 @@ absl::StatusOr<DeviceBufferRef> GroupedMm(
                                 .op_param_cache_keys = std::move(param_keys)}));
   return result_buffer;
 }
+
+absl::StatusOr<DeviceBufferRef> ScaledGroupedMm(
+    const at::Tensor& self, const at::Tensor& mat2, const at::Tensor& scale_a,
+    const at::Tensor& scale_b, const std::optional<at::Tensor>& offs,
+    const std::optional<at::Tensor>& bias,
+    const std::optional<at::Tensor>& scale_result,
+    std::optional<at::ScalarType> out_dtype, bool use_fast_accum,
+    OpParamCacheKeys& param_keys) {
+  TT_RET_CHECK(!use_fast_accum, error::kPythonNotImplementedError)
+      << "use_fast_accum=true is not supported yet";
+
+  const bool has_offs = offs.has_value() && offs->defined();
+  const bool has_bias = bias.has_value() && bias->defined();
+  const bool has_scale_result =
+      scale_result.has_value() && scale_result->defined();
+
+  // Per-group scales not yet supported.
+  TT_RET_CHECK(IsScalar(scale_a), error::kPythonNotImplementedError)
+      << "scale_a must be 1D or scalar, but got " << scale_a.dim() << "D";
+  TT_RET_CHECK(IsScalar(scale_b), error::kPythonNotImplementedError)
+      << "scale_b must be 1D or scalar, but got " << scale_b.dim() << "D";
+  if (has_bias) {
+    TT_RET_CHECK(IsScalar(*bias), error::kPythonNotImplementedError)
+        << "bias must be 1D or scalar, but got " << bias->dim() << "D";
+  }
+  if (has_scale_result) {
+    TT_RET_CHECK(IsScalar(*scale_result), error::kPythonNotImplementedError)
+        << "scale_result must be 1D or scalar, but got " << scale_result->dim()
+        << "D";
+  }
+
+  TT_ASSIGN_OR_RETURN(auto out_size, GetGroupedMmOutputSize(self, mat2, offs));
+
+  const at::ScalarType target_dtype = out_dtype.value_or(self.scalar_type());
+  TT_ASSIGN_OR_RETURN(mlir::ElementType output_elem_type,
+                      ConvertTo<mlir::ElementType>(target_dtype));
+
+  Dimensions out_dims_vec(out_size.begin(), out_size.end());
+  const auto current_precision = GetAndAddPrecisionTo(param_keys);
+
+  std::vector<at::Tensor> inputs = {self, mat2, scale_a, scale_b};
+  if (has_offs) inputs.push_back(*offs);
+  if (has_bias) inputs.push_back(*bias);
+  if (has_scale_result) inputs.push_back(*scale_result);
+
+  auto op_builder =
+      [output_elem_type, current_precision, has_offs, has_bias,
+       has_scale_result](
+          absl::Span<mlir::MlirOp> inputs,
+          mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
+    auto self_op = inputs[0];
+    auto mat2_op = inputs[1];
+    auto scale_a_op = inputs[2];
+    auto scale_b_op = inputs[3];
+
+    const size_t kOptionalArgStartInd = 4;
+    size_t idx = kOptionalArgStartInd;
+    auto offs_op = has_offs ? std::make_optional(inputs[idx++]) : std::nullopt;
+    auto bias_op = has_bias ? std::make_optional(inputs[idx++]) : std::nullopt;
+    auto scale_result_op =
+        has_scale_result ? std::make_optional(inputs[idx++]) : std::nullopt;
+
+    TT_ASSIGN_OR_RETURN(
+        auto result,
+        BuildScaledGroupedMmShlo(self_op, mat2_op, scale_a_op, scale_b_op,
+                                 offs_op, bias_op, scale_result_op,
+                                 output_elem_type, current_precision));
+    return result;
+  };
+
+  TT_ASSIGN_OR_RETURN(
+      auto result_buffer,
+      DispatchOp<kDynamicSize>(std::move(op_builder), inputs,
+                               {.out_dtype = output_elem_type,
+                                .out_dims = out_dims_vec,
+                                .op_param_cache_keys = std::move(param_keys)}));
+  return result_buffer;
+}
 }  // namespace
 
 at::Tensor AtenGroupedMm(const at::Tensor& self, const at::Tensor& mat2,
@@ -320,6 +512,27 @@ at::Tensor AtenGroupedMm(const at::Tensor& self, const at::Tensor& mat2,
               TT_ASSIGN_OR_THROW(
                   auto result_buffer,
                   GroupedMm(self, mat2, offs, bias, out_dtype, param_keys));
+              return MakeTensor(result_buffer);
+            });
+}
+
+at::Tensor AtenScaledGroupedMm(const at::Tensor& self, const at::Tensor& mat2,
+                               const at::Tensor& scale_a,
+                               const at::Tensor& scale_b,
+                               const std::optional<at::Tensor>& offs,
+                               const std::optional<at::Tensor>& bias,
+                               const std::optional<at::Tensor>& scale_result,
+                               std::optional<at::ScalarType> out_dtype,
+                               bool use_fast_accum) {
+  TT_KERNEL(OpName::kScaledGroupedMm, param_keys,
+            (self, mat2, scale_a, scale_b, offs, bias, scale_result, out_dtype,
+             use_fast_accum),
+            {
+              TT_ASSIGN_OR_THROW(
+                  auto result_buffer,
+                  ScaledGroupedMm(self, mat2, scale_a, scale_b, offs, bias,
+                                  scale_result, out_dtype, use_fast_accum,
+                                  param_keys));
               return MakeTensor(result_buffer);
             });
 }

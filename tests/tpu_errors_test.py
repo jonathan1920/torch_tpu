@@ -3407,6 +3407,77 @@ module {
     ):
       torch.ops.aten._prelu_kernel_backward(grad_output, self_tensor, weight)
 
+  @et.why_tpu_only("torch._scaled_grouped_mm is not supported on GPU.")
+  def test_scaled_grouped_mm_fast_accum_unsupported(self):
+    a = torch.randn(3, 4, device=et.device())
+    b = torch.randn(3, 4, 8, device=et.device())
+    scale_a = torch.tensor(1.0, device=et.device())
+    scale_b = torch.tensor(1.0, device=et.device())
+    offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""scaled_grouped_mm(): use_fast_accum=true is not supported yet""",
+    ):
+      torch._scaled_grouped_mm(
+          a, b, scale_a, scale_b, offs=offs, use_fast_accum=True
+      )
+
+  @et.why_tpu_only("torch._scaled_grouped_mm is not supported on GPU.")
+  def test_scaled_grouped_mm_invalid_scale_a_dim(self):
+    a = torch.randn(3, 4, device=et.device())
+    b = torch.randn(3, 4, 8, device=et.device())
+    scale_a = torch.randn(2, 2, device=et.device())
+    scale_b = torch.tensor(1.0, device=et.device())
+    offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""scaled_grouped_mm(): scale_a must be 1D or scalar, but got 2D""",
+    ):
+      torch._scaled_grouped_mm(a, b, scale_a, scale_b, offs=offs)
+
+  @et.why_tpu_only("torch._scaled_grouped_mm is not supported on GPU.")
+  def test_scaled_grouped_mm_invalid_scale_b_dim(self):
+    a = torch.randn(3, 4, device=et.device())
+    b = torch.randn(3, 4, 8, device=et.device())
+    scale_a = torch.tensor(1.0, device=et.device())
+    scale_b = torch.randn(2, 2, device=et.device())
+    offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""scaled_grouped_mm(): scale_b must be 1D or scalar, but got 2D""",
+    ):
+      torch._scaled_grouped_mm(a, b, scale_a, scale_b, offs=offs)
+
+  @et.why_tpu_only("torch._scaled_grouped_mm is not supported on GPU.")
+  def test_scaled_grouped_mm_invalid_bias_dim(self):
+    a = torch.randn(3, 4, device=et.device())
+    b = torch.randn(3, 4, 8, device=et.device())
+    scale_a = torch.tensor(1.0, device=et.device())
+    scale_b = torch.tensor(1.0, device=et.device())
+    bias = torch.randn(2, 2, device=et.device())
+    offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""scaled_grouped_mm(): bias must be 1D or scalar, but got 2D""",
+    ):
+      torch._scaled_grouped_mm(a, b, scale_a, scale_b, bias=bias, offs=offs)
+
+  @et.why_tpu_only("torch._scaled_grouped_mm is not supported on GPU.")
+  def test_scaled_grouped_mm_invalid_scale_result_dim(self):
+    a = torch.randn(3, 4, device=et.device())
+    b = torch.randn(3, 4, 8, device=et.device())
+    scale_a = torch.tensor(1.0, device=et.device())
+    scale_b = torch.tensor(1.0, device=et.device())
+    scale_result = torch.randn(2, 2, device=et.device())
+    offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""scaled_grouped_mm(): scale_result must be 1D or scalar, but got 2D""",
+    ):
+      torch._scaled_grouped_mm(
+          a, b, scale_a, scale_b, scale_result=scale_result, offs=offs
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

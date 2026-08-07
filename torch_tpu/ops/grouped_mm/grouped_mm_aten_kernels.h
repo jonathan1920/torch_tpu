@@ -29,6 +29,15 @@ at::Tensor AtenGroupedMm(const at::Tensor& self, const at::Tensor& mat2,
                          const std::optional<at::Tensor>& bias,
                          std::optional<at::ScalarType> out_dtype);
 
+at::Tensor AtenScaledGroupedMm(const at::Tensor& self, const at::Tensor& mat2,
+                               const at::Tensor& scale_a,
+                               const at::Tensor& scale_b,
+                               const std::optional<at::Tensor>& offs,
+                               const std::optional<at::Tensor>& bias,
+                               const std::optional<at::Tensor>& scale_result,
+                               std::optional<at::ScalarType> out_dtype,
+                               bool use_fast_accum);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_GROUPED_MM_GROUPED_MM_ATEN_KERNELS_H_

@@ -1249,6 +1249,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_scaled_dot_product_fused_attention_overrideable";
     case OpName::kScaledDotProductFusedAttentionOverrideableBackward:
       return "_scaled_dot_product_fused_attention_overrideable_backward";
+    case OpName::kScaledGroupedMm:
+      return "_scaled_grouped_mm";
     case OpName::kScaledMm:
       return "_scaled_mm";
     case OpName::kScaledMmOut:
