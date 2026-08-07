@@ -891,5 +891,29 @@ class DynamicErrorHandlingTest(absltest.TestCase):
       self.assertIn("MLIR lowering failed", str(ctx.exception))
 
 
+class SymMaxMinTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    tt_testing.reset_eager_state()
+    self.device = torch.accelerator.current_accelerator()
+
+  def test_sym_max_and_min(self):
+    def fn(x):
+      max_val = max(x.shape[0] - 5, 0)
+      min_val = min(10, x.shape[0] + 2)
+      return torch.arange(8, device=x.device) + max_val + min_val
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(fn, backend=tpu_backend)
+
+    t = torch.ones(8, device=self.device)
+    torch._dynamo.mark_dynamic(t, 0, min=2, max=16)
+
+    out = compiled(t)
+    expected = fn(t)
+    utils.assert_close(out, expected)
+
+
 if __name__ == "__main__":
   absltest.main()

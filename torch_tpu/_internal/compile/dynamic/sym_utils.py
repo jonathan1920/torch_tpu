@@ -22,9 +22,70 @@ import sympy
 import torch
 
 
+def _get_tracer(*args) -> torch.fx.Tracer:
+  for arg in args:
+    if isinstance(arg, torch.fx.Proxy):
+      return arg.tracer
+  raise ValueError("Expected at least one torch.fx.Proxy argument.")
+
+
+def _get_target_dtype(*args) -> torch.dtype:
+  for arg in args:
+    if isinstance(arg, torch.fx.Proxy) and hasattr(arg.node, "meta"):
+      val = arg.node.meta.get("val")
+      if (
+          val is not None
+          and hasattr(val, "dtype")
+          and isinstance(val.dtype, torch.dtype)
+      ):
+        return val.dtype
+  return torch.int32
+
+
+def _ensure_tensor_proxy(
+    x: Any, tracer: torch.fx.Tracer, dtype: torch.dtype = torch.int32
+) -> torch.fx.Proxy:
+  if isinstance(x, torch.fx.Proxy):
+    if hasattr(x.node, "meta"):
+      val = x.node.meta.get("val")
+      if val is not None and hasattr(val, "dtype") and val.dtype != dtype:
+        return x.to(dtype=dtype)
+    return x
+  return tracer.create_proxy(
+      "call_function",
+      torch.ops.aten.scalar_tensor.default,
+      (int(x),),
+      {"dtype": dtype},
+  )
+
+
+def _sym_reduce(op: Any, *args):
+  tracer = _get_tracer(*args)
+  dtype = _get_target_dtype(*args)
+  res = _ensure_tensor_proxy(args[0], tracer, dtype=dtype)
+  for arg in args[1:]:
+    res = tracer.create_proxy(
+        "call_function",
+        op,
+        (res, _ensure_tensor_proxy(arg, tracer, dtype=dtype)),
+        {},
+    )
+  return res
+
+
+def _sym_max(*args):
+  return _sym_reduce(torch.ops.aten.maximum.default, *args)
+
+
+def _sym_min(*args):
+  return _sym_reduce(torch.ops.aten.minimum.default, *args)
+
+
 CUSTOM_SYMPY_FUNCS = {
     "FloorDiv": operator.floordiv,
     "CeilDiv": lambda a, b: -(-a // b),
+    "Max": _sym_max,
+    "Min": _sym_min,
 }
 
 
