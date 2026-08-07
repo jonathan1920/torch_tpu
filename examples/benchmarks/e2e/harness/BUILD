@@ -14,6 +14,7 @@
 
 load(
     "//build_files:build_defs.bzl",
+    "if_oss",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
     "torch_tpu_py_test",
@@ -144,6 +145,7 @@ torch_tpu_py_test(
     ],
     env = {
         "BENCHMARK_PLATFORM": "v5e_1x1",
+        "IS_OSS": if_oss("1", "0"),
     },
     nolocal = "user requested to run this manually",
     notest_oss = "requires huggingface configs from internal infra",
