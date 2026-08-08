@@ -2088,6 +2088,8 @@ oss_target(
     ],
 )
 
+# TODO(b/543950784): Create Starlark for examples to avoid bloat.
+
 # Test for ensure pytorch example works with torch_tpu. It functions as an integration test and as a
 # documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
 # Therefore, this test is OSS only.
@@ -2187,6 +2189,33 @@ oss_target(
         "//torch_tpu",
         "@pypi//numpy",
         "@pypi//requests",
+    ],
+)
+
+# Test to ensure pytorch example works with torch_tpu. It functions as an integration test and as a
+# documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
+# Therefore, this test is OSS only.
+oss_target(
+    torch_tpu_py_test,
+    name = "run_upstream_example_dcgan_tpu",
+    srcs = ["run_upstream_example.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_EXAMPLE_ARGS": "--dataset=fake --dry-run --accel --batchSize=4 --workers=0",
+        "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "dcgan/main.py",
+    },
+    main = "run_upstream_example.py",
+    nolocal = "This test requires downloading the raw PyTorch examples tree.",
+    nonightly_oss = "Test in development. To be added to nightly once stable.",
+    nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
+    tags = [
+        "requires-tpu-v5lite",
+        "wheel_test_excluded",
+    ],
+    deps = [
+        "//shims/absl_py:app",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "@pypi//torchvision",
     ],
 )
 
