@@ -131,10 +131,9 @@ enum class SdpaPromotionType {
 };
 
 // Determine exactly where type promotion should happen inside the attn module.
-// The softmax mode will emit a pattern that will ultimately be replace by XLA
-// with an optimized kernel. We have a simple huerstic informed by empirical
-// evidence to determine if this will be beneficial for performance.
-// The fallback is to run all the attn math in full precision for accuracy.
+// Softmax mode emits a pattern replaced by XLA with an optimized kernel; we
+// use a simple heuristic based on tensor size and sequence alignment to decide
+// when that kernel is beneficial. Otherwise we fall back to full precision.
 SdpaPromotionType GetSdpaPromotionType(mlir::MlirOp query, mlir::MlirOp key,
                                        bool allow_half_precision_reduction_math,
                                        bool q_needs_grad) {
@@ -150,6 +149,14 @@ SdpaPromotionType GetSdpaPromotionType(mlir::MlirOp query, mlir::MlirOp key,
     return SdpaPromotionType::kWholeModule;
   }
 
+  // Softmax-only promotion requires >500k elements to offset kernel launch
+  // overhead, and sequence lengths <=8192 aligned to 128 (or 32 for >=2048).
+  constexpr int64_t kMinTotalElements = 500000;
+  constexpr int64_t kDefaultSeqLenAlignment = 128;
+  constexpr int64_t kLargeSeqLenThreshold = 2048;
+  constexpr int64_t kLargeSeqLenAlignment = 32;
+  constexpr int64_t kMaxSupportedSeqLen = 8192;
+
   auto query_shape = GetTensorTypeOrDie(query).getShape();
   auto key_shape = GetTensorTypeOrDie(key).getShape();
 
@@ -158,21 +165,29 @@ SdpaPromotionType GetSdpaPromotionType(mlir::MlirOp query, mlir::MlirOp key,
     total_elements *= dim;
   }
 
-  int query_rank = query_shape.size();
-  int key_rank = key_shape.size();
+  const int query_rank = query_shape.size();
+  const int key_rank = key_shape.size();
   bool sequence_length_supported = true;
   bool sequence_length_too_large = false;
   if (query_rank >= 2 && key_rank >= 2) {
-    int64_t seq_len_q = query_shape[query_rank - 2];
-    int64_t seq_len_kv = key_shape[key_rank - 2];
-    sequence_length_supported =
-        (seq_len_q % 128 == 0) && (seq_len_kv % 128 == 0);
-    sequence_length_too_large = (seq_len_q > 8192) || (seq_len_kv > 8192);
+    const int64_t seq_len_q = query_shape[query_rank - 2];
+    const int64_t seq_len_kv = key_shape[key_rank - 2];
+    const bool is_multiple_of_128 =
+        (seq_len_q % kDefaultSeqLenAlignment == 0) &&
+        (seq_len_kv % kDefaultSeqLenAlignment == 0);
+    const bool is_large_multiple_of_32 =
+        (seq_len_q >= kLargeSeqLenThreshold &&
+         seq_len_kv >= kLargeSeqLenThreshold) &&
+        (seq_len_q % kLargeSeqLenAlignment == 0) &&
+        (seq_len_kv % kLargeSeqLenAlignment == 0);
+    sequence_length_supported = is_multiple_of_128 || is_large_multiple_of_32;
+    sequence_length_too_large =
+        (seq_len_q > kMaxSupportedSeqLen) || (seq_len_kv > kMaxSupportedSeqLen);
   }
 
-  bool should_fallback = (total_elements < 500000) ||
-                         !sequence_length_supported ||
-                         sequence_length_too_large;
+  const bool should_fallback = (total_elements < kMinTotalElements) ||
+                               !sequence_length_supported ||
+                               sequence_length_too_large;
 
   return should_fallback ? SdpaPromotionType::kWholeModule
                          : SdpaPromotionType::kSoftmaxOnly;
