@@ -350,18 +350,16 @@ namespace {
 //      pjrt-inferred output shape.
 absl::StatusOr<std::vector<Shape>> GetOutputShapes(
     const SharedLoadedExecutableWithMetadata& executable,
-    absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
-        runtime_output_shapes) {
+    absl::Span<const OutputShape> output_shapes) {
   const std::vector<Shape>& inferred_shapes = executable->output_shapes();
-
-  if (runtime_output_shapes.empty()) {
+  if (output_shapes.empty()) {
     return inferred_shapes;
   }
 
-  TT_RET_CHECK(runtime_output_shapes.size() == inferred_shapes.size(),
+  TT_RET_CHECK(output_shapes.size() == inferred_shapes.size(),
                error::kInvalidArgument)
       << "output shapes must be specified for all outputs or none, "
-      << "got " << runtime_output_shapes.size() << " output shapes for "
+      << "got " << output_shapes.size() << " output shapes for "
       << inferred_shapes.size() << " output tensors";
 
   std::vector<Shape> result_shapes;
@@ -369,24 +367,30 @@ absl::StatusOr<std::vector<Shape>> GetOutputShapes(
 
   for (size_t i = 0; i < inferred_shapes.size(); ++i) {
     Shape result_shape = inferred_shapes[i];
-    const auto& shape = runtime_output_shapes[i];
-    TT_RET_CHECK(shape.size() == result_shape.dimensions().size(),
-                 error::kInvalidArgument)
-        << "output shape number of dimensions must match the statically "
-           "inferred dimensions, got output shape dimensions "
-        << shape.size() << " and inferred dimensions "
-        << result_shape.dimensions().size() << " for output tensor " << i;
+    const OutputShape& shape_spec = output_shapes[i];
+    const auto& dimensions = shape_spec.dimensions;
 
-    for (size_t j = 0; j < shape.size(); ++j) {
-      TT_RET_CHECK(shape[j] <= result_shape.dimensions()[j],
+    if (!dimensions.empty()) {
+      TT_RET_CHECK(dimensions.size() == result_shape.dimensions().size(),
                    error::kInvalidArgument)
-          << "output shape dimension must not exceed the statically "
-             "inferred bound, got output shape "
-          << ToString(shape) << " and inferred shape "
-          << ToString(result_shape.dimensions());
+          << "output shape number of dimensions must match the statically "
+             "inferred dimensions, got output shape dimensions "
+          << dimensions.size() << " and inferred dimensions "
+          << result_shape.dimensions().size() << " for output tensor " << i;
+
+      for (size_t j = 0; j < dimensions.size(); ++j) {
+        TT_RET_CHECK(dimensions[j] <= result_shape.dimensions()[j],
+                     error::kInvalidArgument)
+            << "output shape dimension must not exceed the statically "
+               "inferred bound, got output shape "
+            << ToString(dimensions) << " and inferred shape "
+            << ToString(result_shape.dimensions());
+      }
+
+      result_shape.dimensions().assign(dimensions.begin(), dimensions.end());
     }
 
-    result_shape.dimensions().assign(shape.begin(), shape.end());
+    result_shape.set_on_device_shape_is_dynamic(shape_spec.is_dynamic);
     result_shapes.push_back(std::move(result_shape));
   }
 
@@ -400,8 +404,7 @@ absl::StatusOr<std::vector<Shape>> GetOutputShapes(
 std::vector<at::Tensor> ExecuteCompiledModel(
     const SharedLoadedExecutableWithMetadata& executable,
     absl::Span<const at::Tensor> argument_tensors,
-    absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
-        output_shapes) {
+    absl::Span<const OutputShape> output_shapes) {
   TT_ASSIGN_OR_THROW(std::vector<Shape> result_shapes_vec,
                      GetOutputShapes(executable, output_shapes));
   // Get the materialized buffers for the bases of the argument tensors.

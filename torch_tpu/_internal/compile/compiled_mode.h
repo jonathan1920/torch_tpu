@@ -149,6 +149,11 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
     xla::MaybeOwningMlirModule module, UniqueCompileOptions compile_options);
 
+struct OutputShape {
+  std::vector<int64_t> dimensions;  // INT_VEC_OK
+  bool is_dynamic = false;
+};
+
 // torch.compile integration: this is called to invoke the compiled executable
 // returned by CompileMlirExecutable, and return new Tensors with the results.
 //
@@ -160,14 +165,15 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
 // Args:
 //   executable: The compiled executable to invoke.
 //   argument_tensors: The argument tensors to the compiled executable.
+//   output_shapes: If non-empty, overrides the pjrt-inferred output shapes and
+//     dynamic flags.
 //
 // Returns:
 //   The result tensors of the compiled executable.
 std::vector<at::Tensor> ExecuteCompiledModel(
     const SharedLoadedExecutableWithMetadata& executable,
     absl::Span<const at::Tensor> argument_tensors,
-    absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
-        output_shapes);
+    absl::Span<const OutputShape> output_shapes = {});
 
 // Creates a TPU tensor that represents the constant value of the CPU tensor.
 // This makes a copy of the CPU tensor data.

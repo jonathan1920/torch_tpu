@@ -65,6 +65,13 @@ class Shape {
   mlir::ElementType dtype() const { return dtype_; }
   void set_dtype(mlir::ElementType dtype) { dtype_ = dtype; }
 
+  bool on_device_shape_is_dynamic() const {
+    return on_device_shape_is_dynamic_;
+  }
+  void set_on_device_shape_is_dynamic(bool on_device_shape_is_dynamic) {
+    on_device_shape_is_dynamic_ = on_device_shape_is_dynamic;
+  }
+
   const absl::InlinedVector<BoundedDynamicDimension, 1>& dynamic_dimensions()
       const {
     return dynamic_dimensions_;
@@ -78,6 +85,7 @@ class Shape {
 
   friend bool operator==(const Shape& lhs, const Shape& rhs) {
     return lhs.dtype_ == rhs.dtype_ && lhs.dimensions_ == rhs.dimensions_ &&
+           lhs.on_device_shape_is_dynamic_ == rhs.on_device_shape_is_dynamic_ &&
            lhs.dynamic_dimensions_ == rhs.dynamic_dimensions_ &&
            lhs.layout_ == rhs.layout_;
   }
@@ -85,6 +93,7 @@ class Shape {
  private:
   Dimensions dimensions_;
   mlir::ElementType dtype_;
+  bool on_device_shape_is_dynamic_ = false;
   // We choose 1 as the inlined size because most Shapes are not dynamic, and
   // most dynamic Shapes are dynamic in 1 dimension only, so this allows for
   // no heap allocation in the common case.

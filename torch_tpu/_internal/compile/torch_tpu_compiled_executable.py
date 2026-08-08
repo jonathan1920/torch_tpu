@@ -85,6 +85,8 @@ def _unpickle_compiled_executable(
     serialized_bytes: bytes,
     reconstruct_fx_outputs_fn: _ReconstructFxOutputsFn | None,
     updates_default_generator_state: bool,
+    dynamic_outputs: Sequence[bool] | None = None,
+    unique_output_indices: Sequence[int] | None = None,
 ) -> "TorchTpuCompiledExecutable":
   """Reconstructs a TorchTpuCompiledExecutable from serialized bytes.
 
@@ -102,6 +104,10 @@ def _unpickle_compiled_executable(
       TorchTpuCompiledExecutable constructor.
     updates_default_generator_state: Whether the executable updates the default
       generator state.
+    dynamic_outputs: Optional sequence of booleans indicating whether each
+      output tensor is dynamic.
+    unique_output_indices: Optional sequence of original output indices
+      corresponding to deduplicated outputs.
 
   Returns:
     A deserialized TorchTpuCompiledExecutable instance.
@@ -110,6 +116,8 @@ def _unpickle_compiled_executable(
       executable=tpu_torch_compile.load_serialized_executable(serialized_bytes),
       reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
       updates_default_generator_state=updates_default_generator_state,
+      dynamic_outputs=dynamic_outputs,
+      unique_output_indices=unique_output_indices,
   )
 
 
@@ -126,6 +134,8 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
       executable: tpu_torch_compile.PjRtLoadedExecutable,
       reconstruct_fx_outputs_fn: _ReconstructFxOutputsFn | None,
       updates_default_generator_state: bool,
+      dynamic_outputs: Sequence[bool] | None = None,
+      unique_output_indices: Sequence[int] | None = None,
   ):
     """Initializes the compiled executable wrapper.
 
@@ -135,17 +145,17 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
         from the TPU executable back to the output structure expected by
         PyTorch. The existing use case is to re-insert `None` values into the
         output list if they were filtered out during MLIR conversion. This
-        callable should accept two arguments:
-
-          1. original_args: The original positional arguments passed to the
-             __call__ method of this executable.
-          2. tpu_outputs: The sequence of torch.Tensor results returned by the
-             underlying PjRt execution.
-
-        It should return a Sequence[Any] representing
-        the final outputs as expected by the FX graph's consumer.
+        callable should accept two arguments:  1. original_args: The original
+        positional arguments passed to the __call__ method of this executable.
+        2. tpu_outputs: The sequence of torch.Tensor results returned by the
+        underlying PjRt execution.  It should return a Sequence[Any]
+        representing the final outputs as expected by the FX graph's consumer.
       updates_default_generator_state: Whether the executable updates the
         default generator state.
+      dynamic_outputs: Optional sequence of booleans indicating whether each
+        output tensor is dynamic.
+      unique_output_indices: Optional sequence of original output indices
+        corresponding to deduplicated outputs.
     """  # fmt: skip
     self._executable = executable
     self._reconstruct_fx_outputs_fn = reconstruct_fx_outputs_fn
@@ -155,6 +165,12 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
     self._updates_default_generator_state: bool = (
         updates_default_generator_state
     )
+    self._dynamic_outputs: Sequence[bool] | None = dynamic_outputs
+    self._unique_output_indices: Sequence[int] | None = unique_output_indices
+
+  @property
+  def unique_output_indices(self) -> Sequence[int] | None:
+    return self._unique_output_indices
 
   @property
   def graph_module_debug_str(self) -> str | None:
@@ -247,7 +263,9 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
     return filtered
 
   def __call__(
-      self, *args: Any, output_shapes: Sequence[list[int]] | None = None
+      self,
+      *args: Any,
+      output_shapes: Sequence[tpu_torch_compile.OutputShape] | None = None,
   ) -> Any:
     """Executes the compiled TPU function.
 
@@ -260,8 +278,8 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
       *args: The positional arguments to the compiled function. These should
         match the structure and types expected by the original FX graph before
         compilation.
-      output_shapes: Optional sequence of shapes for the output tensors. This is
-        typically used in dynamic shape scenarios.
+      output_shapes: Optional sequence of OutputShape objects for the output
+        tensors. This is typically used in dynamic shape scenarios.
 
     Returns:
       The result of the computation. The structure and types of the result
@@ -306,14 +324,37 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
       # append the shapes of the device state tensors to match the number of
       # outputs from the executable.
       if output_shapes:
-        executable_output_shapes = list(output_shapes) + [
-            list(t.shape) for t in device_state_tensors
+        executable_output_shapes = [
+            s
+            if isinstance(s, tpu_torch_compile.OutputShape)
+            else tpu_torch_compile.OutputShape(
+                dimensions=s[0] if isinstance(s, tuple) else s,
+                is_dynamic=s[1] if isinstance(s, tuple) else False,
+            )
+            for s in output_shapes
+        ] + [
+            tpu_torch_compile.OutputShape(
+                dimensions=list(t.shape), is_dynamic=False
+            )
+            for t in device_state_tensors
+        ]
+      elif self._dynamic_outputs:
+        executable_output_shapes = [
+            tpu_torch_compile.OutputShape(is_dynamic=is_dyn)
+            for is_dyn in self._dynamic_outputs
+        ] + [
+            tpu_torch_compile.OutputShape(
+                dimensions=list(t.shape), is_dynamic=False
+            )
+            for t in device_state_tensors
         ]
       else:
         executable_output_shapes = []
 
       outputs_with_device_state_tensors = tpu_torch_compile.execute(
-          self._executable, executable_args, executable_output_shapes
+          self._executable,
+          executable_args,
+          executable_output_shapes,
       )
 
       if not device_state_tensors:
@@ -345,8 +386,9 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
       1. A callable (_unpickle_compiled_executable) that can be called to
          recreate the object.
       2. A tuple of arguments to be passed to the callable. These arguments
-         include the serialized PjRtLoadedExecutable and the
-         reconstruct_fx_outputs_fn.
+         include the serialized PjRtLoadedExecutable, the
+         reconstruct_fx_outputs_fn, the updates_default_generator_state flag,
+         and the dynamic_outputs.
 
     Serialization of the executable is necessary for caching compiled
     artifacts within Dynamo.
@@ -362,6 +404,8 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
             serialized,
             self._reconstruct_fx_outputs_fn,
             self._updates_default_generator_state,
+            self._dynamic_outputs,
+            self._unique_output_indices,
         ),
     )
 

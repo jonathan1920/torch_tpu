@@ -139,16 +139,32 @@ class _TensorInfo(NamedTuple):
 def _compute_output_shapes(
     sym_shape_manager: SymShapeManager,
     args: Sequence[Any],
-) -> list[list[int]] | None:
+    unique_output_indices: Sequence[int] | None = None,
+) -> list[tpu_torch_compile.OutputShape] | None:
   """Computes the runtime output shapes from symbolic shapes and arguments."""
   if not sym_shape_manager.outputs_sym_shape:
     return None
 
-  output_shapes = [
-      output_sym_shape.get_output_runtime_shape(args)
-      for output_sym_shape in sym_shape_manager.outputs_sym_shape
+  raw_output_shapes = [
+      tpu_torch_compile.OutputShape(
+          dimensions=output_sym_shape.get_output_runtime_shape(args),
+          is_dynamic=any(
+              isinstance(dim, dict) for dim in output_sym_shape.output_sym_shape
+          ),
+      )
       if output_sym_shape.is_tensor
+      else None
+      for output_sym_shape in sym_shape_manager.outputs_sym_shape
   ]
+  if unique_output_indices is not None:
+    output_shapes = [
+        raw_output_shapes[i]
+        for i in unique_output_indices
+        if raw_output_shapes[i] is not None
+    ]
+  else:
+    output_shapes = [s for s in raw_output_shapes if s is not None]
+
   logging.debug(
       "[_DynamicTpuCompiledExecutable] Output shapes: %s", output_shapes
   )
@@ -184,6 +200,7 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
       is_fwd: bool,
       default_executable: Any,
       default_layout_key: tuple[tuple[int, ...], ...],
+      dynamic_outputs: Sequence[bool],
   ):
     self.static_compiler = static_compiler
     self.graph_module = graph_module
@@ -199,6 +216,13 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     # Precompute static inputs and bounds for the transformed graph.
     self.model_example_inputs, self.aligned_bounds = _get_example_inputs(
         example_inputs, sym_shape_manager
+    )
+
+    self.dynamic_outputs = dynamic_outputs
+    self._unique_output_indices = (
+        getattr(default_executable, "unique_output_indices", None)
+        if default_executable is not None
+        else None
     )
 
     self._precomputed_bounds_list = self._precompute_bounds_list()
@@ -463,6 +487,7 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
             is_fwd=self.is_fwd,
             bounds=self.aligned_bounds,
             argument_layouts=argument_layouts,
+            dynamic_outputs=self.dynamic_outputs,
         )
       except (RuntimeError, ValueError) as e:
         raise NotImplementedError(
@@ -479,7 +504,9 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
 
     executable = self.model_executables[layout_key]
 
-    output_shapes = _compute_output_shapes(self.sym_shape_manager, args)
+    output_shapes = _compute_output_shapes(
+        self.sym_shape_manager, args, self._unique_output_indices
+    )
 
     # Run model executable with constructed inputs
     outputs = executable(model_inputs, output_shapes=output_shapes)
@@ -624,4 +651,5 @@ class DynamicCompiler(compiler.Compiler):
         is_fwd=is_fwd,
         default_executable=default_executable,
         default_layout_key=default_layout_key,
+        dynamic_outputs=dynamic_outputs,
     )

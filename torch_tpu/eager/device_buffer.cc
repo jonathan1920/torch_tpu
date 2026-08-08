@@ -531,6 +531,11 @@ absl::Status DeviceBufferList::MarkDynamic(int64_t index, int64_t dimension,
   return absl::OkStatus();
 };
 
+bool DeviceBufferList::on_device_shape_is_dynamic(int64_t index) const {
+  ABSL_CHECK(index >= 0 && index < shapes_.size());  // CRASH_OK
+  return shapes_[index].on_device_shape_is_dynamic();
+}
+
 absl::Span<const BoundedDynamicDimension> DeviceBufferList::dynamic_dimensions(
     int64_t index) const {
   ABSL_CHECK(index >= 0 && index < shapes_.size());  // CRASH_OK
@@ -685,6 +690,10 @@ absl::Status DeviceBufferRef::MarkDynamic(int64_t dimension,
                                           int64_t upper_bound) const {
   return device_buffer_list()->MarkDynamic(index_, dimension, lower_bound,
                                            upper_bound);
+}
+
+bool DeviceBufferRef::on_device_shape_is_dynamic() const {
+  return device_buffer_list()->on_device_shape_is_dynamic(index_);
 }
 
 absl::Span<const BoundedDynamicDimension> DeviceBufferRef::dynamic_dimensions()

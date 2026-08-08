@@ -278,6 +278,9 @@ class DeviceBufferRef {
   absl::Status MarkDynamic(int64_t dimension, int64_t lower_bound,
                            int64_t upper_bound) const;
 
+  // Returns whether the given DeviceBufferRef has dynamic on device shape.
+  [[nodiscard]] bool on_device_shape_is_dynamic() const;
+
   // The dynamic dimensions of the given DeviceBufferRef.
   // May be empty if the DeviceBufferRef is not dynamic.
   [[nodiscard]] absl::Span<const BoundedDynamicDimension> dynamic_dimensions()
@@ -569,6 +572,9 @@ class DeviceBufferList {
   // Sets a dimension to be dynamic.
   absl::Status MarkDynamic(int64_t index, int64_t dimension,
                            int64_t lower_bound, int64_t upper_bound);
+  // Returns whether the indexed buffer has dynamic on device shape.
+  [[nodiscard]] bool on_device_shape_is_dynamic(int64_t index) const;
+
   // Returns the dynamic dimensions of the indexed buffer. This may be empty if
   // the indexed buffer has no dynamic dimensions.
   [[nodiscard]] absl::Span<const BoundedDynamicDimension> dynamic_dimensions(

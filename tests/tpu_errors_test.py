@@ -1643,7 +1643,14 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         RuntimeError,
         tpu="""output shapes must be specified for all outputs or none, got 2 output shapes for 1 output tensors""",
     ):
-      tpu_torch_compile.execute(executable, [x, y], [[5], [5]])
+      tpu_torch_compile.execute(
+          executable,
+          [x, y],
+          [
+              tpu_torch_compile.OutputShape([5]),
+              tpu_torch_compile.OutputShape([5]),
+          ],
+      )
 
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_execute_output_shapes_rank_mismatch(self):
@@ -1659,7 +1666,9 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         RuntimeError,
         tpu="""output shape number of dimensions must match the statically inferred dimensions, got output shape dimensions 2 and inferred dimensions 1 for output tensor 0""",
     ):
-      tpu_torch_compile.execute(executable, [x, y], [[5, 2]])
+      tpu_torch_compile.execute(
+          executable, [x, y], [tpu_torch_compile.OutputShape([5, 2])]
+      )
 
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_execute_output_shapes_exceeds_bound(self):
@@ -1675,7 +1684,9 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         RuntimeError,
         tpu="""output shape dimension must not exceed the statically inferred bound, got output shape [15] and inferred shape [10]""",
     ):
-      tpu_torch_compile.execute(executable, [x, y], [[15]])
+      tpu_torch_compile.execute(
+          executable, [x, y], [tpu_torch_compile.OutputShape([15])]
+      )
 
   @et.why_tpu_only("For testing TPU compile API validation.")
   def test_traverse_and_compile_invalid_layout_size(self):

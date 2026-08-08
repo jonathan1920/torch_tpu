@@ -262,14 +262,7 @@ PyLayout PyGetDefaultLayout(at::ScalarType dtype,
 
 bool PyIsDeviceShapeDynamic(const at::Tensor& tensor) {
   TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBuffer(tensor));
-  if (!buffer_ref.dynamic_dimensions().empty()) {
-    return true;
-  }
-  if (!buffer_ref.is_materializing()) {
-    return false;
-  }
-  TT_ASSIGN_OR_THROW(auto* pjrt_buffer, buffer_ref.AwaitBuffer());
-  return pjrt_buffer->on_device_shape().is_dynamic();
+  return buffer_ref.on_device_shape_is_dynamic();
 }
 
 std::vector<std::optional<PyLayout>> PyGetParameterLayouts(
@@ -554,15 +547,10 @@ CompileResult PyTraverseAndCompile(
 //   executable: The loaded PJRT executable to run.
 //   argument_tensors: A list of PyTorch tensors to pass as inputs.
 //   output_shapes: Optional list of shapes for the output tensors.
-//     If not empty, the number of elements in output_shapes must match the
-//     number of output tensors. These shapes override the static shapes
-//     inferred from the executable. This is useful for bounded dynamic programs
-//     where the actual output shape might differ from the static
-//     upper bound.
 std::vector<at::Tensor> PyExecuteCompiledModel(
     const SharedLoadedExecutableWithMetadata& executable,
     const std::vector<at::Tensor>& argument_tensors,
-    const std::vector<std::vector<int64_t>>& output_shapes) {  // INT_VEC_OK
+    const std::vector<OutputShape>& output_shapes) {
   return ExecuteCompiledModel(executable, argument_tensors, output_shapes);
 }
 
@@ -1187,6 +1175,16 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       .def_readonly("dynamic_dims", &TensorBounds::dynamic_dims)
       .def_readonly("upper_bounds", &TensorBounds::upper_bounds);
 
+  py::class_<OutputShape>(m, "OutputShape")
+      .def(py::init([](std::vector<int64_t> dimensions,  // INT_VEC_OK
+                       bool is_dynamic) {
+             return OutputShape{std::move(dimensions), is_dynamic};
+           }),
+           py::arg("dimensions") = std::vector<int64_t>(),  // INT_VEC_OK
+           py::arg("is_dynamic") = false)
+      .def_readwrite("dimensions", &OutputShape::dimensions)
+      .def_readwrite("is_dynamic", &OutputShape::is_dynamic);
+
   py::implicitly_convertible<py::tuple, TensorInfo>();
   py::implicitly_convertible<py::tuple, TensorBounds>();
 
@@ -1223,13 +1221,13 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("execute", PyExecuteCompiledModel,
         // Type: PjRtLoadedExecutable
         py::arg("executable"), py::arg("argument_tensors"),
-        py::arg("output_shapes") =
-            std::vector<std::vector<int64_t>>(),  // INT_VEC_OK
+        py::arg("output_shapes") = std::vector<OutputShape>(),
         "Executes a compiled PJRT executable with the given arguments.\n\n"
         "Args:\n"
         "  executable: The loaded PJRT executable to run.\n"
         "  argument_tensors: A list of PyTorch tensors to pass as inputs.\n"
-        "  output_shapes: Optional list of shapes for the output tensors.\n"
+        "  output_shapes: Optional list of OutputShape objects for the output "
+        "tensors.\n"
         "    If provided, the number of elements must match the number of "
         "output tensors. These shapes override the static shapes inferred\n"
         "    from the executable.\n"

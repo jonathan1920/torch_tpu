@@ -107,6 +107,10 @@ class ExportedMlir:
       is expected for the generator state tensor, and the one additional tensor
       as the last output is expected for the updated generator state tensor.
     is_noop: Whether the FX graph is a no-op (i.e. has no output tensors).
+    dynamic_outputs: A sequence of booleans indicating whether each output
+      tensor is dynamic.
+    unique_output_indices: A sequence of original output indices corresponding
+      to the deduplicated outputs.
   """
 
   module: tpu_torch_compile.ContextedModule | None
@@ -117,6 +121,8 @@ class ExportedMlir:
   ]
   updates_default_generator_state: bool
   is_noop: bool = False
+  dynamic_outputs: Sequence[bool] | None = None
+  unique_output_indices: Sequence[int] | None = None
 
   def serialize_text(self, enable_debug_info: bool = False) -> str:
     """Returns the MLIR representation of the graph as text."""
@@ -376,6 +382,8 @@ def _process_fx_outputs(
 ) -> tuple[
     list[torch.Tensor],
     Callable[[Sequence[Any], Sequence[torch.Tensor]], Any],
+    list[bool],
+    list[int],
 ]:
   """Removes Nones, maps passthrough values, and dedups outputs.
 
@@ -393,8 +401,9 @@ def _process_fx_outputs(
     dynamic_outputs: Optional sequence of booleans indicating dynamic outputs.
 
   Returns:
-    A tuple containing a list of result tensors and a function to reconstruct
-    the original FX output structure.
+    A tuple containing a list of result tensors, a function to reconstruct
+    the original FX output structure, and a list of booleans indicating dynamic
+    outputs.
 
   Raises:
     TypeError: If an element in the flattened outputs is not a `torch.Tensor`
@@ -405,6 +414,7 @@ def _process_fx_outputs(
   deduped_outputs: list[torch.Tensor] = []
   expected_layouts: list[_TensorLayout] = []
   deduped_dynamic_outputs: list[bool] = []
+  unique_output_indices: list[int] = []
   output_map: list[_DedupedTensorOutput | _NonTensorPassthrough | None] = []
   index_by_dedupe_key: dict[_TensorDedupeKey, int] = {}
 
@@ -417,6 +427,7 @@ def _process_fx_outputs(
         index_by_dedupe_key[key] = len(deduped_outputs)
         deduped_outputs.append(item)
         expected_layouts.append(key.layout)
+        unique_output_indices.append(idx)
         is_dyn = (
             dynamic_outputs[idx]
             if dynamic_outputs is not None and idx < len(dynamic_outputs)
@@ -432,12 +443,17 @@ def _process_fx_outputs(
           f" but got {item}"
       )
 
-  return deduped_outputs, functools.partial(
-      _reconstruct_fx_outputs,
-      output_map=output_map,
-      expected_layouts=expected_layouts,
-      spec=spec,
-      dynamic_outputs=deduped_dynamic_outputs,
+  return (
+      deduped_outputs,
+      functools.partial(
+          _reconstruct_fx_outputs,
+          output_map=output_map,
+          expected_layouts=expected_layouts,
+          spec=spec,
+          dynamic_outputs=deduped_dynamic_outputs,
+      ),
+      deduped_dynamic_outputs,
+      unique_output_indices,
   )
 
 
@@ -536,9 +552,12 @@ def fx_to_mlir(
       )
       fx_outputs = EagerLikeFxInterpreter(module).run(*cloned_args)
 
-    result_tensors, reconstruct_fx_outputs_fn = _process_fx_outputs(
-        module, fx_outputs, dynamic_outputs=dynamic_outputs
-    )
+    (
+        result_tensors,
+        reconstruct_fx_outputs_fn,
+        deduped_dynamic_outputs,
+        unique_output_indices,
+    ) = _process_fx_outputs(module, fx_outputs, dynamic_outputs=dynamic_outputs)
 
     # Plumb the final state tensor as the last output of the graph so that
     # the updated RNG state can be returned from the executable and persisted.
@@ -570,6 +589,8 @@ def fx_to_mlir(
             reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
             updates_default_generator_state=False,
             is_noop=True,
+            dynamic_outputs=[],
+            unique_output_indices=[],
         )
 
     compile_result = tpu_torch_compile.traverse_and_compile(
@@ -590,4 +611,6 @@ def fx_to_mlir(
       mlir_result_tensors=result_tensors,
       reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
       updates_default_generator_state=updates_default_generator_state,
+      dynamic_outputs=deduped_dynamic_outputs,
+      unique_output_indices=unique_output_indices,
   )

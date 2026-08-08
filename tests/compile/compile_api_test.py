@@ -22,6 +22,7 @@ import torch
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import testing as tt_testing
+from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.device_utils import annotations
@@ -296,7 +297,9 @@ class CompileApiTest(absltest.TestCase):
     mlir = tpu_torch_compile.build_mlir([z], [x, y])
     executable = tpu_torch_compile.compile_mlir(mlir)
 
-    results = tpu_torch_compile.execute(executable, [x, y], [[10]])
+    results = tpu_torch_compile.execute(
+        executable, [x, y], [tpu_torch_compile.OutputShape([10])]
+    )
     self.assertLen(results, 1)
     self.assertEqual(results[0].shape, (10,))
 
@@ -309,7 +312,9 @@ class CompileApiTest(absltest.TestCase):
     mlir = tpu_torch_compile.build_mlir([z], [x, y])
     executable = tpu_torch_compile.compile_mlir(mlir)
 
-    results = tpu_torch_compile.execute(executable, [x, y], [[5]])
+    results = tpu_torch_compile.execute(
+        executable, [x, y], [tpu_torch_compile.OutputShape([5])]
+    )
     self.assertLen(results, 1)
     self.assertEqual(results[0].shape, (5,))
 
@@ -863,7 +868,9 @@ class CompileApiTest(absltest.TestCase):
     results = tpu_torch_compile.execute(
         executable,
         [dynamic_input, static_input],
-        output_shapes=[[logical_dynamic_dim, static_dim_2]],
+        output_shapes=[
+            tpu_torch_compile.OutputShape([logical_dynamic_dim, static_dim_2])
+        ],
     )
     self.assertLen(results, 1)
     actual_res = results[0]
@@ -929,7 +936,11 @@ class CompileApiTest(absltest.TestCase):
     results = tpu_torch_compile.execute(
         executable,
         [dynamic_input, static_input],
-        output_shapes=[[logical_dynamic_dim, static_dim_2]],
+        output_shapes=[
+            tpu_torch_compile.OutputShape(
+                [logical_dynamic_dim, static_dim_2], is_dynamic=True
+            )
+        ],
     )
     compiled_output = results[0]
     self.assertTrue(tpu_torch_compile.is_device_shape_dynamic(compiled_output))
@@ -988,7 +999,11 @@ class CompileApiTest(absltest.TestCase):
     results = tpu_torch_compile.execute(
         executable,
         [dynamic_input],
-        output_shapes=[[batch_dim, logical_dynamic_dim, static_dim_2]],
+        output_shapes=[
+            tpu_torch_compile.OutputShape(
+                [batch_dim, logical_dynamic_dim, static_dim_2]
+            )
+        ],
     )
     compiled_output = results[0]
     self.assertEqual(
@@ -1041,7 +1056,9 @@ class CompileApiTest(absltest.TestCase):
     results = tpu_torch_compile.execute(
         executable,
         [dynamic_input],
-        output_shapes=[[static_dim, logical_dynamic_dim]],
+        output_shapes=[
+            tpu_torch_compile.OutputShape([static_dim, logical_dynamic_dim])
+        ],
     )
     compiled_output = results[0]
     self.assertEqual(compiled_output.shape, (static_dim, logical_dynamic_dim))
@@ -1100,23 +1117,15 @@ class CompileApiTest(absltest.TestCase):
   def test_is_device_shape_dynamic(self):
     x_static = torch.ones(2, 3, device='tpu')
     self.assertFalse(tpu_torch_compile.is_device_shape_dynamic(x_static))
+    def fn(x):
+      return x + 1
 
-    max_dynamic_dim = 22
-    static_dim_1 = 128
-    logical_dynamic_dim = 5
-
-    physical_dynamic_input = torch.randn(
-        max_dynamic_dim,
-        static_dim_1,
-        device=torch.device('tpu'),
-    )
-    logical_size = torch.tensor(
-        logical_dynamic_dim, dtype=torch.int32, device=torch.device('tpu')
-    )
-    dynamic_input = torch.ops.tpu.set_dimension_logical_size(
-        physical_dynamic_input, 0, logical_size
-    )
-    self.assertTrue(tpu_torch_compile.is_device_shape_dynamic(dynamic_input))
+    backend = _backend.TpuBackend(debug=True, dynamism=True)
+    compiled_fn = torch.compile(fn, backend=backend)
+    dynamic_input = torch.randn(5, 10, device='tpu')
+    torch._dynamo.mark_dynamic(dynamic_input, 0)
+    dynamic_output = compiled_fn(dynamic_input)
+    self.assertTrue(tpu_torch_compile.is_device_shape_dynamic(dynamic_output))
 
   def test_get_dynamic_pad_module(self):
     tensor_info = [([1, 4], torch.int32)]
@@ -1134,7 +1143,9 @@ class CompileApiTest(absltest.TestCase):
 
     input_tensor = torch.ones(1, 4, dtype=torch.int32, device='tpu')
     result = tpu_torch_compile.execute(
-        compile_result.executable, [input_tensor]
+        compile_result.executable,
+        [input_tensor],
+        output_shapes=[tpu_torch_compile.OutputShape(is_dynamic=True)],
     )
     self.assertLen(result, 1)
     padded_tensor = result[0]
