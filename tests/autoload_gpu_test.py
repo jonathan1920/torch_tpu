@@ -16,9 +16,10 @@
 
 from absl.testing import absltest
 import torch
+from tests import seed_test_utils
 
 
-class AutoloadCudaTest(absltest.TestCase):
+class AutoloadCudaTest(seed_test_utils.RepeatableTest):
 
   def test_torch_dot_xla_cuda(self):
     import torch.xla_cuda as module  # pylint: disable=g-import-not-at-top

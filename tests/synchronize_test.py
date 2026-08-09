@@ -21,11 +21,12 @@ from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 
 
-class SynchronizeTest(absltest.TestCase):
+class SynchronizeTest(seed_test_utils.RepeatableTest):
   """Tests synchronization APIs: torch.tpu.synchronize and torch.accelerator.synchronize."""
 
   def setUp(self):

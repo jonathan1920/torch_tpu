@@ -19,6 +19,7 @@ from absl.testing import absltest
 import torch
 import torch.export
 from torch_tpu._internal.export import export as torch_tpu_export
+from tests import seed_test_utils
 
 
 class SimpleModule(torch.nn.Module):
@@ -47,7 +48,7 @@ class SimpleNN(torch.nn.Module):
     return x
 
 
-class TestExportLinearMode(absltest.TestCase):
+class TestExportLinearMode(seed_test_utils.RepeatableTest):
 
   def test_export_linear(self):
     sample_input = (torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]),)
@@ -79,7 +80,7 @@ class TestExportLinearMode(absltest.TestCase):
     self.assertIn(current_filename, mlir_text)
 
 
-class ExportTest(absltest.TestCase):
+class ExportTest(seed_test_utils.RepeatableTest):
 
   def test_module(self):
     sample_input = (

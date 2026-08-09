@@ -53,6 +53,7 @@ from absl import logging
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import testing as tt_testing
+from tests import seed_test_utils
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 
@@ -96,7 +97,7 @@ def list_bin_files(dir_path: pathlib.Path) -> list[pathlib.Path]:
   return list(dir_path.glob("**/*.bin"))
 
 
-class CacheTest(absltest.TestCase):
+class CacheTest(seed_test_utils.RepeatableTest):
   """Tests persistent Tier-2 and Tier-3 cache for torch.compile.
 
   These test methods are intended to run only inside isolated child worker
@@ -263,7 +264,7 @@ def sub_test_worker_entry(
   absltest.main()
 
 
-class MasterCacheTest(absltest.TestCase):
+class MasterCacheTest(seed_test_utils.RepeatableTest):
   """A master test that spawns subprocesses for isolation.
 
   When invoked by the standard test runner without `--test_mode`, this class

@@ -23,11 +23,12 @@ from absl.testing import absltest
 import portpicker
 from torch_tpu._internal import testing as tt_testing
 import torch_tpu._internal.profiler
+from tests import seed_test_utils
 
 profiler_backend = torch_tpu._internal.profiler._profiler_backend
 
 
-class ProfilerBackendTest(absltest.TestCase):
+class ProfilerBackendTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

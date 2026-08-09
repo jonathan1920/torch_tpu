@@ -19,7 +19,6 @@ from typing import Final
 
 from absl.testing import absltest
 import torch
-from torch.testing._internal import common_utils
 
 DEFAULT_RANDOM_SEED: Final[int] = 1234
 
@@ -31,12 +30,21 @@ def seed_rngs(seed: int) -> None:
   torch.manual_seed(seed)
 
 
-class RepeatableTest(common_utils.TestCase):
+class RepeatableTest(absltest.TestCase):
   """Base class that fixes RNG seeds so tests are reproducible.
 
   This base class uses a constant RNG seed or from the test_random_seed absl
   flag if provided. It resets the same RNG seed before each test method for
   reproducibility.
+
+  When combining RepeatableTest with another TestCase class:
+  e.g., class MyTest(RepeatableTest, parameterized.TestCase):
+  where:
+    class RepeatableTest(absltest.TestCase)
+    class parameterized.TestCase(absltest.TestCase)
+
+  Through Python MRO, super().setUp() propagates through all base classes:
+  MyTest -> RepeatableTest -> parameterized.TestCase -> absltest.TestCase
   """
 
   _test_random_seed: int = DEFAULT_RANDOM_SEED

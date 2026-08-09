@@ -20,9 +20,10 @@ import time
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.compile import tpu_torch_compile
+from tests import seed_test_utils
 
 
-class CompilationCacheStressTest(absltest.TestCase):
+class CompilationCacheStressTest(seed_test_utils.RepeatableTest):
 
   def test_eviction_does_not_affect_inflight_compilation(self):
     """Eviction should not affect in-flight compilations."""

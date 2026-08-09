@@ -18,9 +18,10 @@ from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
 from tests import error_testing as et
+from tests import seed_test_utils
 
 
-class ErrorTestingTest(absltest.TestCase):
+class ErrorTestingTest(seed_test_utils.RepeatableTest):
 
   def test_append_error_test_failure_protocol(self):
     """Tests that the error test failure protocol is appended to the error."""

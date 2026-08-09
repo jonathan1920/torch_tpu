@@ -27,6 +27,7 @@ from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.device_utils import annotations
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 
@@ -56,7 +57,7 @@ def eager_mode_defer_all():
 
 
 # TODO: add more test coverage for the direct compile API.
-class CompileApiTest(absltest.TestCase):
+class CompileApiTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

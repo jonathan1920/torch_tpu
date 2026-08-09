@@ -22,9 +22,10 @@ import torch
 from torch_tpu._internal import sync as tpu_sync
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.profiler import _impl as profiler_impl
+from tests import seed_test_utils
 
 
-class ProfilerInternalTest(absltest.TestCase):
+class ProfilerInternalTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

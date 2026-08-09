@@ -28,6 +28,7 @@ from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import NoOpCompiledArtifact
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
 @dataclasses.dataclass
@@ -68,7 +69,7 @@ def _generate_ctc_loss_inputs(*, requires_grad: bool = False) -> CtcLossInputs:
   return CtcLossInputs(log_probs, targets, input_lengths, target_lengths)
 
 
-class FunctionTest(absltest.TestCase):
+class FunctionTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -878,7 +879,7 @@ class FunctionTest(absltest.TestCase):
     utils.assert_close(actual=result.cpu(), expected=expected)
 
 
-class ModuleTest(absltest.TestCase):
+class ModuleTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -1222,7 +1223,7 @@ def _reconstruct_none_tuple(inputs, outputs):
   return (None,)
 
 
-class NoOutputGraphTest(absltest.TestCase):
+class NoOutputGraphTest(seed_test_utils.RepeatableTest):
   """A torch.compile graph with no output tensors runs as a no-op, not an abort.
 
   ``def f(x): x.sum(); return None`` traces to a graph with a real input but no
@@ -1249,7 +1250,7 @@ class NoOutputGraphTest(absltest.TestCase):
     self.assertIsNone(compiled(x))
 
 
-class NoOpCompiledArtifactTest(absltest.TestCase):
+class NoOpCompiledArtifactTest(seed_test_utils.RepeatableTest):
   """The do-nothing callable the backend returns for a no-output graph."""
 
   def test_call_reconstructs_output(self):

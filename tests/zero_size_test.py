@@ -22,9 +22,10 @@ elements but have uninitialized memory.
 
 from absl.testing import absltest
 import torch
+from tests import seed_test_utils
 
 
-class ZeroSizeTest(absltest.TestCase):
+class ZeroSizeTest(seed_test_utils.RepeatableTest):
 
   def test_copy_round_trip(self):
     """Tests that we can move a zero-size tensor between devices."""

@@ -19,6 +19,7 @@ import os
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import testing as tt_testing
+from tests import seed_test_utils
 
 
 class TestModule(torch.nn.Module):
@@ -33,7 +34,7 @@ class TestModule(torch.nn.Module):
     return res
 
 
-class EnsureNoDynamicTest(absltest.TestCase):
+class EnsureNoDynamicTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

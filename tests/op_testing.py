@@ -2030,7 +2030,7 @@ def _compiled_supports_op(
   return key not in compiled_deny_list
 
 
-class TorchTpuTestBase(seed_test_utils.RepeatableTest):
+class TorchTpuTestBase(seed_test_utils.RepeatableTest, common_utils.TestCase):
   """Base class for TorchTPU tests."""
 
   dynamism_filter_fn: FilterFn

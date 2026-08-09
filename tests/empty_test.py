@@ -22,13 +22,14 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
+from tests import seed_test_utils
 
 
 def is_materialized_or_materializing(tensor: torch.Tensor) -> bool:
   return sync.is_materialized(tensor) or sync.is_materializing(tensor)
 
 
-class EmptyTest(absltest.TestCase):
+class EmptyTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

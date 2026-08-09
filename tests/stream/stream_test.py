@@ -16,9 +16,10 @@ import concurrent.futures
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class TpuStreamsTest(absltest.TestCase):
+class TpuStreamsTest(seed_test_utils.RepeatableTest):
   """Tests for torch.tpu.Stream and torch.tpu.Event.
 
   This is the TPU-specific class implementation, which may have additional
@@ -189,7 +190,7 @@ class TpuStreamsTest(absltest.TestCase):
     utils.assert_close(t_cpu, torch.ones(size, dtype=torch.float32))
 
 
-class TorchStreamsTest(absltest.TestCase):
+class TorchStreamsTest(seed_test_utils.RepeatableTest):
   """Tests for torch.Stream and torch.Event.
 
   This is the PyTorch device-agnostic interface which lacks any TPU-specific

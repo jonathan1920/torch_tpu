@@ -17,9 +17,10 @@ import torch
 from torch_tpu._internal import batch_transfer
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class BatchTransferTest(absltest.TestCase):
+class BatchTransferTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

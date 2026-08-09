@@ -32,6 +32,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/jax:pallas",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/execution_mode",
@@ -55,6 +56,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/pallas",
         "@pypi//jax",
@@ -69,6 +71,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/jax:pallas",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/pallas",
         "@pypi//jax",

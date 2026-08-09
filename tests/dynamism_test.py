@@ -21,6 +21,7 @@ from torch_tpu._internal import execution_mode
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import test_utils as utils
 from tests import op_testing
+from tests import seed_test_utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 
@@ -61,7 +62,7 @@ class CompilationCounter:
     return self.cache_hits
 
 
-class DynamismApiTest(absltest.TestCase):
+class DynamismApiTest(seed_test_utils.RepeatableTest):
   """Tests for dynamism module APIs `get_dynamism_info` and `mark_dynamic`."""
 
   def setUp(self):

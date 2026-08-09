@@ -23,6 +23,7 @@ from jax.experimental import pallas as pl
 import torch
 from torch_tpu._internal import pallas
 from torch_tpu._internal import testing as tt_testing
+from tests import seed_test_utils
 
 _MOCK_MLIR_MODULE = b"mock_mlir_module_serialized"
 _EXPECTED_FINGERPRINT = "681dfc1a284fe585c710dec818ae9fee"
@@ -39,7 +40,7 @@ def fingerprint_test_jax(x: jax.Array, y: jax.Array) -> jax.Array:
   return pallas_call(x, y)
 
 
-class PallasFingerprintTest(absltest.TestCase):
+class PallasFingerprintTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

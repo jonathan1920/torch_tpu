@@ -18,9 +18,10 @@ import torch
 from torch_tpu._internal.compile import collective_ops
 from torch_tpu._internal.compile._backend import TpuBackend
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class SplitCompileTest(absltest.TestCase):
+class SplitCompileTest(seed_test_utils.RepeatableTest):
 
   def test_split_graph_with_dynamic_tensor(self):
     backend = TpuBackend(debug=True, dynamism=True)

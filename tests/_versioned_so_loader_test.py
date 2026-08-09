@@ -22,6 +22,7 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 from torch_tpu import _versioned_so_loader as loader
+from tests import seed_test_utils
 
 
 class ResolveSuffixTest(parameterized.TestCase):
@@ -94,7 +95,7 @@ class VersionSuffixTest(parameterized.TestCase):
     self.assertEqual(loader.version_suffix(version), expected)
 
 
-class InstalledTorchVersionTest(absltest.TestCase):
+class InstalledTorchVersionTest(seed_test_utils.RepeatableTest):
 
   def test_prefers_the_imported_torch_over_install_metadata(self):
     # The glue must match the torch actually loaded in this process, which the
@@ -104,7 +105,7 @@ class InstalledTorchVersionTest(absltest.TestCase):
       self.assertEqual(loader.installed_torch_version(), "2.12.5+fake")
 
 
-class DiscoverBuiltSuffixesTest(absltest.TestCase):
+class DiscoverBuiltSuffixesTest(seed_test_utils.RepeatableTest):
 
   def _touch(self, root: pathlib.Path, rel: str) -> None:
     path = root / rel

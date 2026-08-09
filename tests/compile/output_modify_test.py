@@ -23,6 +23,7 @@ import torch
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
 def _run_tpu_backend_with_injected_test_case(
@@ -87,7 +88,7 @@ def _run_tpu_backend_with_injected_test_case(
   return _inner
 
 
-class OutputModifyTest(absltest.TestCase):
+class OutputModifyTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

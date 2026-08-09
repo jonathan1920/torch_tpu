@@ -29,6 +29,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/profiler",
         "//torch_tpu/_internal/sync",
@@ -48,6 +49,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/profiler",
         "//torch_tpu/_internal/profiler:profiler_config",
@@ -66,6 +68,7 @@ torch_tpu_py_test(
     ],
     deps = [
         "//shims/absl_py/testing:absltest",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/profiler",
         "@pypi//portpicker",

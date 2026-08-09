@@ -17,9 +17,10 @@
 
 from absl.testing import absltest
 import torch
+from tests import seed_test_utils
 
 
-class AllTest(absltest.TestCase):
+class AllTest(seed_test_utils.RepeatableTest):
   """Tests torch.all(), including when using an out tensor."""
 
   def _run_test(self, bools: list[bool], out=False) -> torch.Tensor:

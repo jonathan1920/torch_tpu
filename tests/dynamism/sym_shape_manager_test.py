@@ -19,9 +19,10 @@ from absl.testing import absltest
 import torch
 from torch._dynamo.backends.common import aot_autograd
 from torch_tpu._internal.compile.dynamic import sym_shape_manager
+from tests import seed_test_utils
 
 
-class SymShapeManagerTest(absltest.TestCase):
+class SymShapeManagerTest(seed_test_utils.RepeatableTest):
 
   def test_symbol_manager_extraction(self):
     captured_sm = None

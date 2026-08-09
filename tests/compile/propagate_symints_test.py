@@ -16,12 +16,13 @@ from absl.testing import absltest
 import torch
 from torch import fx
 from torch_tpu._internal.compile.fx_passes import propagate_symints
+from tests import seed_test_utils
 
 GraphModule = fx.GraphModule
 Graph = fx.Graph
 
 
-class PropagateSymintsTest(absltest.TestCase):
+class PropagateSymintsTest(seed_test_utils.RepeatableTest):
 
   def test_propagate_symints(self):
     shape_env = torch.fx.experimental.symbolic_shapes.ShapeEnv()

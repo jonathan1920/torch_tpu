@@ -28,9 +28,10 @@ from torch._inductor.runtime.cache_dir_utils import temporary_cache_dir
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class BackendSerializationTest(absltest.TestCase):
+class BackendSerializationTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

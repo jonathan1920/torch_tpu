@@ -16,9 +16,10 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class SymExprArgTest(absltest.TestCase):
+class SymExprArgTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

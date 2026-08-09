@@ -24,6 +24,7 @@ from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile.compiler import has_dynamic_symints
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
 def simple(x):
@@ -31,7 +32,7 @@ def simple(x):
   return a
 
 
-class EnsureNoDynamicTest(absltest.TestCase):
+class EnsureNoDynamicTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

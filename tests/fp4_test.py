@@ -15,9 +15,10 @@
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class FP4Test(absltest.TestCase):
+class FP4Test(seed_test_utils.RepeatableTest):
 
   def test_fp4_cpu_creation(self):
     x = torch.empty(2, 4, dtype=torch.float4_e2m1fn_x2)

@@ -19,16 +19,16 @@ from typing import Callable
 
 from absl import flags
 from absl import logging
-from absl.testing import absltest
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import tpu_torch_compile
+from tests import seed_test_utils
 
 _NUM_RUNS = flags.DEFINE_integer(
     "num_runs", 10, "Number of runs for each benchmark."
 )
 
 
-class StableHloCompileTimeTestBase(absltest.TestCase):
+class StableHloCompileTimeTestBase(seed_test_utils.RepeatableTest):
   """StableHLO compilation benchmarks."""
 
   # Tell the type checker that these attributes exist.

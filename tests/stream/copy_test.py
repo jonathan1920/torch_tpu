@@ -15,9 +15,10 @@
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class CopyTest(absltest.TestCase):
+class CopyTest(seed_test_utils.RepeatableTest):
 
   def test_copy_tpu_to_cpu_direct(self):
     """Verifies direct copy to contiguous, matching destination."""

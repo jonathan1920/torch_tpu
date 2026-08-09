@@ -26,9 +26,10 @@ from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.profiler import _impl as profiler_impl
 from torch_tpu._internal.profiler import profiler_api
 from torch_tpu._internal.profiler.profiler_config import TpuProfilerConfig
+from tests import seed_test_utils
 
 
-class ProfilerApiTest(absltest.TestCase):
+class ProfilerApiTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

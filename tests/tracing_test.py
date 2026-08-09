@@ -39,6 +39,7 @@ if "TORCH_TRACE" not in os.environ:
 
 # pylint: disable=g-import-not-at-top
 from absl.testing import absltest
+from tests import seed_test_utils
 import torch
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import testing as tt_testing
@@ -98,7 +99,7 @@ def _parse_artifacts(log_content: str) -> list[tuple[dict[str, Any], str]]:
   return out
 
 
-class TracingTest(absltest.TestCase):
+class TracingTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

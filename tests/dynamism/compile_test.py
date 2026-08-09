@@ -20,9 +20,10 @@ import torch
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class CompileTest(absltest.TestCase):
+class CompileTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -437,7 +438,7 @@ class CompileTest(absltest.TestCase):
     utils.assert_close(actual_view, expected_view)
 
 
-class SymIntArithmeticTest(absltest.TestCase):
+class SymIntArithmeticTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -491,7 +492,7 @@ class SymIntArithmeticTest(absltest.TestCase):
     self.assertEqual(out1, 9)
 
 
-class DynamicReshapeTest(absltest.TestCase):
+class DynamicReshapeTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -796,7 +797,7 @@ class DynamicReshapeTest(absltest.TestCase):
     utils.assert_close(out1, expected)
 
 
-class DynamicBroadcastTest(absltest.TestCase):
+class DynamicBroadcastTest(seed_test_utils.RepeatableTest):
 
   def test_expand_dynamic_input_unambiguous(self):
     class Model(torch.nn.Module):
@@ -930,7 +931,7 @@ class DynamicBroadcastTest(absltest.TestCase):
     utils.assert_close(out, expected)
 
 
-class DynamicSliceTest(absltest.TestCase):
+class DynamicSliceTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -956,7 +957,7 @@ class DynamicSliceTest(absltest.TestCase):
     utils.assert_close(out, expected)
 
 
-class DynamicErrorHandlingTest(absltest.TestCase):
+class DynamicErrorHandlingTest(seed_test_utils.RepeatableTest):
 
   def test_mlir_lowering_failure_raises_not_implemented_error(self):
     def simple(x):
@@ -982,7 +983,7 @@ class DynamicErrorHandlingTest(absltest.TestCase):
       self.assertIn("MLIR lowering failed", str(ctx.exception))
 
 
-class SymMaxMinTest(absltest.TestCase):
+class SymMaxMinTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

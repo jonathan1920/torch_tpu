@@ -21,13 +21,14 @@ from absl.testing import absltest
 import torch
 import torch_tpu._internal.precision as p
 from torch_tpu._internal.utils import utils
+from tests import seed_test_utils
 
 precision = p.precision
 Precision = p.Precision
 p_impl = p.precision_impl
 
 
-class PrecisionTest(absltest.TestCase):
+class PrecisionTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

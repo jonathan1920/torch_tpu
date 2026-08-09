@@ -22,13 +22,14 @@ import jax
 import torch
 from torch_tpu._internal import pallas
 from torch_tpu._internal import testing as tt_testing
+from tests import seed_test_utils
 
 
 class MyCustomType:
   pass
 
 
-class PallasSignatureTest(absltest.TestCase):
+class PallasSignatureTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

@@ -42,6 +42,7 @@ torch_tpu_py_test(
     srcs = ["oss_utils_test.py"],
     deps = [
         ":oss_utils",
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//torch_tpu",
     ],
@@ -51,6 +52,7 @@ torch_tpu_py_test(
     name = "_versioned_so_loader_test",
     srcs = ["_versioned_so_loader_test.py"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//torch_tpu",
@@ -106,6 +108,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":module_registry",
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/etils/epath",
         "//shims/torch:pytorch",
@@ -118,10 +121,10 @@ torch_tpu_py_library(
     name = "seed_test_utils",
     testonly = True,
     srcs = ["seed_test_utils.py"],
+    visibility = ["//:__subpackages__"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//shims/torch:testing_internal",
     ],
 )
 
@@ -1260,6 +1263,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1297,6 +1301,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":error_testing",
+        ":seed_test_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
@@ -1492,6 +1497,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1544,6 +1550,7 @@ torch_tpu_py_test(
     srcs = ["view_test.py"],
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1564,6 +1571,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1590,6 +1598,7 @@ torch_tpu_py_test(
     main = "synchronize_test.py",
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1625,6 +1634,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1651,6 +1661,7 @@ torch_tpu_py_test(
     main = "adamw_test.py",
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1667,6 +1678,7 @@ torch_tpu_py_test(
     main = "patch_test.py",
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1686,6 +1698,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":op_testing",
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1703,6 +1716,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1756,6 +1770,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1771,6 +1786,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1786,6 +1802,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1818,6 +1835,7 @@ torch_tpu_py_test(
         "requires-gpu-nvidia",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1882,6 +1900,7 @@ torch_tpu_py_test(
     },
     notest_oss = "Absl flags don't work in OSS",
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1943,6 +1962,7 @@ torch_tpu_py_test(
     },
     main = "tracing_test.py",
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1962,6 +1982,7 @@ torch_tpu_py_test(
         "requires-gpu-nvidia",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1980,6 +2001,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -2002,6 +2024,7 @@ torch_tpu_py_test(
     srcs = ["batch_transfer_test.py"],
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -2026,6 +2049,7 @@ torch_tpu_py_test(
     ),
     deps = [
         ":native_functions_data",
+        ":seed_test_utils",
         "//shims/absl_py:app",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
@@ -2265,6 +2289,7 @@ torch_tpu_py_test(
     srcs = ["empty_test.py"],
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",

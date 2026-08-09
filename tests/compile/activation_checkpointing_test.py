@@ -15,9 +15,10 @@
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import compile as compile_lib
+from tests import seed_test_utils
 
 
-class ActivationCheckpointingTest(absltest.TestCase):
+class ActivationCheckpointingTest(seed_test_utils.RepeatableTest):
 
   def test_activation_checkpointing(self):
     class CheckpointedModel(torch.nn.Module):

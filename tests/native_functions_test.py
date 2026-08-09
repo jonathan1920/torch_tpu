@@ -23,6 +23,7 @@ from absl import flags
 from absl.testing import absltest
 import torch
 from tests import native_functions_data as data
+from tests import seed_test_utils
 
 try:
   from rules_python.python.runfiles import runfiles  # pylint: disable=g-import-not-at-top
@@ -115,7 +116,7 @@ def get_op_schemas(
   return ops
 
 
-class NativeFunctionsTest(absltest.TestCase):
+class NativeFunctionsTest(seed_test_utils.RepeatableTest):
   """Check op registrations are consistent.
 
   This test maintains the invariant

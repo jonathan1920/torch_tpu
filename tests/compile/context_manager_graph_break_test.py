@@ -27,6 +27,7 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal import precision
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
 def _torch_tpu_ctx_matmul(
@@ -45,7 +46,7 @@ def _torch_native_ctx_matmul(
     return mat1 @ mat2
 
 
-class ContextManagerGraphBreakTest(absltest.TestCase):
+class ContextManagerGraphBreakTest(seed_test_utils.RepeatableTest):
   """Tests for TorchTPU context manager graph breaks under `torch.compile`."""
 
   def setUp(self):

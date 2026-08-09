@@ -21,9 +21,10 @@ from torch._dynamo.backends.common import aot_autograd
 from torch_tpu._internal.compile.dynamic import graph_transformations
 from torch_tpu._internal.compile.dynamic import sym_shape_manager
 from torch_tpu._internal.compile.dynamic import view_ops_transformations
+from tests import seed_test_utils
 
 
-class GraphTransformationsTest(absltest.TestCase):
+class GraphTransformationsTest(seed_test_utils.RepeatableTest):
 
   def test_handle_dynamic_input_tensor_pass(self):
     captured_gm = None

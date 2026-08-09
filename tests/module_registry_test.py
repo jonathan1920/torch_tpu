@@ -29,13 +29,14 @@ from PIL import Image
 import torch
 from torch_tpu._internal import testing as tt_testing
 from tests import module_registry
+from tests import seed_test_utils
 
 _GOLDFISH_IMG_PATH = (
     epath.resource_path("torch_tpu") / "tests/compile/data/goldfish.jpg"
 )
 
 
-class ModuleRegistryTest(absltest.TestCase):
+class ModuleRegistryTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()

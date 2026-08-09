@@ -35,6 +35,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils:test_utils",
@@ -52,6 +53,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/compile:compiler",
@@ -72,6 +74,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile:collective_ops",
         "//torch_tpu/_internal/compile:tpu_backend",
@@ -89,6 +92,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile",
     ],
@@ -119,6 +123,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
     ],
 )
@@ -151,6 +156,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile:compiler",
         "//torch_tpu/_internal/compile:tpu_backend",
@@ -195,6 +201,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/compile:compiler",
@@ -208,13 +215,14 @@ torch_tpu_py_test(
 
 torch_tpu_py_library(
     name = "stablehlo_compile_testing",
+    testonly = True,
     srcs = ["stablehlo_compile_testing.py"],
     deps = [
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
-        "//shims/absl_py/testing:absltest",
         "//shims/minipyspy:minipyspy_enable",
         "//shims/torch:tensorboard_support",  # buildcleaner: keep
+        "//tests:seed_test_utils",
         "//torch_tpu/_internal/compile:tpu_torch_compile",
         "//torch_tpu/_internal/device:_device_ops_backend",  # buildcleaner: keep
     ],
@@ -257,6 +265,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile:compiler",
         "//torch_tpu/_internal/utils:test_utils",
@@ -273,6 +282,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
     ],
 )
@@ -287,6 +297,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/precision",
         "//torch_tpu/_internal/utils:test_utils",
@@ -415,6 +426,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
@@ -426,6 +438,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile/fx_passes:reorder_symints",
     ],
@@ -437,6 +450,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile/fx_passes:propagate_symints",
     ],

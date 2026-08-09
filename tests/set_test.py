@@ -15,9 +15,10 @@
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class SetTest(absltest.TestCase):
+class SetTest(seed_test_utils.RepeatableTest):
   """Tests the Tensor.set_() operator."""
 
   def test_set_none(self):

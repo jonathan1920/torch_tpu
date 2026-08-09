@@ -34,6 +34,7 @@ from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.pallas import _compat
 from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
+from tests import seed_test_utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 
@@ -126,7 +127,7 @@ def jax_add_or_subtract_vectors_wrapper(
   return pl.pallas_call(wrapped, out_shape=out_shape)(x, y)
 
 
-class TestPallasKernels(absltest.TestCase):
+class TestPallasKernels(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -1177,7 +1178,7 @@ class TestPallasKernels(absltest.TestCase):
     )
 
 
-class TestPallasCompat(absltest.TestCase):
+class TestPallasCompat(seed_test_utils.RepeatableTest):
 
   def test_warn_deprecation_with_skip(self):
     if sys.version_info >= (3, 12):

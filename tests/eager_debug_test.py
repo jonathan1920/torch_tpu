@@ -16,11 +16,12 @@ from typing import TypeAlias
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import execution_mode
+from tests import seed_test_utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 
 
-class EagerDebugTest(absltest.TestCase):
+class EagerDebugTest(seed_test_utils.RepeatableTest):
   """Test for eager debug feature."""
 
   def test_failing_op_raises_in_correct_location(self):

@@ -17,9 +17,10 @@ from unittest import mock
 
 from absl.testing import absltest
 from tests import oss_utils
+from tests import seed_test_utils
 
 
-class OssUtilsTest(absltest.TestCase):
+class OssUtilsTest(seed_test_utils.RepeatableTest):
 
   def test_running_in_cloud_when_libtpu_available(self):
     mock_libtpu = mock.MagicMock()

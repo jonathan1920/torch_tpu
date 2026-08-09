@@ -24,6 +24,7 @@ import torch
 from torch_tpu._internal import compile as compile_lib
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
 def setUpModule():
@@ -98,7 +99,7 @@ class TensorLayout:
 
 
 # Base class with functionality for testing.
-class LayoutTest(absltest.TestCase):
+class LayoutTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
