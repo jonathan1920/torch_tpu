@@ -1054,9 +1054,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:hardware",
-        "//torch_tpu/ops/experimental/sparse_dense_matmul:preprocessing_config_py_pb2",
         "@pypi//numpy",
     ],
 )

@@ -20,69 +20,56 @@ import numpy as np
 import torch
 from torch_tpu._internal.utils.hardware import get_tpu_version
 from torch_tpu._internal.utils.hardware import TpuVersion
-from torch_tpu._internal.utils.utils import assert_close
-from torch_tpu.ops.experimental.sparse_dense_matmul import preprocessing_config_pb2
 from tests import op_testing
 
 
 def preprocess_sparse_dense_matmul_input(
-    input_indices: dict[str, list[torch.Tensor]],
-    input_offsets: dict[str, list[torch.Tensor]],
-    stacked_tables_config: dict[str, list[dict[str, Any]]],
+    input_indices: torch.Tensor,
+    input_offsets: torch.Tensor,
+    max_ids_per_partition: int = 128,
+    max_unique_ids_per_partition: int = 128,
+    suggested_coo_buffer_size: int = 128,
+    batch_size: int = 16,
+    combiner: str = "sum",
     options: dict[str, Any] | None = None,
-) -> tuple[
-    dict[str, dict[str, torch.Tensor]], dict[str, dict[str, torch.Tensor]]
-]:
-  """Preprocesses sparse dense matmul input tensors into CSR buffers and stats.
+    table_name: str = "table_0",
+) -> dict[str, torch.Tensor]:
+  """Preprocesses sparse dense matmul input tensors for a table into CSR buffers and stats.
 
   Args:
-    input_indices: Dict mapping table name to list of index tensors.
-    input_offsets: Dict mapping table name to list of offset tensors.
-    stacked_tables_config: Dict specifying configuration for stacked tables.
-    options: Optional dict specifying preprocessing options.
+    input_indices: Index tensor for the feature.
+    input_offsets: Offset tensor for the feature.
+    max_ids_per_partition: Max ID count per SparseCore partition.
+    max_unique_ids_per_partition: Max unique ID count per partition.
+    suggested_coo_buffer_size: Suggested COO buffer size.
+    batch_size: Batch size per device.
+    combiner: Reduction combiner for sample IDs ("sum", "mean", etc.).
+    options: Optional dict specifying additional options (local_device_count,
+      global_device_count, num_sc_per_device, allow_id_dropping).
+    table_name: Table name for logging and identification.
 
   Returns:
-    A tuple of (outputs, stats_dict):
-      outputs: Dict[table_name, Dict[buffer_name, Tensor]] containing CSR
-        buffers ("row_pointers", "embedding_ids", "sample_ids", "gains").
-      stats_dict: Dict[stat_name, Dict[table_name, Tensor]] containing:
-        - "max_ids_per_partition": Max ID count per SparseCore partition.
-        - "max_unique_ids_per_partition": Max unique ID count per partition.
-        - "required_buffer_sizes": Required buffer size per SparseCore
-        partition.
-        - "dropped_id_count": Count of dropped IDs per table.
+    Dict[str, Tensor] containing CSR buffers ("row_pointers", "embedding_ids",
+    "sample_ids", "gains") and stats ("max_ids_per_partition",
+    "max_unique_ids_per_partition", "required_buffer_sizes",
+    "dropped_id_count").
   """
-  config_proto = preprocessing_config_pb2.StackedTablesConfig()
-  for table_name, features in stacked_tables_config.items():
-    feature_list = config_proto.tables[table_name]
-    for i, feat in enumerate(features):
-      f_meta = feature_list.features.add()
-      f_meta.name = feat.get("name", f"feature_{i}")
-      f_meta.feature_index = feat.get("feature_index", i)
-      f_meta.max_ids_per_partition = feat.get("max_ids_per_partition", 128)
-      f_meta.max_unique_ids_per_partition = feat.get(
-          "max_unique_ids_per_partition", 128
-      )
-      f_meta.row_offset = feat.get("row_offset", 0)
-      f_meta.col_offset = feat.get("col_offset", 0)
-      f_meta.col_shift = feat.get("col_shift", 0)
-      f_meta.batch_size = feat.get("batch_size", 16)
-      f_meta.suggested_coo_buffer_size_per_device = feat.get(
-          "suggested_coo_buffer_size_per_device", 128
-      )
-      f_meta.combiner = feat.get("combiner", "sum")
-
   if options is None:
     options = {}
 
   return torch.ops.tpu.preprocess_sparse_dense_matmul_input(
       input_indices,
       input_offsets,
-      config_proto.SerializeToString(),
+      max_ids_per_partition,
+      max_unique_ids_per_partition,
+      suggested_coo_buffer_size,
+      batch_size,
+      combiner,
       options.get("local_device_count", 1),
       options.get("global_device_count", 1),
       options.get("num_sc_per_device", 2),
       options.get("allow_id_dropping", True),
+      table_name,
   )
 
 
@@ -153,24 +140,6 @@ class SparseDenseMatmulTest(
         .repeat(1, embedding_dim)
     )
 
-    input_indices = {"table_0": [values]}
-    input_offsets = {"table_0": [offsets]}
-
-    stacked_tables_config = {
-        "table_0": [{
-            "name": "f0",
-            "feature_index": 0,
-            "max_ids_per_partition": 128,
-            "max_unique_ids_per_partition": 128,
-            "row_offset": 0,
-            "col_offset": 0,
-            "col_shift": 0,
-            "batch_size": device_batch_size,
-            "suggested_coo_buffer_size_per_device": 128,
-            "combiner": "sum",
-        }]
-    }
-
     options = {
         "local_device_count": 1,
         "global_device_count": 1,
@@ -178,11 +147,17 @@ class SparseDenseMatmulTest(
         "allow_id_dropping": True,
     }
 
-    outputs, _ = preprocess_sparse_dense_matmul_input(
-        input_indices, input_offsets, stacked_tables_config, options
+    table_0_outputs = preprocess_sparse_dense_matmul_input(
+        values,
+        offsets,
+        max_ids_per_partition=128,
+        max_unique_ids_per_partition=128,
+        suggested_coo_buffer_size=128,
+        batch_size=device_batch_size,
+        combiner="sum",
+        options=options,
     )
 
-    table_0_outputs = outputs["table_0"]
     rp = table_0_outputs["row_pointers"]
     e_ids = table_0_outputs["embedding_ids"]
     s_ids = table_0_outputs["sample_ids"]
@@ -215,44 +190,9 @@ class SparseDenseMatmulTest(
 
     self.assert_close(golden_result=exp, torch_tpu_result=out_tpu.cpu())
 
-  def test_input_preprocessing_table_stacking(self):
+  def test_input_preprocessing_basic(self):
     val_f0 = torch.tensor([0, 1, 2, 3], dtype=torch.int32)
     off_f0 = torch.tensor([0, 1, 2, 3, 4], dtype=torch.int32)
-
-    val_f1 = torch.tensor([4, 5, 6, 7], dtype=torch.int32)
-    off_f1 = torch.tensor([0, 1, 2, 3, 4], dtype=torch.int32)
-
-    input_indices = {"table_0": [val_f0, val_f1]}
-    input_offsets = {"table_0": [off_f0, off_f1]}
-
-    stacked_tables_config = {
-        "table_0": [
-            {
-                "name": "f0",
-                "feature_index": 0,
-                "max_ids_per_partition": 8,
-                "max_unique_ids_per_partition": 8,
-                "row_offset": 0,
-                "col_offset": 0,
-                "col_shift": 0,
-                "batch_size": 4,
-                "suggested_coo_buffer_size_per_device": 16,
-                "combiner": "sum",
-            },
-            {
-                "name": "f1",
-                "feature_index": 1,
-                "max_ids_per_partition": 8,
-                "max_unique_ids_per_partition": 8,
-                "row_offset": 4,
-                "col_offset": 0,
-                "col_shift": 0,
-                "batch_size": 4,
-                "suggested_coo_buffer_size_per_device": 16,
-                "combiner": "sum",
-            },
-        ]
-    }
 
     options = {
         "local_device_count": 1,
@@ -261,12 +201,17 @@ class SparseDenseMatmulTest(
         "allow_id_dropping": True,
     }
 
-    outputs, _ = preprocess_sparse_dense_matmul_input(
-        input_indices, input_offsets, stacked_tables_config, options
+    table_0_outputs = preprocess_sparse_dense_matmul_input(
+        val_f0,
+        off_f0,
+        max_ids_per_partition=8,
+        max_unique_ids_per_partition=8,
+        suggested_coo_buffer_size=16,
+        batch_size=4,
+        combiner="sum",
+        options=options,
     )
 
-    self.assertIn("table_0", outputs)
-    table_0_outputs = outputs["table_0"]
     self.assertIn("row_pointers", table_0_outputs)
     self.assertIn("embedding_ids", table_0_outputs)
     self.assertIn("sample_ids", table_0_outputs)
@@ -287,24 +232,6 @@ class SparseDenseMatmulTest(
     val_f0 = torch.arange(20, dtype=torch.int32)
     off_f0 = torch.tensor([0, 10, 20], dtype=torch.int32)
 
-    input_indices = {"table_0": [val_f0]}
-    input_offsets = {"table_0": [off_f0]}
-
-    stacked_tables_config = {
-        "table_0": [{
-            "name": "f0",
-            "feature_index": 0,
-            "max_ids_per_partition": 2,
-            "max_unique_ids_per_partition": 2,
-            "row_offset": 0,
-            "col_offset": 0,
-            "col_shift": 0,
-            "batch_size": 2,
-            "suggested_coo_buffer_size_per_device": 32,
-            "combiner": "sum",
-        }]
-    }
-
     options = {
         "local_device_count": 1,
         "global_device_count": 1,
@@ -312,32 +239,38 @@ class SparseDenseMatmulTest(
         "allow_id_dropping": True,
     }
 
-    outputs, stats = preprocess_sparse_dense_matmul_input(
-        input_indices, input_offsets, stacked_tables_config, options
+    table_0_outputs = preprocess_sparse_dense_matmul_input(
+        val_f0,
+        off_f0,
+        max_ids_per_partition=2,
+        max_unique_ids_per_partition=2,
+        suggested_coo_buffer_size=32,
+        batch_size=2,
+        combiner="sum",
+        options=options,
     )
 
-    self.assertIn("table_0", outputs)
-    self.assertIn("dropped_id_count", stats)
-    self.assertIn("max_ids_per_partition", stats)
-    self.assertIn("max_unique_ids_per_partition", stats)
-    self.assertIn("required_buffer_sizes", stats)
+    self.assertIn("dropped_id_count", table_0_outputs)
+    self.assertIn("max_ids_per_partition", table_0_outputs)
+    self.assertIn("max_unique_ids_per_partition", table_0_outputs)
+    self.assertIn("required_buffer_sizes", table_0_outputs)
 
     num_sc = _get_num_sc_per_device()
-    assert_close(
-        stats["dropped_id_count"]["table_0"],
-        torch.tensor([12], dtype=torch.int32),
+    self.assert_close(
+        golden_result=torch.tensor([12], dtype=torch.int32),
+        torch_tpu_result=table_0_outputs["dropped_id_count"],
     )
-    assert_close(
-        stats["max_ids_per_partition"]["table_0"],
-        torch.full((num_sc,), 10 // num_sc, dtype=torch.int32),
+    self.assert_close(
+        golden_result=torch.full((num_sc,), 10 // num_sc, dtype=torch.int32),
+        torch_tpu_result=table_0_outputs["max_ids_per_partition"],
     )
-    assert_close(
-        stats["max_unique_ids_per_partition"]["table_0"],
-        torch.full((num_sc,), 10 // num_sc, dtype=torch.int32),
+    self.assert_close(
+        golden_result=torch.full((num_sc,), 10 // num_sc, dtype=torch.int32),
+        torch_tpu_result=table_0_outputs["max_unique_ids_per_partition"],
     )
-    assert_close(
-        stats["required_buffer_sizes"]["table_0"],
-        torch.full((num_sc,), 32 // num_sc, dtype=torch.int32),
+    self.assert_close(
+        golden_result=torch.full((num_sc,), 32 // num_sc, dtype=torch.int32),
+        torch_tpu_result=table_0_outputs["required_buffer_sizes"],
     )
 
   def _get_inputs(self, device):

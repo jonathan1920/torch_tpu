@@ -8497,13 +8497,52 @@ Device-side assertion tracking was not enabled by user.""",
 
 class InputPreprocessingErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
-  def test_input_preprocessing_invalid_proto(self):
+  def test_input_preprocessing_offsets_invalid_dtype(self):
+    if et.is_on_gpu():
+      self.skipTest("TPU only op")
+    val = torch.tensor([0, 1], dtype=torch.int32)
+    off = torch.tensor([0.0, 2.0], dtype=torch.float32)  # invalid dtype
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""failed to parse StackedTablesConfig proto""",
+        tpu="""offsets must be int32""",
     ):
       torch.ops.tpu.preprocess_sparse_dense_matmul_input(
-          {}, {}, b"invalid proto", 1, 1, 2, True
+          val,
+          off,
+          128,
+          128,
+          128,
+          16,
+          "sum",
+          1,
+          1,
+          2,
+          True,
+          "table_0",
+      )
+
+  def test_input_preprocessing_invalid_dtype(self):
+    if et.is_on_gpu():
+      self.skipTest("TPU only op")
+    val = torch.tensor([0.0, 1.0], dtype=torch.float32)  # invalid dtype
+    off = torch.tensor([0, 2], dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""indices must be int32""",
+    ):
+      torch.ops.tpu.preprocess_sparse_dense_matmul_input(
+          val,
+          off,
+          128,
+          128,
+          128,
+          16,
+          "sum",
+          1,
+          1,
+          2,
+          True,
+          "table_0",
       )
 
 

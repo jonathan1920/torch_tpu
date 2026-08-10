@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
-load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
-load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//build_files:build_defs.bzl",
     "torch_tpu_cc_library",
@@ -24,21 +21,6 @@ load(
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
-)
-
-proto_library(
-    name = "preprocessing_config_proto",
-    srcs = ["preprocessing_config.proto"],
-)
-
-cc_proto_library(
-    name = "preprocessing_config_cc_proto",
-    deps = [":preprocessing_config_proto"],
-)
-
-py_proto_library(
-    name = "preprocessing_config_py_pb2",
-    deps = [":preprocessing_config_proto"],
 )
 
 torch_tpu_cc_library(
@@ -149,9 +131,9 @@ torch_tpu_cc_library(
     name = "input_preprocessing",
     srcs = ["input_preprocessing_aten_kernels.cc"],
     deps = [
-        ":preprocessing_config_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         # Note: Despite residing under jax_tpu_embedding, the core C++
