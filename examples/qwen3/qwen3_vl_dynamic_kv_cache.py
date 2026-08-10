@@ -118,6 +118,12 @@ _MAX_BUFFER_SIZE = flags.DEFINE_integer(
     "The maximum buffer size for KV cache. Used as upper bound for dynamo"
     " mark_dynamic.",
 )
+_VERIFY_NUMERICAL_CORRECTNESS = flags.DEFINE_boolean(
+    "verify_numerical_correctness",
+    True,
+    "Whether to run CPU reference execution and verify numerical output"
+    " equivalence between CPU and TPU with identical random weights.",
+)
 
 
 @enum.unique
@@ -275,7 +281,7 @@ def model_generate(
       "avg_decode_time_per_token_ms": avg_decode_time_ms,
       "avg_decode_time_per_token_no_warmup_ms": avg_decode_time_no_warmup_ms,
   }
-  return output_text, metrics
+  return output_text, metrics, output_tokens
 
 
 def _print_summary_table(
@@ -412,10 +418,14 @@ def _run_with_random_weights(
     device: Device,
     mode: Mode,
     max_buffer_size: int | None = None,
+    verify_correctness: bool = False,
 ) -> Mapping[str, Any]:
   """Runs benchmark for a single mode with random weights across image resolutions."""
+  torch.manual_seed(123)
+  model_cpu = Qwen3VLForConditionalGeneration(config).to(torch.bfloat16)
+
   with torch.device(device.value):
-    model_device = Qwen3VLForConditionalGeneration(config).to(torch.bfloat16)
+    model_device = copy.deepcopy(model_cpu).to(device.value)
 
   compiled_config = _get_compiled_config(device, mode)
 
@@ -449,6 +459,25 @@ def _run_with_random_weights(
         else prefill_len + max_decode_steps
     )
 
+    output_tokens_cpu = None
+    output_text_cpu = None
+    if verify_correctness:
+      cpu_inputs = {
+          k: v.to("cpu") if isinstance(v, torch.Tensor) else v
+          for k, v in inputs.items()
+      }
+      output_text_cpu, metrics_cpu, output_tokens_cpu = model_generate(
+          model_cpu,
+          cpu_inputs,
+          processor,
+          max_decode_steps,
+          prefix=f"[CPU Eager] [{label}] ",
+          use_static_cache=False,
+          mark_dynamic=False,
+          max_buffer_size=buf_size,
+      )
+      mode_metrics[f"CPU Eager [{label}]"] = metrics_cpu
+
     if mode == Mode.COMPILED_DYNAMIC:
       if "pixel_values" in device_inputs and isinstance(
           device_inputs["pixel_values"], torch.Tensor
@@ -463,7 +492,7 @@ def _run_with_random_weights(
     run_label = f"{compiled_config.key} [{label}]"
     prefix = f"{compiled_config.prefix}[{label}] "
 
-    _, metrics_compiled = model_generate(
+    output_text_tpu, metrics_compiled, output_tokens_tpu = model_generate(
         model_device_compiled,
         device_inputs,
         processor,
@@ -474,6 +503,17 @@ def _run_with_random_weights(
         max_buffer_size=buf_size,
     )
     mode_metrics[run_label] = metrics_compiled
+
+    if verify_correctness and output_tokens_cpu is not None:
+      assert torch.equal(output_tokens_cpu, output_tokens_tpu), (
+          f"Mismatch between CPU and TPU generated tokens for {label}:\n"
+          f"  CPU tokens: {output_tokens_cpu.tolist()}\n"
+          f"  TPU tokens: {output_tokens_tpu.tolist()}\n"
+          f"  CPU text: {output_text_cpu!r}\n"
+          f"  TPU text: {output_text_tpu!r}"
+      )
+      print(f"[Correctness] Verified: CPU and TPU outputs match for {label}!")
+      print(f"  CPU text: {output_text_cpu!r}\n  TPU text: {output_text_tpu!r}")
 
   return mode_metrics
 
@@ -595,6 +635,7 @@ def main(argv):
           device=device,
           mode=mode,
           max_buffer_size=explicit_max_buffer_size,
+          verify_correctness=_VERIFY_NUMERICAL_CORRECTNESS.value,
       )
       all_metrics.update(metrics)
   else:
