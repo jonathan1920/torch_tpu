@@ -18,6 +18,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import torch
 from torch_tpu import _loader
+from torch_tpu._internal import compile as tpu_compile
 from tests import op_testing
 
 _loader._init_device("tpu")
@@ -542,6 +543,49 @@ class FusedAdamWTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(
         run_fn, atol=1e-3 if dtype == torch.float16 else 1e-5, rtol=1e-2
     )
+
+  def test_fused_adamw_buffer_donation(self):
+    """Tests MLIR buffer donation annotations and runtime buffer invalidation."""
+    tpu_backend = tpu_compile.TpuBackend(debug=True)
+
+    @torch.compile(fullgraph=True, dynamic=False, backend=tpu_backend)
+    def step_fn(params, grads, exp_avgs, exp_avg_sqs, state_steps, lr):
+      torch.ops.aten._fused_adamw_.default(
+          params,
+          grads,
+          exp_avgs,
+          exp_avg_sqs,
+          [],
+          state_steps,
+          lr=lr,
+          beta1=0.9,
+          beta2=0.999,
+          weight_decay=0.01,
+          eps=1e-8,
+          amsgrad=False,
+          maximize=False,
+      )
+
+    p = torch.tensor([1.0, 2.0], dtype=torch.float32, device=self.device)
+    g = torch.tensor([0.1, 0.2], dtype=torch.float32, device=self.device)
+    ea = torch.tensor([0.01, 0.02], dtype=torch.float32, device=self.device)
+    eas = torch.tensor([0.001, 0.002], dtype=torch.float32, device=self.device)
+    step = torch.tensor([1], dtype=torch.int64, device=self.device)
+
+    old_p_view = p.view_as(p)
+
+    step_fn([p], [g], [ea], [eas], [step], 0.001)
+
+    executables = tpu_backend._compiled_executables
+    self.assertLen(executables, 1)
+    self.assertIn("jax.buffer_donor", executables[0].mlir_text)
+
+    self.assertIsNotNone(p.cpu())
+
+    with self.assertRaisesRegex(
+        RuntimeError, "INVALID_ARGUMENT: Buffer has been deleted or donated"
+    ):
+      old_p_view.cpu()
 
 
 if __name__ == "__main__":

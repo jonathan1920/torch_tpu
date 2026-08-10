@@ -35,6 +35,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
@@ -596,10 +597,31 @@ void DispatchAdamw(at::TensorList self, at::TensorList grads,
                           has_grad_scale, has_found_inf, out_dtypes);
   };
 
+  // Select 0-based argument indices of input tensors to donate to XLA for HBM
+  // buffer reuse. We donate buffers for all tensors mutated in-place:
+  //   - [0 * N + i]: self (model parameters)
+  //   - [2 * N + i]: exp_avgs (first-moment optimizer states)
+  //   - [3 * N + i]: exp_avg_sqs (second-moment optimizer states)
+  //   - [5 * N + i]: max_exp_avg_sqs (max second-moment states, if amsgrad)
+  // Note: grads [1 * N + i] and state_steps [4 * N + i] are not donated because
+  // gradients are read-only inputs and step counters are scalars.
+  // TODO(@lukeboyer): Consider donation grads when they are being scaled.
+  Indices donated_indices;
+  donated_indices.reserve((amsgrad ? 4 : 3) * num_tensors);
+  for (size_t i = 0; i < num_tensors; ++i) {
+    donated_indices.push_back(i);                    // self
+    donated_indices.push_back(2 * num_tensors + i);  // exp_avgs
+    donated_indices.push_back(3 * num_tensors + i);  // exp_avg_sqs
+    if (amsgrad) {
+      donated_indices.push_back(5 * num_tensors + i);  // max_exp_avg_sqs
+    }
+  }
+
   DispatchOpOptions<kDynamicSize> options = {
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = std::move(param_keys),
+      .donated_indices = std::move(donated_indices),
   };
 
   // Compile and execute the multi-tensor StableHLO graph, retrieving output
