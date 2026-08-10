@@ -73,57 +73,186 @@ except ImportError:
   _HAS_TRANSFORMERS = False
 
 _AUDIO_MODEL_TYPES = (
-    "whisper",
-    "wav2vec2",
+    # go/keep-sorted start
     "audio",
-    "hubert",
-    "vits",
-    "wavlm",
-    "speech",
+    "audio-flamingo",
+    "audio-spectrogram-transformer",
+    "audio_flamingo",
     "clap",
-    "musicgen",
     "data2vec",
+    "data2vec-audio",
+    "fastspeech",
+    "fastspeech2",
+    "gemma3naudio",
+    "gemma4audio",
+    "hubert",
+    "musicgen",
+    "omnitoken2wav",
+    "qwen2-audio",
+    "qwen2_audio",
+    "scail",
+    "speech",
+    "speecht5",
+    "unispeech-sat",
+    "vits",
+    "wav2vec2",
+    "wav2vec2-conformer",
+    "wavlm",
+    "whisper",
+    # go/keep-sorted end
 )
 _VISION_MODEL_TYPES = (
-    "vit",
-    "vision",
-    "mobile",
-    "resnet",
+    # go/keep-sorted start
+    "beit",
     "clip",
-    "siglip",
+    "convnext",
+    "convnextv2",
+    "data2vec-vision",
+    "deit",
+    "depth",
+    "depth_anything",
+    "depth_pro",
+    "detr",
     "dino",
     "dinov2",
-    "detr",
+    "dinov2_with_registers",
+    "dinov3",
+    "dinov3_vit",
+    "dpt",
+    "eomt",
+    "glpn",
+    "ijepa",
+    "lightglue",
+    "mask2former",
+    "maskformer",
+    "mobile",
+    "oneformer",
+    "resnet",
+    "segformer",
+    "siglip",
+    "superpoint",
+    "swin2sr",
     "table-transformer",
-    "deit",
-    "beit",
-    "convnext",
+    "timm_wrapper",
+    "vision",
+    "vit",
+    "vitpose",
+    "vjepa",
+    "vjepa2",
+    "yolos",
+    "zoedepth",
+    # go/keep-sorted end
+)
+_TEXT_MODEL_TYPES = (
+    # go/keep-sorted start
+    "albert",
+    "bert",
+    "camembert",
+    "convbert",
+    "deberta",
+    "deberta-v2",
+    "distilbert",
+    "electra",
+    "funnel",
+    "megatron-bert",
+    "modernbert",
+    "roberta",
+    "tapas",
+    "xlm",
+    "xlm-roberta",
+    "xlnet",
+    # go/keep-sorted end
 )
 _CAUSAL_LM_MODEL_TYPES = (
-    "llama",
-    "gpt",
-    "mistral",
-    "qwen",
-    "phi",
+    # go/keep-sorted start
+    "bloom",
+    "cohere",
+    "deepseek",
+    "deepseek_v2",
+    "deepseek_v3",
     "falcon",
     "gemma",
+    "gemma2",
+    "gemma3",
+    "gemma3_text",
+    "gemma4",
+    "gpt",
+    "gpt2",
+    "gpt_neo",
+    "gpt_neox",
+    "gpt_oss",
+    "gptj",
+    "llama",
+    "mistral",
+    "mixtral",
+    "mpt",
+    "openai-gpt",
+    "opt",
+    "phi",
+    "phi3",
+    "phi4",
+    "qwen",
+    "qwen2",
+    "qwen2_5",
+    "qwen2_moe",
+    "qwen3",
+    "qwen3_5",
+    "qwen3_5_moe",
+    "qwen3_moe",
+    "stablelm",
+    # go/keep-sorted end
 )
 _SEQ2SEQ_MODEL_TYPES = (
-    "t5",
-    "whisper",
+    # go/keep-sorted start
     "bart",
-    "marian",
-    "nllb",
+    "encoder-decoder",
     "m2m",
     "m2m_100",
+    "marian",
     "mbart",
+    "mt5",
+    "nllb",
     "pegasus",
-    "encoder-decoder",
+    "t5",
+    "whisper",
+    # go/keep-sorted end
 )
-_VISION_LANGUAGE_MODEL_TYPES = ("clip", "llava", "paligemma", "blip", "mllama")
+_VISION_LANGUAGE_MODEL_TYPES = (
+    # go/keep-sorted start
+    "audio-flamingo",
+    "audio_flamingo",
+    "blip",
+    "blip-2",
+    "blip_2",
+    "clip",
+    "cosmos3",
+    "grounding_dino",
+    "groundingdino",
+    "holo",
+    "instructblip",
+    "llav",
+    "llava",
+    "llmdet",
+    "mllama",
+    "oneformer",
+    "paligemma",
+    "qformer",
+    "qwen2-audio",
+    "qwen2_audio",
+    "qwen3_vl",
+    "qwen3_vl_moe",
+    # go/keep-sorted end
+)
 # Multimodal is the union of all multimodal subtypes
 _MULTIMODAL_MODEL_TYPES = _VISION_LANGUAGE_MODEL_TYPES
-
+_ALL_SUPPORTED_TRANSFORMERS_MODEL_TYPES = (
+    _AUDIO_MODEL_TYPES
+    + _VISION_MODEL_TYPES
+    + _CAUSAL_LM_MODEL_TYPES
+    + _SEQ2SEQ_MODEL_TYPES
+    + _MULTIMODAL_MODEL_TYPES
+    + _TEXT_MODEL_TYPES
+)
 _MAX_SEQ_LEN_HEURISTIC_CAP = 100_000
 
 _WEIGHTS_BASE_PATH = flags.DEFINE_string(
@@ -136,6 +265,15 @@ _WEIGHTS_BASE_PATH = flags.DEFINE_string(
 _PROVIDER_ALIASES: dict[str, str] = {
     "sentence-transformers": "transformers",
 }
+
+
+def is_supported_transformers_model_type(model_type: str) -> bool:
+  """Returns True if model_type is supported by module_registry."""
+  if not model_type:
+    return False
+  return any(
+      k in model_type.lower() for k in _ALL_SUPPORTED_TRANSFORMERS_MODEL_TYPES
+  )
 
 
 class Modality(enum.Enum):
@@ -470,6 +608,11 @@ def _determine_modality(config: Any) -> Modality:
       any(k in model_type for k in _SEQ2SEQ_MODEL_TYPES)
       or "conditionalgeneration" in arch_name
   )
+  is_text = (
+      any(k in model_type for k in _TEXT_MODEL_TYPES)
+      or "bert" in arch_name
+      or "encoder" in arch_name
+  )
 
   if is_multimodal:
     return Modality.MULTIMODAL
@@ -481,6 +624,8 @@ def _determine_modality(config: Any) -> Modality:
     return Modality.CAUSAL_LM
   elif is_seq2seq:
     return Modality.SEQ2SEQ
+  elif is_text:
+    return Modality.TEXT_DEFAULT
   else:
     return Modality.TEXT_DEFAULT
 
