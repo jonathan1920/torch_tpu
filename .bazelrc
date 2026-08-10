@@ -369,12 +369,15 @@ common --@rules_python//python/config_settings:venvs_site_packages=yes
 # Config for testing wheel builds.
 build --flag_alias=test_wheel=//:test_wheel
 
+# The wheel is always the versioned, separated layout: route the XLA/MLIR
+# backend through the torch_version-reset transition so it is built once around
+# shared.
+build:wheel_base --//:wheel_build=True
+
 # Common config for all wheel.
 build:wheel_common --config=remote_caching_readonly
 build:wheel_common --config=remote_execution_readonly
-# The wheel is always the versioned, separated layout: route the XLA/MLIR backend
-# through the torch_version-reset transition so it is built once and shared.
-build:wheel_common --//:wheel_build=True
+build:wheel_common --config=wheel_base
 
 # Release-channel wheel: wheel_common without the PyTorch-nightly glue. Use this
 # for artifacts published to an index (the nightly glue is built against a
