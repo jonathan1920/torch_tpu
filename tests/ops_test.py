@@ -2196,6 +2196,9 @@ class TestOps(op_testing.OpInfoTestBase):
         exclude_inplace_dtypes=[torch.bool],
     )
 
+  def test_channel_shuffle(self):
+    self.do_test_op("nn.functional.channel_shuffle")
+
   def test_clamp(self):
     self.do_test_op(
         "clamp",

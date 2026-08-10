@@ -205,6 +205,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_cdist_forward";
     case OpName::kCeilOut:
       return "ceil.out";
+    case OpName::kChannelShuffle:
+      return "channel_shuffle";
     case OpName::kClampMaxOut:
       return "clamp_max.out";
     case OpName::kClampMaxTensorOut:

@@ -57,6 +57,7 @@
 #include "torch_tpu/ops/bmm/bmm_aten_kernels.h"
 #include "torch_tpu/ops/bucketize/bucketize_aten_kernels.h"
 #include "torch_tpu/ops/cat/cat_aten_kernels.h"
+#include "torch_tpu/ops/channel_shuffle/channel_shuffle_aten_kernels.h"
 #include "torch_tpu/ops/clamp/clamp_aten_kernels.h"
 #include "torch_tpu/ops/col2im/col2im_aten_kernels.h"
 #include "torch_tpu/ops/convolution/convolution_aten_kernels.h"
@@ -395,6 +396,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kCdistBackward>(m, AtenCdistBackward);
   ImplStable<OpName::kCdistForward>(m, AtenCdistForward);
   ImplStable<OpName::kCeilOut>(m, AtenCeilOut);
+  ImplStable<OpName::kChannelShuffle>(m, AtenChannelShuffle);
   ImplStable<OpName::kClampMaxOut>(m, AtenClampMaxOut);
   ImplStable<OpName::kClampMaxTensorOut>(m, AtenClampMaxTensorOut);
   ImplStable<OpName::kClampMinOut>(m, AtenClampMinOut);

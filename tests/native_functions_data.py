@@ -201,7 +201,6 @@ UNREGISTERED_OPS = frozenset([
     'batch_norm_update_stats',
     'binomial',
     'cauchy_',
-    'channel_shuffle',
     'cholesky_inverse',
     'cholesky_inverse.out',
     'conv_depthwise3d',

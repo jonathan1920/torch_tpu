@@ -1755,6 +1755,45 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.cat([t2x2, t3x2], dim=1)
 
+  def test_channel_shuffle_invalid_dim(self):
+    t = torch.randn(4, 4, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu=re.compile(
+            r".*channel_shuffle expects input with > 2 dims.*got input with"
+            r" sizes \[4, 4\].*"
+        ),
+        tpu=re.compile(
+            r".*expect(ed|s) input with > 2 dims.*got input with sizes \[4,"
+            r" 4\].*"
+        ),
+    ):
+      torch.channel_shuffle(t, 2)
+
+  def test_channel_shuffle_invalid_groups(self):
+    t = torch.randn(2, 4, 8, 8, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu="""Number of groups to divide channels in must be positive. Value of groups:0""",
+        tpu="""channel_shuffle(): expected number of groups to divide channels in to be positive, got 0""",
+    ):
+      torch.channel_shuffle(t, 0)
+
+  def test_channel_shuffle_channels_not_divisible(self):
+    t = torch.randn(2, 5, 8, 8, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        gpu=re.compile(
+            r".*Number of channels must be divisible by groups.*Got 5 channels"
+            r" and 2 groups.*"
+        ),
+        tpu=re.compile(
+            r".*expected number of channels to be divisible by"
+            r" groups.*(but )?got 5 channels and 2 groups.*"
+        ),
+    ):
+      torch.channel_shuffle(t, 2)
+
   def test_addcmul_bool_error(self):
     """Tests that addcmul errors out with bool inputs."""
     self_tensor = torch.tensor([[True] * 5] * 5, dtype=torch.bool).to(

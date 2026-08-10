@@ -116,6 +116,7 @@ enum class OpName {
   kCdistBackward,
   kCdistForward,
   kCeilOut,
+  kChannelShuffle,
   kClampMaxOut,
   kClampMaxTensorOut,
   kClampMinOut,
