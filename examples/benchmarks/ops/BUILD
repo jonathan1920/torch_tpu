@@ -36,6 +36,7 @@ torch_tpu_py_library(
     name = "op_input_loader",
     srcs = ["op_input_loader.py"],
     deps = [
+        "//examples/benchmarks:shape_utils",
         "//shims/torch:pytorch",
     ],
 )

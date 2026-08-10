@@ -43,6 +43,7 @@ from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e.harness import metrics as metrics_lib
 from examples.benchmarks.ops.op_input_loader import deserialize_args
+from examples.benchmarks.ops.op_input_loader import format_shape_signature
 
 DEVICE = flags.DEFINE_string("device", "tpu", "Device to run benchmarks on.")
 MIN_RUN_TIME = flags.DEFINE_float(
@@ -378,6 +379,8 @@ class AtenOpBenchmarkBase(parameterized.TestCase):
         )
 
         safe_op_name = op_name.replace(".", "_").replace(":", "_")
+        shape_signature = format_shape_signature(inputs_str)
+        micro_key = shape_signature if shape_signature else f"case{case_index}"
         mlcompass_utils.export_to_mlcompass(
             platform=common.PLATFORM.value,
             metrics=result,
@@ -386,7 +389,7 @@ class AtenOpBenchmarkBase(parameterized.TestCase):
             mlcompass_execution_mode=benchmark_utils.MLCOMPASS_EXECUTION_MODE.value,
             test_method_name=f"test_{safe_op_name}",
             benchmark_name=f"{backend_name}_{run_mode_str}",
-            microbenchmark_name=f"case{case_index}",
+            microbenchmark_name=micro_key,
             succeeded=True,
             pending_cl=benchmark_utils.PENDING_CL.value,
             benchmark_group=benchmark_utils.BENCHMARK_GROUP.value,

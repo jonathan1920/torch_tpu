@@ -21,34 +21,51 @@ import torch
 def deserialize_tensor(
     shape: List[int], dtype: torch.dtype, device: str = "tpu"
 ) -> torch.Tensor:
-  """Creates a synthetic random tensor on the specified device."""
-  # Ensure device is mapped correctly for PyTorch
-  if device == "tpu":
-    # In TorchTPU, device is accessed via 'tpu' after registration.
-    torch_device = torch.device("tpu")
-  else:
-    torch_device = torch.device(device)
+  """Creates a synthetic random tensor on the specified device supporting all dtypes.
 
-  # Generate random data based on dtype
-  if dtype in (torch.float32, torch.float64, torch.bfloat16, torch.float16):
-    return torch.randn(shape, dtype=dtype, device=torch_device)
-  elif dtype in (
-      torch.int64,
-      torch.int32,
-      torch.int16,
-      torch.int8,
-      torch.uint8,
+  Utilizes PyTorch's native `torch.testing.make_tensor` utility for
+  comprehensive
+  dtype support (floats, ints, uints, bool, complex, float8, and quantized
+  dtypes).
+  """
+  torch_device = torch.device("tpu" if device == "tpu" else device)
+
+  # PyTorch quantized dtypes require affine quantized tensor constructors
+  if dtype in (
+      getattr(torch, "qint8", None),
+      getattr(torch, "quint8", None),
+      getattr(torch, "qint32", None),
+      getattr(torch, "quint4x2", None),
+      getattr(torch, "quint2x4", None),
   ):
-    # Generate integers in a reasonable range
-    return torch.randint(0, 100, shape, dtype=dtype, device=torch_device)
-  elif dtype == torch.bool:
-    return torch.randint(0, 2, shape, dtype=dtype, device=torch_device).to(
-        torch.bool
-    )
-  else:
-    # Fallback for other dtypes
-    logging.warning(f"Fallback to zeros for dtype {dtype}")
-    return torch.zeros(shape, dtype=dtype, device=torch_device)
+    try:
+      return torch._empty_affine_quantized(
+          shape, scale=1.0, zero_point=0, dtype=dtype, device=torch_device
+      )
+    except Exception:
+      float_tensor = torch.randn(shape, dtype=torch.float32)
+      return torch.quantize_per_tensor(
+          float_tensor, scale=0.1, zero_point=0, dtype=dtype
+      ).to(torch_device)
+
+  try:
+    return torch.testing.make_tensor(shape, dtype=dtype, device=torch_device)
+  except Exception:
+    try:
+      # If direct allocation on custom device is unsupported, construct on CPU and transfer.
+      return torch.testing.make_tensor(shape, dtype=dtype, device="cpu").to(
+          torch_device
+      )
+    except Exception as e:
+      logging.warning(f"Fallback for dtype {dtype}: {e}")
+      return torch.empty(shape, dtype=dtype, device=torch_device)
+
+
+from examples.benchmarks.shape_utils import _DTYPE_SHORT_NAMES
+from examples.benchmarks.shape_utils import format_shape_signature
+from examples.benchmarks.shape_utils import format_tensor
+from examples.benchmarks.shape_utils import format_tensor_spec
+from examples.benchmarks.shape_utils import shorten_dtype_name
 
 
 def deserialize_args(

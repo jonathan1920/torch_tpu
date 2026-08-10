@@ -15,9 +15,47 @@
 from absl.testing import absltest
 import torch
 from examples.benchmarks.ops.op_input_loader import deserialize_args
+from examples.benchmarks.ops.op_input_loader import format_shape_signature
 
 
 class OpInputLoaderTest(absltest.TestCase):
+
+  def test_format_shape_signature(self):
+    # Matrix multiplication with bfloat16
+    inputs_mm = (
+        "([T([4096, 2048], torch.bfloat16), T([2048, 2048], torch.bfloat16)],"
+        " {})"
+    )
+    self.assertEqual(
+        format_shape_signature(inputs_mm),
+        "<4096x2048xbf16>, <2048x2048xbf16>",
+    )
+
+    # Pointwise with float32 and scalar
+    inputs_add = "([T([1, 4096, 1], torch.float32), 1e-05], {})"
+    self.assertEqual(
+        format_shape_signature(inputs_add),
+        "<1x4096x1xf32>, 1e-05",
+    )
+
+    # Reduction with list dimension and keepdim kwargs
+    inputs_mean = "([T([1, 4096, 2048], torch.float32), [-1], True], {})"
+    self.assertEqual(
+        format_shape_signature(inputs_mean),
+        "<1x4096x2048xf32>, [-1], True",
+    )
+
+    # Fused Attention / SDPA with kwargs
+    inputs_sdpa = (
+        "([T([1, 32, 4096, 64], torch.bfloat16), T([1, 8, 4096, 64],"
+        " torch.bfloat16), T([1, 8, 4096, 64], torch.bfloat16), None, 0.0,"
+        " True], {'scale': 0.125})"
+    )
+    self.assertEqual(
+        format_shape_signature(inputs_sdpa),
+        "<1x32x4096x64xbf16>, <1x8x4096x64xbf16>, <1x8x4096x64xbf16>, None,"
+        " 0.0, True, scale=0.125",
+    )
 
   def test_deserialize_args(self):
     inputs_str = (
@@ -49,11 +87,70 @@ class OpInputLoaderTest(absltest.TestCase):
     self.assertFalse(torch.all(t == 1))
 
   def test_different_dtypes(self):
-    inputs_str = "([T([2], torch.int32), T([2], torch.bool)], {})"
-    args, _ = deserialize_args(inputs_str, device="cpu")
+    candidate_dtypes = [
+        # Floating point
+        "float32",
+        "float64",
+        "float16",
+        "bfloat16",
+        # Signed integers
+        "int64",
+        "int32",
+        "int16",
+        "int8",
+        # Unsigned integers
+        "uint8",
+        "uint16",
+        "uint32",
+        "uint64",
+        # Boolean
+        "bool",
+        # Complex types
+        "complex64",
+        "complex128",
+        "complex32",
+        # Float8 types
+        "float8_e4m3fn",
+        "float8_e5m2",
+        "float8_e4m3fnuz",
+        "float8_e5m2fnuz",
+        # Quantized types
+        "qint8",
+        "quint8",
+        "qint32",
+        "quint4x2",
+        "quint2x4",
+    ]
+    tested_count = 0
+    for dtype_name in candidate_dtypes:
+      dtype = getattr(torch, dtype_name, None)
+      if dtype is None or not isinstance(dtype, torch.dtype):
+        continue
+      inputs_str = f"([T([2, 3], torch.{dtype_name})], {{}})"
+      args, _ = deserialize_args(inputs_str, device="cpu")
+      self.assertEqual(args[0].dtype, dtype)
+      self.assertEqual(args[0].shape, torch.Size([2, 3]))
+      tested_count += 1
 
-    self.assertEqual(args[0].dtype, torch.int32)
-    self.assertEqual(args[1].dtype, torch.bool)
+    # Verify at least all 12 baseline standard dtypes were tested
+    self.assertGreaterEqual(tested_count, 12)
+
+  def test_format_shape_signature_extended_dtypes(self):
+    test_cases = [
+        ("([T([2, 4], torch.complex64)], {})", "<2x4xcomplex<f32>>"),
+        ("([T([8, 16], torch.complex128)], {})", "<8x16xcomplex<f64>>"),
+        ("([T([4], torch.complex32)], {})", "<4xcomplex<f16>>"),
+        ("([T([32], torch.uint16)], {})", "<32xui16>"),
+        ("([T([32], torch.uint32)], {})", "<32xui32>"),
+        ("([T([32], torch.uint64)], {})", "<32xui64>"),
+        ("([T([16], torch.float8_e4m3fn)], {})", "<16xf8E4M3FN>"),
+        ("([T([16], torch.float8_e5m2)], {})", "<16xf8E5M2>"),
+        ("([T([64], torch.qint8)], {})", "<64xqint8>"),
+        ("([T([64], torch.quint8)], {})", "<64xquint8>"),
+        ("([T([64], torch.qint32)], {})", "<64xqint32>"),
+    ]
+    for inputs_str, expected in test_cases:
+      self.assertEqual(format_shape_signature(inputs_str), expected)
 
   def test_invalid_input_not_expression(self):
     with self.assertRaises(ValueError):
