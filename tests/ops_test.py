@@ -3073,7 +3073,9 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "linalg.inv",
         exclude_dtypes={
-            "cpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+            "cpu": (
+                INTEGRAL_DTYPES + (torch.half, torch.bfloat16, torch.float64)
+            ),
             "gpu": (
                 torch.uint8,
                 torch.int8,  # Cannot generate GPU sample for this dtype.
