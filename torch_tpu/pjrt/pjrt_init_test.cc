@@ -28,7 +28,7 @@ namespace {
 
 using testing::ExitedWithCode;
 
-class PjRtInitTest : public ::testing::Test {
+class PjRtInitTest : public testing::Test {
  protected:
   void TearDown() override { PjrtBackend::GetInstance().Shutdown(); }
 };
