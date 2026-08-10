@@ -248,8 +248,8 @@ class VersionDispatchFinder(importlib.abc.MetaPathFinder):
         origin=spec.origin,
         is_package=is_pkg,
     )
-    new_spec.has_location = getattr(spec, "has_location", False)
-    new_spec.submodule_search_locations = getattr(
+    new_spec.has_location = getattr(spec, "has_location", False)  # pyrefly: ignore[missing-attribute]
+    new_spec.submodule_search_locations = getattr(  # pyrefly: ignore[missing-attribute]
         spec, "submodule_search_locations", None
     )
     return new_spec

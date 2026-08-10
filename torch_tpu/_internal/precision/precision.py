@@ -44,7 +44,7 @@ _VALID_PRECISIONS = (
 
 
 @contextlib.contextmanager
-def precision(mode: Precision) -> Generator[None, None, None]:
+def precision(mode: Precision) -> Generator[None, None, None]:  # pyrefly: ignore[invalid-annotation]
   """Context manager to set op precisions.
 
   This provides a direct binding to the StableHLO precision configuration. It is

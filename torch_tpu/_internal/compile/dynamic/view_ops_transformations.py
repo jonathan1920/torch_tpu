@@ -258,7 +258,7 @@ class HandleSliceLikeOpsPass:
         if len(node.args) > 4 + offset
         else node.kwargs.get("step", 1)
     )
-    return dim, start, end, step
+    return dim, start, end, step  # pyrefly: ignore[bad-return]
 
   def _replace_node_with_set_logical_size(
       self,
@@ -344,7 +344,7 @@ class HandleSliceLikeOpsPass:
       p_end = torch.fx.Proxy(end_tensor)
       p_step = torch.fx.Proxy(step_tensor)
       p_one = torch.fx.Proxy(one_tensor)
-      p_size = ((p_end + p_step - p_one) // p_step).to(dtype=torch.int32)
+      p_size = ((p_end + p_step - p_one) // p_step).to(dtype=torch.int32)  # pyrefly: ignore[unsupported-operation]
       size_tensor_node = p_size.node
 
       new_slice_node = graph_module.graph.call_function(
@@ -371,16 +371,16 @@ class HandleSliceLikeOpsPass:
     has_dynamic = (
         sym_utils.is_symint(end)
         or sym_utils.is_symint(step)
-        or any(sym_utils.is_symint(s) for s in input_sizes)
+        or any(sym_utils.is_symint(s) for s in input_sizes)  # pyrefly: ignore[not-iterable]
     )
     if not has_dynamic:
       return
 
-    input_sizes_upper = [symbol_bounds.get_upper_bound(s) for s in input_sizes]
+    input_sizes_upper = [symbol_bounds.get_upper_bound(s) for s in input_sizes]  # pyrefly: ignore[not-iterable]
     end_upper = symbol_bounds.get_upper_bound(end)
     step_upper = symbol_bounds.get_upper_bound(step)
 
-    input_size_sym = input_sizes[dim]
+    input_size_sym = input_sizes[dim]  # pyrefly: ignore[bad-index, unsupported-operation]
     size_tensor_node = self._sym_shape_manager.ensure_tensor(
         graph_module, input_size_sym, node, dtype=torch.int32
     )

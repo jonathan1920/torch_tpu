@@ -97,9 +97,9 @@ def _register_dtensor_sharding_rules():
     input_specs = op_schema.args_schema[0]
     if isinstance(input_specs, TupleStrategy):
       return TupleStrategy(
-          tuple(_make_strategy(c) for c in input_specs.children)
+          tuple(_make_strategy(c) for c in input_specs.children)  # pyrefly: ignore[bad-argument-type]
       )
-    return _make_strategy(input_specs)
+    return _make_strategy(input_specs)  # pyrefly: ignore[bad-argument-type]
 
   schema_info = RuntimeSchemaInfo(needs_pytree=True)
   register_op_strategy(

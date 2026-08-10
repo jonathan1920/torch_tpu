@@ -25,7 +25,7 @@ import torch
 def _get_tracer(*args) -> torch.fx.Tracer:
   for arg in args:
     if isinstance(arg, torch.fx.Proxy):
-      return arg.tracer
+      return arg.tracer  # pyrefly: ignore[bad-return]
   raise ValueError("Expected at least one torch.fx.Proxy argument.")
 
 
