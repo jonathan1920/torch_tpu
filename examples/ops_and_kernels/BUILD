@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_package_end",
+    "torch_tpu_py_library",
+    "torch_tpu_py_test",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -131,6 +136,42 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/pallas",
         "@pypi//jax",
+    ],
+)
+
+# A sample pallas kernel.
+torch_tpu_py_library(
+    name = "pallas_add",
+    srcs = ["pallas_add.py"],
+    deps = [
+        "//shims/jax:pallas",
+        "@pypi//jax",
+    ],
+)
+
+# A sample PyTorch library that adapts a Pallas kernel to a PyTorch op.
+torch_tpu_py_library(
+    name = "torch_pallas_add",
+    srcs = ["torch_pallas_add.py"],
+    deps = [
+        ":pallas_add",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/pallas",
+    ],
+)
+
+# Shows how to call a Pallas kernel (wrapped as a PyTorch op) from PyTorch.
+torch_tpu_py_test(
+    name = "call_pallas_add",
+    srcs = ["call_pallas_add.py"],
+    main = "call_pallas_add.py",
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        ":torch_pallas_add",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
     ],
 )
 

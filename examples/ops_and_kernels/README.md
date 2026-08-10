@@ -543,13 +543,36 @@ TorchTPU exposes lower-level control of TPUs via Pallas, the domain-specific
 language for writing custom kernels. Like the Triton kernel you saw earlier,
 Pallas allows fine-grained control of memory.
 
+This guide will only scratch the surface of Pallas. Refer to the
+[JAX documentation on Pallas](https://docs.jax.dev/en/latest/pallas/index.html)
+for a more complete introduction.
+
+#### Basic example: Vector addition across modular targets
+
+Before looking at a more complex quantization kernel, consider a minimal,
+modular example that demonstrates the plumbing required to take a Pallas kernel
+and make it callable from PyTorch.
+
+This example is split into 3 distinct targets to illustrate the clean separation
+of responsibilities:
+
+1.  **Pallas kernel definition** in [pallas_add.py](pallas_add.py): Defines the
+    low-level Pallas kernel body (`add_vectors_kernel`) that operates on TPU
+    memory references, and wraps it in a typed JAX function (`add_vectors_jax`)
+    using `pl.pallas_call`.
+2.  **TorchTPU adapter** in [torch_pallas_add.py](torch_pallas_add.py): Adapts
+    the JAX function into a PyTorch-compatible custom op using
+    `torch_tpu._internal.pallas.jax_op` and exposes a Pythonic PyTorch function
+    `pallas_add_vectors`.
+3.  **User-facing call and test** in [call_pallas_add.py](call_pallas_add.py):
+    Simulates how an end-user calls the kernel from PyTorch, verifying that it
+    works in both eager mode and with `@torch.compile(backend="tpu")`.
+
+#### Advanced example: Quantization and packing in Pallas
+
 As a toy problem, suppose you want to explore speeding up the quantization of
 the one-bit format you previously developed. This toy problem is inspired by the
 [DeepSeek v3's activation quantization kernel in Triton](https://github.com/deepseek-ai/DeepSeek-V3/blob/9b4e9788e4a3a731f7567338ed15d3ec549ce03b/inference/kernel.py#L10).
-
-This example will only scratch the surface of Pallas. Refer to the
-[JAX documentationation on Pallas](https://docs.jax.dev/en/latest/pallas/index.html)
-for a more complete introduction.
 
 The DeepSeek act_quant kernel takes higher precision activations and both
 quantizes them down to fp8 blockwise (with an f32 scaling factor per block), and
