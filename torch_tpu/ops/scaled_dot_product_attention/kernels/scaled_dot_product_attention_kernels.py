@@ -53,7 +53,7 @@ def _make_abstract_device(device_kind: str, num_cores: int, platform: str):
         device_kind, num_cores, platform
     )  # type: ignore[call-arg]
   else:
-    return jax.sharding.AbstractDevice(
+    return jax.sharding.AbstractDevice(  # pyrefly: ignore[missing-argument]
         device_kind, num_cores
     )  # type: ignore[call-arg]
 
