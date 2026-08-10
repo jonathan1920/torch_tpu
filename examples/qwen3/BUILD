@@ -503,6 +503,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "@pypi//pillow",
+        "@pypi//torchvision",  # build_cleaner: keep
         "@pypi//transformers",
         "@rules_python//python/runfiles",
     ],
