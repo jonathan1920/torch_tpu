@@ -20,6 +20,7 @@ import torch.utils._pytree as pytree
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import test_utils as utils
 from tests import oss_utils
+from tests import seed_test_utils
 
 
 def _compile_and_run(fn, *args, **kwargs):
@@ -44,7 +45,7 @@ def _compile_and_get_stablehlo(model, *args):
   return texts[0]
 
 
-class ScanOpTest(parameterized.TestCase):
+class ScanOpTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -296,7 +297,7 @@ class ScanOpTest(parameterized.TestCase):
     utils.assert_close(out_ys.cpu(), expected_ys)
 
 
-class ScanLoweringTest(parameterized.TestCase):
+class ScanLoweringTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
 
   def test_scan_is_not_unrolled(self):
 

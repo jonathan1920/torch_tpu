@@ -16,9 +16,10 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import torch
 from torch._subclasses import fake_tensor
+from tests import seed_test_utils
 
 
-class RngTest(parameterized.TestCase):
+class RngTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
 
   def test_get_rng_state_metadata(self):
     device = torch.device("tpu")

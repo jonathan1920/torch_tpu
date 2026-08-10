@@ -19,9 +19,10 @@ from torch_tpu._internal import dynamism
 from torch_tpu._internal import sync
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class DynamismModelTest(parameterized.TestCase):
+class DynamismModelTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
   """Unit tests for bounded dynamism support on nn.Modules."""
 
   def setUp(self):
@@ -84,7 +85,9 @@ class DynamismModelTest(parameterized.TestCase):
     utils.assert_close(act.to("cpu"), expected, rtol=1e-2, atol=1e-2)
 
 
-class KVCacheDynamismTest(parameterized.TestCase):
+class KVCacheDynamismTest(
+    seed_test_utils.RepeatableTest, parameterized.TestCase
+):
   """Unit tests for bounded dynamism on KV cache like operations."""
 
   def setUp(self):

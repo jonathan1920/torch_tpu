@@ -28,6 +28,7 @@ from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import test_utils as utils
 from tests import module_registry
+from tests import seed_test_utils
 
 _GOLDFISH_IMG_PATH = (
     epath.resource_path("torch_tpu") / "tests/compile/data/goldfish.jpg"
@@ -102,7 +103,9 @@ def _train_step(
   return loss
 
 
-class ModelCoverageTimmTest(parameterized.TestCase):
+class ModelCoverageTimmTest(
+    seed_test_utils.RepeatableTest, parameterized.TestCase
+):
 
   @classmethod
   def setUpClass(cls) -> None:

@@ -22,6 +22,7 @@ import itertools
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch
+from tests import seed_test_utils
 
 RNG_OPS = (
     (
@@ -74,7 +75,7 @@ def get_current_generator_offset() -> int:
   return torch.tpu.get_rng_state().view(torch.int64).cpu().tolist()[-1]
 
 
-class RngStressTest(parameterized.TestCase):
+class RngStressTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
   """Stress test for RNG state and random operations.
 
   This test verifies that concurrent calls to random operations from multiple

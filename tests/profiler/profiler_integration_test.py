@@ -26,6 +26,7 @@ import torch
 from torch.autograd import profiler
 from torch_tpu._internal import sync as tpu_sync
 from torch_tpu._internal.profiler.profiler_config import TpuProfilerConfig
+from tests import seed_test_utils
 
 # pylint: disable=g-direct-tensorflow-import
 from tsl.profiler.protobuf import profiler_options_pb2
@@ -94,7 +95,9 @@ def _get_profiler_options_bytes(xspace: xplane_pb2.XSpace) -> bytes:
   return b""
 
 
-class ProfilerIntegrationTest(parameterized.TestCase):
+class ProfilerIntegrationTest(
+    seed_test_utils.RepeatableTest, parameterized.TestCase
+):
 
   def _get_and_copy_xplane(self, destination_path: pathlib.Path) -> None:
     profile_dir = _get_profile_dir()

@@ -165,7 +165,7 @@ class DynamismApiTest(seed_test_utils.RepeatableTest):
     self.assertEqual(y_dynamism_info[0].upper_bound, 2048)
 
 
-class DynamismTest(parameterized.TestCase):
+class DynamismTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
   """Unit tests for bounded dynamism support."""
 
   def setUp(self):

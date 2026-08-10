@@ -23,6 +23,7 @@ from torch.utils import checkpoint
 from torch_tpu._internal import env
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
 def _get_cpu_tensors(tree: Any):
@@ -30,7 +31,7 @@ def _get_cpu_tensors(tree: Any):
   return [o.cpu() for o in outs]
 
 
-class RandomOpsTest(parameterized.TestCase):
+class RandomOpsTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
 
   def assert_random_outputs_close_with_same_seed(
       self,

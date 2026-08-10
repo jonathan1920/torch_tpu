@@ -19,9 +19,12 @@ from absl.testing import parameterized
 import torch
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
-class UntypedStorageTest(parameterized.TestCase):
+class UntypedStorageTest(
+    seed_test_utils.RepeatableTest, parameterized.TestCase
+):
 
   def setUp(self):
     super().setUp()

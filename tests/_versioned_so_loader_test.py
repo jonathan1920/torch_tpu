@@ -25,7 +25,7 @@ from torch_tpu import _versioned_so_loader as loader
 from tests import seed_test_utils
 
 
-class ResolveSuffixTest(parameterized.TestCase):
+class ResolveSuffixTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
 
   @parameterized.named_parameters(
       # Unversioned build: dispatch is disabled regardless of running version.
@@ -78,7 +78,7 @@ class ResolveSuffixTest(parameterized.TestCase):
       loader.resolve_suffix(running, {"2_11_0", "2_12_0"})
 
 
-class VersionSuffixTest(parameterized.TestCase):
+class VersionSuffixTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
 
   @parameterized.parameters(
       ("2.13.0", "2_13_0"),

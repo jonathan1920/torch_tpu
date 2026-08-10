@@ -18,9 +18,12 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import torch
 from torch_tpu._internal import execution_mode as em
+from tests import seed_test_utils
 
 
-class TpuBackendConfigTest(parameterized.TestCase):
+class TpuBackendConfigTest(
+    seed_test_utils.RepeatableTest, parameterized.TestCase
+):
   """Tests for torch.backends.tpu related configs."""
 
   @parameterized.named_parameters(

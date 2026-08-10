@@ -30,6 +30,7 @@ import torch
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import sync
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
 @dataclasses.dataclass
@@ -143,7 +144,9 @@ def execute_training_step(config: RunConfig) -> torch.Tensor:
   return loss_val
 
 
-class TraceAutogradOpsTest(parameterized.TestCase):
+class TraceAutogradOpsTest(
+    seed_test_utils.RepeatableTest, parameterized.TestCase
+):
 
   @classmethod
   def setUpClass(cls):

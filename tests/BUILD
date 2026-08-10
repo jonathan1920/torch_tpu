@@ -64,6 +64,7 @@ torch_tpu_py_test(
     name = "compilation_mode_test",
     srcs = ["compilation_mode_test.py"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//torch_tpu",
@@ -1535,6 +1536,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1584,6 +1586,7 @@ torch_tpu_py_test(
     main = "rng_test.py",
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1731,6 +1734,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1747,6 +1751,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1866,6 +1871,7 @@ torch_tpu_py_test(
         "requires-gpu-nvidia",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1881,6 +1887,7 @@ torch_tpu_py_test(
     main = "autoload_disabled_backend_test.py",
     tags = [],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1934,6 +1941,7 @@ torch_tpu_py_test(
     strict = True,
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -2246,6 +2254,7 @@ torch_tpu_py_test(
     tags = ["requires-tpu-v5lite"],
     deps = [
         ":oss_utils",
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
