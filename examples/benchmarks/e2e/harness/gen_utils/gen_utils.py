@@ -27,6 +27,10 @@ import torch
 from examples.benchmarks.e2e.harness import context as context_lib
 from examples.benchmarks.e2e.harness.gen_utils import load_model
 
+ModelLoadFn = Callable[
+    [context_lib.Context, str, bool], tuple[torch.nn.Module, dict[str, Any]]
+]
+
 
 def _get_models_csv_file():
   """Internalizes different ways to locate models.csv."""
@@ -169,9 +173,7 @@ class ExtraConfigs:
   # Additional arguments to pass to the step factory.
   step_kwargs: dict[str, Any] = dataclasses.field(default_factory=dict)
   # The function to use to load the model.
-  model_load_fn: Callable[
-      [context_lib.Context, str, bool], tuple[torch.nn.Module, dict[str, Any]]
-  ] = load_model.default_load_model
+  model_load_fn: ModelLoadFn = load_model.default_load_model
 
 
 # pyformat: disable
@@ -377,6 +379,11 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
     "bge_multilingual_gemma2_train_gen": {
         "step_kwargs": {
             "compute_loss": dummy_compute_loss,
+        },
+        "skipped_run_modes": {
+            "compiled", # OOOM
+            "eager_default", # OOOM
+            "eager_optimized", # OOOM
         },
     },
     "bge_small_en_v1_5_train_gen": {
@@ -652,6 +659,11 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
     "dinov3_vitl16_pretrain_lvd1689m_train_gen": {
         "step_kwargs": {
             "compute_loss": dummy_compute_loss,
+        },
+    },
+    "dinov3_vitl16_pretrain_lvd1689m_inference_gen": {
+        "skipped_run_modes": {
+            "compiled",
         },
     },
     "distilbert_base_cased_distilled_squad_train_gen": {
@@ -1613,6 +1625,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
+            "compiled",
         },
     },
     "qwen3_vl_8b_instruct_train_gen": {
