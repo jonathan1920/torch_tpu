@@ -4075,7 +4075,6 @@ class TestOps(op_testing.OpInfoTestBase):
         exclude_dtypes=(
             COMPLEX_DTYPES
             + INTEGRAL_DTYPES
-            + _if_tpu_vs_gpu_compiled((torch.float64,), ())
         ),
         check_dynamism=False,
         check_grad=False,
