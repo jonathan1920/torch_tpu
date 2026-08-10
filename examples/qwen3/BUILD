@@ -487,4 +487,62 @@ ipynb_deps(
     ],
 )
 
+torch_tpu_py_test(
+    name = "test_qwen3_vl_load",
+    srcs = ["test_qwen3_vl_load.py"],
+    data = [
+        "//examples/huggingface_transformers:model_configs_data",
+    ],
+    nopresubmit = "manual test",
+    tags = [
+        "requires-net:external",
+    ],
+    deps = [
+        "//examples:paths",
+        "//shims/absl_py:app",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "@pypi//pillow",
+        "@pypi//transformers",
+        "@rules_python//python/runfiles",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "qwen3_vl_dynamic_kv_cache",
+    timeout = "eternal",
+    srcs = ["qwen3_vl_dynamic_kv_cache.py"],
+    data = [
+        "//examples/huggingface_transformers:model_configs_data",
+    ],
+    nolocal = "slow example",
+    notap = "manual test for dynamic performance evaluation",
+    notest_oss = "manual test for dynamic performance evaluation",
+    tags = [
+        "cpu:4",
+        "nofastbuild",  # Benchmark.
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        "//examples:paths",
+        "//shims/absl_py:app",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/profile_cpu:python_tracer",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/dynamism",
+        "//torch_tpu/_internal/shims/xprof:traceme",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/utils:log_utils",
+        "@pypi//pillow",
+        "@pypi//torchvision",  # build_cleaner: keep
+        "@pypi//transformers",
+        "@rules_python//python/runfiles",
+    ],
+)
+
 torch_tpu_package_end()

@@ -21,7 +21,7 @@ package(
 
 filegroup(
     name = "model_configs_data",
-    srcs = glob(["model_configs/**/config.json"]),
+    srcs = glob(["model_configs/**/*"]),
 )
 
 torch_tpu_py_library(
