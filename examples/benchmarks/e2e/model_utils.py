@@ -445,8 +445,8 @@ def whisper_model_builder(
   )
   config = module_spec.config
 
-  with torch.device(device), set_default_dtype(weights_dtype):
-    model = module_spec.module_factory()
+  with torch.device(device):
+    model = module_spec.module_factory().to(weights_dtype)
 
   if is_training:
     model.train()
