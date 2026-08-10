@@ -253,7 +253,9 @@ TEST(OpParamCacheKeys, SetParamMlirElementType) {
 
 TEST(OpParamCacheKeys, SetParamStablehloPrecision) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam(
-      "foo", mlir::stablehlo::Precision::DEFAULT);
+      "foo",
+      mlir::stablehlo::Precision::DEFAULT);  // EXPLICIT_PRECISION_OK=unit
+                                             // test okay
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
               ElementsAre(Pair("foo", Fingerprint("DEFAULT"))));
