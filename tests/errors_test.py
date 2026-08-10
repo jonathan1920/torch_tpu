@@ -8160,6 +8160,340 @@ Device-side assertion tracking was not enabled by user.""",
           False,
       )
 
+  def test_native_multi_head_attention_invalid_query_dim(self):
+    device = et.device()
+    query = torch.ones(2, 4, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected 3-D query, got 2-D tensor""",
+        gpu="""expected 3-D `query`, got 2-D tensor""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_query_embed_dim(self):
+    device = et.device()
+    query = torch.ones(2, 4, 7, device=device)
+    key = torch.ones(2, 4, 7, device=device)
+    value = torch.ones(2, 4, 7, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected embed_dim (8) to match last dim of query (7)""",
+        gpu="""passed-in embed_dim 8 didn't match last dim of query 7""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_key_dim(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected 3-D key, got 2-D tensor""",
+        gpu="""expected 3-D `key`, got 2-D tensor""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_value_dim(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected 3-D value, got 2-D tensor""",
+        gpu="""expected 3-D `value`, got 2-D tensor""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_shapes_mismatch(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 5, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected query, key, and value shapes to match""",
+        gpu="""expected `query`/`key`/`value` shapes to match""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_qkv_weight_dim(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected 2-D qkv_weight, got 1-D tensor""",
+        gpu="""expected 2-D `qkv_weight`, got 1-D tensor""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_qkv_weight_dim0(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(20, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected qkv_weight first dim to be 3x embed_dim (24), got 20""",
+        gpu="""expected `qkv_weight` first dim to be 3x embed_dim""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_qkv_weight_dim1(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 7, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected qkv_weight second dim to be embed_dim (8), got 7""",
+        gpu="""expected `qkv_weight` second dim to be embed_Dim""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_qkv_bias_dim(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, 1, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected 1-D qkv_bias, got 2-D tensor""",
+        gpu="""expected 1-D `qkv_bias`, got 2-D tensor""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_qkv_bias_dim0(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(20, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected qkv_bias first dim to be 3x embed_dim (24), got 20""",
+        gpu="""expected `qkv_bias` first dim and first dim of query to be equal""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_embed_dim_not_divisible_by_num_head(
+      self,
+  ):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected embed_dim (8) to be divisible by num_head (3)""",
+        gpu="""`embed_dim` must divide evenly by `num_heads`""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 3, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_proj_weight_dim(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected 2-D proj_weight, got 1-D tensor""",
+        gpu="""mat2 must be a matrix, got 1-D tensor""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_proj_weight_dim0(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(7, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected proj_weight first dim to be embed_dim (8), got 7""",
+        gpu="""The expanded size of the tensor (7) must match the existing size (8) at non-singleton dimension 1.  Target sizes: [8, 7].  Tensor sizes: [8]""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_proj_weight_dim1(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 7, device=device)
+    proj_bias = torch.ones(8, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected proj_weight second dim to be embed_dim (8), got 7""",
+        gpu="""mat1 and mat2 shapes cannot be multiplied (8x8 and 7x8)""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_proj_bias_dim0(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(7, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected proj_bias first dim to be embed_dim (8), got 7""",
+        gpu="""The expanded size of the tensor (8) must match the existing size (7) at non-singleton dimension 1.  Target sizes: [8, 8].  Tensor sizes: [7]""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_invalid_mask_shape(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    mask = torch.ones(2, 2, 4, 8, dtype=torch.bool, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected 4-D mask shape to be [2, 2, 4, 4], got [2, 2, 4, 8]""",
+        gpu="""Mask Type should be defined""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query,
+          key,
+          value,
+          8,
+          2,
+          qkv_weight,
+          qkv_bias,
+          proj_weight,
+          proj_bias,
+          mask,
+          True,
+          True,
+          None,
+      )
+
+  def test_native_multi_head_attention_invalid_mask_rank(self):
+    device = et.device()
+    query = torch.ones(2, 4, 8, device=device)
+    key = torch.ones(2, 4, 8, device=device)
+    value = torch.ones(2, 4, 8, device=device)
+    qkv_weight = torch.ones(24, 8, device=device)
+    qkv_bias = torch.ones(24, device=device)
+    proj_weight = torch.ones(8, 8, device=device)
+    proj_bias = torch.ones(8, device=device)
+    mask = torch.ones(2, 4, 4, dtype=torch.bool, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected 2-D or 4-D mask, got 3-D tensor""",
+        gpu="""Mask shape should match input. mask: [2, 4, 4] input: [2, 2, 4, 4]""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query,
+          key,
+          value,
+          8,
+          2,
+          qkv_weight,
+          qkv_bias,
+          proj_weight,
+          proj_bias,
+          mask,
+          True,
+          False,
+          0,
+      )
+
 
 class InputPreprocessingErrorTest(et.ErrorTestBase, parameterized.TestCase):
 

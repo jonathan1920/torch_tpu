@@ -15,7 +15,7 @@
 """Shared layer configurations for benchmarks."""
 
 import dataclasses
-from typing import Any
+from typing import Any, Optional
 import torch
 
 
@@ -1478,3 +1478,103 @@ class MaskedSoftmaxConfig:
 
 
 MASKED_SOFTMAX_CONFIGS = MaskedSoftmaxConfig.get_base_configs()
+
+
+@dataclasses.dataclass(frozen=True)
+class NativeMultiHeadAttentionConfig:
+  batch_size: Any  # Supports int or DynamicDimension
+  seq_len: int
+  embed_dim: int
+  num_heads: int
+  need_weights: bool = True
+  average_attn_weights: bool = False
+  mask_type: Optional[int] = None
+  dtype: torch.dtype = torch.bfloat16
+
+  @classmethod
+  def get_base_configs(cls):
+    return [
+        # 1. Standard MHA without mask
+        NativeMultiHeadAttentionConfig(
+            batch_size=1,
+            seq_len=128,
+            embed_dim=512,
+            num_heads=8,
+            mask_type=None,
+        ),
+        # 2. Attention Mask (mask_type=0) - shape [L, S]
+        NativeMultiHeadAttentionConfig(
+            batch_size=1,
+            seq_len=128,
+            embed_dim=512,
+            num_heads=8,
+            mask_type=0,
+        ),
+        # 3. Padding Mask (mask_type=1) - shape [B, S]
+        NativeMultiHeadAttentionConfig(
+            batch_size=1,
+            seq_len=128,
+            embed_dim=512,
+            num_heads=8,
+            mask_type=1,
+        ),
+        # 4. Generic Mask (mask_type=2) - shape [B, H, L, S]
+        NativeMultiHeadAttentionConfig(
+            batch_size=1,
+            seq_len=128,
+            embed_dim=512,
+            num_heads=8,
+            mask_type=2,
+        ),
+        # 5. need_weights=False
+        NativeMultiHeadAttentionConfig(
+            batch_size=1,
+            seq_len=128,
+            embed_dim=512,
+            num_heads=8,
+            need_weights=False,
+        ),
+        # 6. average_attn_weights=True
+        NativeMultiHeadAttentionConfig(
+            batch_size=1,
+            seq_len=128,
+            embed_dim=512,
+            num_heads=8,
+            need_weights=True,
+            average_attn_weights=True,
+        ),
+        # 7. Larger Scale Attention Dimensions
+        NativeMultiHeadAttentionConfig(
+            batch_size=4,
+            seq_len=1024,
+            embed_dim=1024,
+            num_heads=16,
+            mask_type=None,
+        ),
+        NativeMultiHeadAttentionConfig(
+            batch_size=4,
+            seq_len=1024,
+            embed_dim=1024,
+            num_heads=16,
+            mask_type=0,
+        ),
+        NativeMultiHeadAttentionConfig(
+            batch_size=4,
+            seq_len=1024,
+            embed_dim=1024,
+            num_heads=16,
+            mask_type=1,
+        ),
+        NativeMultiHeadAttentionConfig(
+            batch_size=4,
+            seq_len=1024,
+            embed_dim=1024,
+            num_heads=16,
+            mask_type=2,
+        ),
+    ]
+
+
+NATIVE_MULTI_HEAD_ATTENTION_CONFIGS = (
+    NativeMultiHeadAttentionConfig.get_base_configs()
+)

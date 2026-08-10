@@ -141,6 +141,7 @@
 #include "torch_tpu/ops/multinomial/multinomial_aten_kernels.h"
 #include "torch_tpu/ops/nan_to_num/nan_to_num_aten_kernels.h"
 #include "torch_tpu/ops/native_batch_norm/native_batch_norm_aten_kernels.h"
+#include "torch_tpu/ops/native_multi_head_attention/native_multi_head_attention_aten_kernels.h"
 #include "torch_tpu/ops/native_norm/native_norm_aten_kernels.h"
 #include "torch_tpu/ops/nll_loss/nll_loss_aten_kernels.h"
 #include "torch_tpu/ops/nonzero/nonzero_aten_kernels.h"
@@ -800,6 +801,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kNativeGroupNormBackward>(m, AtenNativeGroupNormBackward);
   ImplStable<OpName::kNativeLayerNorm>(m, AtenNativeLayerNorm);
   ImplStable<OpName::kNativeLayerNormBackward>(m, AtenLayerNormBackward);
+  ImplStable<OpName::kNativeMultiHeadAttention>(m,
+                                                AtenNativeMultiHeadAttention);
   ImplStable<OpName::kNativeNorm>(m, AtenNativeNormScalar);
   ImplStable<OpName::kNativeNormScalarOptDimDtype>(
       m, AtenNativeNormScalarOptDimDtype);

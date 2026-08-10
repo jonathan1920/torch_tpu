@@ -76,6 +76,7 @@ _SLICE_SCATTER_BENCHMARK_NAME = "slice_scatter"
 _MAMBA2_BLOCK_BENCHMARK_NAME = "mamba2_block"
 _NEMOTRON_H_MAMBA2_BLOCK_BENCHMARK_NAME = "nemotron_h_mamba2_block"
 _MASKED_SOFTMAX_BENCHMARK_NAME = "masked_softmax"
+_NATIVE_MULTI_HEAD_ATTENTION_BENCHMARK_NAME = "native_multi_head_attention"
 _TOPK_LAYER_BENCHMARK_NAME = "topk"
 
 
@@ -1534,6 +1535,45 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
     self.run_performance_benchmark_test(
         config, _MASKED_SOFTMAX_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          _ALL_RUN_MODES,
+          (True, False),
+          layer_configs.NATIVE_MULTI_HEAD_ATTENTION_CONFIGS,
+      )
+  )
+  def test_native_multi_head_attention(
+      self, run_mode, is_training, layer_config
+  ):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="aten._native_multi_head_attention",
+            batch_size=layer_config.batch_size,
+            sequence_length=layer_config.seq_len,
+            custom_kwargs={
+                "embed_dim": layer_config.embed_dim,
+                "num_heads": layer_config.num_heads,
+                "need_weights": layer_config.need_weights,
+                "average_attn_weights": layer_config.average_attn_weights,
+                "mask_type": layer_config.mask_type,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config,
+        _NATIVE_MULTI_HEAD_ATTENTION_BENCHMARK_NAME,
+        microbenchmark_name,
     )
 
   @parameterized.named_parameters(

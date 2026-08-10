@@ -1641,6 +1641,124 @@ def ml_layer_model_builder(
       return (x, mask)
 
     example_inputs = _generate_inputs(batch_size, sequence_length, shape_fn)
+  elif model_name == "aten._native_multi_head_attention":
+    embed_dim = kwargs["embed_dim"]
+    num_heads = kwargs["num_heads"]
+    need_weights = kwargs.get("need_weights", True)
+    average_attn_weights = kwargs.get("average_attn_weights", False)
+    mask_type = kwargs.get("mask_type", None)
+
+    class NativeMultiHeadAttentionModel(torch.nn.Module):
+
+      def __init__(
+          self,
+          embed_dim,
+          num_heads,
+          need_weights,
+          average_attn_weights,
+          mask_type,
+      ):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.need_weights = need_weights
+        self.average_attn_weights = average_attn_weights
+        self.mask_type = mask_type
+
+        self.qkv_weight = torch.nn.Parameter(
+            torch.empty((3 * embed_dim, embed_dim), dtype=weights_dtype)
+        )
+        self.qkv_bias = torch.nn.Parameter(
+            torch.empty(3 * embed_dim, dtype=weights_dtype)
+        )
+        self.proj_weight = torch.nn.Parameter(
+            torch.empty((embed_dim, embed_dim), dtype=weights_dtype)
+        )
+        self.proj_bias = torch.nn.Parameter(
+            torch.empty(embed_dim, dtype=weights_dtype)
+        )
+        torch.nn.init.normal_(self.qkv_weight)
+        torch.nn.init.zeros_(self.qkv_bias)
+        torch.nn.init.normal_(self.proj_weight)
+        torch.nn.init.zeros_(self.proj_bias)
+
+      def forward(self, query, key, value, mask=None):
+        return torch.ops.aten._native_multi_head_attention(
+            query,
+            key,
+            value,
+            self.embed_dim,
+            self.num_heads,
+            self.qkv_weight,
+            self.qkv_bias,
+            self.proj_weight,
+            self.proj_bias,
+            mask=mask,
+            need_weights=self.need_weights,
+            average_attn_weights=self.average_attn_weights,
+            mask_type=self.mask_type,
+        )
+
+    model = NativeMultiHeadAttentionModel(
+        embed_dim,
+        num_heads,
+        need_weights,
+        average_attn_weights,
+        mask_type,
+    )
+    model = model.to(dtype=weights_dtype)
+
+    def shape_fn(bs, seq):
+      query = torch.randn(
+          (bs, seq, embed_dim),
+          dtype=weights_dtype,
+          device=device,
+          requires_grad=is_training,
+      )
+      key = torch.randn(
+          (bs, seq, embed_dim),
+          dtype=weights_dtype,
+          device=device,
+          requires_grad=is_training,
+      )
+      value = torch.randn(
+          (bs, seq, embed_dim),
+          dtype=weights_dtype,
+          device=device,
+          requires_grad=is_training,
+      )
+
+      if mask_type is None:
+        return (query, key, value)
+      elif mask_type == 0:
+        mask = torch.randint(
+            0,
+            2,
+            (seq, seq),
+            dtype=torch.bool,
+            device=device,
+        )
+        return (query, key, value, mask)
+      elif mask_type == 1:
+        mask = torch.randint(
+            0,
+            2,
+            (bs, seq),
+            dtype=torch.bool,
+            device=device,
+        )
+        return (query, key, value, mask)
+      else:
+        mask = torch.randint(
+            0,
+            2,
+            (bs, num_heads, seq, seq),
+            dtype=torch.bool,
+            device=device,
+        )
+        return (query, key, value, mask)
+
+    example_inputs = _generate_inputs(batch_size, sequence_length, shape_fn)
   elif model_name == "Mamba2Block":
     config = configuration_mamba2.Mamba2Config(
         hidden_size=kwargs["hidden_size"],

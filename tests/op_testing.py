@@ -345,6 +345,185 @@ def _sample_inputs_thnn_fused_rnn_cell(
   )
 
 
+def _sample_inputs_native_multi_head_attention(
+    op_info: OpInfo,
+    device: torch.device,
+    dtype: torch.dtype,
+    requires_grad: bool,
+    **kwargs,
+):
+  """Sample inputs generator for native_multi_head_attention."""
+  del op_info, kwargs
+  if not dtype.is_floating_point:
+    return
+  make_arg = functools.partial(
+      torch.randn, device=device, dtype=dtype, requires_grad=requires_grad
+  )
+
+  embed_dim = 8
+  num_head = 2
+  batch_size = 2
+  seq_len = 4
+
+  query = make_arg((batch_size, seq_len, embed_dim))
+  key = make_arg((batch_size, seq_len, embed_dim))
+  value = make_arg((batch_size, seq_len, embed_dim))
+  qkv_weight = make_arg((3 * embed_dim, embed_dim))
+  qkv_bias = make_arg((3 * embed_dim,))
+  proj_weight = make_arg((embed_dim, embed_dim))
+  proj_bias = make_arg((embed_dim,))
+
+  # Case 1: need_weights=True, average_attn_weights=True, no mask
+  yield SampleInput(
+      query,
+      args=(
+          key,
+          value,
+          embed_dim,
+          num_head,
+          qkv_weight,
+          qkv_bias,
+          proj_weight,
+          proj_bias,
+          None,
+          True,
+          True,
+          None,
+      ),
+  )
+
+  # Case 2: need_weights=True, average_attn_weights=False, with bool mask
+  mask = torch.randint(
+      0, 2, (seq_len, seq_len), device=device, dtype=torch.bool
+  )
+  yield SampleInput(
+      query.detach().clone().requires_grad_(requires_grad),
+      args=(
+          key.detach().clone().requires_grad_(requires_grad),
+          value.detach().clone().requires_grad_(requires_grad),
+          embed_dim,
+          num_head,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          mask,
+          True,
+          False,
+          0,
+      ),
+  )
+
+  # Case 3: need_weights=False
+  yield SampleInput(
+      query.detach().clone().requires_grad_(requires_grad),
+      args=(
+          key.detach().clone().requires_grad_(requires_grad),
+          value.detach().clone().requires_grad_(requires_grad),
+          embed_dim,
+          num_head,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          None,
+          False,
+          True,
+          None,
+      ),
+  )
+
+  # Case 4: mask_type=1 (Key Padding mask [B, L])
+  key_padding_mask = torch.randint(
+      0, 2, (batch_size, seq_len), device=device, dtype=torch.bool
+  )
+  yield SampleInput(
+      query.detach().clone().requires_grad_(requires_grad),
+      args=(
+          key.detach().clone().requires_grad_(requires_grad),
+          value.detach().clone().requires_grad_(requires_grad),
+          embed_dim,
+          num_head,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          key_padding_mask,
+          True,
+          True,
+          1,
+      ),
+  )
+
+  # Case 5: 4D bool mask [B, H, L, L]
+  mask_4d = torch.randint(
+      0,
+      2,
+      (batch_size, num_head, seq_len, seq_len),
+      device=device,
+      dtype=torch.bool,
+  )
+  yield SampleInput(
+      query.detach().clone().requires_grad_(requires_grad),
+      args=(
+          key.detach().clone().requires_grad_(requires_grad),
+          value.detach().clone().requires_grad_(requires_grad),
+          embed_dim,
+          num_head,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          mask_4d,
+          False,
+          False,
+          0,
+      ),
+  )
+
+  # Case 6: Float additive mask [L, L]
+  mask_float = torch.randn(seq_len, seq_len, device=device, dtype=dtype)
+  yield SampleInput(
+      query.detach().clone().requires_grad_(requires_grad),
+      args=(
+          key.detach().clone().requires_grad_(requires_grad),
+          value.detach().clone().requires_grad_(requires_grad),
+          embed_dim,
+          num_head,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          mask_float,
+          True,
+          True,
+          0,
+      ),
+  )
+
+  # Case 7: Empty tensor input
+  query_empty = make_arg((0, seq_len, embed_dim))
+  key_empty = make_arg((0, seq_len, embed_dim))
+  value_empty = make_arg((0, seq_len, embed_dim))
+  yield SampleInput(
+      query_empty,
+      args=(
+          key_empty,
+          value_empty,
+          embed_dim,
+          num_head,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          None,
+          True,
+          True,
+          None,
+      ),
+  )
+
+
 def _ref_thnn_fused_lstm_cell(
     input_gates: torch.Tensor,
     hidden_gates: torch.Tensor,
@@ -789,6 +968,16 @@ _ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
         supports_forward_ad=True,
         supports_fwgrad_bwgrad=True,
         supports_out=True,
+    ),
+    OpInfo(
+        "_native_multi_head_attention",
+        op=torch.ops.aten._native_multi_head_attention,  # pylint: disable=protected-access
+        aten_name="_native_multi_head_attention",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_native_multi_head_attention,
+        supports_forward_ad=True,
+        supports_fwgrad_bwgrad=True,
+        supports_out=False,
     ),
 ]
 for _op_info in _ADDITIONAL_TORCH_TPU_OPS:

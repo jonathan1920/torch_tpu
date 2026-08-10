@@ -3489,6 +3489,104 @@ module {
           a, b, scale_a, scale_b, scale_result=scale_result, offs=offs
       )
 
+  @et.why_tpu_only("Verify mask dimension check on TPU.")
+  def test_native_multi_head_attention_invalid_mask_dim(self):
+    query = torch.ones(2, 4, 8, device=et.device())
+    key = torch.ones(2, 4, 8, device=et.device())
+    value = torch.ones(2, 4, 8, device=et.device())
+    qkv_weight = torch.ones(24, 8, device=et.device())
+    qkv_bias = torch.ones(24, device=et.device())
+    proj_weight = torch.ones(8, 8, device=et.device())
+    proj_bias = torch.ones(8, device=et.device())
+    mask = torch.ones(2, 2, 4, 4, 4, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected 2-D or 4-D mask, got 5-D tensor""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query,
+          key,
+          value,
+          8,
+          2,
+          qkv_weight,
+          qkv_bias,
+          proj_weight,
+          proj_bias,
+          mask,
+          True,
+          True,
+          None,
+      )
+
+  @et.why_tpu_only("GPU linear allows broadcastable 2-D bias.")
+  def test_native_multi_head_attention_invalid_proj_bias_dim(self):
+    query = torch.ones(2, 4, 8, device=et.device())
+    key = torch.ones(2, 4, 8, device=et.device())
+    value = torch.ones(2, 4, 8, device=et.device())
+    qkv_weight = torch.ones(24, 8, device=et.device())
+    qkv_bias = torch.ones(24, device=et.device())
+    proj_weight = torch.ones(8, 8, device=et.device())
+    proj_bias = torch.ones(8, 1, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected 1-D proj_bias, got 2-D tensor""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  @et.why_tpu_only("GPU lacks explicit positive embed_dim check.")
+  def test_native_multi_head_attention_invalid_embed_dim(self):
+    query = torch.ones(2, 4, 8, device=et.device())
+    key = torch.ones(2, 4, 8, device=et.device())
+    value = torch.ones(2, 4, 8, device=et.device())
+    qkv_weight = torch.ones(24, 8, device=et.device())
+    qkv_bias = torch.ones(24, device=et.device())
+    proj_weight = torch.ones(8, 8, device=et.device())
+    proj_bias = torch.ones(8, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected embed_dim to be positive, got 0""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 0, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  @et.why_tpu_only("GPU divides by zero on num_head=0 causing SIGFPE.")
+  def test_native_multi_head_attention_invalid_num_head(self):
+    query = torch.ones(2, 4, 8, device=et.device())
+    key = torch.ones(2, 4, 8, device=et.device())
+    value = torch.ones(2, 4, 8, device=et.device())
+    qkv_weight = torch.ones(24, 8, device=et.device())
+    qkv_bias = torch.ones(24, device=et.device())
+    proj_weight = torch.ones(8, 8, device=et.device())
+    proj_bias = torch.ones(8, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected num_head to be positive, got 0""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 0, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  @et.why_tpu_only("GPU kernel fails in GEMM dispatch for mismatched dtypes.")
+  def test_native_multi_head_attention_dtypes_mismatch(self):
+    query = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float32)
+    key = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float16)
+    value = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float32)
+    qkv_weight = torch.ones(24, 8, device=et.device(), dtype=torch.float32)
+    qkv_bias = torch.ones(24, device=et.device(), dtype=torch.float32)
+    proj_weight = torch.ones(8, 8, device=et.device(), dtype=torch.float32)
+    proj_bias = torch.ones(8, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected query, key, value, qkv_weight, qkv_bias, proj_weight, and proj_bias to have matching dtypes, got float32, float16, float32, float32, float32, float32, float32""",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

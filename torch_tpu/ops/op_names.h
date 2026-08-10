@@ -540,6 +540,7 @@ enum class OpName {
   kNativeGroupNormBackward,
   kNativeLayerNorm,
   kNativeLayerNormBackward,
+  kNativeMultiHeadAttention,
   kNativeNorm,
   kNativeNormScalarOptDimDtype,
   kNe,

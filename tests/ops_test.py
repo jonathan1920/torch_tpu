@@ -910,6 +910,11 @@ ACCURACY_OVERRIDES_VS_GPU = {
     "_native_batch_norm_legit": {
         torch.float32: {"rtol": 1e-5, "atol": 2.1e-5},
     },
+    "_native_multi_head_attention": {
+        torch.bfloat16: {"rtol": 1.0, "atol": 2.0e-1},
+        torch.float16: {"rtol": 1.0, "atol": 2.0e-1},
+        torch.float32: {"rtol": 2.0e-1, "atol": 3.2e-1},
+    },
     "_softmax_backward_data": {
         torch.bfloat16: {"rtol": 1.9e-2, "atol": 4.6e-2},
         torch.float16: {"rtol": 1.5e-3, "atol": 4.7e-3},
@@ -1329,6 +1334,11 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     },
     "_native_batch_norm_legit": {
         torch.float32: {"rtol": 1e-5, "atol": 2.1e-5},
+    },
+    "_native_multi_head_attention": {
+        torch.bfloat16: {"rtol": 1.0, "atol": 2.0e-1},
+        torch.float16: {"rtol": 1.0, "atol": 2.0e-1},
+        torch.float32: {"rtol": 2.0e-1, "atol": 3.2e-1},
     },
     "_softmax_backward_data": {
         torch.bfloat16: {"atol": 3.5e-2},
@@ -4057,6 +4067,18 @@ class TestOps(op_testing.OpInfoTestBase):
             )
         ),
         check_dynamism=False,
+    )
+
+  def test_native_multi_head_attention(self):
+    self.do_test_op(
+        "_native_multi_head_attention",
+        exclude_dtypes=(
+            COMPLEX_DTYPES
+            + INTEGRAL_DTYPES
+            + _if_tpu_vs_gpu_compiled((torch.float64,), ())
+        ),
+        check_dynamism=False,
+        check_grad=False,
     )
 
 

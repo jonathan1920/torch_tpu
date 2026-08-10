@@ -91,7 +91,6 @@ UNREGISTERED_OPS = frozenset([
     '_mkldnn_transpose_',
     '_mps_convolution',
     '_mps_convolution_transpose',
-    '_native_multi_head_attention',
     '_nested_compute_contiguous_strides_offsets',
     '_nested_from_padded',
     '_nested_from_padded_and_nested_example',
