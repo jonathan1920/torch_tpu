@@ -1,0 +1,28 @@
+# GitHub Actions Workflow: Milestone 3 - Mandatory Required PR Gate for RBE TPU Testing
+name: RBE Hardware TPU Tests (Required PR Gate)
+
+on:
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  rbe-required-gate:
+    name: rbe / test-tpu
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP RBE
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_RBE_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@v0.8.0
+
+      - name: Execute Full RBE Hardware TPU Test Suite
+        run: |
+          bazel test --config=rbe --test_output=errors //...

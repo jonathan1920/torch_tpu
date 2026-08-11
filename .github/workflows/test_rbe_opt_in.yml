@@ -1,0 +1,30 @@
+# GitHub Actions Workflow: Milestone 1 - Opt-In RBE Hardware TPU Testing via 'run-rbe' Label
+name: RBE Hardware TPU Tests (Opt-In)
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+jobs:
+  rbe-tpu-test:
+    name: RBE Hardware TPU Tests (Opt-In)
+    # Only execute if label 'run-rbe' is applied by a repository maintainer
+    if: contains(github.event.pull_request.labels.*.name, 'run-rbe') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK & Authenticate to GCP RBE
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_RBE_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@v0.8.0
+
+      - name: Run Bazel RBE Hardware TPU Test Suite
+        run: |
+          bazel test --config=rbe --test_output=errors //...
