@@ -105,15 +105,7 @@ def main(argv):
 
   # TPU execution baseline
   logging.info("Moving HuggingFace Gemma-4-E2B baseline model to TPU...")
-  if _LOAD_PRETRAINED_WEIGHTS.value:
-    model_tpu = transformers.AutoModelForCausalLM.from_pretrained(
-        MODEL_PATH, torch_dtype=torch.bfloat16
-    )
-  else:
-    _, model_tpu = create_gemma4_e2b_hf_model()
-
-  model_tpu.load_state_dict(model_cpu.state_dict())
-  model_tpu = model_tpu.to(tpu_device)
+  model_tpu = model_cpu.to(tpu_device)
   model_tpu.eval()
 
   input_ids_tpu = input_ids.to(tpu_device)
