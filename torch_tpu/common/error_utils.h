@@ -1054,7 +1054,7 @@ class AnythingCompatibleWithThrow {
   TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);                           \
   if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                \
     ::torch_tpu::StatusBuilderWithMessage _(std::move(statusor).status()); \
-    static_cast<void>(_);                                                  \
+    static_cast<void>(_); /* VOID_CAST_OK=using _ is optional. */          \
     TT_THROW_TT_ERROR_(absl::Status((error_expr)), TT_SOURCE_LOCATION);    \
   }                                                                        \
   TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))
