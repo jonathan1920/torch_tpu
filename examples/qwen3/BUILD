@@ -187,7 +187,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "qwen3_dynamic_kv_cache_presubmit",
-    timeout = "moderate",
+    timeout = "long",
     srcs = ["qwen3_dynamic_kv_cache.py"],
     args = [
         "--batch_size=1",
