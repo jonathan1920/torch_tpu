@@ -368,8 +368,8 @@ class AtenOpBenchmarkBase(parameterized.TestCase):
           f" {device_type} ({backend_name}): {median_time_us} us, CV: {cv}"
       )
 
-      # MLCompass Export
-      if benchmark_utils.MLCOMPASS_TRACKING_ID.value:
+      # MLCompass Export: Only export for physical accelerators (TPU / GPU), skip CPU test runs.
+      if device_type != "cpu" and benchmark_utils.MLCOMPASS_TRACKING_ID.value:
         result = OpBenchmarkResult(
             median_time_us=median_time_us,
             e2e_wall_time_seconds=sum(measurement.times),
@@ -381,6 +381,7 @@ class AtenOpBenchmarkBase(parameterized.TestCase):
         safe_op_name = op_name.replace(".", "_").replace(":", "_")
         shape_signature = format_shape_signature(inputs_str)
         micro_key = shape_signature if shape_signature else f"case{case_index}"
+
         mlcompass_utils.export_to_mlcompass(
             platform=common.PLATFORM.value,
             metrics=result,
