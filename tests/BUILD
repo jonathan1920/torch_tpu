@@ -955,7 +955,6 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nolocal = "slow test",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 3,
     tags = [
         "requires-gpu-sm80",
