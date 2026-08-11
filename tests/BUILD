@@ -926,7 +926,9 @@ torch_tpu_py_test(
     # ops_test_vs_gpu target.
     shard_count = 3,
     tags = [
-        "requires-gpu-sm80",
+        # Certain ops like torch._scaled_mm_v2 require CUDA devices with
+        # compute capability 8.9 or >= 9.0
+        "requires-gpu-sm90",
     ],
     deps = [
         ":dynamism_test_utils",
@@ -957,7 +959,9 @@ torch_tpu_py_test(
     nolocal = "slow test",
     shard_count = 3,
     tags = [
-        "requires-gpu-sm80",
+        # Certain ops like torch._scaled_mm_v2 require CUDA devices with
+        # compute capability 8.9 or >= 9.0
+        "requires-gpu-sm90",
     ],
     deps = [
         ":dynamism_test_utils",

@@ -2296,6 +2296,11 @@ class TestOps(op_testing.OpInfoTestBase):
                 INTEGRAL_DTYPES
                 + COMPLEX_DTYPES
                 + (torch.bfloat16, torch.float16)
+                # PyTorch's native CUDA kernel (LossCTC.cu) dynamic shared
+                # memory allocation per thread block exceeds hardware limits
+                # for float64 on long target sequence lengths, leading to
+                # cudaErrorLaunchOutOfResources.
+                + (torch.float64,)
             ),
         },
     )
@@ -2591,7 +2596,10 @@ class TestOps(op_testing.OpInfoTestBase):
 
   @category("foreach")
   def test_foreach_copy(self):
-    self.do_test_op("_foreach_copy")
+    self.do_test_op(
+        "_foreach_copy",
+        exclude_dtypes=(_if_tpu_vs_gpu_compiled((torch.complex64,), ())),
+    )
 
   @category("foreach")
   def test_foreach_cos(self):
@@ -2843,6 +2851,7 @@ class TestOps(op_testing.OpInfoTestBase):
             # CPU implementation has precision issues leading to incorrect
             # addressing for float16 and bfloat16
             "cpu": (torch.bfloat16, torch.float16),
+            "gpu": _if_tpu_vs_gpu_compiled((torch.complex64,), ()),
         },
     )
 
@@ -3303,7 +3312,10 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("mul")
 
   def test_nan_to_num(self):
-    self.do_test_op("nan_to_num")
+    self.do_test_op(
+        "nan_to_num",
+        exclude_dtypes=(_if_tpu_vs_gpu_compiled((torch.complex64,), ())),
+    )
 
   def test_native_batch_norm(self):
     self.do_test_op(
@@ -3315,10 +3327,13 @@ class TestOps(op_testing.OpInfoTestBase):
         check_out_variant=False,
         exclude_dtypes={
             "gpu": (
-                torch.bfloat16,
-                torch.float16,
-                torch.float32,
-                torch.float64,
+                (
+                    torch.bfloat16,
+                    torch.float16,
+                    torch.float32,
+                    torch.float64,
+                )
+                + _if_tpu_vs_gpu_compiled((torch.complex64,), ())
             )
         },
     )
@@ -3332,7 +3347,10 @@ class TestOps(op_testing.OpInfoTestBase):
         # TODO: fix _native_batch_norm_legit(out=...) failing.
         check_out_variant=False,
         exclude_dtypes={
-            "gpu": (torch.float64,),
+            "gpu": (
+                (torch.float64,)
+                + _if_tpu_vs_gpu_compiled((torch.complex64,), ())
+            ),
         },
         # TODO(b/541256155): match GPU behavior when `training=False`.
         skip_if=_native_batch_norm_legit_notrain_gpu,
@@ -3397,7 +3415,10 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("neg")
 
   def test_nll_loss(self):
-    self.do_test_op("nn.functional.nll_loss")
+    self.do_test_op(
+        "nn.functional.nll_loss",
+        exclude_dtypes=(_if_tpu_vs_gpu_compiled((torch.complex64,), ())),
+    )
 
   @category("nonzero")
   def test_nonzero(self):
@@ -3576,7 +3597,10 @@ class TestOps(op_testing.OpInfoTestBase):
       )
 
   def test_nn_functional_batch_norm(self):
-    self.do_test_op("nn.functional.batch_norm")
+    self.do_test_op(
+        "nn.functional.batch_norm",
+        exclude_dtypes=(_if_tpu_vs_gpu_compiled((torch.complex64,), ())),
+    )
 
   def test_nn_functional_elu(self):
     self.do_test_op("nn.functional.elu")
@@ -3598,7 +3622,10 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("nn.functional.hardsigmoid")
 
   def test_nn_functional_hardswish(self):
-    self.do_test_op("nn.functional.hardswish")
+    self.do_test_op(
+        "nn.functional.hardswish",
+        exclude_dtypes=(_if_tpu_vs_gpu_compiled(INTEGRAL_DTYPES, ())),
+    )
 
   def test_nn_functional_hardtanh(self):
     self.do_test_op("nn.functional.hardtanh")
@@ -3620,7 +3647,10 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("nn.functional.softplus")
 
   def test_nn_functional_mse_loss(self):
-    self.do_test_op("nn.functional.mse_loss")
+    self.do_test_op(
+        "nn.functional.mse_loss",
+        exclude_dtypes=(_if_tpu_vs_gpu_compiled((torch.complex64,), ())),
+    )
 
   def test_pdist_forward(self):
     self.do_test_op("nn.functional.pdist")
@@ -3988,7 +4018,10 @@ class TestOps(op_testing.OpInfoTestBase):
   # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
   @oss_utils.skip_in_oss()
   def test_xlogy(self):
-    self.do_test_op("xlogy")
+    self.do_test_op(
+        "xlogy",
+        exclude_dtypes=(_if_tpu_vs_gpu_compiled((torch.complex64,), ())),
+    )
 
   def test_zeros(self):
     self.do_test_op("zeros")
@@ -4080,7 +4113,11 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_native_multi_head_attention(self):
     self.do_test_op(
         "_native_multi_head_attention",
-        exclude_dtypes=(COMPLEX_DTYPES + INTEGRAL_DTYPES),
+        exclude_dtypes=(
+            COMPLEX_DTYPES
+            + INTEGRAL_DTYPES
+            + _if_tpu_vs_gpu_compiled((torch.float64,), ())
+        ),
         check_dynamism=False,
         check_grad=False,
     )
