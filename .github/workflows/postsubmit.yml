@@ -123,11 +123,25 @@ jobs:
         uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
-      # We don't need a separate step for bazel build as bazel test will also build the code before
-      # running the tests. This allows test building and test running to overlap and reduce total
-      # build time.
-      - name: Run Bazel Test
+      # Build test targets before running tests on hardware.
+      - name: Build Test Targets
         if: steps.check_superseded.outputs.skip != 'true'
+        run: bazel build --config=${{ matrix.job_info.bazel_config }} ${{ matrix.job_info.extra_flags }} //...
+      # Checkpoint: Skip execution if a newer commit landed on main while building targets.
+      - name: Skip if superseded during build
+        id: check_superseded_midway
+        if: steps.check_superseded.outputs.skip != 'true' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch origin main --quiet
+          LATEST_SHA=$(git rev-parse origin/main)
+          if [ "$GITHUB_SHA" != "$LATEST_SHA" ]; then
+            echo "::notice::Commit $GITHUB_SHA was superseded by latest main HEAD ($LATEST_SHA) during build phase. Skipping TPU test execution."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run Bazel Test
+        if: steps.check_superseded.outputs.skip != 'true' && steps.check_superseded_midway.outputs.skip != 'true'
         run: bazel test --config=${{ matrix.job_info.bazel_config }} ${{ matrix.job_info.extra_flags }} //...
       - name: Upload Test Logs on Failure
         uses: actions/upload-artifact@c7d193f32edcb7bfad88892161225aeda64e9392  # v4.0.0
