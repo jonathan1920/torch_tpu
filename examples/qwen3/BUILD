@@ -493,8 +493,11 @@ torch_tpu_py_test(
     data = [
         "//examples/huggingface_transformers:model_configs_data",
     ],
-    nopresubmit = "manual test",
+    notap = "manual test for dynamic performance evaluation",
+    notest_oss = "manual test for dynamic performance evaluation",
     tags = [
+        "noasan",  # TODO(b/545199824): fix the test in asan mode, errors out
+        "nomsan",  # TODO(b/545199824): fix the test in msan mode, goes OOM
         "requires-net:external",
     ],
     deps = [
