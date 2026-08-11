@@ -351,6 +351,9 @@ common:rbe --remote_timeout=3600
 common:rbe --test_timeout=3600
 common:rbe --jobs=100
 common:rbe --config=tpu_envvars
+common:rbe --remote_default_exec_properties=container-image=docker://gcr.io/tpu-pytorch/tpu-ci-runner:latest
+common:rbe --strategy=Genrule=local
+common:rbe --strategy=TestRunner=remote
 
 common:remote_execution_readonly --remote_instance_name=projects/tpu-pytorch/instances/default_instance
 common:remote_execution_readonly --google_default_credentials
