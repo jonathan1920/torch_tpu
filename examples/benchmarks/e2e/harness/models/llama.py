@@ -93,6 +93,15 @@ def llama_1b_inference(ctx):
 
 
 @registry_lib.register_benchmark(
+    stepper=step_lib.StepperType.DECODER_ONLY_DECODE
+)
+def llama_1b_decode(ctx):
+  """Benchmark factory for Llama 3.2 1B decode."""
+  model, inputs = _load_llama(ctx, "meta-llama/Llama-3.2-1B", is_training=False)
+  return model, (), inputs
+
+
+@registry_lib.register_benchmark(
     stepper=step_lib.StepperType.TRAINING,
     stepper_kwargs={"accum_steps": 8},
 )

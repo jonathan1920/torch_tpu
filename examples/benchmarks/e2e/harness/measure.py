@@ -94,12 +94,6 @@ def _get_warmup_overhead(timings: np.ndarray, num_warmup_steps: int) -> float:
   if _is_warmup_only():
     return timings[0]
 
-  if not num_warmup_steps:
-    raise RuntimeError(
-        "Benchmark function compilations have not stabilized after"
-        f" {MAX_WARMUP_STEPS.value} warmup runs. num_warmup_steps was"
-        f" {num_warmup_steps}. Consider increasing the number of warmup steps."
-    )
   if len(timings) < num_warmup_steps:
     raise RuntimeError(
         "Timings array is smaller than the number of warmup steps. Timings"
@@ -114,7 +108,7 @@ def _get_warmup_overhead(timings: np.ndarray, num_warmup_steps: int) -> float:
 
 
 def _warmup_run(
-    step_fn: step_lib.StepFn,
+    stepper: step_lib.Stepper,
     device_ops: device_ops_lib.DeviceOps,
     *,
     name: str,
@@ -130,7 +124,7 @@ def _warmup_run(
   warmup result is not calculated and RuntimeError is raised.
 
   Args:
-    run_step: The function to run.
+    stepper: The stepper to run.
     device_ops: The device operations to use.
     name: The name of the benchmark.
 
@@ -147,11 +141,14 @@ def _warmup_run(
   gc.collect()
 
   with gc_disabled():
+    step_fn = stepper.get_step_fn()
     for step in range(MAX_WARMUP_STEPS.value):
       start_time = time.perf_counter()
       out = step_fn()
       device_ops.await_result(out)
       timings[step] = time.perf_counter() - start_time
+      # E.g. reset kv cache to its post-prefill state.
+      stepper.post_warmup_hook()
       compile_count[step] = device_ops.compile_count()
 
       if (
@@ -162,18 +159,27 @@ def _warmup_run(
         num_warmup_steps = step + 1
         break
 
+  if num_warmup_steps is None:
+    if _is_warmup_only():
+      num_warmup_steps = 1
+    else:
+      raise RuntimeError(
+          "Benchmark function compilations have not stabilized after"
+          f" {MAX_WARMUP_STEPS.value} warmup runs."
+      )
+
   logging.info("Warmup Timings for %s: %s", name, timings)
   logging.info("Warmup compile counts for %s: %s", name, compile_count)
 
   return metrics.WarmupRunResult(
-      num_warmup_steps=num_warmup_steps,  #  pyrefly: ignore[bad-argument-type]
+      num_warmup_steps=num_warmup_steps,
       first_step_time_seconds=timings[0],
-      warmup_overhead_seconds=_get_warmup_overhead(timings, num_warmup_steps),  # pyrefly: ignore[bad-argument-type]
+      warmup_overhead_seconds=_get_warmup_overhead(timings, num_warmup_steps),
   )
 
 
 def _post_warmup_run(
-    step_fn: step_lib.StepFn,
+    stepper: step_lib.Stepper,
     device_ops: device_ops_lib.DeviceOps,
     *,
     name: str,
@@ -181,7 +187,7 @@ def _post_warmup_run(
   """Runs the model once after the warmup is complete.
 
   Args:
-    run_step: The function to run.
+    stepper: The stepper to run.
     device_ops: The device operations to use.
     name: The name of the benchmark.
 
@@ -200,12 +206,14 @@ def _post_warmup_run(
   compile_count_before = device_ops.compile_count()
 
   with gc_disabled():
+    step_fn = stepper.get_step_fn()
     for step in range(POST_WARMUP_STEPS.value):
       start_time = time.perf_counter()
       out = step_fn()
       device_ops.await_result(out)
       elapsed = time.perf_counter() - start_time
       timings[step] = elapsed
+      stepper.post_warmup_hook()
 
       step_compile_count = device_ops.compile_count()
       if step_compile_count != compile_count_before:
@@ -219,8 +227,8 @@ def _post_warmup_run(
   logging.info("Post Warmup Timings for %s: %s", name, timings)
 
   return metrics.PostWarmupRunResult(
-      post_warmup_step_time_seconds=np.mean(timings),  # pyrefly: ignore[bad-argument-type]
-      peak_device_memory_mb=memory_usage,  # pyrefly: ignore[bad-argument-type]
+      post_warmup_step_time_seconds=float(np.mean(timings)),
+      peak_device_memory_mb=memory_usage,
   )
 
 
@@ -237,7 +245,7 @@ def measure(
 
   result_kwargs |= dataclasses.asdict(
       _warmup_run(
-          stepper.get_step_fn(),
+          stepper,
           device_ops,
           name=name,
       )
@@ -247,7 +255,7 @@ def measure(
     stepper.post_warmup_hook()
     result_kwargs |= dataclasses.asdict(
         _post_warmup_run(
-            stepper.get_step_fn(),
+            stepper,
             device_ops,
             name=name,
         )

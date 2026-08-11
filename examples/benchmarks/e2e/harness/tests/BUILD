@@ -65,6 +65,7 @@ torch_tpu_py_test(
     srcs = ["step_test.py"],
     tags = ["requires-tpu-v5lite"],
     deps = [
+        "//examples/benchmarks/e2e/harness:compile",
         "//examples/benchmarks/e2e/harness:discovery",
         "//examples/benchmarks/e2e/harness:measure",
         "//examples/benchmarks/e2e/harness:step_lib",
@@ -75,6 +76,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:flagsaver",
         "//shims/torch:pytorch",
         "//torch_tpu",
+        "@pypi//transformers",
     ],
 )
 

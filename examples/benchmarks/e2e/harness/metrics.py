@@ -57,7 +57,7 @@ class PostWarmupRunResult:
   """
 
   post_warmup_step_time_seconds: float = 0.0
-  peak_device_memory_mb: float = 0.0
+  peak_device_memory_mb: float | None = None
   post_warmup_run_session_xprof_url: str | None = None
   average_post_warmup_device_time_seconds: float = -1.0
 
@@ -105,7 +105,7 @@ class PerformanceMetrics(MetricsInterface):
   first_step_time_seconds: float = 0.0
   warmup_overhead_seconds: float = 0.0
   post_warmup_step_time_seconds: float = 0.0
-  peak_device_memory_mb: float = 0.0
+  peak_device_memory_mb: float | None = None
   warmup_session_xprof_url: str | None = None
   post_warmup_run_session_xprof_url: str | None = None
   average_post_warmup_device_time_seconds: float = -1.0
@@ -113,17 +113,19 @@ class PerformanceMetrics(MetricsInterface):
 
   def metric_map(self) -> Mapping[str, float]:
     """Returns a map of metrics to be exported to MLCompass."""
-    return {
-        "num_warmup_steps": self.num_warmup_steps,
+    res = {
+        "num_warmup_steps": float(self.num_warmup_steps),
         "first_step_time_seconds": self.first_step_time_seconds,
         "warmup_overhead_seconds": self.warmup_overhead_seconds,
         "post_warmup_step_time_seconds": self.post_warmup_step_time_seconds,
-        "peak_device_memory_mb": self.peak_device_memory_mb,
         "average_post_warmup_device_time_seconds": (
             self.average_post_warmup_device_time_seconds
         ),
         "peak_host_compilation_memory_mb": self.peak_host_compilation_memory_mb,
     }
+    if self.peak_device_memory_mb is not None:
+      res["peak_device_memory_mb"] = self.peak_device_memory_mb
+    return res
 
 
 @dataclasses.dataclass

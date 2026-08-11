@@ -20,12 +20,15 @@ from absl.testing import absltest
 from absl.testing import flagsaver
 import torch
 import torch.nn as nn
+from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import discovery as discovery_lib
 from examples.benchmarks.e2e.harness import measure as measure_lib
 from examples.benchmarks.e2e.harness import step_lib
 from examples.benchmarks.e2e.harness import steps
 from examples.benchmarks.e2e.harness import target as target_lib
 from examples.benchmarks.e2e.harness import torch_device_ops
+from examples.benchmarks.e2e.harness.steps import decode
+import transformers
 
 
 def mock_grad_probe(model, args, kwargs):
@@ -249,6 +252,156 @@ class StepperTypeTest(absltest.TestCase):
           ops,
           name="mlp_training",
       )
+    self.assertGreaterEqual(m.post_warmup_step_time_seconds, 0.0)
+    self.assertGreater(m.e2e_wall_time_seconds, 0.0)
+
+  def test_decode_stepper_eager(self):
+    ops = self._ops()
+
+    config = transformers.LlamaConfig(
+        vocab_size=16,
+        hidden_size=8,
+        intermediate_size=16,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        num_key_value_heads=2,
+        max_position_embeddings=128,
+    )
+    if not hasattr(config, "head_dim"):
+      config.head_dim = config.hidden_size // config.num_attention_heads
+    model = transformers.LlamaForCausalLM(config).to(ops.device)
+    model.eval()
+
+    prompt_len = 4
+    x = torch.randint(0, 16, (1, prompt_len), device=ops.device)
+
+    stepper = decode.decode()
+    stepper.init_with_benchmark_args(model, (), {"input_ids": x})
+
+    cache = stepper.get_cache()
+
+    self.assertTrue(cache.layers[0].is_initialized)
+
+    self.assertEqual(cache.get_seq_length(), 0)
+    cache_state_pre = cache.layers[0].keys.clone()
+
+    stepper.pre_warmup_init()
+    torch.accelerator.synchronize()
+    self.assertEqual(cache.get_seq_length(), prompt_len)
+    self.assertIsNotNone(stepper.next_token)
+
+    cache_state_post_prefill = cache.layers[0].keys.clone()
+    self.assertFalse(torch.equal(cache_state_pre, cache_state_post_prefill))
+
+    step_fn = stepper.get_step_fn()
+    _ = step_fn()
+    torch.accelerator.synchronize()
+    self.assertEqual(cache.get_seq_length(), prompt_len + stepper.output_tokens)
+
+    cache_state_post_step1 = cache.layers[0].keys.clone()
+    self.assertFalse(
+        torch.equal(cache_state_post_prefill, cache_state_post_step1)
+    )
+
+    stepper.post_warmup_hook()
+    _ = step_fn()
+    torch.accelerator.synchronize()
+    self.assertEqual(cache.get_seq_length(), prompt_len + stepper.output_tokens)
+
+  def test_decode_stepper_compiled(self):
+    with torch.no_grad():
+      ops = self._ops()
+
+      config = transformers.LlamaConfig(
+          vocab_size=16,
+          hidden_size=8,
+          intermediate_size=16,
+          num_hidden_layers=2,
+          num_attention_heads=2,
+          num_key_value_heads=2,
+          max_position_embeddings=128,
+      )
+      if not hasattr(config, "head_dim"):
+        config.head_dim = config.hidden_size // config.num_attention_heads
+      model = transformers.LlamaForCausalLM(config).to(ops.device)
+      model.eval()
+
+      prompt_len = 4
+      x = torch.randint(0, 16, (1, prompt_len), device=ops.device)
+
+      stepper = decode.decode(output_tokens=8)
+      stepper.init_with_benchmark_args(model, (), {"input_ids": x})
+      target = target_lib.make_target(platform=target_lib.Platform.V5E_1X1)
+      compile_config = compile_lib.CompileConfig(
+          scope=compile_lib.Scope.MODEL, dynamic=False
+      )
+      stepper.compile(compile_config, target)
+
+      cache = stepper.get_cache()
+      cache_state_pre = cache.layers[0].keys.clone()
+      prompt_len = stepper.prompt_len
+
+      stepper.pre_warmup_init()
+      torch.accelerator.synchronize()
+
+      self.assertEqual(cache.get_seq_length(), prompt_len)
+      self.assertIsNotNone(stepper.next_token)
+
+      cache_state_post_prefill = cache.layers[0].keys.clone()
+      self.assertFalse(torch.equal(cache_state_pre, cache_state_post_prefill))
+
+      step_fn = stepper.get_step_fn()
+      torch.accelerator.synchronize()
+
+      for _ in range(3):
+        _ = step_fn()
+        torch.accelerator.synchronize()
+        self.assertEqual(cache.get_seq_length(), prompt_len + 8)
+
+        stepper.post_warmup_hook()
+        torch.accelerator.synchronize()
+        self.assertEqual(cache.get_seq_length(), prompt_len)
+
+      post_warmup_comp_cache_miss = getattr(torch, "tpu")._get_cache_misses()
+
+      _ = step_fn()
+
+      torch.accelerator.synchronize()
+      self.assertEqual(
+          getattr(torch, "tpu")._get_cache_misses(),
+          post_warmup_comp_cache_miss,
+          "missed cache in iter",
+      )
+
+  def test_decode_through_measure(self):
+    ops = self._ops()
+
+    config = transformers.LlamaConfig(
+        vocab_size=16,
+        hidden_size=8,
+        intermediate_size=16,
+        num_hidden_layers=1,
+        num_attention_heads=1,
+        num_key_value_heads=1,
+        max_position_embeddings=128,
+    )
+    if not hasattr(config, "head_dim"):
+      config.head_dim = config.hidden_size // config.num_attention_heads
+    model = transformers.LlamaForCausalLM(config).to(ops.device)
+    model.eval()
+    x = torch.randint(0, 16, (1, 4), device=ops.device)
+
+    stepper = decode.decode(output_tokens=8)
+    stepper.init_with_benchmark_args(model, (), {"input_ids": x})
+    with flagsaver.flagsaver(
+        min_warmup_steps=1, max_warmup_steps=5, post_warmup_steps=3
+    ):
+      m = measure_lib.measure(
+          stepper,
+          ops,
+          name="llama_decode",
+      )
+    self.assertLessEqual(m.num_warmup_steps, 5)
     self.assertGreaterEqual(m.post_warmup_step_time_seconds, 0.0)
     self.assertGreater(m.e2e_wall_time_seconds, 0.0)
 
