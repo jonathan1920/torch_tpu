@@ -59,6 +59,11 @@ DeviceStreamId GetCurrentDeviceStreamId();
 // Returns the next available stream ID for the given device index.
 StreamId NextStreamId(DeviceIndex device_index);
 
+// Resets the stream ID counters for all devices.
+// After calling this, the next call to NextStreamId() will return 1 for all
+// devices.
+void ResetStreamIdCounters();
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_EAGER_CURRENT_STREAM_H_

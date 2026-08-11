@@ -55,8 +55,9 @@ void RecordDeferredOpCreated(const SharedDeviceBufferList& device_buffer_list);
 // duplicates.
 std::vector<SharedDeviceBufferList> GetAllLiveUnsyncedDataPtrs();
 
-// Clears all references to DeviceBufferLists from the events queue.
-void ClearEventsQueue();
+// Clears all references to DeviceBufferLists from the events queue, forgets all
+// prior stream futures, and resets to only a single default stream per device.
+void ClearAllStreams();
 
 // Returns a sequence of Traversals that, if compiled and executed, would
 // materialize all live tensors up to and including all nodes_to_materialize

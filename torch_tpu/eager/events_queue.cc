@@ -318,9 +318,6 @@ void RecordDeferredOpCreated(const SharedDeviceBufferList& device_buffer_list) {
 std::vector<SharedDeviceBufferList> GetAllLiveUnsyncedDataPtrs() {
   return EventsQueue::GetInstance().GetAllLiveUnsyncedDataPtrs();
 }
-
-void ClearEventsQueue() { EventsQueue::GetInstance().Clear(); }
-
 namespace {
 
 // The usage of a node within an execution region.
@@ -642,6 +639,11 @@ struct StreamState {
     return join_future;
   }
 
+  void Clear() {
+    absl::MutexLock lock(mutex);
+    futures.clear();
+  }
+
   absl::Mutex mutex;
   std::vector<xla::Future<void>> futures ABSL_GUARDED_BY(mutex);
 };
@@ -658,6 +660,15 @@ struct DeviceState {
       including_default.push_back(stream_state.get());
     }
     return including_default;
+  }
+
+  void Clear() {
+    // Keep the default stream but clear it so it is empty.
+    default_stream_state.Clear();
+
+    // Drop all other stream states.
+    absl::MutexLock lock(mutex);
+    stream_states.clear();
   }
 
   StreamState default_stream_state;
@@ -697,6 +708,12 @@ struct StreamStates {
     ABSL_CHECK(device_index >= 0 &&  // CRASH_OK
                device_index < kMaxTorchDevices);
     return device_states[device_index];
+  }
+
+  void Clear() {
+    for (auto& device_state : device_states) {
+      device_state.Clear();
+    }
   }
 
   std::array<DeviceState, kMaxTorchDevices> device_states;
@@ -830,5 +847,11 @@ std::shared_ptr<EventSnapshot> EventSnapshot::Record(
 absl::Status EventSnapshot::Wait() const { return future_.Await(); }
 
 absl::StatusOr<bool> EventSnapshot::Query() const { return future_.IsReady(); }
+
+void ClearAllStreams() {
+  EventsQueue::GetInstance().Clear();
+  GetStreamStates().Clear();
+  ResetStreamIdCounters();
+}
 
 }  // namespace torch_tpu

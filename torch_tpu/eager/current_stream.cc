@@ -74,4 +74,10 @@ StreamId NextStreamId(DeviceIndex device_index) {
   return next_stream_ids_[device_index].fetch_add(1, std::memory_order_relaxed);
 }
 
+void ResetStreamIdCounters() {
+  for (int i = 0; i < kMaxDevices; ++i) {
+    next_stream_ids_[i].store(1, std::memory_order_relaxed);
+  }
+}
+
 }  // namespace torch_tpu
