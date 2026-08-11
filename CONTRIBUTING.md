@@ -36,8 +36,13 @@ for this purpose.
     domain expert** as its **reviewer**.
 1.  The **domain expert** reviews the PR, approves it, and then adds a **Google
     quality champion** as a reviewer AND the **assignee**.
-    *   For now the domain expert needs to manually find a quality champion.
-        Later we'll try to automate it.
+    *   For now the domain expert needs to manually find a quality champion (one
+        of `cbasile-g`, `LeeHowes`, `vladbelous`, and `zhanyong-wan`). Later
+        we'll try to automate it.
+    *   Use
+        [this list](https://github.com/google-pytorch/torch_tpu/pulls?q=is%3Apr+is%3Aopen+repo%3Agoogle-pytorch%2Ftorch_tpu+-author%3Aapp%2Fcopybara-service+sort%3Aupdated-asc+draft%3Afalse)
+        to balance the load between quality champions: try to pick someone who
+        occurs fewer times in the "Assignee" column.
     *   See the image below for how the domain expert and quality champion roles
         map to the GitHub UI.
 
