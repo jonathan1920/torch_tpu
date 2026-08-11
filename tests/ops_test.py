@@ -775,8 +775,8 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"rtol": 6.4e-3, "atol": 6.5e-3},
     },
     "_foreach_addcdiv": {
-        torch.bfloat16: {"rtol": 3.7e-2, "atol": 5.2e-2},
-        torch.float16: {"rtol": 4.8e-3, "atol": 9.1e-3},
+        torch.bfloat16: {"rtol": 1.7e-2, "atol": 2.2e-2},
+        torch.float16: {"rtol": 1.2e-3, "atol": 3.3e-3},
     },
     "_foreach_addcmul": {
         torch.bfloat16: {"rtol": 2.4e-2, "atol": 2.9e-2},
@@ -940,10 +940,6 @@ ACCURACY_OVERRIDES_VS_GPU = {
     "add": {
         torch.bfloat16: {"rtol": 1.8e-2, "atol": 1.5e-2},
         torch.float16: {"rtol": 4.5e-3, "atol": 1.2e-3},
-    },
-    "addcdiv": {
-        torch.bfloat16: {"rtol": 2.5e-2, "atol": 2.9e-2},
-        torch.float16: {"rtol": 4.9e-3, "atol": 6.5e-3},
     },
     "addmm": {
         torch.float16: {"rtol": 1.5e-2},

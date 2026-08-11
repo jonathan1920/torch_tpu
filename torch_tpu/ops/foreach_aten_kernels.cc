@@ -146,14 +146,17 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachAddcdivShlo(
     mlir::MlirOp current_tensor2 = tensor2[i];
     mlir::MlirOp current_value = value[i];
 
+    TT_ASSIGN_OR_RETURN(const mlir::ElementType compute_dtype,
+                        InferComputationDtype(out_dtypes[i]));
+
     TT_ASSIGN_OR_RETURN(current_self,
-                        CastIfNeeded(current_self, out_dtypes[i]));
+                        CastIfNeeded(current_self, compute_dtype));
     TT_ASSIGN_OR_RETURN(current_tensor1,
-                        CastIfNeeded(current_tensor1, out_dtypes[i]));
+                        CastIfNeeded(current_tensor1, compute_dtype));
     TT_ASSIGN_OR_RETURN(current_tensor2,
-                        CastIfNeeded(current_tensor2, out_dtypes[i]));
+                        CastIfNeeded(current_tensor2, compute_dtype));
     TT_ASSIGN_OR_RETURN(current_value,
-                        CastIfNeeded(current_value, out_dtypes[i]));
+                        CastIfNeeded(current_value, compute_dtype));
 
     TT_ASSIGN_OR_RETURN(mlir::MlirOp div,
                         BuildDivShlo(current_tensor1, current_tensor2));
@@ -161,6 +164,7 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachAddcdivShlo(
                         BuildMulShlo(current_value, div));
     TT_ASSIGN_OR_RETURN(mlir::MlirOp result,
                         BuildAddShlo(current_self, value_div));
+    TT_ASSIGN_OR_RETURN(result, CastIfNeeded(result, out_dtypes[i]));
     results.push_back(result);
   }
   return results;

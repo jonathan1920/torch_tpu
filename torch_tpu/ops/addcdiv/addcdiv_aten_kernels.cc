@@ -25,6 +25,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -46,11 +47,19 @@ absl::StatusOr<mlir::MlirOp> BuildAddcdivShlo(mlir::MlirOp self,
                                               mlir::MlirOp tensor1,
                                               mlir::MlirOp tensor2,
                                               mlir::MlirOp value) {
+  TT_ASSIGN_OR_RETURN(const mlir::ElementType out_dtype, GetElementType(self));
+  TT_ASSIGN_OR_RETURN(const mlir::ElementType compute_dtype,
+                      InferComputationDtype(out_dtype));
+
+  TT_ASSIGN_OR_RETURN(self, CastIfNeeded(self, compute_dtype));
+  TT_ASSIGN_OR_RETURN(tensor1, CastIfNeeded(tensor1, compute_dtype));
+  TT_ASSIGN_OR_RETURN(tensor2, CastIfNeeded(tensor2, compute_dtype));
+  TT_ASSIGN_OR_RETURN(value, CastIfNeeded(value, compute_dtype));
+
   TT_ASSIGN_OR_RETURN(mlir::MlirOp div, BuildDivShlo(tensor1, tensor2));
-  const mlir::RankedTensorType div_type = GetTensorTypeOrDie(div);
-  value = mlir::stablehlo::ConvertElementType(value, div_type.getElementType());
   TT_ASSIGN_OR_RETURN(mlir::MlirOp value_div, BuildMulShlo(value, div));
-  return BuildAddShlo(self, value_div);
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp result, BuildAddShlo(self, value_div));
+  return CastIfNeeded(result, out_dtype);
 }
 
 }  // namespace
