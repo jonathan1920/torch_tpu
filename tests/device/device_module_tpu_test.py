@@ -73,6 +73,10 @@ class TpuDeviceModuleTest(
     iface_cap = get_interface_for_device("tpu").get_compute_capability("tpu")
     self.assertIsInstance(iface_cap, str)
 
+  def test_is_triton_capable(self):
+    self.assertFalse(torch.tpu.is_triton_capable())
+    self.assertFalse(torch.tpu.is_triton_capable(device=None))
+
 
 if __name__ == "__main__":
   absltest.main()

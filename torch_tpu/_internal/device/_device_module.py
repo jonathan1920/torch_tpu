@@ -234,6 +234,20 @@ class _DeviceModule(abc.ABC):
     return False
 
   @classmethod
+  def is_triton_capable(cls, device: torch.types.Device = None) -> bool:
+    """Returns if the device has Triton support.
+
+    Args:
+      device: The device to check. Unused for custom backends unless explicitly
+        implemented.
+
+    Returns:
+      False, as custom backends do not support Triton by default.
+    """
+    del device  # Unused
+    return False
+
+  @classmethod
   def is_initialized(cls) -> bool:  # This is in torch/cuda/__init__.py.
     """Returns whether PyTorch's TPU state has been initialized."""
     return _device_ops_backend._is_initialized()  # pylint: disable=protected-access
