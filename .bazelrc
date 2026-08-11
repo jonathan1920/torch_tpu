@@ -344,7 +344,15 @@ build --define=with_tpu_support=true
 # Configs for Bazel remote execution.
 # Do not use instance "projects/ml-oss-rbe-testing/instances/default_instance"
 # because it does not have RBE agents setup.
-common:remote_execution_readonly --remote_instance_name=projects/tensorflow-testing/instances/default_instance
+common:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
+common:rbe --remote_instance_name=projects/tpu-pytorch/instances/default_instance
+common:rbe --google_default_credentials
+common:rbe --remote_timeout=3600
+common:rbe --test_timeout=3600
+common:rbe --jobs=100
+common:rbe --config=tpu_envvars
+
+common:remote_execution_readonly --remote_instance_name=projects/tpu-pytorch/instances/default_instance
 common:remote_execution_readonly --google_default_credentials
 common:remote_execution_readonly --jobs=200
 common:remote_execution_readonly --remote_timeout=3600
