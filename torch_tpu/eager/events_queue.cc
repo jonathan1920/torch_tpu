@@ -725,36 +725,81 @@ void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
       ->MarkActive(std::move(new_futures));
 }
 
-void MarkStreamActive(std::vector<xla::Future<void>>&& new_futures) {
-  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
-  MarkStreamActive(device_index, stream_id, std::move(new_futures));
-}
-
-void MarkStreamActive(xla::Future<void> future) {
+void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
+                      xla::Future<void> future) {
   std::vector<xla::Future<void>> futures;
   futures.reserve(1);
   futures.push_back(std::move(future));
-  MarkStreamActive(std::move(futures));
+  MarkStreamActive(device_index, stream_id, std::move(futures));
 }
 
 }  // namespace
 
 void RecordBackgroundMaterialization(
     absl::Span<const DeviceBufferRef> outputs) {
-  std::vector<xla::Future<void>> new_futures;
-  new_futures.reserve(outputs.size());
-  for (const auto& output : outputs) {
-    new_futures.push_back(output.GetReadyFuture());
+  if (outputs.empty()) return;
+
+  const auto first_device_index = outputs[0].device_index();
+  const auto first_stream_id = outputs[0].stream_id();
+  if (outputs.size() == 1 ||
+      std::all_of(
+          outputs.begin(), outputs.end(),
+          [first_device_index, first_stream_id](const DeviceBufferRef& output) {
+            return output.device_index() == first_device_index &&
+                   output.stream_id() == first_stream_id;
+          })) {
+    // All outputs are on the same stream, only need to mark this one stream
+    // active.
+    std::vector<xla::Future<void>> new_futures;
+    new_futures.reserve(outputs.size());
+    for (const auto& output : outputs) {
+      new_futures.push_back(output.GetReadyFuture());
+    }
+    MarkStreamActive(first_device_index, first_stream_id,
+                     std::move(new_futures));
+    return;
   }
-  MarkStreamActive(std::move(new_futures));
+
+  // Create a list of futures for each stream.
+  struct NewStreamFutures {
+    c10::DeviceIndex device_index;
+    int64_t stream_id;
+    std::vector<xla::Future<void>> futures;
+  };
+  std::vector<NewStreamFutures> new_stream_futures;
+  for (const auto& output : outputs) {
+    auto it = std::find_if(new_stream_futures.begin(), new_stream_futures.end(),
+                           [&output](const NewStreamFutures& new_futures) {
+                             return new_futures.device_index ==
+                                        output.device_index() &&
+                                    new_futures.stream_id == output.stream_id();
+                           });
+    if (it == new_stream_futures.end()) {
+      new_stream_futures.push_back({output.device_index(),
+                                    output.stream_id(),
+                                    {output.GetReadyFuture()}});
+    } else {
+      it->futures.push_back(output.GetReadyFuture());
+    }
+  }
+  for (auto& stream : new_stream_futures) {
+    MarkStreamActive(stream.device_index, stream.stream_id,
+                     std::move(stream.futures));
+  }
 }
 
 void RecordAsyncHostToDevice(const DeviceBufferRef& device_buffer_ref) {
-  MarkStreamActive(device_buffer_ref.GetReadyFuture());
+  MarkStreamActive(device_buffer_ref.device_index(),
+                   device_buffer_ref.stream_id(),
+                   device_buffer_ref.GetReadyFuture());
 }
 
 void RecordAsyncDeviceToHost(xla::Future<void> to_literal_future) {
-  MarkStreamActive(std::move(to_literal_future));
+  // TODO: should this be moved into the function signature?
+  // Is there ever a case where we would want to record an async d2h on a
+  // different stream than the current stream?
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+  MarkStreamActive(device_index, stream_id, std::move(to_literal_future));
 }
 
 std::vector<std::shared_ptr<EventSnapshot>> RecordDeviceSnapshots(
