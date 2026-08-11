@@ -3587,6 +3587,16 @@ module {
           query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
       )
 
+  @et.why_tpu_only("Optimization Barrier requires non-empty list input")
+  def test_optimization_barrier_empty_list_fails(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=re.compile(
+            r"""There were no tensor arguments to this function(.|\n)*"""
+        ),
+    ):
+      torch.ops.tpu.optimization_barrier([])
+
 
 if __name__ == "__main__":
   absltest.main()

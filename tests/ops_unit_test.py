@@ -8149,6 +8149,55 @@ module {
         atol=2e-1,
     )
 
+  def test_optimization_barrier_meta_non_contiguous_eager(self):
+    x = torch.empty((16, 2, 256, 256), device="meta")
+    x1 = x[:, 0, :, :]
+
+    inputs = [x1]
+
+    results = torch.ops.tpu.optimization_barrier(inputs)
+
+    self.assertLen(results, 1)
+    self.assertEqual(results[0].device.type, "meta")
+    self.assertEqual(results[0].shape, x1.shape)
+    self.assertEqual(results[0].dtype, x1.dtype)
+    self.assertEqual(results[0].stride(), x1.stride())
+
+  def test_optimization_barrier_meta_non_contiguous_compiled(self):
+    def fn(x):
+      x1 = x[:, 0, :, :]
+      return torch.ops.tpu.optimization_barrier([x1])
+
+    x = torch.ones((16, 2, 256, 256), device="tpu")
+    x1 = x[:, 0, :, :]
+    results = torch.compile(fn)(x)
+
+    self.assertLen(results, 1)
+    self.assertEqual(results[0].device.type, "tpu")
+    self.assertEqual(results[0].shape, x1.shape)
+    self.assertEqual(results[0].dtype, x1.dtype)
+    self.assertEqual(results[0].stride(), x1.stride())
+
+  def test_optimization_barrier_multiple_inputs(self):
+    x1 = torch.empty((8,), dtype=torch.float32, device="meta")
+    x2 = torch.empty((4, 4), dtype=torch.int32, device="meta")
+    x3 = torch.empty((2, 2, 2), dtype=torch.bool, device="meta")
+
+    inputs = [x1, x2, x3]
+    results = torch.ops.tpu.optimization_barrier(inputs)
+
+    self.assertLen(results, 3)
+    for i in range(3):
+      self.assertEqual(results[i].shape, inputs[i].shape)
+      self.assertEqual(results[i].dtype, inputs[i].dtype)
+      self.assertEqual(results[i].stride(), inputs[i].stride())
+      self.assertEqual(results[i].device.type, "meta")
+
+  def test_optimization_barrier_scalar(self):
+    x = torch.tensor(1.0, device="meta")
+    results = torch.ops.tpu.optimization_barrier([x])
+    self.assertEqual(results[0].shape, torch.Size([]))
+
 
 class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for backward ops."""

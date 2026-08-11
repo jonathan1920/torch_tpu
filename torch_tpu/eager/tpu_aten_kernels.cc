@@ -22,6 +22,7 @@
 #include <string_view>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
@@ -33,6 +34,7 @@
 #include "ATen/native/transformers/attention.h"
 #include "ATen/ops/empty.h"
 #include "ATen/ops/empty_like.h"
+#include "ATen/ops/empty_strided.h"
 #include "ATen/ops/result_type.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
@@ -1282,33 +1284,43 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
                                at::empty_like(velocity));
       });
   ImplStable<OpName::kRaggedDot>(
-      m, +[](const at::Tensor& lhs, const at::Tensor& rhs,
-             const at::Tensor& group_sizes) {
+      m, [](const at::Tensor& lhs, const at::Tensor& rhs,
+            const at::Tensor& group_sizes) {
         return at::empty({lhs.size(0), rhs.size(2)},
                          lhs.options().dtype(at::result_type(lhs, rhs)));
       });
   ImplStable<OpName::kRaggedDotOut>(
       m,
-      +[](const at::Tensor& lhs, const at::Tensor& rhs,
-          const at::Tensor& group_sizes, at::Tensor& out) -> at::Tensor& {
+      [](const at::Tensor& lhs, const at::Tensor& rhs,
+         const at::Tensor& group_sizes, at::Tensor& out) -> at::Tensor& {
         at::native::resize_output(out, {lhs.size(0), rhs.size(2)});
         return out;
       });
   ImplStable<OpName::kRaggedAllToAll>(
-      m, +[](const at::Tensor& operand, const at::Tensor& output,
-             const at::Tensor& input_offsets, const at::Tensor& send_sizes,
-             const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-             std::string_view process_group_name) {
+      m, [](const at::Tensor& operand, const at::Tensor& output,
+            const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+            const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+            std::string_view process_group_name) {
         return at::empty_like(output);
       });
   ImplStable<OpName::kRaggedAllToAllOut>(
       m,
-      +[](const at::Tensor& operand, const at::Tensor& output,
-          const at::Tensor& input_offsets, const at::Tensor& send_sizes,
-          const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-          std::string_view process_group_name, at::Tensor& out) -> at::Tensor& {
+      [](const at::Tensor& operand, const at::Tensor& output,
+         const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+         const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+         std::string_view process_group_name, at::Tensor& out) -> at::Tensor& {
         at::native::resize_output(out, output.sizes());
         return out;
+      });
+  ImplStable<OpName::kTorchTpuOptimizationBarrier>(
+      m, [](at::TensorList self) -> std::vector<at::Tensor> {
+        std::vector<at::Tensor> outs;
+        outs.reserve(self.size());
+        for (const at::Tensor& t : self) {
+          outs.push_back(
+              at::empty_strided(t.sizes(), t.strides(), t.options()));
+        }
+        return outs;
       });
 }
 
