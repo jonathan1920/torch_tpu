@@ -133,6 +133,7 @@ torch_tpu_py_library(
     name = "op_testing",
     testonly = True,
     srcs = ["op_testing.py"],
+    visibility = ["//:__subpackages__"],
     deps = [
         ":seed_test_utils",
         "//shims/absl_py/flags",
@@ -147,6 +148,7 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:test_utils",
         "//torch_tpu/eager:tpu_aten_kernels",
+        "@pypi//pyyaml",
     ],
 )
 
@@ -963,6 +965,28 @@ torch_tpu_py_test(
         # compute capability 8.9 or >= 9.0
         "requires-gpu-sm90",
     ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        ":oss_utils",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//shims/torch:testing_internal",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils:test_utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "ops_test_dump_dtype_exclusions",
+    srcs = ["ops_test.py"],
+    args = ["--test_mode=dump_dtype_exclusions"],
+    main = "ops_test.py",
+    # Keep this test unsharded. The exclusions are accumulated in a
+    # per-process global, so a sharded run would dump partial results.
+    shard_count = 1,
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
