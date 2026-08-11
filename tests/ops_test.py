@@ -3636,7 +3636,7 @@ class TestOps(op_testing.OpInfoTestBase):
             torch.int16,
         )
         + COMPLEX_DTYPES
-        + (torch.float64,),
+        + (torch.float64, torch.float16),
     )
 
   def test_polygamma(self):
