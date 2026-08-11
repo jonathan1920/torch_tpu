@@ -738,10 +738,10 @@ mlir::ElementType RealComponentOf(const mlir::ElementType element_type) {
   }
 }
 
-// PyTorch uses `at::toAccumulateType` to determine this. We call it with
-// `is_cuda=true` to ensure we get the CUDA-aligned accumulation type.
-// For full details on PyTorch's accumulation type mapping, see:
-// third_party/py/torch/aten/src/ATen/AccumulateType.h
+// PyTorch uses `at::toAccumulateType` AT_TO_ACCUMULATE_TYPE_OK=doc
+// to determine this. We call it with `is_cuda=true` to ensure we get the
+// CUDA-aligned accumulation type. For full details on PyTorch's accumulation
+// type mapping, see: third_party/py/torch/aten/src/ATen/AccumulateType.h
 at::ScalarType ToAccumulateType(at::ScalarType type) {
   return at::toAccumulateType(  // AT_TO_ACCUMULATE_TYPE_OK=root usage for the
                                 // API.

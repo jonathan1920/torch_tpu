@@ -24,7 +24,6 @@
 #include <utility>
 #include <vector>
 
-#include "ATen/AccumulateType.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Resize.h"
 #include "absl/log/absl_log.h"
@@ -84,8 +83,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
   Dimensions output_variance_inverted_dims =
       training ? features_dims : empty_dims;
 
-  const auto acc_type =
-      at::toAccumulateType(input.scalar_type(), /*is_cuda=*/true);
+  const auto acc_type = ToAccumulateType(input.scalar_type());
   TT_ASSIGN_OR_RETURN(const auto acc_dtype,
                       ConvertTo<mlir::ElementType>(acc_type));
 
@@ -245,8 +243,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNormBackward(
     inputs.push_back(*save_invstd);
   }
 
-  const auto acc_type =
-      at::toAccumulateType(input.scalar_type(), /*is_cuda=*/true);
+  const auto acc_type = ToAccumulateType(input.scalar_type());
   TT_ASSIGN_OR_RETURN(const auto acc_dtype,
                       ConvertTo<mlir::ElementType>(acc_type));
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
