@@ -43,9 +43,11 @@ on:
         required: false
         type: string
         default: ""
-
-  schedule:
-    - cron: "0 0 * * *"  # Runs at 00:00 UTC every day
+      custom_metadata:
+        description: "JSON string of metadata to append to the benchmark result. Overwrites static metadata from the registry but is overwritten by dynamic metadata from the workload."
+        required: false
+        type: string
+        default: "{}"
 
 permissions:
   contents: read
@@ -58,12 +60,10 @@ jobs:
     with:
       registry_file: "examples/benchmarks/benchmark_registry.pbtxt"
       bap_ref: "bd952b0063be0b4169f698947792d203ab5f5c42"
-      publish_metrics: true
-      pub_sub_gcp_project_id: "ml-oss-benchmarking-production"
-      pub_sub_gcp_topic_id: "private-torch-tpu-prod"
       runner: "linux-x86-n4-16"
       ab_mode: ${{ inputs.ab_mode }}
       baseline_ref: ${{ inputs.baseline_ref }}
       experiment_ref: ${{ inputs.experiment_ref }}
       benchmark_filter: ${{ inputs.benchmark_filter }}
       environment_filter: ${{ inputs.environment_filter }}
+      custom_metadata: ${{ inputs.custom_metadata }}
