@@ -216,4 +216,4 @@ def synchronize(device: torch.device | str | int | None = None) -> None:
       current device if device is None (default).
   """
   device_idx = _get_device_index(device)
-  _device_ops_backend._synchronize_device(device_idx)  # pylint: disable=protected-access
+  _device_ops_backend._synchronize_device(device_idx, wait=True)  # pylint: disable=protected-access

@@ -35,6 +35,7 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep, needed for at::Tensor mapping
+#include "torch_tpu/_internal/sync/sync.h"
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/discovery.h"
@@ -78,13 +79,19 @@ class PyTpuEventBase {
   absl_nonnull std::shared_ptr<EventSnapshot> event_snapshot_;
 };
 
-void PySynchronizeDevice(int device_index) {
-  const c10::impl::DeviceGuardImplInterface* impl =
-      c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
-  TT_CHECK_THROW(impl != nullptr, error::kInternal)
-      << "TPU DeviceGuardImpl not found";
+void PySynchronizeDevice(int device_index, bool wait) {
+  if (wait) {
+    const c10::impl::DeviceGuardImplInterface* impl =
+        c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
+    TT_CHECK_THROW(impl != nullptr, error::kInternal)
+        << "TPU DeviceGuardImpl not found";
 
-  impl->synchronizeDevice(device_index);
+    impl->synchronizeDevice(device_index);
+  } else {
+    // TODO(bawilson): only materialize DeferredOps on the specific device, not
+    // all devices.
+    TT_THROW_IF_ERROR(MaterializeAll());
+  }
 }
 
 PyTpuEventBase PyRecordEvent(std::optional<int> device_index,
@@ -236,8 +243,9 @@ PYBIND11_MODULE(_device_ops_backend, m) {
         "Blocks until all operations on the specified stream have completed.");
 
   m.def("_synchronize_device", &PySynchronizeDevice, py::arg("device_index"),
-        py::call_guard<py::gil_scoped_release>(),
-        "Blocks until all async d2h copies and deferred operations on the "
+        py::arg("wait"), py::call_guard<py::gil_scoped_release>(),
+        "Starts a device synchronization, optionally blocking until all async "
+        "d2h copies and deferred operations on the "
         "specified device have completed.");
 
   py::class_<PyTpuEventBase, py::smart_holder>(m, "TpuEventBase")
