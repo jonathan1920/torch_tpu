@@ -94,10 +94,9 @@ fi
 if [[ -f "${RAIDEN_DIR}/ci/build_wheel.sh" ]]; then
   echo "===> [Non-Fatal Stage] Invoking tpu_raiden wheel build: ${RAIDEN_DIR}/ci/build_wheel.sh..."
   (
-    export WITH_TORCH=1
     export KOKORO_ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}"
     export WHEEL_DIR="${WHEEL_DIR}"
-    bash "${RAIDEN_DIR}/ci/build_wheel.sh"
+    bash "${RAIDEN_DIR}/ci/build_wheel.sh" torch
   ) || {
     echo "WARNING: tpu_raiden wheel build failed. Continuing with torch_tpu wheels only..." >&2
   }
