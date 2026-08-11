@@ -2023,9 +2023,14 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_angle(self):
     self.do_test_op(
         "angle",
-        # TODO(b/540345849): succeeded on TPU but failed on GPU for bfloat16 and
-        # float16. CUDA kernel is not implemented for bfloat16 and float16.
-        exclude_dtypes={"gpu": (torch.bfloat16, torch.float16)},
+        # TODO(b/540345849): CUDA kernel is not implemented for float16, and
+        # inductor fails on bfloat16.
+        exclude_dtypes={
+            "cpu": (torch.bfloat16,),
+            "gpu": _if_tpu_vs_gpu_compiled(
+                (torch.bfloat16, torch.float16), (torch.float16,)
+            ),
+        },
     )
 
   def test_arange(self):
@@ -2851,14 +2856,13 @@ class TestOps(op_testing.OpInfoTestBase):
         # implemented in the PyTorch CPU backend.
         # Additionally, exclude float16 and bfloat16 because (expected)
         # precision variations can lead to binning errors.
-        # TODO: GPU does not support `bool`, `bfloat16`, and `float16` dtypes.
+        # TODO: GPU does not support `bool` and `float16` dtypes.
         exclude_dtypes={
-            "cpu": INTEGRAL_DTYPES + (torch.float16,),
+            "cpu": INTEGRAL_DTYPES + (torch.float16, torch.bfloat16),
             "gpu": (
                 torch.bool,
                 torch.int8,
                 torch.uint8,
-                torch.bfloat16,
                 torch.float16,
             ),
         },
@@ -2871,14 +2875,13 @@ class TestOps(op_testing.OpInfoTestBase):
     # lead to binning errors due to precision variations.
     self.do_test_op(
         "histc",
-        # TODO: GPU does not support `bool`, `bfloat16`, and `float16` dtypes.
+        # TODO: GPU does not support `bool` and `float16` dtypes.
         exclude_dtypes={
-            "cpu": INTEGRAL_DTYPES,
+            "cpu": INTEGRAL_DTYPES + (torch.bfloat16,),
             "gpu": (
                 torch.bool,
                 torch.int8,
                 torch.uint8,
-                torch.bfloat16,
                 torch.float16,
             ),
         },
@@ -4077,10 +4080,7 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_native_multi_head_attention(self):
     self.do_test_op(
         "_native_multi_head_attention",
-        exclude_dtypes=(
-            COMPLEX_DTYPES
-            + INTEGRAL_DTYPES
-        ),
+        exclude_dtypes=(COMPLEX_DTYPES + INTEGRAL_DTYPES),
         check_dynamism=False,
         check_grad=False,
     )

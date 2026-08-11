@@ -3007,17 +3007,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     inputs = torch.tensor([0.1, 1.1, 3.1, 5.1, 1.1])
     bins = 8
 
-    # Test with float16 and bfloat16 dtypes. These were excluded from the
-    # general op tests due to expected binning errors.
+    # Test with float16 dtype, which were excluded from the general op tests due
+    # to expected binning errors.
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.histc(
             torch.tensor(inputs, dtype=torch.float16).to(device=device),
-            bins=bins,
-        ),
-    )
-    self.assert_close_tpu_vs_cpu(
-        lambda device: torch.histc(
-            torch.tensor(inputs, dtype=torch.bfloat16).to(device=device),
             bins=bins,
         ),
     )

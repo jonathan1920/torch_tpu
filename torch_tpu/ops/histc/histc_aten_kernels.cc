@@ -27,6 +27,7 @@
 #include "ATen/ops/empty.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "c10/core/ScalarType.h"
 #include "c10/util/Exception.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -149,6 +150,10 @@ absl::Status HistcHelperOut(const at::Tensor& self, const int64_t bins,
   TT_RET_CHECK(!IsComplex(self), error::kInvalidArgument)
       << "expected the first argument not to be complex, got "
       << ToString(self.scalar_type());
+
+  TT_RET_CHECK(self.scalar_type() != at::kBFloat16,
+               error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(self.scalar_type());
 
   const int64_t numel = self.numel();
 

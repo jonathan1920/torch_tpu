@@ -8757,6 +8757,15 @@ class MaskedSoftmaxErrorTest(et.ErrorTestBase):
           dim=1,
       )
 
+  def test_histc_bfloat16_unsupported(self):
+    x = torch.ones(2, 2, device=et.device(), dtype=torch.bfloat16)
+    with et.assert_raises_message(
+        NotImplementedError,
+        gpu=""""histc" not implemented for 'BFloat16'""",
+        tpu="""histc(): not implemented for bfloat16""",
+    ):
+      torch.histc(x)
+
 
 if __name__ == "__main__":
   g3_multiprocessing.handle_test_main(absltest.main)
