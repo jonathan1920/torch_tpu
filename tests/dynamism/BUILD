@@ -37,6 +37,18 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "dynamic_view_test",
+    srcs = ["dynamic_view_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:tpu_backend",
+    ],
+)
+
+torch_tpu_py_test(
     name = "sym_expr_arg_test",
     srcs = ["sym_expr_arg_test.py"],
     tags = ["requires-tpu-v5lite"],
