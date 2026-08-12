@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_library")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_cc_library",
+    "torch_tpu_package_end",
+    "torch_tpu_py_library",
+)
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 package(
@@ -96,6 +101,14 @@ pybind_extension(
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:check",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "multiprocessing",
+    srcs = ["multiprocessing.py"],
+    deps = [
+        "//shims/absl_py:app",
     ],
 )
 

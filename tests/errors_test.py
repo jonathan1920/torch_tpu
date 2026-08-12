@@ -17,12 +17,14 @@
 import re
 from typing import Any
 import unittest
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch
 from torch_tpu._internal import env  # pylint: disable=unused-import
+from torch_tpu._internal.distributed import multiprocessing
 from tests import error_testing as et
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+
 
 _TEST_MODE = et.TEST_MODE
 
@@ -8768,4 +8770,4 @@ class MaskedSoftmaxErrorTest(et.ErrorTestBase):
 
 
 if __name__ == "__main__":
-  g3_multiprocessing.handle_test_main(absltest.main)
+  multiprocessing.handle_test_main(absltest.main)
