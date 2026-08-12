@@ -95,7 +95,6 @@ def test_inference_mode_crash():
 def test_optracer_diagnostic(device):
   """Cell: run OpTracer on a model for diagnostic output."""
   from torch_tpu._internal.utils import utils
-  from torch_tpu._internal import sync
 
   diag_model = (
       torch.nn.Sequential(
@@ -104,7 +103,7 @@ def test_optracer_diagnostic(device):
       .to(device)
       .to(torch.bfloat16)
   )
-  sync.synchronize(list(diag_model.parameters()), wait=True)
+  torch.tpu.synchronize()
 
   tracer = utils.OpTracer()
   x_diag = torch.randn(4, 32, device=device, dtype=torch.bfloat16)

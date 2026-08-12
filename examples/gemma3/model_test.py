@@ -25,7 +25,6 @@ import json
 from absl import logging
 from absl.testing import absltest
 import torch
-from torch_tpu._internal import sync
 from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
@@ -58,7 +57,7 @@ class TestModel(absltest.TestCase):
           model.Gemma3TextConfig(**miniconfig)
       )
     self.custom_model.load_state_dict(self.hf_model.state_dict())
-    sync.synchronize(wait=True)
+    torch.tpu.synchronize()
 
   def test_numel_equal_hf_and_custom(self):
     # Assert

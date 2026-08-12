@@ -1275,7 +1275,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
         "//torch_tpu",
-        "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:test_utils",
         "//torch_tpu/eager:tpu_aten_kernels",
@@ -1784,7 +1783,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/dynamism",
-        "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils:test_utils",
     ],
 )

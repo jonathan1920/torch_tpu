@@ -657,7 +657,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/distributed:spmd_util",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/execution_mode",
-        "//torch_tpu/_internal/sync",
     ],
 )
 

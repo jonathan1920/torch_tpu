@@ -258,11 +258,11 @@ def _run_step(
     The output of the benchmark function.
   """
   out = benchmark_function(model, step_input, optimizer)
-  device_utils.synchronize(device_name, out)
+  device_utils.synchronize(device_name)
   if sync_params:
     for p in model.parameters():
       if p.grad is not None:
-        device_utils.synchronize(device_name, p.grad)
+        device_utils.synchronize(device_name)
   return out
 
 
@@ -551,7 +551,7 @@ def _synchronize_all_tensors(tensor_pytree: Any, device: torch.device):
 
   def _sync_element(elem):
     if isinstance(elem, torch.Tensor):
-      device_utils.synchronize(device.type, elem)
+      device_utils.synchronize(device.type)
     return elem
 
   pytree.tree_map(_sync_element, tensor_pytree)

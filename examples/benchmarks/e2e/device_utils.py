@@ -23,7 +23,6 @@ import psutil
 import torch
 from torch.utils._pytree import tree_flatten
 from torch_tpu._internal import compile as torch_tpu_compile
-from torch_tpu._internal import sync as tpu_sync
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
 
@@ -226,26 +225,18 @@ def _collect_tensors(tensors: Any) -> Sequence[torch.Tensor]:
   return [l for l in leaves if isinstance(l, torch.Tensor)]
 
 
-def synchronize(
-    device,
-    tensor_to_sync: (
-        torch.Tensor | dict[str, torch.Tensor] | Sequence[torch.Tensor]
-    ),
-):
-  """Synchronizes the device with the given tensor(s).
+def synchronize(device):
+  """Synchronizes the device.
 
   Args:
     device: The device type ('cuda', 'tpu', 'xla_cuda').
-    tensor_to_sync: The tensor(s) to synchronize.
   """
   if device == 'cuda':
     torch.cuda.synchronize()
   elif device == 'cpu':
     pass
   elif device in ('tpu', 'xla_cuda', 'xla_cpu'):
-    # TODO(b/507181043): Investigate why sync(None, wait=True) doesn't work.
-    tensors = _collect_tensors(tensor_to_sync)
-    tpu_sync.synchronize(tensors, wait=True)
+    torch.tpu.synchronize()
   else:
     raise ValueError(f'Unsupported device: {device}')
 

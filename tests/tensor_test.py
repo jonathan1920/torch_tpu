@@ -20,7 +20,6 @@ import numpy as np
 import torch
 from torch.testing._internal import common_device_type
 from torch.testing._internal import common_utils as torch_test_utils
-from torch_tpu._internal import sync
 from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
 
@@ -300,9 +299,8 @@ def materialize(*tensors: Tuple[torch.Tensor, ...]) -> None:
   Args:
     *tensors: Tensors to materialize.
   """
-
-  for t in tensors:
-    sync.synchronize(t, wait=True)
+  torch.tpu.synchronize()
+  del tensors
 
 
 def make_materialized_rope_inputs() -> (

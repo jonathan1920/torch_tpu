@@ -24,7 +24,6 @@ from absl import app
 from absl import flags
 import torch
 from torch_tpu._internal import dynamism
-from torch_tpu._internal import sync
 from torch_tpu._internal.utils import test_utils as utils
 import transformers
 from transformers.cache_utils import DynamicCache, DynamicLayer
@@ -66,17 +65,6 @@ _DEVICE = flags.DEFINE_string(
     "tpu",
     "Device to run the model on. Can be 'tpu' or 'cuda'.",
 )
-
-
-def sync_device(
-    tensors_to_sync: torch.Tensor | list[torch.Tensor], wait: bool = True
-) -> None:
-  if _DEVICE.value == "tpu":
-    # Wait for the compilation and execution of model output to complete.
-    sync.synchronize(tensors_to_sync, wait=wait)
-  elif _DEVICE.value == "cuda":
-    torch.cuda.synchronize()
-
 
 @contextmanager
 def measure_cache_misses(run_type: str, step_name: str):
@@ -252,7 +240,8 @@ def model_generate(
     with traceme.TraceMe(f"[{run_type}] Prefill"):
       with measure_cache_misses(run_type, "prefill"):
         output = model(input_ids=initial_inputs, **model_kwargs)
-        sync_device(output.logits, wait=True)
+        if torch.accelerator.is_available():
+          torch.accelerator.synchronize()
     end_time = time.time()
     prefill_time = end_time - start_time
     print(
@@ -292,7 +281,8 @@ def model_generate(
       with traceme.TraceMe(f"[{run_type}] Decode step {i + 1}"):
         with measure_cache_misses(run_type, f"decode step {i + 1}"):
           output = model(input_ids=decode_input_ids, **model_kwargs)
-          sync_device(output.logits, wait=True)
+        if torch.accelerator.is_available():
+          torch.accelerator.synchronize()
       end_time = time.time()
       decode_time = end_time - start_time
       print(
@@ -332,7 +322,8 @@ def main(argv: Sequence[str]) -> None:
       0, config.vocab_size, (1, _SEQ_LEN.value), device=device
   )
   # Materialize inputs tensor.
-  sync_device(inputs, wait=True)
+  if torch.accelerator.is_available():
+    torch.accelerator.synchronize()
 
   output_text_without_bd, all_logits_without_bd = None, None
   if _RUN_MODE.value in ["static", "both"]:

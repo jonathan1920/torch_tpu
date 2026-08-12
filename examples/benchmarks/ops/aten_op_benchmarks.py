@@ -320,7 +320,7 @@ class AtenOpBenchmarkBase(parameterized.TestCase):
       def timed_op(*op_args, **op_kwargs):
         res = target_op(*op_args, **op_kwargs)
         if device.type in ("tpu", "xla_cuda", "cuda"):
-          device_utils.synchronize(device.type, res)
+          device_utils.synchronize(device.type)
         return res
 
       # Warmup: run only 2 warmup iterations during fast CI/unit-test mode

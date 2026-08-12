@@ -14,10 +14,9 @@
 
 """Tests of GPT-OSS 120B as implemented by HuggingFace Transformers."""
 
-import os
 import sys
 import time
-from typing import Any, Dict, TypeAlias
+from typing import TypeAlias
 
 from absl import flags
 from absl import logging
@@ -26,7 +25,6 @@ import torch
 import torch._inductor.config as inductor_config
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
-from torch_tpu._internal import sync
 from torch_tpu._internal.utils import log_utils
 import transformers
 
@@ -108,15 +106,6 @@ def _get_eager_mode() -> EagerMode:
 def _get_torch_device() -> torch.device:
   # TODO(gunhyun): leverage current_accelerator() instead
   return torch.device(_DEVICE.value)
-
-
-def _sync_device(tensor_to_sync: torch.Tensor, wait=True) -> None:
-  if _DEVICE.value == "tpu" or _DEVICE.value == "xla_cuda":
-    # Wait for the compilation and execution of model output to complete.
-    sync.synchronize(tensor_to_sync, wait=wait)
-  elif _DEVICE.value == "cuda":
-    torch.cuda.synchronize()
-
 
 def _torch_compile_model(model):
   if _DEVICE.value == "cuda":

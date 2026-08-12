@@ -50,7 +50,6 @@ torch_tpu_py_library(
     srcs = ["test_utils.py"],
     deps = [
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/sync",
         "@pypi//numpy",
     ],
 )

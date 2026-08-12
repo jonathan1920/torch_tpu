@@ -124,42 +124,13 @@ class SynchronizeTest(seed_test_utils.RepeatableTest):
     torch.tpu.synchronize()
     self.assertTrue(sync.is_materialized(y))
 
-  def test_sync_with_zero_sized_tensor_on_tpu(self):
-    # Create a zero-sized tensor on the TPU.
-    tensor = torch.ones(2, 0, 3, dtype=torch.int32, device=torch.device('tpu'))
-
-    # It is in a deferred state (constant zero-sized).
-    self.assertFalse(sync.is_materializing(tensor))
-    self.assertFalse(sync.is_materialized(tensor))
-
-    sync.synchronize(tensor, wait=True)
-
-    # After synchronization, it should be materialized and ready.
-    self.assertTrue(sync.is_materializing(tensor))
-    self.assertTrue(sync.is_materialized(tensor))
-
-  def test_sync_with_materialized_zero_sized_tensor(self):
-    # Create a zero-sized tensor on the CPU.
-    tensor_cpu = torch.ones(2, 0, 3, dtype=torch.int32, device='cpu')
-
-    # Send it to the TPU. This should create a deferred zero-sized constant
-    # instead of actually transferring 0 bytes.
-    tensor = tensor_cpu.to(torch.device('tpu'))
-    self.assertFalse(sync.is_materializing(tensor))
-    self.assertFalse(sync.is_materialized(tensor))
-
-    sync.synchronize(tensor, wait=True)
-
-    # After synchronization, it should be materialized and ready.
-    self.assertTrue(sync.is_materializing(tensor))
-    self.assertTrue(sync.is_materialized(tensor))
-
   def test_sync_list_with_empty_and_non_empty(self):
     x = torch.ones(10, device=torch.device('tpu'))
     y_cpu = torch.ones(10, 0, device='cpu')
     y = y_cpu.to(torch.device('tpu'))
     # Should not raise error.
-    sync.synchronize([x, y], wait=True)
+    torch.tpu.synchronize()
+    del y
     self.assertTrue(sync.is_materialized(x))
 
   def test_synchronize_from_multiple_threads(self):

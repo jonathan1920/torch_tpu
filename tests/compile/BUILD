@@ -414,7 +414,6 @@ torch_tpu_py_test(
         "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile",
-        "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils:test_utils",
     ],
 )

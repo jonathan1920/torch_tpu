@@ -16,7 +16,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import torch
 from torch_tpu._internal import dynamism
-from torch_tpu._internal import sync
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
@@ -185,8 +184,7 @@ class KVCacheDynamismTest(
     # Run on TPU
     k_tpu = k_cpu.to(self.device)
     new_k_tpu = new_k_cpu.to(self.device)
-    sync.synchronize(k_tpu, wait=True)
-    sync.synchronize(new_k_tpu, wait=True)
+    torch.tpu.synchronize()
 
     for i in range(3):
       prev_cache_misses = torch.tpu._get_cache_misses()
@@ -218,8 +216,7 @@ class KVCacheDynamismTest(
     # Run on TPU
     k_tpu = k_cpu.to(self.device)
     new_k_tpu = new_k_cpu.to(self.device)
-    sync.synchronize(k_tpu, wait=True)
-    sync.synchronize(new_k_tpu, wait=True)
+    torch.tpu.synchronize()
 
     for i in range(3):
       prev_cache_misses = torch.tpu._get_cache_misses()

@@ -237,7 +237,6 @@ def _(mo):
 @app.cell
 def _(device, torch):
   from torch_tpu._internal.utils import utils
-  from torch_tpu._internal import sync
 
   # Build a small model and materialize its weights
   diag_model = (
@@ -247,7 +246,7 @@ def _(device, torch):
       .to(device)
       .to(torch.bfloat16)
   )
-  sync.synchronize(list(diag_model.parameters()), wait=True)
+  torch.tpu.synchronize()
 
   tracer = utils.OpTracer()
   x_diag = torch.randn(4, 32, device=device, dtype=torch.bfloat16)
@@ -261,7 +260,7 @@ def _(device, torch):
   print(
       "💡 Look for aten.copy_ or aten._to_copy — those indicate CPU fallbacks."
   )
-  return diag_model, out, sync, tracer, utils, x_diag
+  return diag_model, out, tracer, utils, x_diag
 
 
 @app.cell(hide_code=True)

@@ -16,7 +16,6 @@
 
 from absl.testing import absltest
 import torch
-from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 import torch_tpu._internal.device_utils.annotations as tpu_annotations
 
@@ -31,7 +30,7 @@ class AnnotationsTest(absltest.TestCase):
     )
     with tpu_annotations.LayoutContext(layout):
       x = torch.tensor([[1.0] * 10] * 10).to(device)
-      sync.synchronize([x], wait=True)
+      torch.tpu.synchronize()
       device_layout_tuple = tpu_torch_compile.get_device_layout_if_materialized(
           x
       )
@@ -47,7 +46,7 @@ class AnnotationsTest(absltest.TestCase):
     )
     with tpu_annotations.LayoutContext(layout):
       x = torch.tensor([[1.0] * 10] * 10, device=device)
-      sync.synchronize([x], wait=True)
+      torch.tpu.synchronize()
       device_layout_tuple = tpu_torch_compile.get_device_layout_if_materialized(
           x
       )
@@ -71,7 +70,7 @@ class AnnotationsTest(absltest.TestCase):
         y = torch.tensor([[1.0] * 10] * 10, device=device)
       z = torch.tensor([[1.0] * 10] * 10, device=device)
 
-    sync.synchronize([x, y, z], wait=True)
+    torch.tpu.synchronize()
 
     x_layout_tuple = tpu_torch_compile.get_device_layout_if_materialized(x)
     self.assertIsNotNone(x_layout_tuple)
@@ -93,7 +92,7 @@ class AnnotationsTest(absltest.TestCase):
     )
     with tpu_annotations.LayoutContext(layout):
       x = torch.tensor([[1.0] * 128] * 16, device=device)
-      sync.synchronize([x], wait=True)
+      torch.tpu.synchronize()
       device_layout_tuple = tpu_torch_compile.get_device_layout_if_materialized(
           x
       )

@@ -22,7 +22,6 @@ from typing import Any, Callable, TypeAlias
 
 import numpy as np
 import torch
-from torch_tpu._internal import sync
 
 # A tolerance value can be either a float or a callable that takes the expected
 # value as the only argument and returns the tolerance to use for comparing
@@ -354,7 +353,8 @@ def compute_optimal_tolerances(
     return 0.0, 0.0
 
   # Synchronize TPU execution and cast CPU tensors to float64/complex128.
-  sync.synchronize([actual, expected], wait=True)
+  if torch.accelerator.is_available():
+    torch.accelerator.synchronize()
 
   actual = actual.detach().cpu()
   expected = expected.detach().cpu()
@@ -548,7 +548,8 @@ def _assert_tensor_close(
     )
     raise AssertionError(msg)
 
-  sync.synchronize([actual, expected], wait=True)
+  if torch.accelerator.is_available():
+    torch.accelerator.synchronize()
 
   def get_indices(msg: str) -> list[tuple[int, ...]]:
     """Returns the indices from the given message."""

@@ -25,7 +25,6 @@ from torch import distributed as dist
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.distributed import spmd_util
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
-from torch_tpu._internal.sync import sync
 from torch_tpu._internal.distributed import multiprocessing
 from tests.distributed import distributed_utils
 
@@ -74,7 +73,8 @@ def run_spmd_safe_decorator_test(compile_test: bool = False):
   else:
     with execution_mode.set_eager_mode(EagerMode.DEFER_AND_FUSE):
       res = eager_fused_all_reduce(x)
-  sync.synchronize(res, wait=True)
+  torch.tpu.synchronize()
+  del res
 
 
 def run_spmd_safe_decorator_backward_test():
@@ -89,7 +89,7 @@ def run_spmd_safe_decorator_backward_test():
   res = compiled_fn(x)
   loss = res.sum()
   loss.backward()
-  sync.synchronize(x.grad, wait=True)
+  torch.tpu.synchronize()
 
 
 def run_uncoordinated_op_stream_test():
@@ -111,7 +111,7 @@ def run_uncoordinated_op_stream_test():
 
       x = foo(x)
 
-    sync.synchronize(x, wait=True)
+    torch.tpu.synchronize()
 
 
 def run_spmd_safe_dtensor_compile_test():

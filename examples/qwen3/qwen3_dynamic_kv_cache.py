@@ -28,7 +28,6 @@ from absl import logging
 from etils import epath
 import torch
 import torch._inductor.config as inductor_config
-from torch_tpu._internal import sync as tpu_sync
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import log_utils
 from examples import paths
@@ -223,7 +222,8 @@ def model_generate(
       )
       logits = output.logits
       past_key_values = output.past_key_values
-      tpu_sync.synchronize(logits, wait=True)
+      if torch.accelerator.is_available():
+        torch.accelerator.synchronize()
       prefill_end_time = time.time()
     logits = logits.to("cpu")
 
@@ -255,7 +255,8 @@ def model_generate(
             use_cache=True,
         )
         logits = output.logits
-        tpu_sync.synchronize(logits, wait=True)
+        if torch.accelerator.is_available():
+          torch.accelerator.synchronize()
         step_end_time = time.time()
 
       logits = logits.to("cpu")

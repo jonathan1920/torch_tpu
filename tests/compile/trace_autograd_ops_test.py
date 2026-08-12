@@ -28,7 +28,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import torch
 from torch_tpu._internal import compile as torch_tpu_compile
-from torch_tpu._internal import sync
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
 
@@ -65,22 +64,11 @@ def create_model_and_input(
   return (model, inputs)
 
 
-def sync_device(
-    device: str | torch.device, tensor_to_sync: torch.Tensor, wait: bool = True
-) -> None:
+def sync_device(device: str | torch.device) -> None:
   if device == 'cpu':
     torch.cpu.synchronize()
   else:
-    sync.synchronize(tensor_to_sync, wait=wait)
-
-
-def sync_loss_and_grads(
-    device: str | torch.device, loss_val: torch.Tensor, model: torch.nn.Module
-) -> None:
-  sync_device(device, loss_val)
-  for _, p in model.named_parameters():
-    if p.grad is not None:
-      sync_device(device, p.grad)
+    torch.accelerator.synchronize()
 
 
 def all_tensors_are_close_to_reference(
@@ -136,10 +124,7 @@ def execute_training_step(config: RunConfig) -> torch.Tensor:
   if not include_bwd:
     loss_val.backward()
 
-  sync_device(device, loss_val)
-  for _, p in model.named_parameters():
-    if p.grad is not None:
-      sync_device(device, p.grad)
+  sync_device(device)
 
   return loss_val
 
