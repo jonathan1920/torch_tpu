@@ -178,6 +178,18 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
     )
     self._dynamic_outputs: Sequence[bool] | None = dynamic_outputs
     self._unique_output_indices: Sequence[int] | None = unique_output_indices
+    self._has_dynamic_outputs: bool = (
+        any(dynamic_outputs) if dynamic_outputs is not None else False
+    )
+    if self._has_dynamic_outputs and dynamic_outputs is not None:
+      self._cached_dynamic_output_shapes: (
+          list[tpu_torch_compile.OutputShape] | None
+      ) = [
+          tpu_torch_compile.OutputShape(is_dynamic=is_dyn)
+          for is_dyn in dynamic_outputs
+      ]
+    else:
+      self._cached_dynamic_output_shapes = None
 
   @property
   def unique_output_indices(self) -> Sequence[int] | None:
@@ -349,16 +361,16 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
             )
             for t in device_state_tensors
         ]
-      elif self._dynamic_outputs:
-        executable_output_shapes = [
-            tpu_torch_compile.OutputShape(is_dynamic=is_dyn)
-            for is_dyn in self._dynamic_outputs
-        ] + [
-            tpu_torch_compile.OutputShape(
-                dimensions=list(t.shape), is_dynamic=False
-            )
-            for t in device_state_tensors
-        ]
+      elif self._has_dynamic_outputs and self._cached_dynamic_output_shapes:
+        if device_state_tensors:
+          executable_output_shapes = self._cached_dynamic_output_shapes + [
+              tpu_torch_compile.OutputShape(
+                  dimensions=list(t.shape), is_dynamic=False
+              )
+              for t in device_state_tensors
+          ]
+        else:
+          executable_output_shapes = self._cached_dynamic_output_shapes
       else:
         executable_output_shapes = []
 
