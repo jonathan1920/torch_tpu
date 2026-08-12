@@ -85,6 +85,22 @@ class AnnotationsTest(absltest.TestCase):
     self.assertIsNotNone(z_layout_tuple)
     self.assertEqual(tpu_annotations.TpuLayout(*z_layout_tuple), layout1)
 
+  def test_layout_context_1d_tiling(self):
+    device = torch.device("tpu")
+    layout = tpu_annotations.TpuLayout(
+        minor_to_major=[1, 0],
+        tiles=[[8]],
+    )
+    with tpu_annotations.LayoutContext(layout):
+      x = torch.tensor([[1.0] * 128] * 16, device=device)
+      sync.synchronize([x], wait=True)
+      device_layout_tuple = tpu_torch_compile.get_device_layout_if_materialized(
+          x
+      )
+      self.assertIsNotNone(device_layout_tuple)
+      device_layout = tpu_annotations.TpuLayout(*device_layout_tuple)
+      self.assertEqual(device_layout, layout)
+
 
 if __name__ == "__main__":
   absltest.main()
