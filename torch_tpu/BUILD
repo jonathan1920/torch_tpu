@@ -1,5 +1,5 @@
 load("@rules_license//rules:license.bzl", "license")
-load("@torch_tpu_version//:version.bzl", OSS_WHEEL_VERSION = "WHEEL_VERSION")  # copybara:comment(oss-only)
+load("@torch_tpu_version//:version.bzl", "WHEEL_VERSION")  # copybara:comment(oss-only)
 load(
     "//build_files:build_defs.bzl",
     "if_oss",
@@ -25,9 +25,7 @@ load("//shims/build_files:build_defs.bzl", "TT_FRIENDS")
 # limitations under the License.
 load("//shims/py_rules:strict.bzl", "py_library_providing_imports_info")
 
-WHEEL_VERSION = "0.0.0"
-
-WHEEL_VERSION = OSS_WHEEL_VERSION  # copybara:comment(oss-only)
+# copybara:uncomment WHEEL_VERSION = "0.0.0"
 
 licenses(["notice"])
 
