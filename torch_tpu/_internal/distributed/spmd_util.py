@@ -24,158 +24,18 @@ from torch_tpu._internal.sync import sync
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
-
-# Define custom ops for marking SPMD safe regions in FX graph.
-# We use clone() in the implementation to satisfy the PyTorch aliasing
-# constraint.
-@torch.library.custom_op("torch_tpu::enter_spmd_safe_region", mutates_args={})
-def enter_spmd_safe_region(x: list[torch.Tensor]) -> list[torch.Tensor]:
-  return [t.clone() for t in x]
+SPMD_SAFE_METADATA_KEY = "spmd_safe"
 
 
-@torch.library.custom_op("torch_tpu::exit_spmd_safe_region", mutates_args={})
-def exit_spmd_safe_region(x: list[torch.Tensor]) -> list[torch.Tensor]:
-  return [t.clone() for t in x]
-
-
-def spmd_safe_region_fake(x: list[torch.Tensor]) -> list[torch.Tensor]:
-  return [torch.empty_like(t) for t in x]
-
-
-enter_spmd_safe_region.register_fake(spmd_safe_region_fake)
-exit_spmd_safe_region.register_fake(spmd_safe_region_fake)
-
-
-# Register autograd to propagate markers to the backward pass.
-def enter_backward(ctx, grad_outputs: list[torch.Tensor]) -> list[torch.Tensor]:
-  del ctx
-  # The backward of enter(x) is exit(grad_outputs)
-  return torch.ops.torch_tpu.exit_spmd_safe_region(grad_outputs)
-
-
-enter_spmd_safe_region.register_autograd(enter_backward)
-
-
-def exit_backward(ctx, grad_outputs: list[torch.Tensor]) -> list[torch.Tensor]:
-  del ctx
-  # The backward of exit(x) is enter(grad_outputs)
-  return torch.ops.torch_tpu.enter_spmd_safe_region(grad_outputs)
-
-
-exit_spmd_safe_region.register_autograd(exit_backward)
-
-
-# TODO(basioli): We would ideally use the @register_sharding decorator here
-# but it is currently not working with ops that have a variadic number of tensor
-# arguments.
-def _register_dtensor_sharding_rules():
-  """Registers sharding rules for SPMD safe region ops."""
-  try:
-    # pylint: disable=g-import-not-at-top
-    # pylint: disable=g-importing-member
-    # pylint: disable=g-multiple-import
-    from torch.distributed.tensor._op_schema import (
-        OpSchema,
-        OpSpec,
-        OpStrategy,
-        RuntimeSchemaInfo,
-        StrategyType,
-        TupleStrategy,
-    )
-    from torch.distributed.tensor._ops.utils import register_op_strategy
-    # pylint: enable=g-multiple-import
-    # pylint: enable=g-importing-member
-    # pylint: enable=g-import-not-at-top
-  except ImportError:
-    return
-
-  def _spmd_safe_region_strategy(op_schema: OpSchema) -> StrategyType:
-    def _make_strategy(strat: OpStrategy) -> OpStrategy:
-      spec = strat.strategies[0].output_spec
-      return OpStrategy([OpSpec(output_specs=spec, input_specs=(spec,))])
-
-    input_specs = op_schema.args_schema[0]
-    if isinstance(input_specs, TupleStrategy):
-      return TupleStrategy(
-          tuple(_make_strategy(c) for c in input_specs.children)  # pyrefly: ignore[bad-argument-type]
-      )
-    return _make_strategy(input_specs)  # pyrefly: ignore[bad-argument-type]
-
-  schema_info = RuntimeSchemaInfo(needs_pytree=True)
-  register_op_strategy(
-      [
-          torch.ops.torch_tpu.enter_spmd_safe_region.default,
-          torch.ops.torch_tpu.exit_spmd_safe_region.default,
-      ],
-      schema_info=schema_info,
-  )(_spmd_safe_region_strategy)
-
-
-_register_dtensor_sharding_rules()
-
-
-def _prepare_tensors(
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-    is_compiling: bool,
-    marker_op: Callable[[list[torch.Tensor]], list[torch.Tensor]],
-) -> tuple[tuple[Any, ...], dict[str, Any]]:
-  """Prepares tensors by synchronizing (eager) or marking (compile).
-
-  Args:
-    args: The positional arguments to prepare.
-    kwargs: The keyword arguments to prepare.
-    is_compiling: Whether the PyTorch code is being compiled.
-    marker_op: The operator used to mark tensors in compile mode.
-
-  Returns:
-    A tuple containing the prepared args and kwargs.
-  """
+def _synchronize_tensors(args, kwargs):
   flat_args, _ = _pytree.tree_flatten((args, kwargs))
   tensors = [
       t
       for t in flat_args
-      if isinstance(t, torch.Tensor) and t.device != torch.device("cpu")
+      if isinstance(t, torch.Tensor) and t.device.type != "cpu"
   ]
-
-  if not tensors:
-    return args, kwargs
-
-  if is_compiling:
-    marked_tensors = marker_op(tensors)
-    marked_iter = iter(marked_tensors)
-
-    def map_fn(t):
-      if isinstance(t, torch.Tensor) and t.device != torch.device("cpu"):
-        return next(marked_iter)
-      return t
-
-    new_args, new_kwargs = _pytree.tree_map(map_fn, (args, kwargs))
-    return new_args, new_kwargs
-  else:
+  if tensors:
     sync.synchronize(tensors, wait=False)
-    return args, kwargs
-
-
-def _prepare_inputs(
-    args: tuple[Any, ...], kwargs: dict[str, Any], is_compiling: bool
-) -> tuple[tuple[Any, ...], dict[str, Any]]:
-  return _prepare_tensors(
-      args,
-      kwargs,
-      is_compiling,
-      torch.ops.torch_tpu.enter_spmd_safe_region,
-  )
-
-
-def _prepare_outputs(result: Any, is_compiling: bool) -> Any:
-  new_args, _ = _prepare_tensors(
-      (result,),
-      {},
-      is_compiling,
-      torch.ops.torch_tpu.exit_spmd_safe_region,
-  )
-  return new_args[0]
 
 
 def spmd_safe(func: _F) -> _F:
@@ -207,17 +67,20 @@ def spmd_safe(func: _F) -> _F:
   def wrapper(*args: Any, **kwargs: Any) -> Any:
     is_compiling = torch.compiler.is_compiling()
 
-    new_args, new_kwargs = _prepare_inputs(args, kwargs, is_compiling)
-
     if not is_compiling:
+      _synchronize_tensors(args, kwargs)
+
       tpu_distributed.enter_spmd_safe_region()
       try:
-        result = func(*new_args, **new_kwargs)
+        result = func(*args, **kwargs)
       finally:
         tpu_distributed.exit_spmd_safe_region()
-    else:
-      result = func(*new_args, **new_kwargs)
 
-    return _prepare_outputs(result, is_compiling)
+      _synchronize_tensors(result, {})
+      return result
+
+    # In compile mode, annotate the FX tracing context with spmd_safe metadata.
+    with torch.fx.traceback.annotate({SPMD_SAFE_METADATA_KEY: True}):
+      return func(*args, **kwargs)
 
   return wrapper  # pytype: disable=bad-return-type

@@ -37,9 +37,7 @@ from torch_tpu._internal.compile.fx_passes import force_collectives_output
 from torch_tpu._internal.compile.fx_passes import propagate_symints
 from torch_tpu._internal.compile.fx_passes import reorder_symints
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import CompiledArtifact
-
-# Required to register the SPMD safe region ops.
-from torch_tpu._internal.distributed import spmd_util as _spmd_util  # pylint: disable=unused-import  # noqa: F401
+from torch_tpu._internal.distributed import spmd_util
 
 
 def _get_unique_wait_tensor_producer(
@@ -309,26 +307,22 @@ class SplitCompiler(compiler.Compiler):
   ) -> CompiledArtifact:
     """Splits the graph on collectives and compiles the submodules."""
 
-    enter_target = torch.ops.torch_tpu.enter_spmd_safe_region.default
-    exit_target = torch.ops.torch_tpu.exit_spmd_safe_region.default
-
     materialize_collectives = (
         tpu_torch_compile.get_materialize_collective_tensors_env_value()
     )
 
-    spmd_safe_depth = 0
     partition_id = 0
     partition_map = {}
     for node in graph_module.graph.nodes:
       if node.op in ("placeholder", "output"):
         continue
 
-      if node.target == enter_target:
-        spmd_safe_depth += 1
-      elif node.target == exit_target:
-        spmd_safe_depth -= 1
-
-      in_spmd_safe_region = spmd_safe_depth > 0
+      in_spmd_safe_region = bool(
+          isinstance(getattr(node, "meta", None), dict)
+          and node.meta.get("custom", {}).get(
+              spmd_util.SPMD_SAFE_METADATA_KEY, False
+          )
+      )
 
       maybe_collective = getattr(node.target, "overloadpacket", node.target)
       is_collective = (
