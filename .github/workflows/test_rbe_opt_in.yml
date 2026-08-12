@@ -24,7 +24,7 @@ jobs:
     name: RBE Hardware TPU Tests (Opt-In)
     # Only execute if label 'run-rbe' is applied by a repository maintainer
     if: contains(github.event.pull_request.labels.*.name, 'run-rbe') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, tpu-v7x]
 
     steps:
       - name: Checkout Repository
