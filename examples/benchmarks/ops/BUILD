@@ -84,4 +84,9 @@ torch_tpu_py_test(
     ],
 )
 
+filegroup(
+    name = "captured_ops_data",
+    srcs = glob(["captured_ops/*.json"]),
+)
+
 torch_tpu_package_end()
