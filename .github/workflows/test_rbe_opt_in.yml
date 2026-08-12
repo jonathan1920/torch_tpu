@@ -40,4 +40,4 @@ jobs:
 
       - name: Run Bazel RBE Test Suite
         run: |
-          bazel test --config=rbe --test_output=errors //tests:oss_utils_test //tests:_versioned_so_loader_test //tests:compilation_mode_test
+          bazel test --config=rbe --test_output=errors //tests/...
