@@ -147,6 +147,7 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:test_utils",
         "//torch_tpu/eager:tpu_aten_kernels",
+        "//torch_tpu:_loader",
     ],
 )
 

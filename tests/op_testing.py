@@ -55,6 +55,7 @@ from torch.testing._internal.opinfo.definitions import _masked
 from torch.testing._internal.opinfo.definitions import fft
 from torch.testing._internal.opinfo.definitions import linalg
 from torch.utils import _pytree
+from torch_tpu import _loader
 from torch_tpu._internal import compile as tt_compile
 from torch_tpu._internal import compiler_options as compiler
 from torch_tpu._internal import testing as tt_testing
@@ -62,6 +63,8 @@ from torch_tpu._internal.device import _device_ops_backend
 from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
 from tests import seed_test_utils
+
+_loader._init_device("tpu")
 
 # In this file, we use the following naming convention for variables:
 # - golden_*: a value for the device used for computing the golden results
