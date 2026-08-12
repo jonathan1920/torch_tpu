@@ -125,6 +125,14 @@ build --experimental_disk_cache_gc_max_size=100G
 # XNNPACK is fixed.
 build --experimental_python_import_all_repositories=true
 
+# Use a downloader config to mirror GitHub and Python package downloads.
+# Use the experimental_ name for better compatibility with different Bazel versions.
+build --experimental_downloader_config=bazel_downloader.cfg
+test --experimental_downloader_config=bazel_downloader.cfg
+fetch --experimental_downloader_config=bazel_downloader.cfg
+sync --experimental_downloader_config=bazel_downloader.cfg
+query --experimental_downloader_config=bazel_downloader.cfg
+
 # llvm has a bug where an empty glob isn't explicitly set.
 build --incompatible_disallow_empty_glob=false
 # Using the //... wildcard forces Bazel's loading phase to evaluate every single
