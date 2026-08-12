@@ -218,18 +218,17 @@ common:testone --config=local
 common:testone --test_output=streamed
 
 # Config for when TPU is the target platform.
-common:tpu_envvars --test_env=TPU_SKIP_MDS_QUERY
-common:tpu_envvars --test_env=TPU_TOPOLOGY
-common:tpu_envvars --test_env=TPU_WORKER_ID
-common:tpu_envvars --test_env=TPU_TOPOLOGY_WRAP
-common:tpu_envvars --test_env=TPU_CHIPS_PER_HOST_BOUNDS
-common:tpu_envvars --test_env=TPU_ACCELERATOR_TYPE
-common:tpu_envvars --test_env=TPU_RUNTIME_METRICS_PORTS
-common:tpu_envvars --test_env=TPU_TOPOLOGY_ALT
-common:tpu_envvars --test_env=TPU_HOST_BOUNDS
-common:tpu_envvars --test_env=TPU_WORKER_HOSTNAMES
-common:tpu_envvars --test_env=CHIPS_PER_HOST_BOUNDS
-common:tpu_envvars --test_env=HOST_BOUNDS
+common:tpu_envvars --test_env=TPU_SKIP_MDS_QUERY=1
+common:tpu_envvars --test_env=TPU_TOPOLOGY=1x1
+common:tpu_envvars --test_env=TPU_WORKER_ID=0
+common:tpu_envvars --test_env=TPU_TOPOLOGY_WRAP=0,0,0
+common:tpu_envvars --test_env=TPU_CHIPS_PER_HOST_BOUNDS=1,1,1
+common:tpu_envvars --test_env=TPU_ACCELERATOR_TYPE=v5p-8
+common:tpu_envvars --test_env=TPU_TOPOLOGY_ALT=0
+common:tpu_envvars --test_env=TPU_HOST_BOUNDS=1,1,1
+common:tpu_envvars --test_env=TPU_WORKER_HOSTNAMES=localhost
+common:tpu_envvars --test_env=CHIPS_PER_HOST_BOUNDS=1,1,1
+common:tpu_envvars --test_env=HOST_BOUNDS=1,1,1
 # NOTE: This value can be host-specific and harmful to Bazel caching.
 common:tpu_envvars --test_env=VBAR_CONTROL_SERVICE_URL
 
