@@ -221,7 +221,7 @@ common:testone --test_output=streamed
 common:tpu_envvars --test_env=TPU_SKIP_MDS_QUERY=1
 common:tpu_envvars --test_env=TPU_TOPOLOGY=1x1
 common:tpu_envvars --test_env=TPU_WORKER_ID=0
-common:tpu_envvars --test_env=TPU_TOPOLOGY_WRAP=0,0,0
+common:tpu_envvars --test_env=TPU_TOPOLOGY_WRAP=false,false,false
 common:tpu_envvars --test_env=TPU_CHIPS_PER_HOST_BOUNDS=1,1,1
 common:tpu_envvars --test_env=TPU_ACCELERATOR_TYPE=v5p-8
 common:tpu_envvars --test_env=TPU_TOPOLOGY_ALT=0
