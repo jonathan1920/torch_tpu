@@ -90,6 +90,9 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "tpu_profiler_plugin_test",
     srcs = ["tpu_profiler_plugin_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     requires_libtpu = True,
     deps = [
         "//shims/torch:kineto",
