@@ -116,6 +116,68 @@ def _rng_validate_device_index(
     )
 
 
+# Copied from torch/cuda/_utils.py
+def _get_device_index(
+    device_arg: Any, optional: bool = False, allow_cpu: bool = False
+) -> int:
+  """Get the device index from device, which can be a torch.device, int, str, or None."""
+  if isinstance(device_arg, int):
+    return device_arg
+  if isinstance(device_arg, str):
+    device_arg = torch.device(device_arg)
+  if isinstance(device_arg, torch.device):
+    if allow_cpu:
+      if device_arg.type not in ["tpu", "cpu"]:
+        raise ValueError(f"Expected a tpu or cpu device, but got: {device_arg}")
+    elif device_arg.type != "tpu":
+      raise ValueError(f"Expected a tpu device, but got: {device_arg}")
+  if not torch.jit.is_scripting():
+    if isinstance(device_arg, _DeviceContext):
+      return device_arg.idx
+  return torch._utils._get_device_index(  # pylint: disable=protected-access
+      device_arg, optional=optional, allow_cpu=allow_cpu
+  )
+
+
+class _DeviceContext:
+  r"""Context-manager that changes the selected device.
+
+  Args:
+    device: device index to select. It's a no-op if this argument is a negative
+      integer or ``None``.
+  """
+
+  def __init__(self, device: Any):  # pylint: disable=redefined-outer-name
+    self.idx = _get_device_index(device, optional=True)
+    self.prev_idx = -1
+
+  def __enter__(self):
+    self.prev_idx = _DeviceModule._exchange_device(self.idx)  # pylint: disable=protected-access
+
+  def __exit__(self, exc_type: Any, exc_value: Any, exc_traceback: Any):
+    self.idx = _DeviceModule._maybe_exchange_device(self.prev_idx)  # pylint: disable=protected-access
+    return False
+
+
+class _DeviceOfContext(_DeviceContext):
+  r"""Context-manager that changes the current device to that of given object.
+
+  You can use both tensors and storages as arguments. If a given object is
+  not allocated on a TPU, this is a no-op.
+
+  Args:
+    obj: object allocated on the selected device.
+  """
+
+  def __init__(self, obj: Any):
+    idx = -1
+    if getattr(obj, "is_tpu", False):
+      idx = obj.get_device()
+    elif getattr(getattr(obj, "device", None), "type", None) == "tpu":
+      idx = obj.get_device()
+    super().__init__(idx)
+
+
 class _DeviceModule(abc.ABC):
   """torch_tpu device equivalent to functions in "torch/cuda/__init__.py".
 
@@ -137,6 +199,9 @@ class _DeviceModule(abc.ABC):
   _autocast_dtype: torch.dtype | None = torch.bfloat16
 
   _device_type: str
+
+  device = _DeviceContext  # pylint: disable=invalid-name
+  device_of = _DeviceOfContext  # pylint: disable=invalid-name
 
   Precision = _precision_module.Precision  # pylint: disable=invalid-name
   precision = _precision_module.precision
@@ -221,6 +286,29 @@ class _DeviceModule(abc.ABC):
       )
     # No actual device switching occurs, so we just return.
     return
+
+  @classmethod
+  def _exchange_device(cls, device: int) -> int:
+    if device < 0:
+      return -1
+    prev_device = cls.current_device()
+    cls.set_device(device)
+    return prev_device
+
+  @classmethod
+  def _maybe_exchange_device(cls, device: int) -> int:
+    if device < 0:
+      return -1
+    prev_device = cls.current_device()
+    cls.set_device(device)
+    return prev_device
+
+  # Alias without leading underscore to satisfy
+  # torch._dynamo.device_interface.DeviceInterface while keeping private names
+  # for torch.tpu to avoid polluting the public module namespace and to stay in
+  # line with torch.cuda.
+  exchange_device = _exchange_device
+  maybe_exchange_device = _maybe_exchange_device
 
   @classmethod
   def is_available(cls) -> bool:  # This is in torch/cuda/__init__.py.
@@ -476,6 +564,7 @@ class _TpuDeviceProperties:
 
 class TpuDeviceModule(_DeviceModule):
   """Device module implementation for TPU devices."""
+
   _device_type: Final[str] = "tpu"  # pyrefly: ignore[bad-override]
 
   @classmethod

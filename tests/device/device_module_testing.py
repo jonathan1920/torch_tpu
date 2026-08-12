@@ -251,6 +251,50 @@ class DeviceModuleBase(absltest.TestCase, metaclass=abc.ABCMeta):
       with self.assertRaisesRegex(TypeError, "Got unrecognized device type"):
         self.device_module.set_device(1.0)
 
+  def test_device_context_manager(self):
+    with self.patch_current_device():
+      # Valid int
+      with self.device_module.device(0):
+        pass
+      # Valid string and torch.device if registered
+      if self.device_module._device_type == "tpu":
+        with self.device_module.device("tpu"):
+          pass
+        with self.device_module.device(torch.device("tpu:0")):
+          pass
+      # None is a no-op / current device
+      with self.device_module.device(None):
+        pass
+      # Negative int is a no-op
+      with self.device_module.device(-1):
+        pass
+      # Invalid device index raises ValueError
+      with self.assertRaisesRegex(
+          ValueError, "Cannot set TPU device to index 1"
+      ):
+        with self.device_module.device(1):
+          pass
+
+  def test_device_of_context_manager(self):
+    with self.patch_current_device():
+      tpu_tensor = torch.zeros(
+          1, device=torch.accelerator.current_accelerator()
+      )
+      with self.device_module.device_of(tpu_tensor):
+        pass
+      cpu_tensor = torch.zeros(1, device="cpu")
+      with self.device_module.device_of(cpu_tensor):
+        pass
+
+  def test_exchange_device(self):
+    with self.patch_current_device(device_id=0):
+      self.assertEqual(self.device_module._exchange_device(0), 0)
+      self.assertEqual(self.device_module._exchange_device(-1), -1)
+      self.assertEqual(self.device_module._maybe_exchange_device(0), 0)
+      self.assertEqual(self.device_module._maybe_exchange_device(-1), -1)
+      self.assertEqual(self.device_module.exchange_device(0), 0)
+      self.assertEqual(self.device_module.maybe_exchange_device(0), 0)
+
   def test_get_local_device_attributes(self):
     """Tests the local device attributes dictionary contains correct keys."""
     tensor = torch.zeros(1, device=torch.accelerator.current_accelerator())
