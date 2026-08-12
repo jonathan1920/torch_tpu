@@ -1,0 +1,342 @@
+{
+    "aten.embedding.default": [
+        {
+            "inputs": "([T([256002, 3584], torch.float32), T([1, 512], torch.int64), 0], {})",
+            "count": 1
+        }
+    ],
+    "aten.mul.Tensor": [
+        {
+            "inputs": "([T([1, 512, 3584], torch.float32), T([], torch.float32)], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 512, 256], torch.float32), 1.0], {})",
+            "count": 2
+        },
+        {
+            "inputs": "([T([1, 512, 3584], torch.float32), T([1, 512, 1], torch.float32)], {})",
+            "count": 169
+        },
+        {
+            "inputs": "([T([1, 512, 3584], torch.float32), T([3584], torch.float32)], {})",
+            "count": 169
+        },
+        {
+            "inputs": "([T([1, 16, 512, 256], torch.float32), T([1, 1, 512, 256], torch.float32)], {})",
+            "count": 84
+        },
+        {
+            "inputs": "([T([1, 8, 512, 256], torch.float32), T([1, 1, 512, 256], torch.float32)], {})",
+            "count": 84
+        },
+        {
+            "inputs": "([T([1, 512, 14336], torch.float32), T([1, 512, 14336], torch.float32)], {})",
+            "count": 42
+        }
+    ],
+    "aten.arange.default": [
+        {
+            "inputs": "([512], {'device': 'cpu', 'pin_memory': False})",
+            "count": 1
+        }
+    ],
+    "aten.add.Tensor": [
+        {
+            "inputs": "([T([512], torch.int64), 0], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 512, 1], torch.float32), 1e-06], {})",
+            "count": 169
+        },
+        {
+            "inputs": "([T([3584], torch.float32), 1.0], {})",
+            "count": 169
+        },
+        {
+            "inputs": "([T([1, 16, 512, 256], torch.float32), T([1, 16, 512, 256], torch.float32)], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([1, 8, 512, 256], torch.float32), T([1, 8, 512, 256], torch.float32)], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([1, 512, 3584], torch.float32), T([1, 512, 3584], torch.float32)], {})",
+            "count": 84
+        }
+    ],
+    "aten.unsqueeze.default": [
+        {
+            "inputs": "([T([512], torch.int64), 0], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([128], torch.float32), 0], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 128], torch.float32), 2], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 512], torch.int64), 1], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 512, 256], torch.float32), 1], {})",
+            "count": 84
+        }
+    ],
+    "aten._to_copy.default": [
+        {
+            "inputs": "([T([1, 512], torch.int64)], {'device': 'cpu', 'dtype': 'torch.bool'})",
+            "count": 2
+        },
+        {
+            "inputs": "([T([1, 1, 512], torch.int64)], {'dtype': 'torch.float32'})",
+            "count": 1
+        }
+    ],
+    "aten.sum.default": [
+        {
+            "inputs": "([T([1, 512], torch.bool)], {})",
+            "count": 2
+        }
+    ],
+    "aten.eq.Scalar": [
+        {
+            "inputs": "([T([], torch.int64), 512], {})",
+            "count": 2
+        }
+    ],
+    "aten._local_scalar_dense.default": [
+        {
+            "inputs": "([T([], torch.bool)], {})",
+            "count": 2
+        }
+    ],
+    "aten.expand.default": [
+        {
+            "inputs": "([T([1, 128, 1], torch.float32), [1, -1, 1]], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 128, 1], torch.float32), [1, 128, 1]], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 1, 512], torch.float32), [1, 1, 512]], {})",
+            "count": 1
+        }
+    ],
+    "aten.view.default": [
+        {
+            "inputs": "([T([1, 128, 1], torch.float32), [1, 128, 1]], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 1, 512], torch.float32), [1, 1, 512]], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 512, 3584], torch.float32), [512, 3584]], {})",
+            "count": 210
+        },
+        {
+            "inputs": "([T([1, 512, 4096], torch.float32), [1, 512, -1, 256]], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([1, 512, 2048], torch.float32), [1, 512, -1, 256]], {})",
+            "count": 84
+        },
+        {
+            "inputs": "([T([1, 512, 16, 256], torch.float32), [1, 512, -1]], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([1, 512, 4096], torch.float32), [512, 4096]], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([1, 512, 14336], torch.float32), [512, 14336]], {})",
+            "count": 42
+        }
+    ],
+    "aten.bmm.default": [
+        {
+            "inputs": "([T([1, 128, 1], torch.float32), T([1, 1, 512], torch.float32)], {})",
+            "count": 1
+        }
+    ],
+    "aten._unsafe_view.default": [
+        {
+            "inputs": "([T([1, 128, 512], torch.float32), [1, 128, 512]], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([512, 4096], torch.float32), [1, 512, 4096]], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([512, 2048], torch.float32), [1, 512, 2048]], {})",
+            "count": 84
+        },
+        {
+            "inputs": "([T([512, 3584], torch.float32), [1, 512, 3584]], {})",
+            "count": 84
+        },
+        {
+            "inputs": "([T([512, 14336], torch.float32), [1, 512, 14336]], {})",
+            "count": 84
+        }
+    ],
+    "aten.transpose.int": [
+        {
+            "inputs": "([T([1, 128, 512], torch.float32), 1, 2], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 512, 16, 256], torch.float32), 1, 2], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([1, 512, 8, 256], torch.float32), 1, 2], {})",
+            "count": 84
+        },
+        {
+            "inputs": "([T([1, 16, 512, 256], torch.float32), 1, 2], {})",
+            "count": 42
+        }
+    ],
+    "aten.cat.default": [
+        {
+            "inputs": "([[T([1, 512, 128], torch.float32), T([1, 512, 128], torch.float32)], -1], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([[T([1, 16, 512, 128], torch.float32), T([1, 16, 512, 128], torch.float32)], -1], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([[T([1, 8, 512, 128], torch.float32), T([1, 8, 512, 128], torch.float32)], -1], {})",
+            "count": 42
+        }
+    ],
+    "aten.cos.default": [
+        {
+            "inputs": "([T([1, 512, 256], torch.float32)], {})",
+            "count": 1
+        }
+    ],
+    "aten.sin.default": [
+        {
+            "inputs": "([T([1, 512, 256], torch.float32)], {})",
+            "count": 1
+        }
+    ],
+    "aten.pow.Tensor_Scalar": [
+        {
+            "inputs": "([T([1, 512, 3584], torch.float32), 2], {})",
+            "count": 169
+        }
+    ],
+    "aten.mean.dim": [
+        {
+            "inputs": "([T([1, 512, 3584], torch.float32), [-1], True], {})",
+            "count": 169
+        }
+    ],
+    "aten.rsqrt.default": [
+        {
+            "inputs": "([T([1, 512, 1], torch.float32)], {})",
+            "count": 169
+        }
+    ],
+    "aten.t.default": [
+        {
+            "inputs": "([T([4096, 3584], torch.float32)], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([2048, 3584], torch.float32)], {})",
+            "count": 84
+        },
+        {
+            "inputs": "([T([3584, 4096], torch.float32)], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([14336, 3584], torch.float32)], {})",
+            "count": 84
+        },
+        {
+            "inputs": "([T([3584, 14336], torch.float32)], {})",
+            "count": 42
+        }
+    ],
+    "aten.mm.default": [
+        {
+            "inputs": "([T([512, 3584], torch.float32), T([3584, 4096], torch.float32)], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([512, 3584], torch.float32), T([3584, 2048], torch.float32)], {})",
+            "count": 84
+        },
+        {
+            "inputs": "([T([512, 4096], torch.float32), T([4096, 3584], torch.float32)], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([512, 3584], torch.float32), T([3584, 14336], torch.float32)], {})",
+            "count": 84
+        },
+        {
+            "inputs": "([T([512, 14336], torch.float32), T([14336, 3584], torch.float32)], {})",
+            "count": 42
+        }
+    ],
+    "aten.slice.Tensor": [
+        {
+            "inputs": "([T([1, 16, 512, 256], torch.float32), 3, 0, 128], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([1, 16, 512, 256], torch.float32), 3, 128, 9223372036854775807], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([1, 8, 512, 256], torch.float32), 3, 0, 128], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([1, 8, 512, 256], torch.float32), 3, 128, 9223372036854775807], {})",
+            "count": 42
+        }
+    ],
+    "aten.neg.default": [
+        {
+            "inputs": "([T([1, 16, 512, 128], torch.float32)], {})",
+            "count": 42
+        },
+        {
+            "inputs": "([T([1, 8, 512, 128], torch.float32)], {})",
+            "count": 42
+        }
+    ],
+    "aten._scaled_dot_product_flash_attention_for_cpu.default": [
+        {
+            "inputs": "([T([1, 16, 512, 256], torch.float32), T([1, 8, 512, 256], torch.float32), T([1, 8, 512, 256], torch.float32), 0.0, True], {'scale': 0.0625})",
+            "count": 42
+        }
+    ],
+    "aten.gelu.default": [
+        {
+            "inputs": "([T([1, 512, 14336], torch.float32)], {'approximate': 'tanh'})",
+            "count": 42
+        }
+    ]
+}

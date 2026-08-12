@@ -1,0 +1,64 @@
+{
+    "aten.convolution.default": [
+        {
+            "inputs": "([T([1, 3, 224, 224], torch.float32), T([768, 3, 7, 7], torch.float32), T([768], torch.float32), [7, 7], [0, 0], [1, 1], False, [0, 0], 1], {})",
+            "count": 1
+        },
+        {
+            "inputs": "([T([1, 768, 32, 32], torch.float32), T([768, 1, 7, 7], torch.float32), T([768], torch.float32), [1, 1], [3, 3], [1, 1], False, [0, 0], 768], {})",
+            "count": 32
+        },
+        {
+            "inputs": "([T([1, 768, 32, 32], torch.float32), T([768, 768, 1, 1], torch.float32), T([768], torch.float32), [1, 1], [0, 0], [1, 1], False, [0, 0], 1], {})",
+            "count": 32
+        }
+    ],
+    "aten.relu.default": [
+        {
+            "inputs": "([T([1, 768, 32, 32], torch.float32)], {})",
+            "count": 65
+        }
+    ],
+    "aten.empty.memory_format": [
+        {
+            "inputs": "([[0]], {'device': 'cpu', 'dtype': 'torch.uint8', 'layout': 'torch.strided'})",
+            "count": 65
+        }
+    ],
+    "aten.native_batch_norm.default": [
+        {
+            "inputs": "([T([1, 768, 32, 32], torch.float32), T([768], torch.float32), T([768], torch.float32), T([768], torch.float32), T([768], torch.float32), False, 0.1, 1e-05], {})",
+            "count": 65
+        }
+    ],
+    "aten.add.Tensor": [
+        {
+            "inputs": "([T([1, 768, 32, 32], torch.float32), T([1, 768, 32, 32], torch.float32)], {})",
+            "count": 32
+        }
+    ],
+    "aten.mean.dim": [
+        {
+            "inputs": "([T([1, 768, 32, 32], torch.float32), [-1, -2], True], {})",
+            "count": 1
+        }
+    ],
+    "aten.view.default": [
+        {
+            "inputs": "([T([1, 768, 1, 1], torch.float32), [1, 768]], {})",
+            "count": 1
+        }
+    ],
+    "aten.t.default": [
+        {
+            "inputs": "([T([1000, 768], torch.float32)], {})",
+            "count": 1
+        }
+    ],
+    "aten.addmm.default": [
+        {
+            "inputs": "([T([1000], torch.float32), T([1, 768], torch.float32), T([768, 1000], torch.float32)], {})",
+            "count": 1
+        }
+    ]
+}
