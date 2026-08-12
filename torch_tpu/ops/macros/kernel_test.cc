@@ -227,6 +227,21 @@ TEST(TtKernelDeathTest, CheckTensorsUsedCrashesIfNotUsed) {
   EXPECT_DEATH(TestCheckTensorsUsedCrash(1.0), "GetTensor");
 }
 
+int TestCheckTensorsUsedCrashWithReturn(at::Scalar s) {
+  auto promoted_s = PromoteScalar(s);
+  TT_KERNEL(OpName::kRelu, _, (promoted_s), {
+    // Scalar s is not used here.
+    return 1;
+  });
+}
+
+// Verifies that TT_KERNEL() crashes if any of the PromotedScalar-typed
+// arguments is not used in the kernel when the kernel doesn't throw an error,
+// even if the kernel returns a value.
+TEST(TtKernelDeathTest, CheckTensorsUsedCrashesIfNotUsedWithReturn) {
+  EXPECT_DEATH(TestCheckTensorsUsedCrashWithReturn(1.0), "GetTensor");
+}
+
 void KernelWithMovedPromotedScalar(at::Scalar s) {
   auto promoted_s = PromoteScalar(s);
   TT_KERNEL(OpName::kRelu, _, (promoted_s), {

@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
@@ -73,49 +74,52 @@
 //     error to happen before the kernel has a chance to call GetTensor() on
 //     some or all of the PromotedScalar arguments.
 
-#define TT_KERNEL(op_name, param_keys, args, ...)                              \
-  do {                                                                         \
-    ::torch_tpu::internal::ScopedOpName _scoped_op_name(op_name);              \
-    TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));           \
-    TT_IF_DEBUG(::torch_tpu::internal::PromotedTensorStates _promoted_scalars; \
-                TT_COLLECT_PROMOTED_SCALAR_POINTERS_(_promoted_scalars,        \
-                                                     TT_REMOVE_PARENS_(args)); \
-                bool _kernel_threw = false;)                                   \
-    ::torch_tpu::ScopedPythonContextCapturer _capturer(op_name);               \
-    if constexpr (std::string_view(#param_keys) == "_") {                      \
-      ::torch_tpu::internal::ConditionalStaticAssert<                          \
-          std::string_view(#param_keys) == "_",                                \
-          decltype(::torch_tpu::internal::NoArgAffectsCacheKey args)>();       \
-      /* Use InvalidOpParamCacheKeys as the type of _, to prevent using it in  \
-       * ...                                                                   \
-       */                                                                      \
-      ::torch_tpu::internal::InvalidOpParamCacheKeys param_keys;               \
-      try {                                                                    \
-        __VA_ARGS__;                                                           \
-      } catch (const ::torch_tpu::TtError& e) {                                \
-        TT_IF_DEBUG(_kernel_threw = true;)                                     \
-        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                           \
-      } catch (...) {                                                          \
-        TT_IF_DEBUG(_kernel_threw = true;)                                     \
-        throw; /* throw needed for implementing TT_KERNEL. */                  \
-      }                                                                        \
-    } else {                                                                   \
-      TT_ASSIGN_OR_THROW(/* ERROR_COV_INFEASIBLE=in macro definition. */       \
-                         ::torch_tpu::OpParamCacheKeys param_keys,             \
-                         TT_MAKE_OP_PARAM_CACHE_KEYS_NO_ENFORCE_ args);        \
-      try {                                                                    \
-        __VA_ARGS__;                                                           \
-      } catch (const ::torch_tpu::TtError& e) {                                \
-        TT_IF_DEBUG(_kernel_threw = true;)                                     \
-        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                           \
-      } catch (...) {                                                          \
-        TT_IF_DEBUG(_kernel_threw = true;)                                     \
-        throw; /* throw needed for implementing TT_KERNEL. */                  \
-      }                                                                        \
-    }                                                                          \
-    TT_IF_DEBUG(if (!_kernel_threw) {                                          \
-      ::torch_tpu::internal::CheckTensorsUsed(_promoted_scalars);              \
-    })                                                                         \
+#define TT_KERNEL(op_name, param_keys, args, ...)                             \
+  do {                                                                        \
+    ::torch_tpu::internal::ScopedOpName _scoped_op_name(op_name);             \
+    TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));          \
+    TT_IF_DEBUG(                                                              \
+        ::torch_tpu::internal::PromotedTensorStates _promoted_scalars;        \
+        TT_COLLECT_PROMOTED_SCALAR_POINTERS_(_promoted_scalars,               \
+                                             TT_REMOVE_PARENS_(args));        \
+        bool _kernel_threw = false;                                           \
+        absl::Cleanup _cleanup = [&_kernel_threw, &_promoted_scalars] {       \
+          if (!_kernel_threw) {                                               \
+            ::torch_tpu::internal::CheckTensorsUsed(_promoted_scalars);       \
+          }                                                                   \
+        };)                                                                   \
+    ::torch_tpu::ScopedPythonContextCapturer _capturer(op_name);              \
+    if constexpr (std::string_view(#param_keys) == "_") {                     \
+      ::torch_tpu::internal::ConditionalStaticAssert<                         \
+          std::string_view(#param_keys) == "_",                               \
+          decltype(::torch_tpu::internal::NoArgAffectsCacheKey args)>();      \
+      /* Use InvalidOpParamCacheKeys as the type of _, to prevent using it in \
+       * ...                                                                  \
+       */                                                                     \
+      ::torch_tpu::internal::InvalidOpParamCacheKeys param_keys;              \
+      try {                                                                   \
+        __VA_ARGS__;                                                          \
+      } catch (const ::torch_tpu::TtError& e) {                               \
+        TT_IF_DEBUG(_kernel_threw = true;)                                    \
+        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                          \
+      } catch (...) {                                                         \
+        TT_IF_DEBUG(_kernel_threw = true;)                                    \
+        throw; /* throw needed for implementing TT_KERNEL. */                 \
+      }                                                                       \
+    } else {                                                                  \
+      TT_ASSIGN_OR_THROW(/* ERROR_COV_INFEASIBLE=in macro definition. */      \
+                         ::torch_tpu::OpParamCacheKeys param_keys,            \
+                         TT_MAKE_OP_PARAM_CACHE_KEYS_NO_ENFORCE_ args);       \
+      try {                                                                   \
+        __VA_ARGS__;                                                          \
+      } catch (const ::torch_tpu::TtError& e) {                               \
+        TT_IF_DEBUG(_kernel_threw = true;)                                    \
+        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                          \
+      } catch (...) {                                                         \
+        TT_IF_DEBUG(_kernel_threw = true;)                                    \
+        throw; /* throw needed for implementing TT_KERNEL. */                 \
+      }                                                                       \
+    }                                                                         \
   } while (false)
 
 // Collects pointers to all PromotedScalar-typed arguments into the given
