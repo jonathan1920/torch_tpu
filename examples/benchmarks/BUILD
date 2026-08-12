@@ -19,6 +19,35 @@ package(
     default_visibility = ["//:__subpackages__"],
 )
 
+torch_tpu_py_library(
+    name = "optimizers",
+    srcs = ["optimizers.py"],
+    deps = [
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "optimizers_test",
+    srcs = ["optimizers_test.py"],
+    main = "optimizers_test.py",
+    tags = [
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":optimizers",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:compiler",
+        "//torch_tpu/_internal/shims/xprof:traceme",
+        "//torch_tpu/_internal/shims/xprof:xprof_session",
+    ],
+)
+
 torch_tpu_py_test(
     name = "sched_overhead_test_cuda",
     timeout = "long",
