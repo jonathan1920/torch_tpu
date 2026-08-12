@@ -6,7 +6,7 @@ metadata:
   labels:
     app: tpu-v7x-github-runner
 spec:
-  replicas: 1
+  replicas: 5
   selector:
     matchLabels:
       app: tpu-v7x-github-runner
@@ -17,7 +17,6 @@ spec:
     spec:
       nodeSelector:
         cloud.google.com/gke-tpu-accelerator: tpu7x
-        cloud.google.com/gke-tpu-topology: 2x2x1
       containers:
       - name: runner
         image: gcr.io/tpu-pytorch/tpu-ci-runner@sha256:01702159dba5594e9e238f4c293a2872e15f350599c382d96078a87750b150e4
