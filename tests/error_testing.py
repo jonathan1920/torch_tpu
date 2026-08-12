@@ -17,7 +17,7 @@
 import contextlib
 import enum
 import functools
-import multiprocessing.connection
+from multiprocessing import connection as mp_connection
 import re
 import sys
 import traceback
@@ -29,8 +29,7 @@ import torch
 from torch.distributed.elastic.multiprocessing import errors
 import torch.multiprocessing as mp
 from torch_tpu._internal import testing as tt_testing
-
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.distributed import multiprocessing
 
 ChildFailedError = errors.ChildFailedError
 
@@ -456,7 +455,7 @@ _OUTCOME_ERROR = "error"
 def _subprocess_test_worker(
     cls: type[absltest.TestCase],
     method_name: str,
-    conn: multiprocessing.connection.Connection,
+    conn: mp_connection.Connection,
 ) -> None:
   """Executes a single TestCase method in an isolated child process.
 
@@ -544,7 +543,7 @@ class ErrorTestBase(absltest.TestCase):
       if start_test_run is not None:
         start_test_run()
 
-    # Rationale for choosing `g3_multiprocessing` over `subprocess` or
+    # Rationale for choosing `multiprocessing` over `subprocess` or
     # standard `mp`:
     # 1. Standard `fork` is banned in Google3 (go/python-tips/018) because
     #    multithreaded C++ runtimes (Borg logging, gRPC, CUDA) deadlock or
@@ -555,7 +554,7 @@ class ErrorTestBase(absltest.TestCase):
     # 3. Standard `subprocess.run` lacks object pickling / IPC exception
     #    transport needed to execute single parameterized `TestCase` class
     #    methods mid-flight.
-    ctx = g3_multiprocessing.get_context(g3_multiprocessing.ABSL_FORKSERVER)
+    ctx = multiprocessing.get_context("forkserver")
     parent_conn, child_conn = ctx.Pipe(duplex=False)
     # Create a subprocess to run the test method.
     p = ctx.Process(

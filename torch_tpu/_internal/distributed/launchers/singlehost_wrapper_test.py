@@ -20,8 +20,7 @@ from absl.testing import absltest
 from torch.google import distributed as g3_distributed
 import torch.multiprocessing as mp
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
-
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.distributed import multiprocessing
 
 
 WORLD_SIZE = 8
@@ -100,4 +99,4 @@ class SingleHostTestLauncherTest(absltest.TestCase):
 
 if __name__ == "__main__":
   mp.set_start_method("spawn")  # pyrefly: ignore[missing-attribute]
-  g3_multiprocessing.handle_test_main(absltest.main)
+  multiprocessing.handle_test_main(absltest.main)

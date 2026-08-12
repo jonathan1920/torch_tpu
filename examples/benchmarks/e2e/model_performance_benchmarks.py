@@ -26,8 +26,7 @@ from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
 from examples.benchmarks.e2e import test_utils
-
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.distributed import multiprocessing
 
 _HF_LLAMA_3_2_1B_BENCHMARK_NAME = "hf_llama_3_2_1b"
 _HF_GEMMA_3_270M_BENCHMARK_NAME = "hf_gemma_3_270m"
@@ -1935,7 +1934,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
 if __name__ == "__main__":
   mp.set_start_method("spawn")  # pyrefly: ignore[missing-attribute]
-  # g3_multiprocessing is required to run absltest.main() in a multiprocess
+  # multiprocessing is required to run absltest.main() in a multiprocess
   # environment. It doesn't affect single process runs.
-  # See: go/g3_multiprocessing#resolution.
-  g3_multiprocessing.handle_test_main(absltest.main)
+  # See: go/multiprocessing#resolution.
+  multiprocessing.handle_test_main(absltest.main)

@@ -22,9 +22,8 @@ from torch import distributed as dist
 import torch.multiprocessing as mp
 from torch_tpu._internal.distributed import tpu_distributed
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
+from torch_tpu._internal.distributed import multiprocessing
 from tests.distributed import distributed_utils
-
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 
 def run_global_device_count() -> None:
@@ -65,4 +64,4 @@ class MultiTpuTest(absltest.TestCase):
 
 if __name__ == "__main__":
   mp.set_start_method("spawn")
-  g3_multiprocessing.handle_test_main(absltest.main)
+  multiprocessing.handle_test_main(absltest.main)

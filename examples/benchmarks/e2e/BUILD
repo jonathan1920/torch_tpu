@@ -127,7 +127,7 @@ torch_tpu_py_library(
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:parameterized",
-        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/distributed:multiprocessing",
         "@pypi//torchax",
     ],
 )
@@ -147,7 +147,7 @@ torch_tpu_py_library(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/distributed:multiprocessing",
     ],
 )
 
@@ -313,7 +313,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/distributed:multiprocessing",
     ],
 )
 
@@ -381,7 +381,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/distributed:multiprocessing",
     ],
 )
 
@@ -434,7 +434,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/distributed:multiprocessing",
     ],
 )
 
@@ -469,7 +469,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/distributed:multiprocessing",
     ],
 )
 
@@ -620,7 +620,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/distributed:multiprocessing",
     ],
 )
 

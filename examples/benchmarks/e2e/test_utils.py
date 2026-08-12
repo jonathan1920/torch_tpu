@@ -29,8 +29,7 @@ from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
-
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.distributed import multiprocessing
 
 USE_SUBPROCESS = flags.DEFINE_bool(
     "torch_tpu_internal_use_subprocess_for_benchmarks",
@@ -239,7 +238,7 @@ class BenchmarkTest(parameterized.TestCase):
 
     if USE_SUBPROCESS.value:
       logging.info("Running benchmark in a subprocess for isolation.")
-      ctx = g3_multiprocessing.get_context(g3_multiprocessing.ABSL_SPAWN)
+      ctx = multiprocessing.get_context("spawn")
       q = ctx.Queue()
       p = ctx.Process(
           target=_run_benchmark_redirected,

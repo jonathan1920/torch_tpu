@@ -26,9 +26,8 @@ from torch_tpu._internal import execution_mode
 from torch_tpu._internal.distributed import spmd_util
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.sync import sync
+from torch_tpu._internal.distributed import multiprocessing
 from tests.distributed import distributed_utils
-
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 
@@ -321,4 +320,4 @@ class SpmdSafeDecoratorTest(absltest.TestCase):
 
 
 if __name__ == "__main__":
-  g3_multiprocessing.handle_test_main(absltest.main)
+  multiprocessing.handle_test_main(absltest.main)

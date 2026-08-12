@@ -18,8 +18,7 @@ import queue
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import compile as compile_lib
-
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.distributed import multiprocessing
 
 
 class LargeCheckpointedModel(torch.nn.Module):
@@ -89,7 +88,7 @@ def _run_and_measure_worker(q: queue.Queue[int | Exception], use_ac: bool):
 class ActivationCheckpointingMemoryTest(absltest.TestCase):
 
   def _run_sub_test(self, use_ac: bool) -> int:
-    ctx = g3_multiprocessing.get_context(g3_multiprocessing.ABSL_SPAWN)
+    ctx = multiprocessing.get_context("spawn")
     q = ctx.Queue()
     p = ctx.Process(target=_run_and_measure_worker, args=(q, use_ac))
     p.start()
@@ -117,4 +116,4 @@ class ActivationCheckpointingMemoryTest(absltest.TestCase):
 
 
 if __name__ == "__main__":
-  g3_multiprocessing.handle_test_main(absltest.main)
+  multiprocessing.handle_test_main(absltest.main)

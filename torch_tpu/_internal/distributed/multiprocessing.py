@@ -15,6 +15,7 @@
 """OSS implementation of TorchTPU's multiprocessing wrapper."""
 
 import multiprocessing
+from typing import Any
 from absl import app
 
 
@@ -28,6 +29,6 @@ def handle_test_main(main, *args, **kwargs):
   return main(*args, **kwargs)
 
 
-def get_context(method=None):
+def get_context(method=None) -> Any:
   """Returns a multiprocessing context."""
   return multiprocessing.get_context(method)

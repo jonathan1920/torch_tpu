@@ -18,8 +18,7 @@ from torch.google import distributed as gdist
 import torch.multiprocessing as mp
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from examples.distributed.fsdp.lora import fsdp_lora_worker
-
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.distributed import multiprocessing
 
 
 def main(_):
@@ -29,4 +28,4 @@ def main(_):
 
 if __name__ == "__main__":
   mp.set_start_method("spawn")
-  g3_multiprocessing.handle_main(main)
+  multiprocessing.handle_main(main)

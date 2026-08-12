@@ -1309,7 +1309,7 @@ torch_tpu_py_library(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:testing",
-        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",  # build_cleaner: keep
+        "//torch_tpu/_internal/distributed:multiprocessing",  # build_cleaner: keep
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )

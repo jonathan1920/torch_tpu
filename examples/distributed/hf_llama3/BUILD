@@ -43,8 +43,8 @@ pytype_strict_binary(
     deps = [
         ":hf_llama3_worker",
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/distributed:multiprocessing",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
-        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 

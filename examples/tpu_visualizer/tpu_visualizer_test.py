@@ -19,8 +19,7 @@ import re
 from absl.testing import absltest
 import torch
 from examples.tpu_visualizer import tpu_visualizer
-
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.distributed import multiprocessing
 
 
 def _cell_string(expected_rank: int, my_rank: int) -> str:
@@ -79,4 +78,4 @@ class TpuVisualizerTest(absltest.TestCase):
 
 if __name__ == "__main__":
   torch.multiprocessing.set_start_method("spawn")
-  g3_multiprocessing.handle_test_main(absltest.main)
+  multiprocessing.handle_test_main(absltest.main)

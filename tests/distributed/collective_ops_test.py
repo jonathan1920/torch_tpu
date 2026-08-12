@@ -56,7 +56,7 @@ from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import test_utils as utils
 from tests.distributed import distributed_utils
 
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.distributed import multiprocessing
 
 
 def _test_wrapper(
@@ -959,4 +959,4 @@ class CollectiveOpsTest(absltest.TestCase):
 
 if __name__ == "__main__":  # We are in the parent process.
   mp.set_start_method("spawn")
-  g3_multiprocessing.handle_test_main(absltest.main)
+  multiprocessing.handle_test_main(absltest.main)

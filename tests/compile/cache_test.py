@@ -23,7 +23,7 @@ isolated subprocesses:
    - `CacheTest` skips all of its tests because `_TEST_MODE` is unset.
    - `MasterCacheTest` runs its test methods (`test_cache_tier2`,
      `test_cache_tier3`), each of which spawns a child worker subprocess using
-     `g3_multiprocessing` to execute `sub_test_worker_entry`.
+     `multiprocessing` to execute `sub_test_worker_entry`.
 
 2. Worker Stage (`CacheTest` in subprocess):
    - In each worker subprocess, `sub_test_worker_entry` sets the `--test_mode`
@@ -53,8 +53,8 @@ from absl import logging
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import testing as tt_testing
+from torch_tpu._internal.distributed import multiprocessing
 from tests import seed_test_utils
-from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 
 class TestMode(enum.Enum):
@@ -284,14 +284,14 @@ class MasterCacheTest(seed_test_utils.RepeatableTest):
   def _run_sub_test(self, mode: TestMode, env_updates: dict[str, str]) -> None:
     """Runs a sub-test in a separate process.
 
-    Spawns a child process using `g3_multiprocessing` with the ABSL_SPAWN
+    Spawns a child process using `multiprocessing` with the "spawn"
     context to guarantee clean process-global state for compilation caching.
     Streams stdout/stderr from the worker queue to the parent stderr until
     the subprocess exits.
     """
 
     logging.info("Running test in a subprocess for isolation.")
-    ctx = g3_multiprocessing.get_context(g3_multiprocessing.ABSL_SPAWN)
+    ctx = multiprocessing.get_context("spawn")
     q = ctx.Queue()
     p = ctx.Process(target=sub_test_worker_entry, args=(q, mode, env_updates))
     p.start()
@@ -335,6 +335,6 @@ class MasterCacheTest(seed_test_utils.RepeatableTest):
 
 
 if __name__ == "__main__":
-  # Use g3_multiprocessing.handle_test_main to ensure compatibility with
+  # Use multiprocessing.handle_test_main to ensure compatibility with
   # absltest in multi-process Google3 test environments.
-  g3_multiprocessing.handle_test_main(absltest.main)
+  multiprocessing.handle_test_main(absltest.main)
