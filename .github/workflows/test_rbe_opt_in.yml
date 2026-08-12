@@ -16,7 +16,7 @@ name: RBE Hardware TPU Tests (Opt-In)
 
 on:
   pull_request:
-    types: [labeled]
+    types: [labeled, synchronize]
   workflow_dispatch:
 
 jobs:
