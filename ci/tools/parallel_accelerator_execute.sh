@@ -32,20 +32,26 @@
 TORCH_TPU_ACCELERATOR_COUNT=${TORCH_TPU_ACCELERATOR_COUNT:-8}
 TORCH_TPU_TESTS_PER_ACCELERATOR=${TORCH_TPU_TESTS_PER_ACCELERATOR:-1}
 
-# rlocation is needed to find the test binary when running with bazel 8+
-set -uo pipefail
-f=bazel_tools/tools/bash/runfiles/runfiles.bash
-# Source the runfiles library. We use a flexible grep to handle both WORKSPACE and Bzlmod prefixes.
-source "${RUNFILES_DIR:-/dev/null}/$f" 2>/dev/null || \
-  source "$(grep -m1 "$f " "${RUNFILES_MANIFEST_FILE:-/dev/null}" | cut -f2- -d' ')" 2>/dev/null || \
-  source "$0.runfiles/$f" 2>/dev/null || true
-
-if command -v rlocation >/dev/null; then
-  TEST_BINARY="$(rlocation "${TEST_WORKSPACE:-_main}/${1#./}")"
-else
+if [ -x "$1" ] || [ -f "$1" ]; then
   TEST_BINARY="$1"
+else
+  f=bazel_tools/tools/bash/runfiles/runfiles.bash
+  source "${RUNFILES_DIR:-/dev/null}/$f" 2>/dev/null || \
+    source "$(grep -m1 "$f " "${RUNFILES_MANIFEST_FILE:-/dev/null}" | cut -f2- -d' ')" 2>/dev/null || \
+    source "$0.runfiles/$f" 2>/dev/null || true
+
+  if command -v rlocation >/dev/null 2>&1; then
+    RESOLVED_BIN="$(rlocation "${TEST_WORKSPACE:-_main}/${1#./}" 2>/dev/null || true)"
+    if [ -n "$RESOLVED_BIN" ] && [ -f "$RESOLVED_BIN" ]; then
+      TEST_BINARY="$RESOLVED_BIN"
+    else
+      TEST_BINARY="$1"
+    fi
+  else
+    TEST_BINARY="$1"
+  fi
 fi
-shift; set +uo pipefail
+shift
 
 
 # *******************************************************************
