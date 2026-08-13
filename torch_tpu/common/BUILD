@@ -926,6 +926,7 @@ pywrap_binaries(
 # per-version wheel pywrap_library targets can factor the shared, torch-free
 # XLA/MLIR/absl backend into a single libxla_base.so.
 cc_library(
+    # ALLOW_CC_TARGETS=Internal aggregation target for xla_base_filter
     name = "_xla_base_agg",
     visibility = ["//visibility:private"],
     deps = backend_probe_labels(PYWRAP_EXTENSIONS),

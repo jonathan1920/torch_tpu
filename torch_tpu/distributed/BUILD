@@ -76,6 +76,17 @@ torch_tpu_cc_library(
     alwayslink = True,
 )
 
+torch_tpu_cc_test(
+    name = "process_group_tpu_test",
+    srcs = ["process_group_tpu_test.cc"],
+    requires_libtpu = True,
+    deps = [
+        ":process_group_tpu",
+        "//torch_tpu/common:oss_test_main",
+        "@xla//xla/pjrt:pjrt_client",
+    ],
+)
+
 torch_tpu_cc_library(
     name = "types",
     srcs = [

@@ -66,6 +66,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/distributed/allgather.h"
@@ -297,17 +298,18 @@ OpSplitMode GetCollectiveSplitMode() {
   return OpSplitMode::kNone;
 }
 
+}  // namespace
+
 xla::CrossHostTransferKey GetCrossHostTransferKey(int64_t src_device_id,
                                                   int64_t dst_device_id,
                                                   int tag,
-                                                  size_t tensor_index = 0) {
-  uint64_t seed = 0;
-  torch_tpu::HashCombine(seed, static_cast<uint64_t>(src_device_id));
-  torch_tpu::HashCombine(seed, static_cast<uint64_t>(dst_device_id));
-  torch_tpu::HashCombine(seed, static_cast<uint64_t>(tag));
-  torch_tpu::HashCombine(seed, static_cast<uint64_t>(tensor_index));
-  return xla::CrossHostTransferKey(static_cast<int64_t>(seed));
+                                                  size_t tensor_index) {
+  const FingerprintType fp =
+      FingerprintCat(src_device_id, dst_device_id, tag, tensor_index);
+  return xla::CrossHostTransferKey(static_cast<int64_t>(fp));
 }
+
+namespace {
 
 std::string GetCrossHostTransferDescriptorStoreKey(
     xla::CrossHostTransferKey key) {

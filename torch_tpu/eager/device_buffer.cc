@@ -42,6 +42,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
@@ -713,39 +714,33 @@ c10::StreamId DeviceBufferRef::stream_id() const {
   return device_buffer_list_->stream_id();
 }
 
-template <>
-inline void HashCombine<Shape>(std::size_t& h, const Shape& shape) {
-  HashCombine(h, shape.dimensions().size());
-  for (auto dim : shape.dimensions()) {
-    HashCombine(h, dim);
-  }
-  HashCombine(h, static_cast<size_t>(shape.dtype()));
+FingerprintType Fingerprint(const Shape& shape) {
+  return FingerprintCat(shape.dimensions(), static_cast<int>(shape.dtype()));
 }
 
 size_t DeferredOp::Hash() const {
-  auto h = static_cast<size_t>(op_name_);
+  // The numerical value of the op_name_ enum is unstable as enumerators are
+  // added to or removed from the enum type, and therefore Hash() is not stable
+  // across TorchTPU library versions.
+  FingerprintType h = static_cast<size_t>(op_name_);
 
-  HashCombine(h, inputs_.size());
   for (const auto& input : inputs_) {
-    HashCombine(h, input.shape());
+    h = FingerprintCat(h, input.shape());
   }
 
-  HashCombine(h, donated_indices_.size());
   for (auto index : donated_indices_) {
-    HashCombine(h, index);
+    h = FingerprintCat(h, index);
   }
 
-  HashCombine(h, output_shapes_.size());
   for (const auto& output_shape : output_shapes_) {
-    HashCombine(h, output_shape);
+    h = FingerprintCat(h, output_shape);
   }
 
-  HashCombine(h, op_param_cache_keys_.size());
   for (const auto& [key, value] : op_param_cache_keys_) {
-    HashCombine(h, value);
+    h = FingerprintCat(h, value);
   }
 
-  return h;
+  return static_cast<size_t>(h);
 }
 
 }  // namespace torch_tpu
