@@ -175,6 +175,15 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "wheel_test_with_cuda_torch",
+    flag_values = {
+        ":test_wheel": "True",
+        "//shims/torch:cuda_torch": "True",
+    },
+    visibility = ["//visibility:public"],
+)
+
 [config_setting(
     name = "wheel_test_with_local_torch_" + v.replace(".", "_"),
     define_values = {"PYTHON_VERSION": v},

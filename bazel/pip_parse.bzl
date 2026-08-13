@@ -68,3 +68,25 @@ def torch_tpu_pip_parse():
             ],
         },
     )
+
+    pip_parse(
+        name = "pypi_cuda",
+        annotations = annotations,
+        python_interpreter_target = "@{}_host//:python".format(
+            get_toolchain_name_per_python_version("python"),
+        ),
+        # Replaces requirements_3_11.txt, requirements_3_12.txt, etc. with their corresponding cuda lockfile variants.
+        requirements_lock = REQUIREMENTS_WITH_LOCAL_WHEELS.replace("requirements_3", "requirements_cuda_3"),
+        extra_pip_args = [
+            "--index-url",
+            "https://pypi.org/simple",
+        ],
+        extra_hub_aliases = {
+            "torch": [
+                "torch_headers",
+                "libc10",
+                "libtorch_cpu",
+                "libtorch_python",
+            ],
+        },
+    )

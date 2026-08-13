@@ -34,13 +34,13 @@ def define_sdpa_kernel(name, forward, dtype, is_causal):
     lib_name = name + "_embed"
 
     cmd_discovery = """
-            # Discover PyTorch libraries to support TORCH_SOURCE=local mode.
+            # Discover PyTorch and CUDA libraries to support local torch wheel build mode.
             # We search specifically within the generator's runfiles to maintain hermeticity
             gen_tool="$(location :scaled_dot_product_attention_generate)"
             if [[ -d "$${gen_tool}.runfiles" ]]; then
-              lib_dirs=$$(find -L "$${gen_tool}.runfiles" -name "libtorch.so" -exec dirname {} + 2>/dev/null | sort -u)
+              lib_dirs=$$(find -L "$${gen_tool}.runfiles" \\( -name "libtorch.so" -o -name "libcudart.so*" -o -name "libnvrtc.so*" \\) -exec dirname {} + 2>/dev/null | sort -u)
               if [[ -n "$$lib_dirs" ]]; then
-                export LD_LIBRARY_PATH="$$(echo "$$lib_dirs" | tr '\n' ':')$${LD_LIBRARY_PATH:-}"
+                export LD_LIBRARY_PATH="$$(echo "$$lib_dirs" | tr '\\n' ':')$${LD_LIBRARY_PATH:-}"
               fi
             fi
 """
@@ -64,6 +64,7 @@ def define_sdpa_kernel(name, forward, dtype, is_causal):
         outs = [header_name, source_name],
         cmd = if_oss(
             select({
+                "//shims/torch:use_cuda_torch": "set -e\n" + cmd_discovery + cmd_body,
                 "//shims/torch:use_local_torch": "set -e\n" + cmd_discovery + cmd_body,
                 "//conditions:default": "set -e\n" + cmd_body,
             }),

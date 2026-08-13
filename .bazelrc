@@ -406,6 +406,9 @@ build:wheel_release --//:include_nightly_glue=False
 # torch, so the per-version glue configurations never fork).
 build:local_torch --//shims/torch:local_torch=True
 
+# Config for running on CUDA GPUs
+common:cuda --//shims/torch:cuda_torch=True
+
 # Common config for testing the wheel
 test:wheel_common_test --config=wheel_common
 test:wheel_common_test --test_output=errors

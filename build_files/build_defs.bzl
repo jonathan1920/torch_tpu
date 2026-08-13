@@ -771,6 +771,16 @@ def torch_tpu_py_library(name, srcs = [], allow_multiple_srcs = False, **kwargs)
                 deps = deps + ["//torch_tpu/_internal:testing"]
         else:
             deps = deps + ["//torch_tpu/_internal:testing"]
+    else:
+        # In OSS, dynamically route @pypi// dependencies to @pypi_cuda// if --config=cuda is used
+        if type(deps) == "list":
+            pypi_pkgs = [dep[len("@pypi//"):] for dep in deps if type(dep) == "string" and dep.startswith("@pypi//")]
+            other_deps = [dep for dep in deps if not (type(dep) == "string" and dep.startswith("@pypi//"))]
+            if pypi_pkgs:
+                deps = other_deps + select({
+                    "//shims/torch:use_cuda_torch": ["@pypi_cuda//" + pkg for pkg in pypi_pkgs],
+                    "//conditions:default": ["@pypi//" + pkg for pkg in pypi_pkgs],
+                })
 
     pytype_strict_library(
         # PY_LIBRARY_OK=for implementing torch_tpu_py_library.
@@ -1046,14 +1056,26 @@ def torch_tpu_py_test(
                 deps = deps + ["//torch_tpu/_internal:testing"]
         else:
             deps = deps + ["//torch_tpu/_internal:testing"]
-
-    all_deps = if_oss(
-        select({
-            "//:wheel_test_enabled": ["//:torch_tpu_py_import"],
-            "//conditions:default": deps + deps_to_add,
-        }),
-        deps + deps_to_add,
-    )
+        all_deps = deps + deps_to_add
+    else:
+        # In OSS, dynamically route @pypi// dependencies to @pypi_cuda// if --config=cuda is used.
+        if type(deps) == "list":
+            pypi_pkgs = [dep[len("@pypi//"):] for dep in deps if type(dep) == "string" and dep.startswith("@pypi//")]
+            other_deps = [dep for dep in deps if not (type(dep) == "string" and dep.startswith("@pypi//"))]
+            pypi_deps = ["@pypi//" + pkg for pkg in pypi_pkgs]
+            pypi_cuda_deps = ["@pypi_cuda//" + pkg for pkg in pypi_pkgs]
+            all_deps = select({
+                "//:wheel_test_with_cuda_torch": ["//:torch_tpu_py_import"],
+                "//:wheel_test_enabled": ["//:torch_tpu_py_import"],
+                "//shims/torch:use_cuda_torch": other_deps + pypi_cuda_deps + deps_to_add,
+                "//conditions:default": other_deps + pypi_deps + deps_to_add,
+            })
+        else:
+            all_deps = select({
+                "//:wheel_test_with_cuda_torch": ["//:torch_tpu_py_import"],
+                "//:wheel_test_enabled": ["//:torch_tpu_py_import"],
+                "//conditions:default": deps + deps_to_add,
+            })
 
     if platform:
         rule = py_platform_test

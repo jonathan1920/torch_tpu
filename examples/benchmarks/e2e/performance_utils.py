@@ -215,7 +215,8 @@ def _run_mode_context(
     # pylint: disable=protected-access
     if clear_device_cache and device.type != "cpu":
       device_utils.clear_cache(device.type)
-      tt_testing.reset_eager_state()
+      if device.type == "tpu":
+        tt_testing.reset_eager_state()
     if common.is_torch_compile(run_mode):
       torch._dynamo.reset()
 
@@ -261,7 +262,9 @@ def _export_to_tensorboard(
     tb_writer = writer.SummaryWriter(log_dir=tblog_dir)
 
     for metric_name, value in result.metric_map().items():
-      tb_writer.add_scalar(f"{metric_name}", value, global_step=0)
+      # Skip metrics that are None (e.g. peak_host_compilation_memory on non-TPU platforms).
+      if value is not None:
+        tb_writer.add_scalar(metric_name, value, global_step=0)
     tb_writer.close()
   except (OSError, IOError):
     logging.exception("Error writing TensorBoard logs")

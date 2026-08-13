@@ -110,6 +110,10 @@ load("@pypi//:requirements.bzl", "install_deps")
 
 install_deps()
 
+load("@pypi_cuda//:requirements.bzl", install_cuda_deps = "install_deps")
+
+install_cuda_deps()
+
 load("@xla//:workspace2.bzl", "xla_workspace2")
 
 xla_workspace2()

@@ -34,6 +34,10 @@ cd "$working_dir"
 
 PYTHON_PLATFORM="x86_64-manylinux_2_31"
 
+PYPROJECT_CUDA=$(mktemp --suffix=_cuda.toml)
+trap 'rm -f "$PYPROJECT_CUDA"' EXIT
+sed -E 's/index = "pytorch-cpu",? *//; s/,? *index = "pytorch-cpu"//' pyproject.toml > "$PYPROJECT_CUDA"
+
 # Loop over supported Python versions and generate the full-environment locks.
 for version in "3.11" "3.12" "3.13" "3.14"; do
   version_und=$(echo "$version" | tr '.' '_')
@@ -52,6 +56,21 @@ for version in "3.11" "3.12" "3.13" "3.14"; do
     --resolution lowest-direct \
     --generate-hashes \
     --output-file "$REQUIREMENTS_FILE"
+
+  REQUIREMENTS_CUDA_FILE="requirements/requirements_cuda_${version_und}.txt"
+  echo "Generating CUDA lock file for Python $version -> $REQUIREMENTS_CUDA_FILE"
+  if [ -f "$REQUIREMENTS_CUDA_FILE" ]; then
+    rm "$REQUIREMENTS_CUDA_FILE"
+  fi
+
+  uv pip compile "$PYPROJECT_CUDA" \
+    --all-extras \
+    --python-version "$version" \
+    --python-platform "$PYTHON_PLATFORM" \
+    --resolution lowest-direct \
+    --generate-hashes \
+    --index-url https://pypi.org/simple \
+    --output-file "$REQUIREMENTS_CUDA_FILE"
 done
 
 # Torch-only locks for the extra PyTorch versions the multi-ABI wheel ships a
