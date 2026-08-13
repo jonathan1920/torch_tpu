@@ -20,6 +20,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 def define_extra_torch_targets():
     """Defines additional targets for the PyTorch distribution inside site-packages."""
     cc_library(
+        # ALLOW_CC_TARGETS=Defines external PyTorch wheel targets in OSS Bazel build
         name = "torch_headers",
         hdrs = native.glob(
             include = [
@@ -60,6 +61,7 @@ def define_extra_torch_targets():
         )
 
     cc_library(
+        # ALLOW_CC_TARGETS=Defines external PyTorch wheel targets in OSS Bazel build
         name = "libtorch",
         srcs = native.glob([
             "site-packages/torch/lib/libtorch.so",
@@ -74,6 +76,7 @@ def define_extra_torch_targets():
     )
 
     cc_library(
+        # ALLOW_CC_TARGETS=Defines external PyTorch wheel targets in OSS Bazel build
         name = "libtorch_global_deps",
         deps = [
             ":libc10",
@@ -83,6 +86,7 @@ def define_extra_torch_targets():
     )
 
     cc_library(
+        # ALLOW_CC_TARGETS=Defines external PyTorch wheel targets in OSS Bazel build
         name = "torch_libs",
         deps = [
             ":libtorch",

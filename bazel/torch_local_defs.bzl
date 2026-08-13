@@ -46,6 +46,7 @@ def define_torch_local(name, is_source_mode = True):
     # Expose all header files needed for torch/include.
     # depend on the Bazel versions to avoid ODR violations and missing headers.
     cc_library(
+        # ALLOW_CC_TARGETS=Defines external PyTorch targets in OSS Bazel build
         name = "torch_headers",
         hdrs = native.glob(
             py_library_source_mapping([
@@ -102,6 +103,7 @@ def define_torch_local(name, is_source_mode = True):
 
     # Expose all header files needed for kineto/include.
     cc_library(
+        # ALLOW_CC_TARGETS=Defines external PyTorch targets in OSS Bazel build
         name = "kineto_headers_internal",
         hdrs = native.glob(
             py_library_source_mapping([
@@ -135,6 +137,7 @@ def define_torch_local(name, is_source_mode = True):
 
     # Catch-all target for convenience
     cc_library(
+        # ALLOW_CC_TARGETS=Defines external PyTorch targets in OSS Bazel build
         name = "torch_libs",
         deps = [":" + lib_name for lib_name in torch_library_names],
     )

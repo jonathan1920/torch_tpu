@@ -74,12 +74,12 @@ def _torch_local_repo_impl(rctx):
         rctx.file("BUILD.bazel", """
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 package(default_visibility = ["//visibility:public"])
-cc_library(name = "torch_headers")
-cc_library(name = "libc10")
-cc_library(name = "libtorch_cpu")
-cc_library(name = "libtorch_python")
-cc_library(name = "torch_libs")
-cc_library(name = "torch")
+cc_library(name = "torch_headers")  # ALLOW_CC_TARGETS=External repository_rule fallback
+cc_library(name = "libc10")  # ALLOW_CC_TARGETS=External repository_rule fallback
+cc_library(name = "libtorch_cpu")  # ALLOW_CC_TARGETS=External repository_rule fallback
+cc_library(name = "libtorch_python")  # ALLOW_CC_TARGETS=External repository_rule fallback
+cc_library(name = "torch_libs")  # ALLOW_CC_TARGETS=External repository_rule fallback
+cc_library(name = "torch")  # ALLOW_CC_TARGETS=External repository_rule fallback
 """)
         return
 
