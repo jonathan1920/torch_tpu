@@ -704,6 +704,7 @@ def torch_tpu_cc_test(
             if filtered_exec_properties:
                 sh_test_kwargs["exec_properties"] = filtered_exec_properties
 
+        # buildifier: disable=native-sh-test
         native.sh_test(
             name = name,
             size = size,
