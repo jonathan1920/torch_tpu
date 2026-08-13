@@ -24,6 +24,12 @@ package(
     default_visibility = ["//:__subpackages__"],
 )
 
+filegroup(
+    name = "captured_ops_data",
+    srcs = glob(["captured_ops/*.json"]),
+    visibility = ["//:__subpackages__"],
+)
+
 torch_tpu_py_library(
     name = "op_capture",
     srcs = ["op_capture.py"],
@@ -54,6 +60,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "aten_op_benchmarks",
+    size = "large",
     srcs = ["aten_op_benchmarks.py"],
     args = [
         "--mlcompass_tracking_id=torch_tpu_v2",
@@ -62,7 +69,7 @@ torch_tpu_py_test(
     ],
     data = glob(["captured_ops/*.json"]),
     notap = "Tested on guitar workflow.",
-    shard_count = 10,
+    shard_count = 50,
     tags = [
         "nomsan",  # b/516945438
         "requires-net:external",
@@ -82,11 +89,6 @@ torch_tpu_py_test(
         "//torch_tpu",
         "@pypi//numpy",
     ],
-)
-
-filegroup(
-    name = "captured_ops_data",
-    srcs = glob(["captured_ops/*.json"]),
 )
 
 torch_tpu_package_end()

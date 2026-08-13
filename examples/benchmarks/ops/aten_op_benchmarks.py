@@ -301,67 +301,106 @@ class AtenOpBenchmarkBase(parameterized.TestCase):
     compile_time_s = 0.0
     with _aten_run_mode_context(run_mode_str):
       target_op = op_callable
-      if run_mode_str == "compiled":
-        start_compile = time.perf_counter()
-        if device.type == "cpu":
-          # Use aot_eager backend on CPU to avoid missing C++ compiler error
-          target_op = torch.compile(op_callable, backend="aot_eager")
-        elif device.type == "jax":
-          # TorchAX handles compilation differently or not at all via torch.compile
-          # For now, we just use the eager callable for TorchAX in compiled mode too
-          target_op = op_callable
-        else:
-          target_op = device_utils.torch_compile(op_callable, device.type)
-        compile_time_s = time.perf_counter() - start_compile
-        logging.info(f"Compile time for {op_name}: {compile_time_s} s")
-
-      # Wrap target_op to synchronize after each call to prevent TPU queue flooding
-      # and ensure the host measures actual device execution times.
-      def timed_op(*op_args, **op_kwargs):
-        res = target_op(*op_args, **op_kwargs)
-        if device.type in ("tpu", "xla_cuda", "cuda"):
-          device_utils.synchronize(device.type)
-        return res
-
-      # Warmup: run only 2 warmup iterations during fast CI/unit-test mode
-      # (min_run_time < 0.2s) to conserve runner execution time, while running
-      # 20 warmup iterations during precision benchmark mode to ensure PjRt
-      # cache and memory allocator stabilization prior to recording measurement
-      # times.
-      warmup_runs = 2 if MIN_RUN_TIME.value < 0.2 else 20
-      for _ in range(warmup_runs):
-        timed_op(*args, **kwargs)
-
-      # Timing
-      timer = benchmark.Timer(
-          stmt="op(*args, **kwargs)",
-          globals={"op": timed_op, "args": args, "kwargs": kwargs},
-      )
-
-      import gc
-
-      gc.disable()
       try:
-        # Use blocked_autorange to enforce minimum run time
-        measurement = timer.blocked_autorange(min_run_time=MIN_RUN_TIME.value)
+        if run_mode_str == "compiled":
+          start_compile = time.perf_counter()
+          if device.type == "cpu":
+            # Use aot_eager backend on CPU to avoid missing C++ compiler error
+            target_op = torch.compile(op_callable, backend="aot_eager")
+          elif device.type == "jax":
+            # TorchAX handles compilation differently or not at all via torch.compile
+            # For now, we just use the eager callable for TorchAX in compiled mode too
+            target_op = op_callable
+          else:
+            target_op = device_utils.torch_compile(op_callable, device.type)
+          compile_time_s = time.perf_counter() - start_compile
+          logging.info(f"Compile time for {op_name}: {compile_time_s} s")
 
-        # Enforce minimum iteration count (min_runs) if autorange ran fewer
-        # iterations
-        min_runs = MIN_RUNS.value
-        if min_runs > 1 and len(measurement.times) < min_runs:
-          additional_times = []
-          for _ in range(min_runs - len(measurement.times)):
-            m_extra = timer.timeit(number=1)
-            additional_times.extend(m_extra.times)
-          times = np.array(measurement.times + additional_times)
-        else:
-          times = np.array(measurement.times)
-      finally:
-        gc.enable()
-      median_time_us = np.median(times) * 1e6
-      mean_time = np.mean(times)
-      std_time = np.std(times, ddof=1) if len(times) > 1 else 0.0
-      cv = (std_time / mean_time) if len(times) > 1 and mean_time > 0 else 0.0
+        # Wrap target_op to synchronize after each call to prevent TPU queue flooding
+        # and ensure the host measures actual device execution times.
+        def timed_op(*op_args, **op_kwargs):
+          res = target_op(*op_args, **op_kwargs)
+          if device.type in ("tpu", "xla_cuda", "cuda"):
+            device_utils.synchronize(device.type)
+          return res
+
+        # Warmup: run only 2 warmup iterations during fast CI/unit-test mode
+        # (min_run_time < 0.2s) to conserve runner execution time, while running
+        # 20 warmup iterations during precision benchmark mode to ensure PjRt
+        # cache and memory allocator stabilization prior to recording measurement
+        # times.
+        warmup_runs = 2 if MIN_RUN_TIME.value < 0.2 else 20
+        for _ in range(warmup_runs):
+          timed_op(*args, **kwargs)
+
+        # Timing
+        timer = benchmark.Timer(
+            stmt="op(*args, **kwargs)",
+            globals={"op": timed_op, "args": args, "kwargs": kwargs},
+        )
+
+        import gc
+
+        gc.disable()
+        try:
+          # Use blocked_autorange to enforce minimum run time
+          measurement = timer.blocked_autorange(min_run_time=MIN_RUN_TIME.value)
+
+          # Enforce minimum iteration count (min_runs) if autorange ran fewer
+          # iterations
+          min_runs = MIN_RUNS.value
+          if min_runs > 1 and len(measurement.times) < min_runs:
+            additional_times = []
+            for _ in range(min_runs - len(measurement.times)):
+              m_extra = timer.timeit(number=1)
+              additional_times.extend(m_extra.times)
+            times = np.array(measurement.times + additional_times)
+          else:
+            times = np.array(measurement.times)
+        finally:
+          gc.enable()
+        median_time_us = np.median(times) * 1e6
+        mean_time = np.mean(times)
+        std_time = np.std(times, ddof=1) if len(times) > 1 else 0.0
+        cv = (std_time / mean_time) if len(times) > 1 and mean_time > 0 else 0.0
+      except unittest.SkipTest:
+        raise
+      except Exception as e:
+        logging.error(
+            "Benchmark execution failed for %s (%s) on %s: %s",
+            op_name,
+            run_mode_str,
+            device_type,
+            e,
+        )
+        # Export failure record to MLCompass
+        if device_type != "cpu" and benchmark_utils.MLCOMPASS_TRACKING_ID.value:
+          safe_op_name = op_name.replace(".", "_").replace(":", "_")
+          shape_signature = format_shape_signature(inputs_str)
+          micro_key = (
+              shape_signature if shape_signature else f"case{case_index}"
+          )
+          mlcompass_utils.export_to_mlcompass(
+              platform=common.PLATFORM.value,
+              metrics=None,
+              base_cl=benchmark_utils.BASE_CL.value,
+              mlcompass_tracking_id=benchmark_utils.MLCOMPASS_TRACKING_ID.value,
+              mlcompass_execution_mode=(
+                  benchmark_utils.MLCOMPASS_EXECUTION_MODE.value
+              ),
+              test_method_name=f"test_{safe_op_name}",
+              benchmark_name=f"{backend_name}_{run_mode_str}",
+              microbenchmark_name=micro_key,
+              succeeded=False,
+              pending_cl=benchmark_utils.PENDING_CL.value,
+              benchmark_group=benchmark_utils.BENCHMARK_GROUP.value,
+          )
+
+        # Skip this single test case so the rest of the shard can continue
+        self.skipTest(
+            f"Benchmark execution failed for {op_name} ({run_mode_str}) on"
+            f" {device_type}: {e}"
+        )
 
       logging.info(
           f"Result for {op_name} case {case_index} ({run_mode_str}) on"
