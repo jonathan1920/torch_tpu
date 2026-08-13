@@ -998,8 +998,8 @@ ACCURACY_OVERRIDES_VS_GPU = {
     # bf16/f16 cumsum accumulation rounds differently from the GPU
     # reference, which is itself not bit-exact (mirrors the vs-CPU tol).
     "cumsum": {
-        torch.bfloat16: {"rtol": 2.3e-2, "atol": 3.8e-2},
-        torch.float16: {"rtol": 3.7e-3, "atol": 4.7e-3},
+        torch.bfloat16: {"atol": 1.9e-2},
+        torch.float16: {"rtol": 3.5e-3, "atol": 2.4e-3},
     },
     "digamma": {
         torch.float32: {"rtol": 4e-5, "atol": 1.3e-5},
@@ -1111,8 +1111,8 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float32: {"rtol": 5.7e-5, "atol": 8.3e-5},
     },
     "logcumsumexp": {
-        torch.bfloat16: {"atol": 4.7e-3},
-        torch.float16: {"rtol": 1.8e-3, "atol": 1.4e-3},
+        torch.bfloat16: {"atol": 3.7e-5},
+        torch.float16: {"rtol": 1.2e-3, "atol": 5.9e-4},
         torch.float32: {"rtol": 5e-5, "atol": 3.2e-5},
     },
     "logit": {
