@@ -1347,7 +1347,6 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -1381,7 +1380,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    notest_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Need to set up a GCS bucket for OSS tests to write to.",
     tags = [
         "requires-net:external",  # Requires remote file access.
         "requires-tpu-v5lite",
