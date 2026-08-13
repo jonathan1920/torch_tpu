@@ -34,6 +34,8 @@ from absl.testing import parameterized
 import torch
 from torch_tpu._internal.utils import log_utils
 from examples import paths
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
 
 log_utils.log_to_stderr()
 
@@ -73,9 +75,7 @@ class SingleAcceleratorTest(parameterized.TestCase):
       # TODO(pganssle): Evaluate whether this assertion is still necessary.
       assert str(self.acc_device).split(":", 1)[0] == _DEVICE.value
 
-    # Load model directly from transformers.
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
+    # Load model config and initialize model without reading weights.
     weights = _WEIGHTS_DIR
 
     # For GB200, this test has to be run local and in order to make that
@@ -84,16 +84,17 @@ class SingleAcceleratorTest(parameterized.TestCase):
       weights = _WEIGHTS.value
       if not os.path.isdir(weights):
         raise ValueError(f"Cannot find weights in local dir: {weights}")
-    print("Getting model weights from:", weights)
+    print("Getting model config from:", weights)
 
-    # Load model(s) for CPU and accelerator.
+    # Load model(s) for CPU and accelerator from config (no weight loading).
+    config = AutoConfig.from_pretrained(weights)
     self.tokenizer = AutoTokenizer.from_pretrained(weights)
-    self.model_cpu = AutoModelForCausalLM.from_pretrained(
-        weights,
+    self.model_cpu = AutoModelForCausalLM.from_config(
+        config,
         torch_dtype=torch.bfloat16,
     )
-    self.model_acc = AutoModelForCausalLM.from_pretrained(
-        weights,
+    self.model_acc = AutoModelForCausalLM.from_config(
+        config,
         torch_dtype=torch.bfloat16,
     )
     self.model_acc = self.model_acc.to(self.acc_device)
