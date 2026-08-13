@@ -41,24 +41,12 @@ class StepperType(enum.Enum):
 @runtime_checkable
 class Stepper(Protocol):
 
-  # The actual model leveraged, saved as state to facilitate potential compilation.
-  _model: Any
-
-  # Step function saved as state to facilitate potential compilation.
-  # TODO(@lukeboyer): Refine type annotations for various callables with types from torch.
-  _inner_stepper: Callable[..., Any]
-
-  # Step function core logic. This should take in the model, args and kwargs that are user provided, as well as any params that will be bound
-  # to the step callable POST torch.compile.
-  @staticmethod
-  def _step_function(*args: Any, **kwargs: Any) -> Any:
-    ...
-
   # Initialize the stepper with the arguments returned from a benchmark spec's factory.
   def init_with_benchmark_args(self, *args: Any, **kwargs: Any) -> None:
     ...
 
-  # Get actual step callable usable for benchmarking. This is the inner_stepper bound with model, inputs, kwargs, and any extra POST torch.compile args.
+  # Get actual step callable usable for benchmarking. Any stepper-specific args
+  # are bound within this method and the returned callable is nullary.
   def get_step_fn(self) -> StepFn:
     ...
 

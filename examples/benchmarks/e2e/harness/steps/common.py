@@ -28,6 +28,8 @@ class BaseStepper(abc.ABC):
   def init_with_benchmark_args(
       self, model: Any, *args: Any, **kwargs: Any
   ) -> None:
+    # args and kwargs are required to satisfy the Stepper protocol
+    # but unused in the base class.
     del args, kwargs
     self._model = model
 
