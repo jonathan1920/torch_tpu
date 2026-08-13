@@ -33,8 +33,7 @@ namespace torch_tpu {
 [[nodiscard]] bool UsesTier2CompilationCache();
 
 // Returns the name of the tier-2 compilation cache as set by the
-// TORCH_TPU_TIER2_COMPILATION_CACHE (or
-// TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE) environment variable.
+// TORCH_TPU_TIER2_COMPILATION_CACHE environment variable.
 //
 // This function is memoized so that it's cheap to call this multiple times.
 [[nodiscard]] const std::string& GetTier2CacheName();

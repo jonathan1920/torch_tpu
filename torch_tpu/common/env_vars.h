@@ -83,13 +83,6 @@ inline constexpr char kTorchTpuInternalEnableDebugChecksEnvVar[] =
 // not expected. Default is "true".
 inline constexpr char kTorchTpuInternalMaterializeCollectiveTensorsEnvVar[] =
     "TORCH_TPU_INTERNAL_MATERIALIZE_COLLECTIVE_TENSORS";
-// The name of the tier-2 compilation cache. The special name "disabled" can be
-// used to disable the tier-2 cache. If not set, TorchTPU decides whether to use
-// the tier-2 cache or not based on the world size: if the world size is 1, the
-// tier-2 cache is disabled; otherwise, it is enabled and the name is set to
-// "default".
-inline constexpr char kTorchTpuInternalTier2CompilationCacheEnvVar[] =
-    "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE";
 // If unset or set to "1", schedule local compilation right away as a backup to
 // tier-3 compilation cache read (whichever succeeds first will unblock
 // execution). If set to "0", local compilation is done only after tier-3
@@ -99,10 +92,6 @@ inline constexpr char kTorchTpuInternalTier2CompilationCacheEnvVar[] =
 inline constexpr char
     kTorchTpuInternalTier3CompilationCacheLocalBackupTaskEnvVar[] =
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK";
-// The root path of the tier-3 compilation cache. If not set, the tier-3
-// compilation cache is disabled.
-inline constexpr char kTorchTpuInternalTier3CompilationCacheRootEnvVar[] =
-    "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT";
 // TorchTPU-internal XLA compiler option overrides, in the format of
 // "key1=value1 key2=value2 ...". It is used to update `xla::CompileOptions`
 // through `env_option_overrides`, and takes precedence over `debug_options` set
@@ -114,18 +103,10 @@ inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
 // the tier-2 cache or not based on the world size: if the world size is 1, the
 // tier-2 cache is disabled; otherwise, it is enabled and the name is set to
 // "default".
-//
-// If both TORCH_TPU_TIER2_COMPILATION_CACHE and
-// TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE are set,
-// TORCH_TPU_TIER2_COMPILATION_CACHE takes precedence.
 inline constexpr char kTorchTpuTier2CompilationCacheEnvVar[] =
     "TORCH_TPU_TIER2_COMPILATION_CACHE";
 // The root path of the tier-3 compilation cache. If not set, the tier-3
 // compilation cache is disabled.
-//
-// If both TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT and
-// TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT are set,
-// TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT takes precedence.
 inline constexpr char kTorchTpuTier3CompilationCacheRootEnvVar[] =
     "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT";
 // If set, enables structured logging for tlparse.

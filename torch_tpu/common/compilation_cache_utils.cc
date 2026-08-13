@@ -211,13 +211,8 @@ absl::Status EnsureDirExistsRecursively(const std::string& path) {
 
 const std::string& GetTier3CacheRootDir() {
   static const absl::NoDestructor<std::string> root_dir([]() {
-    const auto& tier3_cache_public =
+    const auto& tier3_cache =
         GetEnvOnce<kTorchTpuTier3CompilationCacheRootEnvVar>();
-    const auto& tier3_cache_internal =
-        GetEnvOnce<kTorchTpuInternalTier3CompilationCacheRootEnvVar>();
-    const auto& tier3_cache = tier3_cache_public.has_value()
-                                  ? tier3_cache_public
-                                  : tier3_cache_internal;
     const std::string root_dir = tier3_cache.value_or("");
     ABSL_LOG(INFO) << "Tier-3 compilation cache root directory: " << root_dir;
     return root_dir;
