@@ -361,6 +361,8 @@ common:remote_execution_readonly --remote_default_exec_properties=container-imag
 common:remote_execution_readonly --define=EXECUTOR=remote
 common:remote_execution_readonly --remote_executor=grpcs://remotebuildexecution.googleapis.com
 common:remote_execution_readonly --extra_execution_platforms="@ml_build_config_platform//:platform"
+common:remote_execution_readonly --remote_default_exec_properties=container-image=docker://gcr.io/tpu-pytorch/tpu-ci-runner@sha256:01702159dba5594e9e238f4c293a2872e15f350599c382d96078a87750b150e4
+common:remote_execution_readonly --remote_upload_local_results=false
 
 # Allow per-user, project-specific bazelrc.
 # Do this last so it takes precedence.
