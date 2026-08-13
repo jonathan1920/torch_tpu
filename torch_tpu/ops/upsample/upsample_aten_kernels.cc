@@ -785,9 +785,13 @@ absl::StatusOr<TensorVector> ConstructScaleFactorArray(
   return scale_factor_result;
 }
 
-void CheckNotBool(const at::Tensor& tensor) {
-  TT_CHECK_THROW(tensor.scalar_type() != at::kBool,
-                 error::kPythonNotImplementedError)
+// Rejects the dtypes that the CUDA upsample kernels (e.g.
+// "upsample_nearest1d_out_frame" in aten/src/ATen/native/cuda/UpSample*.cu)
+// do not implement.
+void CheckDtypeSupported(const at::Tensor& tensor) {
+  TT_CHECK_THROW(
+      tensor.scalar_type() != at::kBool && tensor.scalar_type() != at::kLong,
+      error::kPythonNotImplementedError)
       << "not implemented for " << ToString(tensor.scalar_type());
 }
 
@@ -1110,7 +1114,7 @@ at::Tensor& AtenUpsampleBilinear2dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleBilinear2dOut, param_keys,
       (self, upsample_shape, align_corners, scale_h, scale_w, out), {
-        CheckNotBool(self);
+        CheckDtypeSupported(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
 
@@ -1180,7 +1184,7 @@ at::Tensor& AtenUpsampleNearest1dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearest1dOut, param_keys,
       (self, upsample_shape, scale, out), {
-        CheckNotBool(self);
+        CheckDtypeSupported(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         auto op_builder = [output_shape = CopyIntVector(out.sizes())](
@@ -1220,7 +1224,7 @@ at::Tensor& AtenUpsampleNearest2dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearest2dOut, param_keys,
       (self, upsample_shape, scale_h, scale_w, out), {
-        CheckNotBool(self);
+        CheckDtypeSupported(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
 
@@ -1267,7 +1271,7 @@ at::Tensor& AtenUpsampleNearest3dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearest3dOut, param_keys,
       (self, upsample_shape, scale_h, scale_w, scale_d, out), {
-        CheckNotBool(self);
+        CheckDtypeSupported(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         auto op_builder = [output_shape = CopyIntVector(out.sizes())](
@@ -1312,7 +1316,7 @@ at::Tensor& AtenUpsampleNearestExact1dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearestExact1dOut, param_keys,
       (self, upsample_shape, scale, out), {
-        CheckNotBool(self);
+        CheckDtypeSupported(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         auto op_builder = [output_shape = CopyIntVector(out.sizes())](
@@ -1353,7 +1357,7 @@ at::Tensor& AtenUpsampleNearestExact2dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearestExact2dOut, param_keys,
       (self, upsample_shape, scale_h, scale_w, out), {
-        CheckNotBool(self);
+        CheckDtypeSupported(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
 
@@ -1397,7 +1401,7 @@ at::Tensor& AtenUpsampleNearestExact3dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearestExact3dOut, param_keys,
       (self, upsample_shape, scale_h, scale_w, scale_d, out), {
-        CheckNotBool(self);
+        CheckDtypeSupported(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         auto op_builder = [output_shape = CopyIntVector(out.sizes())](

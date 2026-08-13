@@ -28,6 +28,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -163,6 +164,14 @@ absl::Status CheckAddmvInputs(const at::Tensor& self, const at::Tensor& mat,
                               const at::Scalar& alpha) {
   TT_RET_CHECK(!IsBool(self), error::kInvalidArgument)
       << "the dtype of the first argument cannot be bool";
+
+  // Reject int64 for a non-empty matrix to keep consistent with the CUDA impl
+  // in aten/src/ATen/native/cuda/Blas.cpp (addmv_out_cuda), which
+  // short-circuits and returns success for an empty matrix before dispatching
+  // on the input dtype.
+  TT_RET_CHECK(mat.numel() == 0 || mat.scalar_type() != at::kLong,
+               error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(mat.scalar_type());
 
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch implementation promotes dtype
                  // before dtype check.

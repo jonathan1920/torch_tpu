@@ -131,6 +131,14 @@ absl::StatusOr<mlir::ElementType> ValidateAddmmInputsAndGetOutputDtype(
                    alpha.scalar().type() != at::kBool,
                error::kInvalidArgument)
       << "boolean dtypes are not supported";
+  // Reject int64 for non-empty inputs to keep consistent with the CUDA impl
+  // in aten/src/ATen/native/cuda/Blas.cpp (addmm_out_cuda_impl), which
+  // short-circuits and returns success for an empty result or a zero
+  // reduction dimension before dispatching on the input dtype.
+  TT_RET_CHECK(
+      mat1.numel() == 0 || mat2.numel() == 0 || mat1.scalar_type() != at::kLong,
+      error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(mat1.scalar_type());
   TT_RET_CHECK(!self.is_complex() && !mat1.is_complex() && !mat2.is_complex() &&
                    beta.scalar().type() != at::kComplexFloat &&
                    beta.scalar().type() != at::kComplexDouble &&

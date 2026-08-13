@@ -975,6 +975,69 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.mm(a, b)
 
+  def test_addmm_int64_unsupported(self):
+    t = torch.ones(2, 3, dtype=torch.int64, device=et.device())
+    a = torch.ones(2, 4, dtype=torch.int64, device=et.device())
+    b = torch.ones(4, 3, dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""addmm(): not implemented for int64""",
+        gpu=""""addmm_cuda" not implemented for 'Long'""",
+    ):
+      torch.addmm(t, a, b)
+
+  def test_addmv_int64_unsupported(self):
+    t = torch.ones(2, dtype=torch.int64, device=et.device())
+    mat = torch.ones(2, 3, dtype=torch.int64, device=et.device())
+    vec = torch.ones(3, dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""addmv(): not implemented for int64""",
+        gpu=""""addmv_impl_cuda" not implemented for 'Long'""",
+    ):
+      torch.addmv(t, mat, vec)
+
+  def test_baddbmm_int64_unsupported(self):
+    t = torch.ones(2, 3, 4, dtype=torch.int64, device=et.device())
+    b1 = torch.ones(2, 3, 5, dtype=torch.int64, device=et.device())
+    b2 = torch.ones(2, 5, 4, dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""baddbmm(): not implemented for int64""",
+        gpu=""""baddbmm_cuda" not implemented for 'Long'""",
+    ):
+      torch.baddbmm(t, b1, b2)
+
+  def test_bmm_int64_unsupported(self):
+    a = torch.ones(2, 3, 5, dtype=torch.int64, device=et.device())
+    b = torch.ones(2, 5, 4, dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""bmm(): not implemented for int64""",
+        gpu=""""baddbmm_cuda" not implemented for 'Long'""",
+    ):
+      torch.bmm(a, b)
+
+  def test_dot_int64_unsupported(self):
+    a = torch.ones(3, dtype=torch.int64, device=et.device())
+    b = torch.ones(3, dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""dot(): not implemented for int64""",
+        gpu=""""dot" not implemented for 'Long'""",
+    ):
+      torch.dot(a, b)
+
+  def test_vdot_int64_unsupported(self):
+    a = torch.ones(3, dtype=torch.int64, device=et.device())
+    b = torch.ones(3, dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""vdot(): not implemented for int64""",
+        gpu=""""dot" not implemented for 'Long'""",
+    ):
+      torch.vdot(a, b)
+
   def test_mm_with_mismatched_data_types(self):
     """Tests that mm with mismatched data types fails with expected error."""
     t1 = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
@@ -3048,6 +3111,24 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.nn.functional.max_pool2d(t_bool, kernel_size=3)
 
+  def test_max_pool2d_int64_unsupported(self):
+    t = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.int64)
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""max_pool2d(): not implemented for int64""",
+        gpu=""""max_pool2d_with_indices_out_cuda_frame" not implemented for 'Long'""",
+    ):
+      torch.nn.functional.max_pool2d(t, kernel_size=3)
+
+  def test_max_pool2d_with_indices_int64_unsupported(self):
+    t = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.int64)
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""max_pool2d_with_indices(): not implemented for int64""",
+        gpu=""""max_pool2d_with_indices_out_cuda_frame" not implemented for 'Long'""",
+    ):
+      torch.nn.functional.max_pool2d(t, kernel_size=3, return_indices=True)
+
   def test_masked_scatter_invalid_mask_dtype(self):
     device = et.device()
     t = torch.randn(4, 4, device=device, dtype=torch.float32)
@@ -3175,6 +3256,15 @@ Device-side assertion tracking was not enabled by user.""",
         gpu=""""max_pool3d_with_indices_out_frame" not implemented for 'Bool'""",
     ):
       torch.nn.functional.max_pool3d(t_bool, kernel_size=3)
+
+  def test_max_pool3d_int64_unsupported(self):
+    t = torch.zeros((1, 1, 4, 4, 4), device=et.device(), dtype=torch.int64)
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""max_pool3d_with_indices(): not implemented for int64""",
+        gpu=""""max_pool3d_with_indices_out_frame" not implemented for 'Long'""",
+    ):
+      torch.nn.functional.max_pool3d(t, kernel_size=3)
 
   @parameterized.named_parameters(
       ("bfloat16", torch.bfloat16, "bfloat16", "BFloat16"),
@@ -3365,6 +3455,24 @@ Device-side assertion tracking was not enabled by user.""",
         gpu=""""avg_pool2d_out_cuda_frame" not implemented for 'Int'""",
     ):
       torch.nn.functional.avg_pool2d(t_int32, kernel_size=3)
+
+  def test_avg_pool2d_int64_unsupported(self):
+    t = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.int64)
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""avg_pool2d(): not implemented for int64""",
+        gpu=""""avg_pool2d_out_cuda_frame" not implemented for 'Long'""",
+    ):
+      torch.nn.functional.avg_pool2d(t, kernel_size=3)
+
+  def test_avg_pool3d_int64_unsupported(self):
+    t = torch.zeros((1, 1, 4, 4, 4), device=et.device(), dtype=torch.int64)
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""avg_pool3d(): not implemented for int64""",
+        gpu=""""avg_pool3d_out_cuda" not implemented for 'Long'""",
+    ):
+      torch.nn.functional.avg_pool3d(t, kernel_size=3)
 
   def test_avg_pool3d_unsupported_dtypes(self):
     if et.is_on_gpu():
@@ -4218,6 +4326,27 @@ Supported combinations for non-constant padding:
         gpu=""""clamp_scalar_cuda" not implemented for 'Bool'""",
     ):
       torch._foreach_clamp_max(self_list, True)
+
+  def test_foreach_div_inplace_int64(self):
+    self_list = [torch.tensor([4, 6], dtype=torch.int64, device=et.device())]
+    other_list = [torch.tensor([2, 3], dtype=torch.int64, device=et.device())]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""foreach_div_(): expected all 1 tensors in the self list not to be integral, got 1 integral tensor: int64 at index 0""",
+        gpu="""result type Float can't be cast to the desired output type Long""",
+    ):
+      torch._foreach_div_(self_list, other_list)
+
+  def test_foreach_div_inplace_scalar_int64(self):
+    self_list = [torch.tensor([4, 6], dtype=torch.int64, device=et.device())]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""foreach_div_(): expected all 1 tensors in the self list not to be integral, got 1 integral tensor: int64 at index 0""",
+        gpu="""result type Float can't be cast to the desired output type Long""",
+    ):
+      torch._foreach_div_(self_list, 2)
 
   def test_foreach_sub_int_tensors_float_alpha(self):
     self_list = [torch.tensor([1, 2], dtype=torch.int32, device=et.device())]
@@ -6007,6 +6136,16 @@ Supported combinations for non-constant padding:
     ):
       torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)
 
+  def test_native_dropout_backward_int64_unsupported(self):
+    grad_output = torch.ones((2, 3), device=et.device(), dtype=torch.int64)
+    mask = torch.ones((2, 3), device=et.device(), dtype=torch.bool)
+    with et.assert_raises_message(
+        NotImplementedError,
+        gpu=""""masked_scale" not implemented for 'Long'""",
+        tpu="""native_dropout_backward(): not implemented for int64""",
+    ):
+      torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)
+
   def test_weight_norm_interface_dim(self):
     if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
@@ -6777,6 +6916,16 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       out = torch.nn.functional.silu(t)
       out.cpu()
+
+  def test_silu_int64_unsupported(self):
+    t = torch.ones(5, device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""silu(): not implemented for int64""",
+        gpu=""""silu_cuda" not implemented for 'Long'""",
+    ):
+      torch.nn.functional.silu(t)
 
   def test_acos_out_dtype_mismatch(self):
     t = torch.ones(5, device=et.device())
@@ -8800,6 +8949,37 @@ Device-side assertion tracking was not enabled by user.""",
       torch.nn.functional.interpolate(
           t.float().bool(), scale_factor=2, mode=mode
       )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="nearest",
+          mode="nearest",
+          gpu_op_name="upsample_nearest2d_out_frame",
+          tpu_op_name="upsample_nearest2d",
+      ),
+      dict(
+          testcase_name="bilinear",
+          mode="bilinear",
+          gpu_op_name="upsample_bilinear2d_out_frame",
+          tpu_op_name="upsample_bilinear2d",
+      ),
+      dict(
+          testcase_name="bicubic",
+          mode="bicubic",
+          gpu_op_name="upsample_bicubic2d_out_frame",
+          tpu_op_name="upsample_bicubic2d",
+      ),
+  )
+  def test_upsample_2d_int64_unsupported(
+      self, mode: str, gpu_op_name: str, tpu_op_name: str
+  ):
+    t = torch.ones(1, 1, 2, 2, device=et.device(), dtype=torch.int64)
+    with et.assert_raises_message(
+        NotImplementedError,
+        gpu=f""""{gpu_op_name}" not implemented for 'Long'""",
+        tpu=f"""{tpu_op_name}(): not implemented for int64""",
+    ):
+      torch.nn.functional.interpolate(t, scale_factor=2, mode=mode)
 
 
 class InputPreprocessingErrorTest(et.ErrorTestBase, parameterized.TestCase):

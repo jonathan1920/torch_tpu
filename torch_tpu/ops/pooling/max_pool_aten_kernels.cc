@@ -57,6 +57,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -768,6 +769,18 @@ absl::Status BuildMaxPoolWithIndicesBackwardGradInputNd(
   return AssignBufferToAtTensor(std::move(result), grad_input);
 }
 
+// Rejects int64 for non-empty inputs to keep consistent with the CUDA impls
+// in aten/src/ATen/native/cuda/DilatedMaxPool2d.cu and DilatedMaxPool3d.cu
+// ("max_pool2d_with_indices_out_cuda_frame" and
+// "max_pool3d_with_indices_out_frame"), which short-circuit and return
+// success for empty inputs before dispatching on the input dtype.
+void CheckMaxPoolDtypeSupported(const at::Tensor& self) {
+  TT_CHECK_THROW(
+      self.numel() == 0 || self.scalar_type() != at::ScalarType::Long,
+      error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(self.scalar_type());
+}
+
 }  // namespace
 
 std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool2dWithIndicesOut(
@@ -780,6 +793,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool2dWithIndicesOut(
         TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool,
                        error::kInvalidArgument)
             << "bool dtype is not supported";
+        CheckMaxPoolDtypeSupported(self);
 
         const int64_t spatial_dim_count = 2;
         TT_THROW_IF_ERROR(BuildMaxPoolWithIndicesOutNd(
@@ -799,6 +813,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool3dWithIndicesOut(
         TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool,
                        error::kInvalidArgument)
             << "bool dtype is not supported";
+        CheckMaxPoolDtypeSupported(self);
 
         const int64_t spatial_dim_count = 3;
         TT_THROW_IF_ERROR(BuildMaxPoolWithIndicesOutNd(
@@ -933,6 +948,7 @@ at::Tensor TpuMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
               TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool,
                              error::kInvalidArgument)
                   << "bool dtype is not supported";
+              CheckMaxPoolDtypeSupported(self);
 
               const int64_t spatial_dim_count = 2;
               TT_ASSIGN_OR_THROW(const auto output_size,
