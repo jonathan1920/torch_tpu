@@ -98,6 +98,21 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       t = torch.empty((2, 2), dtype=torch.complex128, device=et.device())
       t.fill_(1.0)
 
+  @et.why_tpu_only(
+      "TPU masked_scatter uses int32 source offsets. GPU supports larger offsets."
+  )
+  def test_masked_scatter_input_too_large(self):
+    """Tests masked_scatter_ rejects a broadcasted input larger than int32."""
+    t = torch.empty(2**31, device=et.device(), dtype=torch.float32)
+    mask = torch.zeros(1, device=et.device(), dtype=torch.bool)
+    source = torch.ones(1, device=et.device(), dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""masked_scatter_(): expected the broadcasted input to contain at most 2147483647 elements because masked_scatter_ uses int32 source offsets, got 2147483648""",
+    ):
+      torch.masked_scatter(t, mask, source)
+
   @et.why_tpu_only("For testing TPU op dispatching.")
   def test_prod_with_op_dispatch_failure(self):
     """Tests that prod() bubbles up errors in op dispatching."""

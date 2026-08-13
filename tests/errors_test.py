@@ -2912,18 +2912,6 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.masked_scatter(t, mask, source)
 
-  def test_masked_scatter_input_too_large(self):
-    """Tests masked_scatter_ rejects a broadcasted input larger than int32."""
-    t = torch.empty(2**31, device=et.device(), dtype=torch.float32)
-    mask = torch.zeros(1, device=et.device(), dtype=torch.bool)
-    source = torch.ones(1, device=et.device(), dtype=torch.float32)
-
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""masked_scatter_(): expected the broadcasted input to contain at most 2147483647 elements because masked_scatter_ uses int32 source offsets, got 2147483648""",
-    ):
-      torch.masked_scatter(t, mask, source)
-
   def test_arange_zero_step(self):
     with et.assert_raises_message(
         RuntimeError,
