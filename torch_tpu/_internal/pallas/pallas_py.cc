@@ -49,10 +49,10 @@ void PyRegisterCustomKernel(c10::string_view name, c10::string_view kernel_key,
                             c10::string_view mlir_module_string) {
   if (RegisterCustomKernel(name, kernel_key, mlir_module_string)) {
     ABSL_VLOG(1) << "Registered new custom kernel: name=" << name
-                 << ", kwargs=" << kernel_key;
+                 << ", kernel_key=" << kernel_key;
   } else {
     ABSL_VLOG(2) << "Custom kernel already registered: name=" << name
-                 << ", kwargs=" << kernel_key;
+                 << ", kernel_key=" << kernel_key;
   }
 }
 
@@ -87,25 +87,7 @@ bool PyLookupCustomKernel(c10::string_view name, c10::string_view kernel_key) {
 // Parameters:
 //   name: The registered base name of the custom kernel symbol (e.g.,
 //     "add_kernel").
-//   kernel_key: A specialization identifier or cache key used during kernel
-//     registration and symbol lookup.
-//     - Format: An arbitrary UTF-8 string defined by the caller. Often a string
-//       representation or fingerprint of keyword arguments, static tile sizes,
-//       or block configurations (e.g., "bm=128_bn=128").
-//     - Behavioral impact: Symbol lookup in the internal runtime registry is
-//       strictly keyed on the exact pair `(name, kernel_key)`. When generating
-//       the XLA HLO module, XLA fingerprints `(kernel_key, input_dims,
-//       input_dtypes)` into the generated symbol name (e.g.,
-//       "add_kernel_0x1a2b3c4d") to avoid symbol collision between different
-//       specializations of the same kernel.
-//     - Choosing a value: The caller should include any parameter or static
-//       configuration that changes the generated MLIR structure or compilation
-//       behavior. If a kernel requires no specialization across invocations, an
-//       empty string `""` may be used.
-//     - Uniqueness: For a given `name`, `kernel_key` MUST be unique for each
-//       distinct MLIR implementation or compilation specialization. If two
-//       different kernel behaviors share the same `(name, kernel_key)`, symbol
-//       lookup will silently reuse the earlier registered MLIR module.
+//   kernel_key: A unique fingerprint of the lowered MLIR module.
 //   inputs: Vector of input tensors to be passed into the kernel.
 //   output_shapes: Vector of dummy/placeholder tensors whose shapes and dtypes
 //     define the expected output tensor layouts from kernel execution.
@@ -118,11 +100,11 @@ bool PyLookupCustomKernel(c10::string_view name, c10::string_view kernel_key) {
 //   from torch_tpu._internal.pallas import tpu_torch_pallas
 //
 //   kernel_name = "my_custom_add"
-//   kernel_key = "tile_128x128"  # Key identifies this specific tiling config
+//   mlir_bytes = lower_to_mlir(block_size=128)  # Generates serialized MLIR
+//   kernel_key = compute_fingerprint(mlir_bytes)
 //
 //   # 1. Register the kernel if it hasn't been registered yet for this key:
 //   if not tpu_torch_pallas.lookup_custom_kernel(kernel_name, kernel_key):
-//     mlir_bytes = lower_to_mlir(block_size=128)  # Generates serialized MLIR
 //     tpu_torch_pallas.register_custom_kernel(
 //         kernel_name,
 //         kernel_key,
