@@ -352,11 +352,13 @@ common:rbe --jobs=100
 common:rbe --config=tpu_envvars
 common:rbe --remote_default_exec_properties=container-image=docker://gcr.io/tpu-pytorch/tpu-ci-runner@sha256:01702159dba5594e9e238f4c293a2872e15f350599c382d96078a87750b150e4
 
+common:remote_execution_readonly --remote_upload_local_results=false
 common:remote_execution_readonly --remote_instance_name=projects/tpu-pytorch/instances/default_instance
 common:remote_execution_readonly --google_default_credentials
 common:remote_execution_readonly --jobs=200
 common:remote_execution_readonly --remote_timeout=3600
 common:remote_execution_readonly --test_timeout=3600
+common:remote_execution_readonly --remote_default_exec_properties=container-image=docker://gcr.io/tpu-pytorch/tpu-ci-runner@sha256:01702159dba5594e9e238f4c293a2872e15f350599c382d96078a87750b150e4
 # This define is probably vestigial, but it's not entirely clear.
 # Revisit removing this with Bazel 9.
 common:remote_execution_readonly --define=EXECUTOR=remote
