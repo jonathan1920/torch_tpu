@@ -86,7 +86,7 @@ def _load_llama(ctx: context_lib.Context, model_name: str, is_training: bool):
 
 
 @registry_lib.register_benchmark(stepper=step_lib.StepperType.FORWARD)
-def llama_1b_inference(ctx):
+def llama_1b_forward(ctx):
   """Benchmark factory for Llama 3.2 1B inference."""
   model, inputs = _load_llama(ctx, "meta-llama/Llama-3.2-1B", is_training=False)
   return model, (), inputs
@@ -103,10 +103,9 @@ def llama_1b_decode(ctx):
 
 @registry_lib.register_benchmark(
     stepper=step_lib.StepperType.TRAINING,
-    stepper_kwargs={"accum_steps": 8},
 )
-def llama_1b_train_accum8(ctx):
-  """Benchmark factory for Llama 3.2 1B training with 8 accumulation steps."""
+def llama_1b_training(ctx):
+  """Benchmark factory for Llama 3.2 1B training."""
   model, inputs = _load_llama(ctx, "meta-llama/Llama-3.2-1B", is_training=True)
   opt = torch.optim.AdamW(
       model.parameters(),

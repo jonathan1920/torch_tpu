@@ -37,14 +37,14 @@ class GenUtilsTest(absltest.TestCase):
         tier="",
     )
     self.assertEqual(
-        entry.benchmark_name(is_training=False), "bar_baz_123_inference"
+        entry.benchmark_name(is_training=False), "bar_baz_123_forward"
     )
     self.assertEqual(
         entry.benchmark_name(is_training=True), "bar_baz_123_train"
     )
     self.assertEqual(
         entry.benchmark_name(is_training=False, suffix="gen"),
-        "bar_baz_123_inference_gen",
+        "bar_baz_123_forward_gen",
     )
     self.assertEqual(
         entry.benchmark_name(is_training=True, suffix="gen"),

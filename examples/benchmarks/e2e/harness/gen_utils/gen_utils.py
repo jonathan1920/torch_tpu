@@ -120,7 +120,7 @@ class ModelEntry:
     """Generates a standardized test case name for this model."""
     name_part = self.model_id.split("/")[-1]
     clean_name = re.sub(r"[^a-zA-Z0-9]+", "_", name_part.lower()).strip("_")
-    mode = "train" if is_training else "inference"
+    mode = "train" if is_training else "forward"
     parts = [clean_name, mode]
     if suffix:
       parts.append(suffix)
