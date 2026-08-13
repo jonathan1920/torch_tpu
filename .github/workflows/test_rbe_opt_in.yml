@@ -41,15 +41,13 @@ jobs:
       - name: Run Bazel RBE Test Suite
         run: |
           bazel test \
-            --config=ci_tpu_v7 \
-            --config=remote_execution_readonly \
+            --config=ci_tpu_v7_presubmit \
             --bes_backend="" \
             --noremote_upload_local_results \
             --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" \
             --local_test_jobs=4 \
             --test_env=ALLOW_MULTIPLE_LIBTPU_LOAD=true \
             --test_env=TORCH_TPU_ACCELERATOR_COUNT=4 \
-            --test_tag_filters=requires-tpu,-notest,-nobuild,-fails-on-tpu-v7 \
             --test_output=errors \
             //tests/...
 
