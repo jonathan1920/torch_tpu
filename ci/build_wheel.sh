@@ -114,7 +114,6 @@ if [[ "${RAIDEN_PINNED}" == "1" && -f "${RAIDEN_DIR}/ci/build_wheel.sh" ]]; then
   ) || {
     echo "WARNING: tpu_raiden wheel build failed. Continuing with torch_tpu wheels only..." >&2
   }
-fi
   # Warn-only Twine check on generated tpu_raiden wheels (remove broken wheel if invalid)
   if ls "${WHEEL_DIR}"/tpu_raiden_torch-*.whl >/dev/null 2>&1; then
     echo "===> [Non-Fatal Stage] Running Twine check over tpu_raiden wheels..."
