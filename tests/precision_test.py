@@ -407,6 +407,9 @@ class PrecisionTest(seed_test_utils.RepeatableTest):
 
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("always")
+      warnings.filterwarnings(
+          "ignore", category=UserWarning, message=r".*is experimental.*"
+      )
       with precision(Precision.DEFAULT):
         torch.matmul(a, b)
       self.assertEmpty(w)
@@ -419,6 +422,9 @@ class PrecisionTest(seed_test_utils.RepeatableTest):
 
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("always")
+      warnings.filterwarnings(
+          "ignore", category=UserWarning, message=r".*is experimental.*"
+      )
       with precision(Precision.HIGHEST):
         torch.matmul(a, b)
       self.assertEmpty(w)
