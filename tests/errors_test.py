@@ -25,7 +25,6 @@ from torch_tpu._internal import env  # pylint: disable=unused-import
 from torch_tpu._internal.distributed import multiprocessing
 from tests import error_testing as et
 
-
 _TEST_MODE = et.TEST_MODE
 
 # Regex used by: TpuVsGpuErrorTest.test_index_no_indices
@@ -853,6 +852,16 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         tpu="""mat1 and mat2 shapes cannot be multiplied (2x3 and 4x2)""",
     ):
       torch.mm(t1, t2)
+
+  def test_mm_bool_unsupported(self):
+    a = torch.ones(2, 3, dtype=torch.bool, device=et.device())
+    b = torch.ones(3, 2, dtype=torch.bool, device=et.device())
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""mm(): not implemented for bool""",
+        gpu=""""addmm_cuda" not implemented for 'Bool'""",
+    ):
+      torch.mm(a, b)
 
   def test_mm_with_mismatched_data_types(self):
     """Tests that mm with mismatched data types fails with expected error."""
@@ -4086,6 +4095,18 @@ Supported combinations for non-constant padding:
     ):
       torch._foreach_sub(self_list, [1, True])
 
+  def test_foreach_clamp_max_scalar_bool(self):
+    self_list = [
+        torch.tensor([True, False], dtype=torch.bool, device=et.device()),
+    ]
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""foreach_clamp_max(): not implemented for bool""",
+        gpu=""""clamp_scalar_cuda" not implemented for 'Bool'""",
+    ):
+      torch._foreach_clamp_max(self_list, True)
+
   def test_foreach_sub_int_tensors_float_alpha(self):
     self_list = [torch.tensor([1, 2], dtype=torch.int32, device=et.device())]
     other_list = [torch.tensor([3, 4], dtype=torch.int32, device=et.device())]
@@ -5864,6 +5885,16 @@ Supported combinations for non-constant padding:
     ):
       torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)
 
+  def test_native_dropout_backward_bool_unsupported(self):
+    grad_output = torch.ones((2, 3), device=et.device(), dtype=torch.bool)
+    mask = torch.ones((2, 3), device=et.device(), dtype=torch.bool)
+    with et.assert_raises_message(
+        NotImplementedError,
+        gpu=""""masked_scale" not implemented for 'Bool'""",
+        tpu="""native_dropout_backward(): not implemented for bool""",
+    ):
+      torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)
+
   def test_weight_norm_interface_dim(self):
     if et.is_on_gpu():
       self.skipTest("GPU behavior difference")
@@ -6965,6 +6996,16 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.bucketize(input_tensor, boundaries)
 
+  def test_bucketize_bool_unsupported(self):
+    input_tensor = torch.tensor([True, False], device=et.device())
+    boundaries = torch.tensor([False, True], device=et.device())
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""bucketize(): not implemented for bool""",
+        gpu=""""searchsorted_out_cuda" not implemented for 'Bool'""",
+    ):
+      torch.bucketize(input_tensor, boundaries)
+
   def test_geqrf_insufficient_dims(self):
     input_tensor = torch.ones(1, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
@@ -7928,6 +7969,16 @@ Device-side assertion tracking was not enabled by user.""",
           a.to(et.device()), v.to(et.device()), right=True, side="left"
       )
 
+  def test_searchsorted_bool_unsupported(self):
+    sorted_seq = torch.tensor([False, True], device=et.device())
+    values = torch.tensor([True, False], device=et.device())
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""searchsorted(): not implemented for bool""",
+        gpu=""""searchsorted_out_cuda" not implemented for 'Bool'""",
+    ):
+      torch.searchsorted(sorted_seq, values)
+
   def test_fused_adagrad_default_int32_dtype(self):
     device = et.device()
     p = torch.tensor([1, 2], dtype=torch.int32, device=device)
@@ -8535,6 +8586,109 @@ Device-side assertion tracking was not enabled by user.""",
           0,
       )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="bfloat16",
+          dtype=torch.bfloat16,
+          tpu_dtype_name="bfloat16",
+          gpu_dtype_name="BFloat16",
+      ),
+      dict(
+          testcase_name="bool",
+          dtype=torch.bool,
+          tpu_dtype_name="bool",
+          gpu_dtype_name="Bool",
+      ),
+  )
+  def test_histc_unsupported_dtypes(
+      self, dtype: torch.dtype, tpu_dtype_name: str, gpu_dtype_name: str
+  ):
+    x = torch.ones(2, 2, device=et.device(), dtype=dtype)
+    with et.assert_raises_message(
+        NotImplementedError,
+        gpu=f""""histc" not implemented for '{gpu_dtype_name}'""",
+        tpu=f"""histc(): not implemented for {tpu_dtype_name}""",
+    ):
+      torch.histc(x)
+
+  def test_foreach_unary_ops_bool(self):
+    t = torch.ones(2, 2, dtype=torch.bool, device=et.device())
+    ops = [
+        (torch._foreach_ceil, "ceil"),
+        (torch._foreach_floor, "floor"),
+    ]
+    for op, op_name in ops:
+      with et.assert_raises_message(
+          NotImplementedError,
+          gpu=f""""{op_name}_cuda" not implemented for 'Bool'""",
+          tpu=f"""foreach_{op_name}(): not implemented for bool""",
+      ):
+        op([t])
+
+  def test_unary_ops_bool(self):
+    t = torch.ones(2, 2, dtype=torch.bool, device=et.device())
+    ops = [
+        (torch.ceil, "ceil"),
+        (torch.floor, "floor"),
+        (torch.nn.functional.silu, "silu"),
+    ]
+    for op, op_name in ops:
+      with et.assert_raises_message(
+          NotImplementedError,
+          gpu=f""""{op_name}_cuda" not implemented for 'Bool'""",
+          tpu=f"""{op_name}(): not implemented for bool""",
+      ):
+        op(t)
+
+  def test_unary_out_ops_bool(self):
+    t = torch.ones(2, 2, dtype=torch.bool, device=et.device())
+    out = torch.empty(2, 2, dtype=torch.bool, device=et.device())
+    ops = [
+        (torch.ops.aten.ceil.out, "ceil"),
+        (torch.ops.aten.floor.out, "floor"),
+        (torch.ops.aten.silu.out, "silu"),
+    ]
+    for op, op_name in ops:
+      with et.assert_raises_message(
+          NotImplementedError,
+          gpu=f""""{op_name}_cuda" not implemented for 'Bool'""",
+          tpu=f"""{op_name}(): not implemented for bool""",
+      ):
+        op(t, out=out)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="nearest",
+          mode="nearest",
+          gpu_op_name="upsample_nearest2d_out_frame",
+          tpu_op_name="upsample_nearest2d",
+      ),
+      dict(
+          testcase_name="bilinear",
+          mode="bilinear",
+          gpu_op_name="upsample_bilinear2d_out_frame",
+          tpu_op_name="upsample_bilinear2d",
+      ),
+      dict(
+          testcase_name="bicubic",
+          mode="bicubic",
+          gpu_op_name="upsample_bicubic2d_out_frame",
+          tpu_op_name="upsample_bicubic2d",
+      ),
+  )
+  def test_upsample_2d_bool_unsupported(
+      self, mode: str, gpu_op_name: str, tpu_op_name: str
+  ):
+    t = torch.ones(1, 1, 2, 2, device=et.device(), dtype=torch.bool)
+    with et.assert_raises_message(
+        NotImplementedError,
+        gpu=f""""{gpu_op_name}" not implemented for 'Bool'""",
+        tpu=f"""{tpu_op_name}(): not implemented for bool""",
+    ):
+      torch.nn.functional.interpolate(
+          t.float().bool(), scale_factor=2, mode=mode
+      )
+
 
 class InputPreprocessingErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
@@ -8758,15 +8912,6 @@ class MaskedSoftmaxErrorTest(et.ErrorTestBase):
           torch.tensor(False, dtype=torch.bool, device=et.device()),
           dim=1,
       )
-
-  def test_histc_bfloat16_unsupported(self):
-    x = torch.ones(2, 2, device=et.device(), dtype=torch.bfloat16)
-    with et.assert_raises_message(
-        NotImplementedError,
-        gpu=""""histc" not implemented for 'BFloat16'""",
-        tpu="""histc(): not implemented for bfloat16""",
-    ):
-      torch.histc(x)
 
 
 if __name__ == "__main__":

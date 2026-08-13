@@ -282,13 +282,6 @@ at::Tensor& AtenClampTensorOut(const at::Tensor& self,
                                const c10::optional<at::Tensor>& max,
                                at::Tensor& out) {
   TT_KERNEL(OpName::kClampTensorOut, param_keys, (self, min, max, out), {
-    TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
-    if (min) {
-      TT_THROW_IF_ERROR(CheckNotBool(*min, /*arg_name=*/"min"));
-    }
-    if (max) {
-      TT_THROW_IF_ERROR(CheckNotBool(*max, /*arg_name=*/"max"));
-    }
     TT_ASSIGN_OR_THROW(auto result_buf,
                        AtenClampTensorHelper(self, min, max, out.scalar_type(),
                                              std::move(param_keys)));
@@ -301,8 +294,6 @@ at::Tensor& AtenClampTensorOut(const at::Tensor& self,
 at::Tensor& AtenClampMinTensorOut(const at::Tensor& self, const at::Tensor& min,
                                   at::Tensor& out) {
   TT_KERNEL(OpName::kClampMinTensorOut, param_keys, (self, min, out), {
-    TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
-    TT_THROW_IF_ERROR(CheckNotBool(min, /*arg_name=*/"min"));
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         AtenClampTensorHelper(self, min, std::nullopt, out.scalar_type(),
@@ -316,8 +307,6 @@ at::Tensor& AtenClampMinTensorOut(const at::Tensor& self, const at::Tensor& min,
 at::Tensor& AtenClampMaxTensorOut(const at::Tensor& self, const at::Tensor& max,
                                   at::Tensor& out) {
   TT_KERNEL(OpName::kClampMaxTensorOut, param_keys, (self, max, out), {
-    TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
-    TT_THROW_IF_ERROR(CheckNotBool(max, /*arg_name=*/"max"));
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         AtenClampTensorHelper(self, std::nullopt, max, out.scalar_type(),

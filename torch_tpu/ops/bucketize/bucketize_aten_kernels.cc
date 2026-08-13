@@ -24,6 +24,7 @@
 #include "ATen/ops/result_type.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "c10/core/ScalarType.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LLVM.h"
@@ -35,6 +36,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -49,6 +51,12 @@ namespace {
 
 absl::Status ValidateInputAndBoundaries(const at::Tensor& self,
                                         const at::Tensor& boundaries) {
+  // Reject booleans for non-empty inputs to keep consistent with CUDA impl
+  // in aten/src/ATen/native/cuda/Bucketization.cu, which short-circuits and
+  // returns success for empty inputs before dispatching on the input dtype.
+  TT_RET_CHECK(self.numel() == 0 || self.scalar_type() != at::kBool,
+               error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(self.scalar_type());
   TT_ASSIGN_OR_RETURN(const mlir::ElementType dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   TT_RET_CHECK(!IsComplex(dtype), error::kInvalidArgument)

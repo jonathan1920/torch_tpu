@@ -333,6 +333,7 @@ torch_tpu_cc_library(
         ":unary",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:cache_key",
@@ -477,7 +478,6 @@ torch_tpu_cc_library(
     deps = [
         ":binary",
         ":binary_aten_kernels",
-        ":nullary_aten_kernels",
         ":op_builder_utils",
         ":op_names",
         ":unary",
@@ -618,6 +618,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:to_string",
         "//torch_tpu/common:utils",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:device_buffer_utils",

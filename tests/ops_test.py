@@ -2174,8 +2174,7 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_ceil(self):
     self.do_test_op(
         "ceil",
-        exclude_dtypes=[torch.bool],
-        exclude_inplace_dtypes=[torch.bool],
+        exclude_dtypes={"cpu": (torch.bool,)},
     )
 
   def test_channel_shuffle(self):
@@ -2330,7 +2329,17 @@ class TestOps(op_testing.OpInfoTestBase):
         # GPU (CUDA) does not support complex and integral dtypes for
         # native_dropout_backward.
         exclude_dtypes={
-            "gpu": INTEGRAL_DTYPES + COMPLEX_DTYPES,
+            "cpu": INTEGRAL_DTYPES + COMPLEX_DTYPES,
+            "gpu": (
+                (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                )
+                + COMPLEX_DTYPES
+            ),
         },
     )
 
@@ -2465,8 +2474,7 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_floor(self):
     self.do_test_op(
         "floor",
-        exclude_dtypes=[torch.bool],
-        exclude_inplace_dtypes=[torch.bool],
+        exclude_dtypes={"cpu": (torch.bool,)},
     )
 
   def test_floor_divide(self):
@@ -2545,8 +2553,8 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_foreach_ceil(self):
     self.do_test_op(
         "_foreach_ceil",
-        exclude_dtypes=[torch.bool],
-        exclude_inplace_dtypes=[torch.bool],
+        exclude_dtypes={"cpu": (torch.bool,)},
+        exclude_inplace_dtypes={"cpu": (torch.bool,)},
     )
 
   @category("foreach")
@@ -2555,9 +2563,15 @@ class TestOps(op_testing.OpInfoTestBase):
         "_foreach_clamp_max",
         # TODO: "clamp_max_scalar_cpu" not implemented for 'Bool'.
         # TODO: fix _foreach_clamp_max() failing with complex dtypes.
-        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+        exclude_dtypes={
+            "cpu": (torch.bool,) + COMPLEX_DTYPES,
+            "gpu": COMPLEX_DTYPES,
+        },
         # TODO: fix _foreach_clamp_max_() failing with complex dtypes.
-        exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+        exclude_inplace_dtypes={
+            "cpu": (torch.bool,) + COMPLEX_DTYPES,
+            "gpu": COMPLEX_DTYPES,
+        },
     )
 
   @category("foreach")
@@ -2566,9 +2580,15 @@ class TestOps(op_testing.OpInfoTestBase):
         "_foreach_clamp_min",
         # TODO: "clamp_min_scalar_cpu" not implemented for 'Bool'.
         # TODO: fix _foreach_clamp_min() failing with complex dtypes.
-        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+        exclude_dtypes={
+            "cpu": (torch.bool,) + COMPLEX_DTYPES,
+            "gpu": COMPLEX_DTYPES,
+        },
         # TODO: fix _foreach_clamp_min_() failing with complex dtypes.
-        exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+        exclude_inplace_dtypes={
+            "cpu": (torch.bool,) + COMPLEX_DTYPES,
+            "gpu": COMPLEX_DTYPES,
+        },
     )
 
   @category("foreach")
@@ -2621,8 +2641,8 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_foreach_floor(self):
     self.do_test_op(
         "_foreach_floor",
-        exclude_dtypes=[torch.bool],
-        exclude_inplace_dtypes=[torch.bool],
+        exclude_dtypes={"cpu": (torch.bool,)},
+        exclude_inplace_dtypes={"cpu": (torch.bool,)},
     )
 
   @category("foreach")
@@ -2671,28 +2691,32 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_foreach_maximum(self):
     self.do_test_op(
         "_foreach_maximum",
-        # TODO: _foreach_maximum() with dtype torch.bool failed on CPU, so it
-        # should fail on TorchTPU too.
         # TODO: fix _foreach_maximum() failing with complex dtypes.
-        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
-        # TODO: _foreach_maximum_() with dtype torch.bool failed on CPU, so it
-        # should fail on TorchTPU too.
+        exclude_dtypes={
+            "cpu": (torch.bool,) + COMPLEX_DTYPES,
+            "gpu": COMPLEX_DTYPES,
+        },
         # TODO: fix _foreach_maximum_() failing with complex dtypes.
-        exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+        exclude_inplace_dtypes={
+            "cpu": (torch.bool,) + COMPLEX_DTYPES,
+            "gpu": COMPLEX_DTYPES,
+        },
     )
 
   @category("foreach")
   def test_foreach_minimum(self):
     self.do_test_op(
         "_foreach_minimum",
-        # TODO: _foreach_minimum() with dtype torch.bool failed on CPU, so it
-        # should fail on TorchTPU too.
         # TODO: fix _foreach_minimum() failing with complex dtypes.
-        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
-        # TODO: _foreach_minimum_() with dtype torch.bool failed on CPU, so it
-        # should fail on TorchTPU too.
+        exclude_dtypes={
+            "cpu": (torch.bool,) + COMPLEX_DTYPES,
+            "gpu": COMPLEX_DTYPES,
+        },
         # TODO: fix _foreach_minimum_() failing with complex dtypes.
-        exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+        exclude_inplace_dtypes={
+            "cpu": (torch.bool,) + COMPLEX_DTYPES,
+            "gpu": COMPLEX_DTYPES,
+        },
     )
 
   @category("foreach")
@@ -2846,7 +2870,6 @@ class TestOps(op_testing.OpInfoTestBase):
         exclude_dtypes={
             "cpu": INTEGRAL_DTYPES + (torch.float16, torch.bfloat16),
             "gpu": (
-                torch.bool,
                 torch.int8,
                 torch.uint8,
                 torch.float16,
@@ -3282,7 +3305,16 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "mm",
         # TODO: fix mm() failing with integral dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES,
+        exclude_dtypes={
+            "cpu": INTEGRAL_DTYPES,
+            "gpu": (
+                torch.uint8,
+                torch.int8,
+                torch.int16,
+                torch.int32,
+                torch.int64,
+            ),
+        },
     )
 
   def test_mul(self):
@@ -3610,14 +3642,34 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_nn_functional_silu(self):
     self.do_test_op(
         "nn.functional.silu",
-        # TODO: fix nn.functional.silu() succeeding with integral dtypes (it
-        # should fail).
         # TODO: fix nn.functional.silu() failing with complex dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
-        # TODO: fix nn.functional.silu_() succeeding with integral dtypes (it
-        # should fail).
+        exclude_dtypes={
+            "cpu": INTEGRAL_DTYPES + COMPLEX_DTYPES,
+            "gpu": (
+                (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                )
+                + COMPLEX_DTYPES
+            ),
+        },
         # TODO: fix nn.functional.silu_() failing with complex dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
+        exclude_inplace_dtypes={
+            "cpu": INTEGRAL_DTYPES + COMPLEX_DTYPES,
+            "gpu": (
+                (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                )
+                + COMPLEX_DTYPES
+            ),
+        },
     )
 
   def test_nn_functional_softplus(self):
@@ -3758,9 +3810,7 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_searchsorted(self):
     self.do_test_op(
         "searchsorted",
-        exclude_dtypes=COMPLEX_DTYPES
-        # and bool dtypes not supported.
-        + (torch.bool,),
+        exclude_dtypes=COMPLEX_DTYPES,
         # Upstream generates 288 samples per dtype; cap to prevent test
         # shard timeouts (10 samples per op dtype results in ~15m test time).
         max_samples_per_op_dtype=6,
@@ -3924,21 +3974,57 @@ class TestOps(op_testing.OpInfoTestBase):
     # TODO: The CPU side fails for complex dtypes and integers.
     self.do_test_op(
         "nn.functional.upsample_nearest",
-        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        exclude_dtypes={
+            "cpu": COMPLEX_DTYPES + INTEGRAL_DTYPES,
+            "gpu": (
+                COMPLEX_DTYPES
+                + (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                )
+            ),
+        },
     )
 
   def test_upsample_bicubic2d(self):
     self.do_test_op(
         "nn.functional.interpolate",
         variant_test_name="bicubic",
-        exclude_dtypes=(COMPLEX_DTYPES + INTEGRAL_DTYPES),
+        exclude_dtypes={
+            "cpu": COMPLEX_DTYPES + INTEGRAL_DTYPES,
+            "gpu": (
+                COMPLEX_DTYPES
+                + (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                )
+            ),
+        },
     )
 
   def test_upsample_bilinear(self):
     # TODO: The CPU side fails for complex dtypes and integers.
     self.do_test_op(
         "nn.functional.upsample_bilinear",
-        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        exclude_dtypes={
+            "cpu": COMPLEX_DTYPES + INTEGRAL_DTYPES,
+            "gpu": (
+                COMPLEX_DTYPES
+                + (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                )
+            ),
+        },
         # TODO: STRICT fails for some types. Look into narrowing this down.
     )
 
@@ -3947,7 +4033,19 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "nn.functional.interpolate",
         variant_test_name="nearest-exact",
-        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        exclude_dtypes={
+            "cpu": COMPLEX_DTYPES + INTEGRAL_DTYPES,
+            "gpu": (
+                COMPLEX_DTYPES
+                + (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                )
+            ),
+        },
     )
 
   def test_var(self):
@@ -4016,7 +4114,7 @@ class TestOps(op_testing.OpInfoTestBase):
             # - No total order for complex numbers.
             # - Inconsistent behaviour on CPU with bool.
             "cpu": COMPLEX_DTYPES + (torch.bool,),
-            "gpu": COMPLEX_DTYPES + (torch.bool,),
+            "gpu": COMPLEX_DTYPES,
         },
     )
 

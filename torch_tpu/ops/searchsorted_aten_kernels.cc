@@ -42,6 +42,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_buffer_utils.h"
@@ -88,6 +89,12 @@ absl::StatusOr<c10::optional<at::Tensor>> ResolveAuxiliaryTensorDevice(
 absl::Status CheckSearchsortedInputs(const at::Tensor& sorted,
                                      const at::Tensor& values,
                                      const c10::optional<at::Tensor>& sorter) {
+  // Reject booleans for non-empty inputs to keep consistent with CUDA impl,
+  // which short-circuits and returns success for empty inputs before
+  // dispatching on the input dtype.
+  TT_RET_CHECK(values.numel() == 0 || values.scalar_type() != at::kBool,
+               error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(values.scalar_type());
   TT_RET_CHECK(sorted.dim() != 0, error::kInvalidArgument)
       << "expected sorted_sequence to have >0 dimension, got 0";
 

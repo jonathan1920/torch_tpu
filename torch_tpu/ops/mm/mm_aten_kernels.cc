@@ -22,10 +22,10 @@
 #include <utility>
 
 #include "ATen/core/TensorBody.h"
-#include "ATen/native/Resize.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
@@ -41,7 +41,6 @@
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/mm/mm.h"
-#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/precision_context.h"
@@ -53,6 +52,15 @@ namespace {
 absl::Status CheckMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
                               at::Tensor& out,
                               std::optional<at::ScalarType> out_dtype) {
+  // Reject booleans for non-empty inputs to keep consistent with CUDA impl
+  // in aten/src/ATen/native/cuda/Blas.cpp, which short-circuits and returns
+  // success for empty inputs or zero reduction dimension before dispatching on
+  // the input dtype.
+  TT_RET_CHECK(
+      lhs.numel() == 0 || rhs.numel() == 0 || lhs.scalar_type() != at::kBool,
+      error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(lhs.scalar_type());
+
   // DType checks.
   TT_RET_CHECK(lhs.scalar_type() == rhs.scalar_type(), error::kInvalidArgument)
       << "expected the two arguments to have the same dtype, got "

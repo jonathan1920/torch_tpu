@@ -36,6 +36,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -147,6 +148,9 @@ at::Tensor AtenNativeDropoutBackward(const at::Tensor& grad_output,
                                      const at::Tensor& mask, double scale) {
   TT_KERNEL(
       OpName::kNativeDropoutBackward, param_keys, (grad_output, mask, scale), {
+        TT_CHECK_THROW(grad_output.scalar_type() != at::kBool,
+                       error::kPythonNotImplementedError)
+            << "not implemented for " << ToString(grad_output.scalar_type());
         TT_CHECK_THROW(mask.scalar_type() == at::kBool, error::kInvalidArgument)
             << "expected mask to be Bool scalar type, got "
             << mask.scalar_type();

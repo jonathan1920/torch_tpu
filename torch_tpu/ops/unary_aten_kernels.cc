@@ -25,6 +25,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "c10/core/ScalarType.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -365,8 +366,7 @@ at::Tensor& AtenSignbitOut(const at::Tensor& self, at::Tensor& out) {
 
 at::Tensor& AtenTruncOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kTruncOut, _, (self, out), {
-    TT_CHECK_THROW(self.scalar_type() != c10::ScalarType::Bool,
-                   error::kInvalidArgument)
+    TT_CHECK_THROW(self.scalar_type() != at::kBool, error::kInvalidArgument)
         << "does not support boolean types";
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, BuildTruncShlo,
@@ -377,14 +377,74 @@ at::Tensor& AtenTruncOut(const at::Tensor& self, at::Tensor& out) {
 
 // go/keep-sorted start
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kBitwiseNotOut, AtenBitwiseNot, BuildNotShlo);
-TT_DEFINE_ATEN_UNARY_OUT(OpName::kCeilOut, AtenCeil, BuildCeilShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kConjPhysicalOut, AtenConjPhysical,
                          BuildConjPhysicalShlo);
-TT_DEFINE_ATEN_UNARY_OUT(OpName::kFloorOut, AtenFloor, BuildFloorShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kLiftFreshOut, AtenLiftFresh,
                          BuildLiftFreshShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kSgnOut, AtenSgn, BuildSgnShlo);
-TT_DEFINE_ATEN_UNARY_OUT(OpName::kSiluOut, AtenSilu, BuildSiluShlo);
 // go/keep-sorted end
+
+at::Tensor AtenCeil(const at::Tensor& self) {
+  TT_KERNEL(OpName::kCeilOut, _, (self), {
+    TT_ASSIGN_OR_THROW(auto result, UnaryOp(self, BuildCeilShlo,
+                                            {.op_param_cache_keys =
+                                                 OpParamCacheKeys::Empty()}));
+    return result;
+  });
+}
+
+at::Tensor& AtenCeilOut(const at::Tensor& self, at::Tensor& out) {
+  TT_KERNEL(OpName::kCeilOut, _, (self, out), {
+    TT_CHECK_THROW(self.scalar_type() != at::kBool,
+                   error::kPythonNotImplementedError)
+        << "not implemented for " << ToString(self.scalar_type());
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, BuildCeilShlo,
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    return out;
+  });
+}
+
+at::Tensor AtenFloor(const at::Tensor& self) {
+  TT_KERNEL(OpName::kFloorOut, _, (self), {
+    TT_ASSIGN_OR_THROW(auto result, UnaryOp(self, BuildFloorShlo,
+                                            {.op_param_cache_keys =
+                                                 OpParamCacheKeys::Empty()}));
+    return result;
+  });
+}
+
+at::Tensor& AtenFloorOut(const at::Tensor& self, at::Tensor& out) {
+  TT_KERNEL(OpName::kFloorOut, _, (self, out), {
+    TT_CHECK_THROW(self.scalar_type() != at::kBool,
+                   error::kPythonNotImplementedError)
+        << "not implemented for " << ToString(self.scalar_type());
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, BuildFloorShlo,
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    return out;
+  });
+}
+
+at::Tensor AtenSilu(const at::Tensor& self) {
+  TT_KERNEL(OpName::kSiluOut, _, (self), {
+    TT_ASSIGN_OR_THROW(auto result, UnaryOp(self, BuildSiluShlo,
+                                            {.op_param_cache_keys =
+                                                 OpParamCacheKeys::Empty()}));
+    return result;
+  });
+}
+
+at::Tensor& AtenSiluOut(const at::Tensor& self, at::Tensor& out) {
+  TT_KERNEL(OpName::kSiluOut, _, (self, out), {
+    TT_CHECK_THROW(self.scalar_type() != at::kBool,
+                   error::kPythonNotImplementedError)
+        << "not implemented for " << ToString(self.scalar_type());
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, BuildSiluShlo,
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    return out;
+  });
+}
 
 }  // namespace torch_tpu

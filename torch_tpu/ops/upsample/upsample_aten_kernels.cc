@@ -27,17 +27,19 @@
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
+#include "c10/core/ScalarType.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -783,6 +785,12 @@ absl::StatusOr<TensorVector> ConstructScaleFactorArray(
   return scale_factor_result;
 }
 
+void CheckNotBool(const at::Tensor& tensor) {
+  TT_CHECK_THROW(tensor.scalar_type() != at::kBool,
+                 error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(tensor.scalar_type());
+}
+
 }  // namespace
 
 at::Tensor& AtenUpsampleNearest1dBackwardGradInput(
@@ -1102,6 +1110,7 @@ at::Tensor& AtenUpsampleBilinear2dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleBilinear2dOut, param_keys,
       (self, upsample_shape, align_corners, scale_h, scale_w, out), {
+        CheckNotBool(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
 
@@ -1171,6 +1180,7 @@ at::Tensor& AtenUpsampleNearest1dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearest1dOut, param_keys,
       (self, upsample_shape, scale, out), {
+        CheckNotBool(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         auto op_builder = [output_shape = CopyIntVector(out.sizes())](
@@ -1210,6 +1220,7 @@ at::Tensor& AtenUpsampleNearest2dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearest2dOut, param_keys,
       (self, upsample_shape, scale_h, scale_w, out), {
+        CheckNotBool(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
 
@@ -1256,6 +1267,7 @@ at::Tensor& AtenUpsampleNearest3dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearest3dOut, param_keys,
       (self, upsample_shape, scale_h, scale_w, scale_d, out), {
+        CheckNotBool(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         auto op_builder = [output_shape = CopyIntVector(out.sizes())](
@@ -1300,6 +1312,7 @@ at::Tensor& AtenUpsampleNearestExact1dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearestExact1dOut, param_keys,
       (self, upsample_shape, scale, out), {
+        CheckNotBool(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         auto op_builder = [output_shape = CopyIntVector(out.sizes())](
@@ -1340,6 +1353,7 @@ at::Tensor& AtenUpsampleNearestExact2dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearestExact2dOut, param_keys,
       (self, upsample_shape, scale_h, scale_w, out), {
+        CheckNotBool(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
 
@@ -1383,6 +1397,7 @@ at::Tensor& AtenUpsampleNearestExact3dOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kUpsampleNearestExact3dOut, param_keys,
       (self, upsample_shape, scale_h, scale_w, scale_d, out), {
+        CheckNotBool(self);
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         auto op_builder = [output_shape = CopyIntVector(out.sizes())](
