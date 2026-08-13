@@ -14,12 +14,20 @@
  * limitations under the License.
  */
 
+#include <string_view>
+
+#include "ATen/core/ATen_fwd.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+#include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep, for at::Tensor mapping
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/repeated_ops_heuristic.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
+#include "xla/pjrt/pjrt_client.h"
 
 namespace torch_tpu {
 namespace py = pybind11;
@@ -29,6 +37,17 @@ namespace {
 void ResetEagerState() {
   ResetRepeatedOpsHeuristicState();
   ClearAllStreams();
+}
+
+std::string_view PyGetMemoryKind(const at::Tensor& tensor) {
+  TT_ASSIGN_OR_THROW(
+      const DeviceBufferRef buffer,
+      MaterializeAndReturn(tensor, MaterializationReason::kDebugMode));
+  TT_ASSIGN_OR_THROW(const xla::PjRtBuffer* pjrt_buffer, buffer.AwaitBuffer());
+  if (pjrt_buffer == nullptr || pjrt_buffer->memory_space() == nullptr) {
+    return "unknown";
+  }
+  return pjrt_buffer->memory_space()->kind();
 }
 
 }  // namespace
@@ -51,6 +70,8 @@ PYBIND11_MODULE(testing, m) {
   m.def("reset_default_device_generators",
         PyResetDefaultDeviceGeneratorsForTesting,
         "Resets the default device generators singleton state.");
+  m.def("get_memory_kind", PyGetMemoryKind, py::arg("tensor"),
+        "Returns the memory space kind of the given tensor's buffer.");
 }
 
 }  // namespace torch_tpu
