@@ -133,6 +133,11 @@ absl::StatusOr<ToType> ConvertTo(mlir::Type mlir_type) {
 // the bitwidth of COMPLEXF32 is 64 and the bitwidth of COMPLEXF64 is 128.
 int64_t TorchEquivalentBitwidth(mlir::ElementType element_type);
 
+// Returns the number of bits used to represent the given element type in XLA.
+// For booleans (PRED), returns 1 bit. For all other types, matches
+// TorchEquivalentBitwidth.
+int64_t XlaEquivalentBitwidth(mlir::ElementType element_type);
+
 // Returns the real component type of the input type.
 //
 // If the input is a complex type, returns the type of its real component;

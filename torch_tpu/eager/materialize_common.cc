@@ -212,12 +212,12 @@ ExtractArgumentLayoutsIfDifferentFromDefault(const Traversal& traversal) {
   for (size_t i = 0; i < arguments.size(); ++i) {
     const DeviceBufferRef& arg = arguments[i];
     const Shape& shape = arg.shape();
-    const std::optional<Indices>& layout_opt = shape.layout();
+    const std::optional<CustomLayout>& layout_opt = shape.layout();
     if (!layout_opt.has_value()) {
       continue;
     }
 
-    const Indices& minor_to_major = *layout_opt;
+    const Indices& minor_to_major = layout_opt->minor_to_major;
     const xla::PrimitiveType element_type =
         ConvertTo<xla::PrimitiveType>(arg.element_type());
     TT_ASSIGN_OR_RETURN(

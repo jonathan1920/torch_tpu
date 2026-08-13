@@ -18,9 +18,11 @@
 
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
@@ -33,7 +35,10 @@ absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape) {
                       ConvertTo<mlir::ElementType>(xla_shape.element_type()));
   Shape shape(CopyIntVector(xla_shape.dimensions()), result_dtype);
   if (xla_shape.has_layout()) {
-    shape.set_layout(CopyIntVector(xla_shape.layout().minor_to_major()));
+    CustomLayout layout;
+    layout.minor_to_major = CopyIntVector(xla_shape.layout().minor_to_major());
+    layout.element_size_in_bits = XlaEquivalentBitwidth(result_dtype);
+    shape.set_layout(std::move(layout));
   }
   return shape;
 }

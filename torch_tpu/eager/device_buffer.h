@@ -739,8 +739,11 @@ class DeviceBufferList {
     const xla::Shape& on_device_shape = buffer_ptr->on_device_shape();
     Shape shape(CopyIntVector(on_device_shape.dimensions()), element_type);
     if (on_device_shape.has_layout()) {
-      shape.set_layout(
-          CopyIntVector(on_device_shape.layout().minor_to_major()));
+      CustomLayout layout;
+      layout.minor_to_major =
+          CopyIntVector(on_device_shape.layout().minor_to_major());
+      layout.element_size_in_bits = XlaEquivalentBitwidth(element_type);
+      shape.set_layout(std::move(layout));
     }
     shapes_.push_back(std::move(shape));
 

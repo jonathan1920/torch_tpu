@@ -22,10 +22,35 @@
 #include "gtest/gtest.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 
 namespace torch_tpu {
 namespace {
+
+TEST(LayoutUtilsTest, XlaEquivalentBitwidth) {
+  EXPECT_EQ(XlaEquivalentBitwidth(mlir::ElementType::PRED), 1);
+  EXPECT_EQ(TorchEquivalentBitwidth(mlir::ElementType::PRED), 8);
+  EXPECT_EQ(XlaEquivalentBitwidth(mlir::ElementType::F32), 32);
+  EXPECT_EQ(XlaEquivalentBitwidth(mlir::ElementType::BF16), 16);
+  EXPECT_EQ(XlaEquivalentBitwidth(mlir::ElementType::I8), 8);
+  EXPECT_EQ(XlaEquivalentBitwidth(mlir::ElementType::I4), 4);
+}
+
+TEST(LayoutUtilsTest, CustomLayoutTilingAndEquality) {
+  CustomLayout layout1;
+  layout1.minor_to_major = {1, 0};
+  layout1.tiles.push_back(Indices({8, 128}));
+  layout1.element_size_in_bits = 32;
+  CustomLayout layout2 = layout1;
+  EXPECT_EQ(layout1, layout2);
+  Shape shape({100, 128}, mlir::ElementType::F32);
+  shape.set_layout(layout1);
+  ASSERT_TRUE(shape.layout().has_value());
+  EXPECT_EQ(*shape.layout(), layout1);
+  EXPECT_EQ(shape.layout()->tiles[0], Indices({8, 128}));
+}
 
 TEST(LayoutUtilsTest, ResolveTpuLayout_StandardTensor_Success) {
   auto tensor = at::empty({2, 3}, at::TensorOptions().dtype(at::kFloat));

@@ -126,8 +126,10 @@ torch_tpu_cc_test(
     srcs = ["layout_utils_test.cc"],
     deps = [
         ":dimension_types",
+        ":dtype",
         ":error_utils",
         ":layout_utils",
+        ":shape",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",

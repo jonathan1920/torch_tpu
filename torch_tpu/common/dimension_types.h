@@ -38,6 +38,19 @@ using Strides = absl::InlinedVector<int64_t, kNumInlinedDimensions>;
 // Holds an array of indices efficiently.
 using Indices = absl::InlinedVector<int64_t, kNumInlinedDimensions>;
 
+// Compact device layout struct to represent minor_to_major, tiles, and element
+// size without coupling core headers to xla/layout.h.
+struct CustomLayout {
+  Indices minor_to_major;
+  absl::InlinedVector<Indices, 1> tiles;
+  int64_t element_size_in_bits = 0;
+
+  friend bool operator==(const CustomLayout& lhs, const CustomLayout& rhs) {
+    return lhs.minor_to_major == rhs.minor_to_major && lhs.tiles == rhs.tiles &&
+           lhs.element_size_in_bits == rhs.element_size_in_bits;
+  }
+};
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_COMMON_DIMENSION_TYPES_H_

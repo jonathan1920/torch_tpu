@@ -727,6 +727,13 @@ int64_t TorchEquivalentBitwidth(mlir::ElementType element_type) {
   }
 }
 
+int64_t XlaEquivalentBitwidth(const mlir::ElementType element_type) {
+  if (element_type == mlir::ElementType::PRED) {
+    return 1;
+  }
+  return TorchEquivalentBitwidth(element_type);
+}
+
 mlir::ElementType RealComponentOf(const mlir::ElementType element_type) {
   switch (element_type) {
     case mlir::ElementType::COMPLEXF32:

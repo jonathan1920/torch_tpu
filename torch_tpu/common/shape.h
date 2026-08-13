@@ -80,8 +80,8 @@ class Shape {
     return dynamic_dimensions_;
   }
 
-  const std::optional<Indices>& layout() const { return layout_; }
-  void set_layout(Indices layout) { layout_ = std::move(layout); }
+  const std::optional<CustomLayout>& layout() const { return layout_; }
+  void set_layout(CustomLayout layout) { layout_ = std::move(layout); }
 
   friend bool operator==(const Shape& lhs, const Shape& rhs) {
     return lhs.dtype_ == rhs.dtype_ && lhs.dimensions_ == rhs.dimensions_ &&
@@ -98,10 +98,10 @@ class Shape {
   // most dynamic Shapes are dynamic in 1 dimension only, so this allows for
   // no heap allocation in the common case.
   absl::InlinedVector<BoundedDynamicDimension, 1> dynamic_dimensions_;
-  std::optional<Indices> layout_;
+  std::optional<CustomLayout> layout_;
 };
 
-static_assert(sizeof(Shape) == 160);
+static_assert(sizeof(Shape) == 232);
 
 // Converts an XLA shape to a torch_tpu shape.
 absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape);
