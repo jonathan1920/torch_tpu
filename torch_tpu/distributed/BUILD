@@ -79,6 +79,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "process_group_tpu_test",
     srcs = ["process_group_tpu_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     requires_libtpu = True,
     deps = [
         ":process_group_tpu",
