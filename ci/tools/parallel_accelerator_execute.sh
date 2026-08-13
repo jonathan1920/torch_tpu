@@ -88,18 +88,19 @@ while true; do
   for j in `seq 0 $((TORCH_TPU_TESTS_PER_ACCELERATOR-1))`; do
     for i in `seq 0 $((TORCH_TPU_ACCELERATOR_COUNT-1))`; do
       exec {lock_fd}>/var/lock/torch_tpu_accelerator_lock_${i}_${j} || exit 1
-      if flock -n "$lock_fd";
-      then
+      if flock -n "$lock_fd"; then
         (
           # This export only works within the brackets, so it is isolated to one
           # single command.
           export TPU_VISIBLE_CHIPS=$i
           echo "Running test $TEST_BINARY $* on accelerator $i"
-          "$TEST_BINARY" $@
+          "$TEST_BINARY" "$@"
         )
         return_code=$?
-        # flock locks are automatically released when the FD is closed.
+        exec {lock_fd}>&-
         exit $return_code
+      else
+        exec {lock_fd}>&-
       fi
     done
   done
