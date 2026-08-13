@@ -41,7 +41,7 @@ jobs:
       - name: Run Bazel RBE Test Suite
         run: |
           bazel test \
-            --config=ci_tpu_v7 \
+            --config=ci_tpu_v7_presubmit \
             --bes_backend="" \
             --noremote_upload_local_results \
             --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" \
