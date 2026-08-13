@@ -530,23 +530,28 @@ def _get_max_seq_len(
   Returns:
     The determined maximum sequence length.
   """
-  for attr in [
-      "max_position_embeddings",
-      "n_positions",
-      "seq_length",
-      "max_seq_len",
-  ]:
-    if hasattr(config, attr):
-      value = getattr(config, attr)
-      # Some configs have this set to huge numbers (e.g. integer limit)
-      # or None. We cap it to an arbitrary value.
-      if value is not None and value < _MAX_SEQ_LEN_HEURISTIC_CAP:
-        return value
+  configs_to_check = [config]
+  if hasattr(config, "text_config") and config.text_config is not None:
+    configs_to_check.append(config.text_config)
+
+  for cfg in configs_to_check:
+    for attr in [
+        "max_position_embeddings",
+        "n_positions",
+        "seq_length",
+        "max_seq_len",
+    ]:
+      if hasattr(cfg, attr):
+        value = getattr(cfg, attr)
+        # Some configs have this set to huge numbers (e.g. integer limit)
+        # or None. We cap it to an arbitrary value.
+        if value is not None and value < _MAX_SEQ_LEN_HEURISTIC_CAP:
+          return value
 
     # Check tokenizer-specific max length if available in config
     # (Sometimes 'model_max_length' is injected into config).
-    if hasattr(config, "model_max_length"):
-      value = config.model_max_length
+    if hasattr(cfg, "model_max_length"):
+      value = cfg.model_max_length
       if value is not None and value < _MAX_SEQ_LEN_HEURISTIC_CAP:
         return value
 
@@ -955,6 +960,8 @@ def _generate_transformers_inputs(
       input_kwargs["attention_mask"] = torch.ones(
           actual_shape, device=device, dtype=torch.long
       )
+      # High speaking_rate prevents uninitialized to_empty log_duration exp() overflow
+      input_kwargs["speaking_rate"] = 1e15
     else:
       seq_len = shape[1] if shape and len(shape) > 1 else 16000
       input_kwargs["input_values"] = torch.randn(
@@ -1137,6 +1144,9 @@ class TransformersProvider(BaseProvider):
     if not load_weights and hasattr(config, "use_pretrained_backbone"):
       config.use_pretrained_backbone = False
 
+    if not load_weights and getattr(config, "model_type", "") == "vits":
+      config.use_stochastic_duration_prediction = False
+
     modality = _determine_modality(config)
 
     if load_weights:
@@ -1193,6 +1203,15 @@ class TransformersProvider(BaseProvider):
         )
         if target_dtype != torch.float32:
           m = m.to(dtype=target_dtype)
+        if getattr(config, "model_type", "") == "vits":
+          # Zero TPU float weights before forward pass to prevent uninitialized
+          # VITS duration_predictor arange overflow and flow layer negative discriminants.
+          def _vits_pre_hook(module, *_unused_args, **_unused_kwargs):
+            for p in module.parameters():
+              if p.device.type != "meta" and p.dtype.is_floating_point:
+                p.data.zero_()
+
+          m.register_forward_pre_hook(_vits_pre_hook)
         return m
 
       model_fn = _create_model
