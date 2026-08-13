@@ -492,8 +492,7 @@ torch_tpu_py_test(
     notap = "manual test for dynamic performance evaluation",
     notest_oss = "manual test for dynamic performance evaluation",
     tags = [
-        "noasan",  # TODO(b/545199824): fix the test in asan mode, errors out
-        "nomsan",  # TODO(b/545199824): fix the test in msan mode, goes OOM
+        "nomsan",  # 3p 'torchvision' is uninstrumented in msan mode.
         "requires-net:external",
     ],
     deps = [

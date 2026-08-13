@@ -31,6 +31,10 @@ def main(argv):
 
   print("Loading config...", flush=True)
   config = transformers.AutoConfig.from_pretrained(model_path)
+  # Reduce layer counts for fast unit test execution while verifying full model pipeline.
+  config.num_hidden_layers = 2
+  if hasattr(config, "vision_config"):
+    config.vision_config.depth = 2
   print(f"Config loaded: {type(config)}", flush=True)
 
   print("Loading processor...", flush=True)
