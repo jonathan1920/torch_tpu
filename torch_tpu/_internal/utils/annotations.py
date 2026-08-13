@@ -22,9 +22,10 @@ inspection by scanner tools, and emit standard Python runtime warnings
 (UserWarning, DeprecationWarning) on the first invocation per process.
 """
 
+import dataclasses
 import enum
 import functools
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Mapping, Optional, TypeVar
 import warnings
 
 _T = TypeVar("_T")
@@ -36,7 +37,7 @@ TT_API_DEPRECATED_VERSION = "__tt_api_deprecated_version__"
 
 class Stage(str, enum.Enum):
   """Lifecycle stages for TorchTPU APIs."""
-
+  INTERNAL = "Internal"
   STABLE = "Stable"
   EXPERIMENTAL = "Experimental"
   DEPRECATED = "Deprecated"
@@ -62,6 +63,25 @@ class Stage(str, enum.Enum):
           f" removed in a future release: {reason}"
       )
     return ""
+
+
+@dataclasses.dataclass(frozen=True)
+class ApiStageInfo:
+  """Stage metadata for dynamic module/class attributes.
+
+  Attributes:
+    stage: The API readiness Stage (INTERNAL, STABLE, EXPERIMENTAL, DEPRECATED).
+    reason: Human-readable rationale for the lifecycle stage.
+    value: Optional runtime implementation value or object returned by
+      resolve_module_attribute.
+    version: Deprecation version string (e.g. "2.13"), used if stage is
+      DEPRECATED.
+  """
+
+  stage: Stage
+  reason: str
+  value: Any = None
+  version: Optional[str] = None
 
 
 def _safe_setattr(target: Any, name: str, value: Any) -> None:
@@ -259,3 +279,45 @@ def deprecated(version: str, reason: str) -> Callable[[_T], _T]:
   return lambda target: _annotate_target(
       target, stage=Stage.DEPRECATED, reason=reason, version=version
   )
+
+
+def _resolve_module_attribute(
+    stages_map: Mapping[str, ApiStageInfo],
+    name: str,
+    module_name: str,
+    tt_api_globals: Optional[dict[str, Any]],
+) -> Any:
+  """Resolves a dynamic module attribute from a stages map and emits warnings if applicable.
+
+  Optionally caches the resolved value into tt_api_globals dict so that
+  subsequent accesses in the same process hit globals() directly with zero
+  warning overhead.
+
+  Args:
+    stages_map: Dictionary mapping attribute names to ApiStageInfo objects.
+    name: The name of the attribute to resolve.
+    module_name: The display name of the module for error/warning messages.
+    tt_api_globals: Optional globals() dictionary of the calling module to cache
+      the resolved value.
+
+  Returns:
+    The attribute value stored in stages_map for the given name.
+
+  Raises:
+    AttributeError: If name is not registered in stages_map.
+  """
+  if name not in stages_map:
+    raise AttributeError(f"module '{module_name}' has no attribute '{name}'")
+
+  info = stages_map[name]
+  cat = info.stage.warning_category
+  if cat:
+    msg = info.stage.format_warning_message(
+        f"'{name}'", info.reason, info.version
+    )
+    warnings.warn(msg, category=cat, stacklevel=3)
+
+  if tt_api_globals is not None:
+    tt_api_globals[name] = info.value
+
+  return info.value

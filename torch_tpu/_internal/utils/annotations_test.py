@@ -15,13 +15,18 @@
 """Unit tests for TorchTPU API lifecycle stage annotations."""
 
 import enum
+from typing import Any
+from unittest import mock
 import warnings
 
 from absl.testing import absltest
-from torch_tpu._internal.device._device_module import _DeviceModule
+from torch_tpu._internal.device import _device_module
+from torch_tpu._internal.device import _tpu_backend_config
 from torch_tpu._internal.precision.precision_impl import Precision
 from torch_tpu._internal.utils import annotations
 
+
+_DeviceModule = _device_module._DeviceModule
 experimental = annotations.experimental
 stable = annotations.stable
 deprecated = annotations.deprecated
@@ -331,6 +336,125 @@ class AnnotationsTest(absltest.TestCase):
         "StableHLO precision",
         getattr(cls, annotations.TT_API_STAGE_REASON, ""),
     )
+
+  @mock.patch.object(
+      _device_module._device_ops_backend,
+      "get_default_generator",
+      return_value="mock_generator",
+  )
+  @mock.patch.object(
+      _device_module._DeviceModule, "current_device", return_value=0
+  )
+  @mock.patch.object(
+      _device_module._DeviceModule, "device_count", return_value=1
+  )
+  def test_annotated_real_api_property_default_generators(
+      self, _mock_count, _mock_current, _mock_gen
+  ):
+    """Verifies default_generators emits UserWarning on 1st access and no additional warnings on 2nd access."""
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+
+      # 1st access: emits 1 UserWarning and returns default generators
+      gens1 = _device_module._DeviceModule.default_generators
+      self.assertEqual(gens1, ("mock_generator",))
+      self.assertLen(w, 1)
+      self.assertTrue(issubclass(w[0].category, UserWarning))
+      self.assertIn("'default_generators' is experimental", str(w[0].message))
+
+      # 2nd access: cached on class, emits 0 additional warnings
+      gens2 = _device_module._DeviceModule.default_generators
+      self.assertEqual(gens1, gens2)
+      self.assertLen(w, 1)
+
+  def test_static_class_attributes_bypass_getattr_and_warnings(self):
+    """Verifies accessing static class attributes defined on _DeviceModule does not trigger __getattr__ or warnings."""
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+
+      # Accessing static attributes physically defined in _DeviceModule class body
+      _ = _device_module._DeviceModule.current_device
+      _ = _device_module._DeviceModule._autocast_enabled
+      # 0 warnings emitted, proving __getattr__ was bypassed completely
+      self.assertEmpty(w)
+
+  def test_annotated_real_api_property_allow_excess_precision(self):
+    """Verifies allow_excess_precision property emits UserWarning on 1st access and no additional warnings on 2nd access."""
+    cfg = _tpu_backend_config._TpuBackendConfig()
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+
+      # 1st access: emits 1 UserWarning
+      _ = cfg.allow_excess_precision
+      self.assertLen(w, 1)
+      self.assertTrue(issubclass(w[0].category, UserWarning))
+      self.assertIn("allow_excess_precision is experimental", str(w[0].message))
+
+      # 2nd access: emits 0 additional warnings
+      _ = cfg.allow_excess_precision
+      self.assertLen(w, 1)
+
+  def test_pep562_module_getattr_resolution_and_suppression(self):
+    """Verifies PEP 562 __getattr__ module attribute resolution, warnings, caching, and AttributeError."""
+    mock_tt_api_stages = {
+        "EXPERIMENTAL_CONST": annotations.ApiStageInfo(
+            stage=annotations.Stage.EXPERIMENTAL,
+            reason="Experimental constant.",
+            value=42,
+        ),
+        "DEPRECATED_CONST": annotations.ApiStageInfo(
+            stage=annotations.Stage.DEPRECATED,
+            reason="Use NEW_CONST instead.",
+            value="legacy_val",
+            version="2.13",
+        ),
+    }
+    mock_module_globals = {}
+
+    def mock_module_getattr(name: str) -> Any:
+      if name in mock_module_globals:
+        return mock_module_globals[name]
+      return annotations._resolve_module_attribute(
+          mock_tt_api_stages,
+          name,
+          "mock_module",
+          tt_api_globals=mock_module_globals,
+      )
+
+    # 1. Experimental attribute: warning on 1st access, 0 on 2nd access
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      val1 = mock_module_getattr("EXPERIMENTAL_CONST")
+      self.assertEqual(val1, 42)
+      self.assertLen(w, 1)
+      self.assertTrue(issubclass(w[0].category, UserWarning))
+      self.assertIn("'EXPERIMENTAL_CONST' is experimental", str(w[0].message))
+
+      # 2nd access hits mock_module_globals directly
+      val2 = mock_module_getattr("EXPERIMENTAL_CONST")
+      self.assertEqual(val2, 42)
+      self.assertLen(w, 1)
+
+    # 2. Deprecated attribute: DeprecationWarning on 1st access
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      val = mock_module_getattr("DEPRECATED_CONST")
+      self.assertEqual(val, "legacy_val")
+      self.assertLen(w, 1)
+      self.assertTrue(issubclass(w[0].category, DeprecationWarning))
+      self.assertIn(
+          "'DEPRECATED_CONST' is deprecated as of TorchTPU 2.13",
+          str(w[0].message),
+      )
+
+      # 2nd access hits mock_module_globals directly
+      val2 = mock_module_getattr("DEPRECATED_CONST")
+      self.assertEqual(val2, "legacy_val")
+      self.assertLen(w, 1)
+
+    # 3. Unregistered attribute raises AttributeError
+    with self.assertRaises(AttributeError):
+      mock_module_getattr("UNKNOWN_CONST")
 
 
 if __name__ == "__main__":

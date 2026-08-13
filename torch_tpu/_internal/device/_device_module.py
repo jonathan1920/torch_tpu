@@ -27,8 +27,10 @@ import torch
 from torch_tpu._internal.device import _device_ops_backend
 import torch_tpu._internal.precision as _precision_module
 from torch_tpu._internal.stream import streams
+from torch_tpu._internal.utils import annotations
 from torch_tpu._internal.utils import hardware
-from torch_tpu._internal.utils.annotations import experimental
+
+experimental = annotations.experimental
 
 # TODO: add more dtypes here. Initial list was chosen arbitrarily.
 _AMP_SUPPORTED_DTYPES = (
@@ -78,6 +80,27 @@ class _DefaultGeneratorsProperty:
           for i in range(owner.device_count())
       )
     return self._cached_tuple
+
+
+# __tt_api_stages__ maps attribute names to ApiStageInfo stage metadata.
+#
+# Tracks lifecycle stage annotations for module attributes on `torch.tpu`. Each
+# entry maps an attribute name to an `annotations.ApiStageInfo` containing
+# `stage`, `reason`, optional `value`, and optional `version` for deprecated
+# attributes.
+#
+# - Attributes present in __tt_api_stages__ emit stage warnings on access.
+# - Attributes physically defined on the class but absent from this map
+#   are considered STABLE (unannotated).
+# - Attributes NOT defined on the class raise AttributeError in __getattr__ on
+#   access.
+__tt_api_stages__: dict[str, annotations.ApiStageInfo] = {
+    "default_generators": annotations.ApiStageInfo(
+        stage=annotations.Stage.EXPERIMENTAL,
+        reason="Default generators for TPU devices.",
+        value=_DefaultGeneratorsProperty(),
+    ),
+}
 
 
 def _rng_validate_device_index(
@@ -178,7 +201,27 @@ class _DeviceOfContext(_DeviceContext):
     super().__init__(idx)
 
 
-class _DeviceModule(abc.ABC):
+class _DeviceModuleMeta(abc.ABCMeta):
+  """Metaclass for _DeviceModule to intercept class-level attribute access.
+
+  Handles dynamic attribute resolution for future deprecated or fallback
+  attributes on `torch.tpu` registered in `__tt_api_stages__`.
+  """
+
+  def __getattr__(cls, name: str) -> Any:
+    stages_map = getattr(cls, "__tt_api_stages__", {})
+    # tt_api_globals is None because resolved attributes are cached directly on
+    # `cls` via `type.__setattr__` below, bypassing __getattr__ on 2nd access.
+    val = annotations._resolve_module_attribute(
+        stages_map, name, "torch.tpu", tt_api_globals=None
+    )
+    type.__setattr__(cls, name, val)
+    if hasattr(val, "__get__"):
+      return val.__get__(None, cls)
+    return val
+
+
+class _DeviceModule(abc.ABC, metaclass=_DeviceModuleMeta):
   """torch_tpu device equivalent to functions in "torch/cuda/__init__.py".
 
   https://github.com/pytorch/pytorch/blob/v2.7.0/torch/cuda/__init__.py
@@ -190,6 +233,10 @@ class _DeviceModule(abc.ABC):
   to make sure they are not accidentally exposed to the public API by adding a
   leading underscore to the names of internal methods.
   """
+
+  # Expose module-level __tt_api_stages__ map as a class attribute so
+  # _DeviceModuleMeta.__getattr__ can access stage metadata on the class.
+  __tt_api_stages__ = __tt_api_stages__
 
   # device_count and current_device are None until device_count() and
   # current_device() are called.
@@ -205,9 +252,6 @@ class _DeviceModule(abc.ABC):
 
   Precision = _precision_module.Precision  # pylint: disable=invalid-name
   precision = _precision_module.precision
-  # A sequence of default generators, one per device, matching the exact
-  # type and behavior of PyTorch's native `torch.cuda.default_generators`.
-  default_generators = _DefaultGeneratorsProperty()
 
   # This method is called when a subclass of this abstract base class is
   # created. As of Python 3.15, there is no obviously supported way of declaring

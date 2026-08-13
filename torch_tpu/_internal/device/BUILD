@@ -83,6 +83,7 @@ torch_tpu_py_library(
     srcs = ["_tpu_backend_config.py"],
     deps = [
         ":_device_ops_backend",
+        "//torch_tpu/_internal/utils:annotations",
     ],
 )
 

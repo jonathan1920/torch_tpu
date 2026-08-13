@@ -14,13 +14,35 @@
 
 """torch.backends.tpu configurations."""
 
+from typing import Any
+
 from torch_tpu._internal.device import _device_ops_backend
+from torch_tpu._internal.utils import annotations
+
+__tt_api_stages__: dict[str, annotations.ApiStageInfo] = {}
 
 
 class _TpuBackendConfig:
   """Configurations bound to torch.backends.tpu."""
 
+  __tt_api_stages__ = __tt_api_stages__
+
+  # Dynamic attribute lookup for deprecated or fallback module attributes.
+  # tt_api_globals is set to self.__dict__ so resolved attributes are cached
+  # on the instance dict, bypassing __getattr__ on 2nd access.
+  def __getattr__(self, name: str) -> Any:
+    return annotations._resolve_module_attribute(
+        self.__tt_api_stages__,
+        name,
+        "torch.backends.tpu",
+        tt_api_globals=self.__dict__,
+    )
+
   @property
+  @annotations.experimental(
+      "allow_excess_precision is experimental and may change or be removed "
+      "without notice."
+  )
   def allow_excess_precision(self) -> bool:
     """Whether XLA is allowed to use excess precision.
 
@@ -32,6 +54,10 @@ class _TpuBackendConfig:
     return _device_ops_backend._get_allow_excess_precision()
 
   @allow_excess_precision.setter
+  @annotations.experimental(
+      "allow_excess_precision is experimental and may change or be removed "
+      "without notice."
+  )
   def allow_excess_precision(self, value: bool):
     """Sets whether XLA is allowed to use excess precision.
 
