@@ -630,14 +630,37 @@ class JaxCallable:
       )
       with jax._src.config.export_ignore_forward_compatibility(True):
         lowered = self.exported(*jax_args, **kwargs)
+      # Normalize the MLIR module without location debug info so that
+      # differing caller stack frames produce the same deterministic fingerprint
+      # and reuse the compiled executable cache.
+      # Note that this only removes the outer module's debug information (#loc),
+      # not the inner debug info embedded inside the base64-encoded kernel
+      # (custom_call_config.body), which contains the Mosaic MLIR debug info
+      # that is more useful for debugging / profiling than the outer tracing
+      # call stack. The exact outer tracing call stack is deterministic but
+      # unstable, depending on which layer/callsite happens to trace first.
+      with jax.interpreters.mlir.make_ir_context():
+        ir_module = jax.interpreters.mlir.ir.Module.parse(lowered.mlir_module())
+        normalized_mlir = str(
+            ir_module.operation.get_asm(enable_debug_info=False)
+        )
       # BLAKE2 is significantly faster than SHA-256, and 128 bits (16 bytes)
       # provides enough collision resistance before being fingerprinted down to
       # 64 bits in lower layers.
       mlir_fingerprint = hashlib.blake2b(
-          lowered.mlir_module_serialized,
+          normalized_mlir.encode("utf-8"),
           digest_size=16,
       ).hexdigest()
       self.kernel_key_to_mlir_fingerprint[kernel_key] = mlir_fingerprint
+
+      logging.debug(
+          "Pallas kernel '%s' (invocation kernel_key=%s -> mlir_fingerprint=%s)"
+          " MLIR module:\n%s",
+          self.name,
+          kernel_key,
+          mlir_fingerprint,
+          normalized_mlir,
+      )
 
       tpu_torch_pallas.register_custom_kernel(
           self.name,

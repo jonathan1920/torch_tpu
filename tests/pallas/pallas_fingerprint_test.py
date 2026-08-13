@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import dataclasses
+from typing import Any
 from unittest import mock
 
 from absl.testing import absltest
@@ -25,8 +26,20 @@ from torch_tpu._internal import pallas
 from torch_tpu._internal import testing as tt_testing
 from tests import seed_test_utils
 
-_MOCK_MLIR_MODULE = b"mock_mlir_module_serialized"
-_EXPECTED_FINGERPRINT = "681dfc1a284fe585c710dec818ae9fee"
+_MOCK_MLIR_MODULE_SERIALIZED = b"mock_mlir_module_serialized"
+_MOCK_MLIR_MODULE = "module {}"
+_EXPECTED_FINGERPRINT = "610b806f2760cd2f9744abe7dfcab222"
+
+
+@dataclasses.dataclass
+class _MockExported:
+  mlir_module_serialized: bytes
+  out_avals: Any
+  out_tree: Any
+  mlir_module_text: str = _MOCK_MLIR_MODULE
+
+  def mlir_module(self) -> str:
+    return self.mlir_module_text
 
 
 def fingerprint_test_kernel_body(x_ref, y_ref, o_ref):
@@ -54,16 +67,17 @@ class PallasFingerprintTest(seed_test_utils.RepeatableTest):
 
     real_exported = op._init_fn.exported
 
-    # Override `op._init_fn.exported` to return a fixed constant
-    # `mlir_module_serialized` payload. JAX embeds source locations and dynamic
-    # IR structures in MLIR bytecode, causing raw fingerprint hashes to change
-    # whenever lines shift or JAX internal lowerings update. Replacing
-    # `mlir_module_serialized` with constant bytes decouples the test from
-    # compiler internals while verifying fingerprint computation stability.
+    # Override `op._init_fn.exported` to return a fixed constant MLIR module
+    # and serialized payload. Although outer module `#loc` debug info is
+    # stripped during normalization, the embedded Pallas kernel MLIR inside
+    # `custom_call_config.body` still contains `#loc` and source paths.
     def mock_exported(*args, **kwargs):
       lowered = real_exported(*args, **kwargs)
-      return dataclasses.replace(
-          lowered, mlir_module_serialized=_MOCK_MLIR_MODULE
+      return _MockExported(
+          mlir_module_serialized=_MOCK_MLIR_MODULE_SERIALIZED,
+          out_avals=lowered.out_avals,
+          out_tree=lowered.out_tree,
+          mlir_module_text=_MOCK_MLIR_MODULE,
       )
 
     op._init_fn.exported = mock_exported
@@ -86,7 +100,7 @@ class PallasFingerprintTest(seed_test_utils.RepeatableTest):
       mock_register.assert_called_once_with(
           "pallas::test_add_1",
           _EXPECTED_FINGERPRINT,
-          serialized_mlir_module=_MOCK_MLIR_MODULE,
+          serialized_mlir_module=_MOCK_MLIR_MODULE_SERIALIZED,
       )
       mock_call.assert_called_once_with(
           "pallas::test_add_1",
