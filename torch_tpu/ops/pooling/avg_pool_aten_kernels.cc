@@ -420,7 +420,7 @@ absl::StatusOr<mlir::MlirOp> BuildAvgPoolBackwardShlo(
       limit_indices[i] = input_type.getShape()[i];
     } else {  // Spatial dims
       int spatial_idx = i - (num_dims - spatial_dim_count);
-      int64_t fwd_pad_low = ceil_padding_pairs[spatial_idx].first;
+      int64_t fwd_pad_low = ceil_padding_pairs[spatial_idx].left;
       start_indices[i] = fwd_pad_low;
       limit_indices[i] = fwd_pad_low + input_type.getShape()[i];
 

@@ -71,10 +71,22 @@ namespace torch_tpu {
 
 namespace {
 
+struct SdpaKernelKey {
+  at::ScalarType dtype = at::ScalarType::Undefined;
+  bool is_causal = false;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const SdpaKernelKey& k) {
+    return H::combine(std::move(h), k.dtype, k.is_causal);
+  }
+
+  bool operator==(const SdpaKernelKey& other) const = default;
+};
+
 absl::StatusOr<std::string_view> GetSdpaForwardKernel(at::ScalarType dtype,
                                                       bool is_causal) {
   static const absl::NoDestructor<
-      absl::flat_hash_map<std::pair<at::ScalarType, bool>, std::string_view>>
+      absl::flat_hash_map<SdpaKernelKey, std::string_view>>
       kKernelMap({
           {{at::kFloat, true},
            std::string_view(
@@ -105,7 +117,7 @@ absl::StatusOr<std::string_view> GetSdpaForwardKernel(at::ScalarType dtype,
 absl::StatusOr<std::string_view> GetSdpaBackwardKernel(at::ScalarType dtype,
                                                        bool is_causal) {
   static const absl::NoDestructor<
-      absl::flat_hash_map<std::pair<at::ScalarType, bool>, std::string_view>>
+      absl::flat_hash_map<SdpaKernelKey, std::string_view>>
       kKernelMap({
           {{at::kFloat, true},
            std::string_view(

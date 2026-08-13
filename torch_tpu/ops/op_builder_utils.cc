@@ -617,8 +617,9 @@ absl::StatusOr<mlir::MlirOp> Broadcast(mlir::MlirOp input,
   return broadcasted_op;
 }
 
-absl::StatusOr<std::pair<mlir::MlirOp, mlir::MlirOp>> ConvertIfIntegers(
-    mlir::MlirOp op1, mlir::MlirOp op2, mlir::ElementType target_dtype) {
+absl::StatusOr<ConvertedOps> ConvertIfIntegers(mlir::MlirOp op1,
+                                               mlir::MlirOp op2,
+                                               mlir::ElementType target_dtype) {
   ABSL_VLOG(1) << "[ConvertIfIntegers] op1: " << op1.ToString()
                << "\nop2: " << op2.ToString();
 
@@ -630,7 +631,7 @@ absl::StatusOr<std::pair<mlir::MlirOp, mlir::MlirOp>> ConvertIfIntegers(
   if (op2_type.getElementType().isInteger()) {
     op2 = stablehlo::ConvertElementType(op2, target_dtype);
   }
-  return std::make_pair(op1, op2);
+  return ConvertedOps{.op1 = op1, .op2 = op2};
 }
 
 absl::StatusOr<mlir::MlirOp> ConvertIfInteger(mlir::MlirOp op,

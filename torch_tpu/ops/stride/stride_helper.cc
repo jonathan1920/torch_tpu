@@ -52,8 +52,8 @@ namespace {
 // Size and stride pair for one dimension of a tensor. Used by IsOverlapping
 // to sort axes to row-major order.
 struct SizeAndStride {
-  int64_t size;
-  int64_t stride;
+  int64_t size = 0;
+  int64_t stride = 0;
 };
 
 }  // namespace

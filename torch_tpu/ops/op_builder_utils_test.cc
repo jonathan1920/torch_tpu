@@ -104,8 +104,10 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int) {
 
   mlir::RankedTensorType default_type = mlir::RankedTensorType::get(
       {}, *GetMlirType(builder.getContext(), GetDefaultMlirDType()));
-  EXPECT_EQ(result->first.getType(), default_type);
-  EXPECT_EQ(result->second.getType(), default_type);
+  // TODO(b/545276070): Unwrap result safely using ASSERT_OK_AND_ASSIGN (or
+  // TF_ASSERT_OK_AND_ASSIGN in OSS) instead of unchecked access.
+  EXPECT_EQ(result->op1.getType(), default_type);  // NOLINT
+  EXPECT_EQ(result->op2.getType(), default_type);  // NOLINT
 }
 
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float) {
@@ -126,8 +128,10 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float) {
 
   auto result = ConvertIfIntegers(op1, op2, default_mlir_type);
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ(result->first.getType(), type);
-  EXPECT_EQ(result->second.getType(), type);
+  // TODO(b/545276070): Unwrap result safely using ASSERT_OK_AND_ASSIGN (or
+  // TF_ASSERT_OK_AND_ASSIGN in OSS) instead of unchecked access.
+  EXPECT_EQ(result->op1.getType(), type);  // NOLINT
+  EXPECT_EQ(result->op2.getType(), type);  // NOLINT
 }
 
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int_Float) {
@@ -151,8 +155,10 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int_Float) {
 
   auto result = ConvertIfIntegers(op1, op2, default_mlir_type);
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ(result->first.getType(), float_type);
-  EXPECT_EQ(result->second.getType(), float_type);
+  // TODO(b/545276070): Unwrap result safely using ASSERT_OK_AND_ASSIGN (or
+  // TF_ASSERT_OK_AND_ASSIGN in OSS) instead of unchecked access.
+  EXPECT_EQ(result->op1.getType(), float_type);  // NOLINT
+  EXPECT_EQ(result->op2.getType(), float_type);  // NOLINT
 }
 
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float_Int) {
@@ -176,8 +182,10 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float_Int) {
 
   auto result = ConvertIfIntegers(op1, op2, default_mlir_type);
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ(result->first.getType(), float_type);
-  EXPECT_EQ(result->second.getType(), float_type);
+  // TODO(b/545276070): Unwrap result safely using ASSERT_OK_AND_ASSIGN (or
+  // TF_ASSERT_OK_AND_ASSIGN in OSS) instead of unchecked access.
+  EXPECT_EQ(result->op1.getType(), float_type);  // NOLINT
+  EXPECT_EQ(result->op2.getType(), float_type);  // NOLINT
 }
 
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoIntegerOperands) {
@@ -200,8 +208,10 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoIntegerOperands) {
 
   auto result = ConvertIfIntegers(op1, op2, default_mlir_type);
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ(result->first.getType(), float_type);
-  EXPECT_EQ(result->second.getType(), float_type);
+  // TODO(b/545276070): Unwrap result safely using ASSERT_OK_AND_ASSIGN (or
+  // TF_ASSERT_OK_AND_ASSIGN in OSS) instead of unchecked access.
+  EXPECT_EQ(result->op1.getType(), float_type);  // NOLINT
+  EXPECT_EQ(result->op2.getType(), float_type);  // NOLINT
 }
 
 TEST(OpBuilderUtils, ConvertIfInteger_OneOperand_Int) {

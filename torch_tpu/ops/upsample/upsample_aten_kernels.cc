@@ -272,9 +272,21 @@ absl::StatusOr<DimInfo> ComputeDimInfo(
   return DimInfo{b_idx_floor, b_idx_ceil, b_one_minus_lambda, b_lambda};
 }
 
-absl::StatusOr<std::pair<std::vector<mlir::MlirOp>, mlir::MlirOp>>
-ComputeCornerIndicesAndWeight(int spatial_dim_size, int corner,
-                              const std::vector<DimInfo>& dim_infos) {
+// Represents the gathered spatial indices and the precomputed interpolation
+// multiplier (weight) for a single "corner" of the surrounding grid points
+// during n-dimensional linear (bilinear, trilinear) upsampling.
+struct CornerIndicesAndWeight {
+  // The gathered coordinates (idx_floor or idx_ceil) for each spatial dimension
+  // pointing to this specific corner of the bounding box around the sample
+  // point.
+  std::vector<mlir::MlirOp> indices;
+  // The cumulative interpolation weight (e.g., lambda * (1 - lambda))
+  // for this corner, applied across all spatial dimensions.
+  mlir::MlirOp weight;
+};
+
+absl::StatusOr<CornerIndicesAndWeight> ComputeCornerIndicesAndWeight(
+    int spatial_dim_size, int corner, const std::vector<DimInfo>& dim_infos) {
   std::vector<mlir::MlirOp> current_indices;
   mlir::MlirOp current_weight;
 
@@ -291,7 +303,8 @@ ComputeCornerIndicesAndWeight(int spatial_dim_size, int corner,
       TT_ASSIGN_OR_RETURN(current_weight, BuildMulShlo(current_weight, w));
     }
   }
-  return std::make_pair(current_indices, current_weight);
+  return CornerIndicesAndWeight{.indices = current_indices,
+                                .weight = current_weight};
 }
 
 // Accumulates the weighted values from all 2^k corners for bilinear
@@ -339,8 +352,8 @@ absl::StatusOr<mlir::MlirOp> AccumulateBilinearInterpolation(
     TT_ASSIGN_OR_RETURN(
         auto indices_and_weight,
         ComputeCornerIndicesAndWeight(spatial_dim_size, corner, dim_infos));
-    auto current_indices = indices_and_weight.first;
-    auto current_weight = indices_and_weight.second;
+    auto current_indices = indices_and_weight.indices;
+    auto current_weight = indices_and_weight.weight;
 
     // Concatenate indices for the gather operation.
     auto index_tensor = mlir::stablehlo::Concatenate(

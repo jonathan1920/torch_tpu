@@ -79,7 +79,7 @@ mlir::Value IncrementLoopIndex(mlir::MlirBuilder& builder,
 }
 
 struct ScanLoopState {
-  int64_t scan_dim;
+  int64_t scan_dim = 0;
   llvm::SmallVector<mlir::Type> loop_types;
   llvm::SmallVector<mlir::Value> loop_inits;
   mlir::Location loc;

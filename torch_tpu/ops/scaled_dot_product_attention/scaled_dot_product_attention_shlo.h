@@ -27,14 +27,16 @@
 
 namespace torch_tpu {
 
-absl::StatusOr<std::pair<at::Tensor, at::Tensor>>
-ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
-                                   const at::Tensor& key,
-                                   const at::Tensor& value,
-                                   const std::optional<at::Tensor>& attn_bias,
-                                   bool is_causal, std::optional<double> scale,
-                                   bool allow_half_precision_reduction_math,
-                                   OpParamCacheKeys param_keys);
+struct FusedAttentionResults {
+  at::Tensor output;     // UNINITIALIZED_TENSOR_OK
+  at::Tensor logsumexp;  // UNINITIALIZED_TENSOR_OK
+};
+
+absl::StatusOr<FusedAttentionResults> ScaledDotProductFusedAttentionShlo(
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+    const std::optional<at::Tensor>& attn_bias, bool is_causal,
+    std::optional<double> scale, bool allow_half_precision_reduction_math,
+    OpParamCacheKeys param_keys);
 
 absl::StatusOr<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
 ScaledDotProductFusedAttentionShloBackward(

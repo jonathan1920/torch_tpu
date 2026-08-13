@@ -57,9 +57,20 @@ mlir::MlirOp RemoveTrivialBatch(mlir::MlirOp batch_op,
                                 int64_t original_dim_size,
                                 int64_t spatial_dim_count);
 
+// Defines the asymmetric padding (start and end) applied to a single spatial
+// dimension during a pooling operation, typically adjusting for ceil_mode.
+struct PaddingParams {
+  // The amount of padding added to the start (left, top, front) of the
+  // dimension.
+  int64_t left = 0;
+  // The amount of padding added to the end (right, bottom, back) of the
+  // dimension.
+  int64_t right = 0;
+};
+
 // Calculates the adjusted (left_padding, right_padding) pairs given the padding
 // (which is symmetric) and ceil mode.
-std::vector<std::pair<int64_t, int64_t>> CeilModePadding(
+std::vector<PaddingParams> CeilModePadding(
     const mlir::RankedTensorType& input_shape,  // (N, C, H, W)
     mlir::ArrayRef<int64_t> kernel_size,        // [K_h, K_w]
     mlir::ArrayRef<int64_t> stride,             // [S_h, S_w]
@@ -84,8 +95,8 @@ absl::StatusOr<Dimensions> GetPoolingOutputSize(
 ReduceWindowAttributes GetReduceWindowAttributes(
     mlir::MlirBuilder& builder, Dimensions kernel_size_attr,
     Dimensions stride_attr, Dimensions dilation_attr,
-    std::vector<std::pair<int64_t, int64_t>> padding_pairs,
-    int64_t spatial_dim_count, int64_t total_num_dims);
+    std::vector<PaddingParams> padding_pairs, int64_t spatial_dim_count,
+    int64_t total_num_dims);
 
 }  // namespace torch_tpu
 

@@ -499,6 +499,17 @@ absl::StatusOr<mlir::MlirOp> Broadcast(mlir::MlirOp input,
                                        absl::Span<const int64_t> output_dims,
                                        absl::Span<const int64_t> bcast_dims);
 
+// Result structure for `ConvertIfIntegers` containing the two operands after
+// conditionally promoting integer types to a target floating-point type.
+struct ConvertedOps {
+  // The first operand after applying type conversion (if it was an
+  // integer/bool).
+  mlir::MlirOp op1;
+  // The second operand after applying type conversion (if it was an
+  // integer/bool).
+  mlir::MlirOp op2;
+};
+
 // Conditionally converts the element types of two input tensors to the
 // provided element type.
 //
@@ -506,8 +517,9 @@ absl::StatusOr<mlir::MlirOp> Broadcast(mlir::MlirOp input,
 // the default PyTorch dtype. This function is typically used to handle
 // operations like division, where integer inputs are promoted to floating-point
 // in PyTorch to produce floating-point results.
-absl::StatusOr<std::pair<mlir::MlirOp, mlir::MlirOp>> ConvertIfIntegers(
-    mlir::MlirOp op1, mlir::MlirOp op2, mlir::ElementType target_dtype);
+absl::StatusOr<ConvertedOps> ConvertIfIntegers(mlir::MlirOp op1,
+                                               mlir::MlirOp op2,
+                                               mlir::ElementType target_dtype);
 
 // Conditionally converts the element type of an input tensor to the
 // provided element type.
