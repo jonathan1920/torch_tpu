@@ -30,16 +30,14 @@ for torchax, eager/eager_optimized/compiled for TorchTPU.
 """
 
 import dataclasses
-from typing import Any, Callable, Dict, Mapping, Sequence, Tuple
+from typing import Any, Callable, Dict, Mapping, Tuple
 
 from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import step_lib
 from examples.benchmarks.e2e.harness import target as target_lib
 
-# factory returns (model, input_args, input_kwargs, optimizer | None)
-Factory = Callable[
-    ..., Tuple[Any, Sequence[Any], Mapping[str, Any], Any | None]
-]
+# factory returns variable number of outputs (e.g., model, input_args, ...)
+Factory = Callable[..., Tuple[Any, ...]]
 
 
 @dataclasses.dataclass(frozen=True)

@@ -12,23 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Torch benchmark binary.
+"""TorchAx benchmark binary.
 
 Runs every registered single-host benchmark, once per applicable execution
-mode, on the platform named by BENCHMARK_PLATFORM. This assembles a step
-function according to the benchmark spec, resolves the run-scope, and
-calls measure on the step function to get metrics.
+mode using TorchAx.
 
 Environment & Flags:
-  BENCHMARK_PLATFORM   cpu | b200_1 | b200_8 | v6e_1x1 | ...   (default: cpu)
-  --run_scope          full | presubmit                        (default: full)
+  BENCHMARK_PLATFORM   v5e_1x1 | v6e_1x1 | ... (default: cpu)
+  --run_scope          full | presubmit         (default: full)
 """
 
+import torch_xla2 as torchax  # pylint: disable=unused-import # noqa: F401
+from torchax import interop  # pylint: disable=unused-import # noqa: F401
 from typing import Iterator, Tuple
-from absl import flags
+
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
+
 from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e.harness import cases
 from examples.benchmarks.e2e.harness import compile as compile_lib
@@ -43,17 +44,20 @@ from examples.benchmarks.e2e.harness import registry as registry_lib
 from examples.benchmarks.e2e.harness import step_lib
 from examples.benchmarks.e2e.harness import steps
 from examples.benchmarks.e2e.harness import target as target_lib
-from examples.benchmarks.e2e.harness import torch_device_ops
+from examples.benchmarks.e2e.harness.torchax import torchax_device_ops
+from examples.benchmarks.e2e.harness.torchax import torchax_step
 
-# This binary IS the torch run. Not a flag -- see module docstring.
-_FRAMEWORK = mode_lib.Framework.TORCH
+# Framework definition for this binary.
+_FRAMEWORK = mode_lib.Framework.TORCHAX
 
-# Resolved once at import/collection time without acquiring device handles.
+# Resolved once at collection time.
 _PLATFORM = target_lib.platform_from_env()
 
-# Import all models and trigger registration of benchmarks.
+# Import all models and trigger registration of benchmarks and steppers.
 failures = discovery_lib.import_submodules(models)
-failures += discovery_lib.import_submodules(steps)
+
+torchax.enable_globally()
+torchax.enable_performance_mode()
 
 
 def _cases() -> (
@@ -67,15 +71,11 @@ def _make_run_step(
     ctx: context_lib.Context,
     mode: common.RunMode,
 ) -> step_lib.Stepper:
-  """Collapse every axis into one bound zero-arg callable.
-
-  Seeding lives here before construction so deterministic init is a harness
-  guarantee. Everything the runner shouldn't know about is closed over rather
-  than passed through.
-  """
   common.seed_rngs()
-  runner = step_lib.resolve_stepper(spec.stepper, **spec.stepper_kwargs)
-  runner.init_with_benchmark_args(*spec.factory(ctx))
+  runner = torchax_step.resolve_torchax_stepper(
+      spec.stepper, **spec.stepper_kwargs
+  )
+  runner.init_with_benchmark_args(spec, ctx)
 
   if common.is_torch_compile(mode):
     compile_config = spec.compile_config or compile_lib.CompileConfig()
@@ -84,8 +84,8 @@ def _make_run_step(
   return runner
 
 
-class BenchmarkTest(parameterized.TestCase):
-  """One test method, parameterised over the registry x mode matrix."""
+class TorchaxBenchmarkTest(parameterized.TestCase):
+  """One test method, parameterized over the registry x mode matrix for TorchAx."""
 
   def setUp(self):
     super().setUp()
@@ -102,6 +102,12 @@ class BenchmarkTest(parameterized.TestCase):
   def test_benchmark(
       self, spec: registry_lib.BenchmarkSpec, mode: common.RunMode
   ):
+    # TODO - b/534438865: Add support for decoder only decode stepper.
+    if spec.stepper == step_lib.StepperType.DECODER_ONLY_DECODE:
+      self.skipTest(
+          f"TorchAx benchmark does not support stepper {spec.stepper}"
+      )
+
     is_skipped = mode.value in spec.skipped_run_modes
 
     if is_skipped and flags_lib.SKIP_BEHAVIOR.value == "skip":
@@ -115,26 +121,25 @@ class BenchmarkTest(parameterized.TestCase):
       )
 
     target = target_lib.make_target(_PLATFORM, dtype=spec.dtype)
-    device_ops = torch_device_ops.TorchDeviceOps(target)
+    device_ops = torchax_device_ops.TorchaxDeviceOps(target)
     ctx = context_lib.Context(
         target=target, run_scope=context_lib.RUN_SCOPE.value
     )
 
     if is_skipped and flags_lib.SKIP_BEHAVIOR.value == "assert_raise":
       with self.assertRaises(Exception):
-        self._run_and_measure(spec, mode, target, device_ops, ctx)
+        self._run_and_measure(spec, mode, device_ops, ctx)
     else:
-      self._run_and_measure(spec, mode, target, device_ops, ctx)
+      self._run_and_measure(spec, mode, device_ops, ctx)
 
-  def _run_and_measure(self, spec, mode, target, device_ops, ctx):
+  def _run_and_measure(self, spec, mode, device_ops, ctx):
     try:
-      with mode_lib.run_mode_context(mode, target):
-        run_step = _make_run_step(spec, ctx, mode)
-        metrics = measure_lib.measure(
-            run_step,
-            device_ops,
-            name=f"{spec.name}_{mode.value}",
-        )
+      run_step = _make_run_step(spec, ctx, mode)
+      metrics = measure_lib.measure(
+          run_step,
+          device_ops,
+          name=f"{spec.name}_{mode.value}",
+      )
     except target_lib.UnsupportedBenchmark as e:
       self.skipTest(f"{spec.name}: {e}")
 

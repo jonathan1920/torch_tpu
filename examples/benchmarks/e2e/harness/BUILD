@@ -14,7 +14,6 @@
 
 load(
     "//build_files:build_defs.bzl",
-    "if_oss",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
     "torch_tpu_py_test",
@@ -23,6 +22,14 @@ load(
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
+)
+
+torch_tpu_py_library(
+    name = "flags",
+    srcs = ["flags.py"],
+    deps = [
+        "//shims/absl_py/flags",
+    ],
 )
 
 torch_tpu_py_library(
@@ -145,7 +152,6 @@ torch_tpu_py_test(
     ],
     env = {
         "BENCHMARK_PLATFORM": "v5e_1x1",
-        "IS_OSS": if_oss("1", "0"),
     },
     nolocal = "user requested to run this manually",
     notest_oss = "requires huggingface configs from internal infra",
@@ -159,6 +165,7 @@ torch_tpu_py_test(
         ":compile",
         ":context",
         ":discovery",
+        ":flags",
         ":measure",
         ":metrics",
         ":mode",
