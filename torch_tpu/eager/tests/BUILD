@@ -20,13 +20,12 @@ package(
 )
 
 torch_tpu_py_test(
-    name = "strictly_ordering",
-    srcs = ["strictly_ordering.py"],
-    notest_oss = "Disabled during switch from opt-in to opt-out",
+    name = "strictly_ordering_test",
+    srcs = ["strictly_ordering_test.py"],
     strict = True,
     tags = ["requires-tpu-v5lite"],
     deps = [
-        "//shims/absl_py:app",
+        "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/sync",

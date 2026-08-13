@@ -20,32 +20,33 @@ iteration of the graph prior to execution one node of the next graph, as not
 following that mechanism can lead to large memory explosions.
 """
 
-from absl import app
+from absl.testing import absltest
 import torch
 from torch_tpu._internal import sync
 
 
-def main(argv):
-  del argv
-  device = torch.device("tpu")
+class StrictlyOrderingTest(absltest.TestCase):
 
-  print(f"Running on device: {device}")
+  def test_strictly_ordering(self):
+    device = torch.device("tpu")
 
-  inputs = torch.ones((128, 128), dtype=torch.float32, device=device)
+    print(f"Running on device: {device}")
 
-  # Create a common deferred operation to ensure both outputs are in the same
-  # subgraph.
-  common = inputs + 0
+    inputs = torch.ones((128, 128), dtype=torch.float32, device=device)
 
-  output_a = common + 1
-  output_b = common + 2
+    # Create a common deferred operation to ensure both outputs are in the same
+    # subgraph.
+    common = inputs + 0
 
-  print(f"Output: {output_b}")
+    output_a = common + 1
+    output_b = common + 2
 
-  # Ensure that the output_a has already been materialized because it is a leaf
-  # in the same subgraph as output_b.
-  assert sync.is_materializing(output_a)
+    print(f"Output: {output_b}")
+
+    # Ensure that the output_a has already been materialized because it is a leaf
+    # in the same subgraph as output_b.
+    self.assertTrue(sync.is_materializing(output_a))
 
 
 if __name__ == "__main__":
-  app.run(main)
+  absltest.main()

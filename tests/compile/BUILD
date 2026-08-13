@@ -374,7 +374,7 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["model_coverage_timm_test.py"],
     data = ["data/goldfish.jpg"],
-    notest_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "No OSS access to model resources",
     shard_count = 6,
     tags = [
         "noasan",  # b/535295645: TIMM model compilation overhead causes timeouts under ASAN
@@ -401,7 +401,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "trace_autograd_ops_test",
     srcs = ["trace_autograd_ops_test.py"],
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     strict = "true",
     tags = [
         "nomsan",  # 3p 'py/torch' error: use-of-uninitialized-value in 3 in reduced_float_type_copy

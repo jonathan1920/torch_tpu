@@ -99,7 +99,7 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["module_registry_test.py"],
     data = ["//tests/compile:data/goldfish.jpg"],
-    notest_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "No OSS access to model resources",
     shard_count = 6,
     tags = [
         "noasan",  # TODO: fix the test timing out in asan mode.
@@ -499,7 +499,6 @@ torch_tpu_py_test(
         "ops_test_gpu_golden_compiled2.gz",
     ],
     main = "ops_test.py",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 40,
     tags = [
         "noasan",  # TODO: fix the timeout of test_grid_sampler in asan mode.
@@ -884,7 +883,6 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=1",  # No need to test many samples to catch dynamism bugs.
     ],
     main = "ops_test.py",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 32,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -1534,7 +1532,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "backwards_test",
     srcs = ["backwards_test.py"],
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "notsan",  # TODO: fix the test in tsan mode.
         "requires-tpu-v5lite",
@@ -1772,7 +1769,6 @@ torch_tpu_py_test(
     name = "dynamism_model_test",
     srcs = ["dynamism_model_test.py"],
     main = "dynamism_model_test.py",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],
