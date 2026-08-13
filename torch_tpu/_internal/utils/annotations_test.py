@@ -39,6 +39,7 @@ class AnnotationsTest(absltest.TestCase):
 
   def test_stage_enum(self):
     """Verifies that Stage enum values are correctly defined."""
+    self.assertEqual(annotations.Stage.INTERNAL, "Internal")
     self.assertEqual(annotations.Stage.STABLE, "Stable")
     self.assertEqual(annotations.Stage.EXPERIMENTAL, "Experimental")
     self.assertEqual(annotations.Stage.DEPRECATED, "Deprecated")
