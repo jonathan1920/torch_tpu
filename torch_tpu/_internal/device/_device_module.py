@@ -612,6 +612,9 @@ class TpuDeviceModule(_DeviceModule):
     return ""
 
   @classmethod
+  @experimental(
+      "topology_aware_mesh() is experimental and may change in the future."
+  )
   def topology_aware_mesh(
       cls,
       mesh_shape: tuple[int, ...],

@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import dataclasses
 from typing import Optional, Tuple
-import warnings
 
 import numpy as np
 import torch
@@ -145,10 +144,6 @@ def topology_aware_mesh(
     ValueError: If an unknown topology string is provided or if multi_slice mode
       is missing dcn_mesh_shape.
   """
-  warnings.warn(
-      "topology_aware_mesh() is experimental and may change in the future.",
-      stacklevel=2,
-  )
   if not dist.is_initialized():
     raise RuntimeError(
         "PyTorch distributed process group must be initialized before calling "
