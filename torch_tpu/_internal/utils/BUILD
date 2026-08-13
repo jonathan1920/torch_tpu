@@ -169,12 +169,12 @@ torch_tpu_py_library(
 torch_tpu_py_test(
     name = "annotations_test",
     srcs = ["annotations_test.py"],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         ":annotations",
         "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/device:_device_module",
-        "//torch_tpu/_internal/device:_tpu_backend_config",
         "//torch_tpu/_internal/precision:precision_impl",
     ],
 )

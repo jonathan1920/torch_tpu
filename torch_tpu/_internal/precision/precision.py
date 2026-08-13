@@ -43,6 +43,7 @@ _VALID_PRECISIONS = (
 )
 
 
+@experimental("Op precision context manager.")
 @contextlib.contextmanager
 def precision(mode: Precision) -> Generator[None, None, None]:  # pyrefly: ignore[invalid-annotation]
   """Context manager to set op precisions.

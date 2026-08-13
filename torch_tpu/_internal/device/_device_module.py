@@ -100,6 +100,11 @@ __tt_api_stages__: dict[str, annotations.ApiStageInfo] = {
         reason="Default generators for TPU devices.",
         value=_DefaultGeneratorsProperty(),
     ),
+    "Precision": annotations.ApiStageInfo(
+        stage=annotations.Stage.EXPERIMENTAL,
+        reason="StableHLO precision configuration.",
+        value=_precision_module.Precision,
+    ),
 }
 
 
@@ -249,8 +254,6 @@ class _DeviceModule(abc.ABC, metaclass=_DeviceModuleMeta):
 
   device = _DeviceContext  # pylint: disable=invalid-name
   device_of = _DeviceOfContext  # pylint: disable=invalid-name
-
-  Precision = _precision_module.Precision  # pylint: disable=invalid-name
   precision = _precision_module.precision
 
   # This method is called when a subclass of this abstract base class is

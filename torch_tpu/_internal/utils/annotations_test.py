@@ -20,13 +20,12 @@ from unittest import mock
 import warnings
 
 from absl.testing import absltest
-from torch_tpu._internal.device import _device_module
-from torch_tpu._internal.device import _tpu_backend_config
+import torch
+import torch_tpu  # pylint: disable=unused-import  # noqa: F401
 from torch_tpu._internal.precision.precision_impl import Precision
 from torch_tpu._internal.utils import annotations
 
 
-_DeviceModule = _device_module._DeviceModule
 experimental = annotations.experimental
 stable = annotations.stable
 deprecated = annotations.deprecated
@@ -315,7 +314,7 @@ class AnnotationsTest(absltest.TestCase):
 
   def test_annotated_real_api_get_amp_supported_dtype(self):
     """Verifies that real API get_amp_supported_dtype is annotated."""
-    fn = getattr(_DeviceModule, "get_amp_supported_dtype", None)
+    fn = getattr(torch.tpu, "get_amp_supported_dtype", None)
     self.assertIsNotNone(fn)
     self.assertEqual(
         getattr(fn, annotations.TT_API_STAGE, None), "Experimental"
@@ -337,17 +336,12 @@ class AnnotationsTest(absltest.TestCase):
         getattr(cls, annotations.TT_API_STAGE_REASON, ""),
     )
 
-  @mock.patch.object(
-      _device_module._device_ops_backend,
-      "get_default_generator",
+  @mock.patch(
+      "torch_tpu._internal.device._device_ops_backend.get_default_generator",
       return_value="mock_generator",
   )
-  @mock.patch.object(
-      _device_module._DeviceModule, "current_device", return_value=0
-  )
-  @mock.patch.object(
-      _device_module._DeviceModule, "device_count", return_value=1
-  )
+  @mock.patch.object(torch.tpu, "current_device", return_value=0)
+  @mock.patch.object(torch.tpu, "device_count", return_value=1)
   def test_annotated_real_api_property_default_generators(
       self, _mock_count, _mock_current, _mock_gen
   ):
@@ -356,42 +350,67 @@ class AnnotationsTest(absltest.TestCase):
       warnings.simplefilter("always")
 
       # 1st access: emits 1 UserWarning and returns default generators
-      gens1 = _device_module._DeviceModule.default_generators
+      gens1 = torch.tpu.default_generators
       self.assertEqual(gens1, ("mock_generator",))
       self.assertLen(w, 1)
       self.assertTrue(issubclass(w[0].category, UserWarning))
       self.assertIn("'default_generators' is experimental", str(w[0].message))
 
       # 2nd access: cached on class, emits 0 additional warnings
-      gens2 = _device_module._DeviceModule.default_generators
+      gens2 = torch.tpu.default_generators
       self.assertEqual(gens1, gens2)
       self.assertLen(w, 1)
 
   def test_static_class_attributes_bypass_getattr_and_warnings(self):
-    """Verifies accessing static class attributes defined on _DeviceModule does not trigger __getattr__ or warnings."""
+    """Verifies accessing static class attributes defined on torch.tpu does not trigger __getattr__ or warnings."""
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("always")
 
       # Accessing static attributes physically defined in _DeviceModule class body
-      _ = _device_module._DeviceModule.current_device
-      _ = _device_module._DeviceModule._autocast_enabled
+      _ = torch.tpu.current_device
+      _ = torch.tpu._autocast_enabled
       # 0 warnings emitted, proving __getattr__ was bypassed completely
       self.assertEmpty(w)
 
+  def test_annotated_real_api_enum_class_precision(self):
+    """Verifies Precision Enum class emits UserWarning on 1st access and no additional warnings on 2nd access."""
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+
+      # 1st access: emits 1 UserWarning and returns Precision Enum class
+      prec1 = torch.tpu.Precision
+      self.assertEqual(prec1, Precision)
+      self.assertLen(w, 1)
+      self.assertTrue(issubclass(w[0].category, UserWarning))
+      self.assertIn("'Precision' is experimental", str(w[0].message))
+
+      # Verify metadata tags on Enum class and its members
+      self.assertEqual(
+          getattr(prec1, annotations.TT_API_STAGE, None),
+          annotations.Stage.EXPERIMENTAL.value,
+      )
+
+      # 2nd access: accessing an Enum member off `Precision` hits the class cache, emitting 0 additional warnings
+      prec2 = torch.tpu.Precision.DEFAULT
+      self.assertEqual(
+          getattr(prec2, annotations.TT_API_STAGE, None),
+          annotations.Stage.EXPERIMENTAL.value,
+      )
+      self.assertLen(w, 1)
+
   def test_annotated_real_api_property_allow_excess_precision(self):
     """Verifies allow_excess_precision property emits UserWarning on 1st access and no additional warnings on 2nd access."""
-    cfg = _tpu_backend_config._TpuBackendConfig()
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("always")
 
       # 1st access: emits 1 UserWarning
-      _ = cfg.allow_excess_precision
+      _ = torch.backends.tpu.allow_excess_precision
       self.assertLen(w, 1)
       self.assertTrue(issubclass(w[0].category, UserWarning))
       self.assertIn("allow_excess_precision is experimental", str(w[0].message))
 
       # 2nd access: emits 0 additional warnings
-      _ = cfg.allow_excess_precision
+      _ = torch.backends.tpu.allow_excess_precision
       self.assertLen(w, 1)
 
   def test_pep562_module_getattr_resolution_and_suppression(self):
