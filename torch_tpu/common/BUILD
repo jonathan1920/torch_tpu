@@ -846,6 +846,7 @@ torch_tpu_cc_library(
     ],
 )
 
+# copybara:comment_begin(oss-only)
 torch_tpu_cc_library(
     name = "environment",
     srcs = ["environment.cc"],
@@ -873,6 +874,7 @@ torch_tpu_cc_test(
         "@com_google_absl//absl/status",
     ],
 )
+# copybara:comment_end
 
 torch_tpu_cc_library(
     name = "thread_pool",
@@ -1093,15 +1095,17 @@ torch_tpu_cc_library(
     ],
 )
 
+# copybara:comment_begin(oss-only)
 torch_tpu_cc_library(
     name = "contain",
-    srcs = ["contain_oss.cc"],
+    srcs = ["contain.cc"],
     hdrs = ["contain.h"],
     deps = [
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/status:statusor",
     ],
 )
+# copybara:comment_end
 
 torch_tpu_cc_library(
     name = "compilation_test_helper",
@@ -1246,6 +1250,7 @@ torch_tpu_cc_test(
 
 exports_files([
     "contain.h",
+    "environment.h",
 ])
 
 torch_tpu_cc_test(

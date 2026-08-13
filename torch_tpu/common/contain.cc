@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
+#include "torch_tpu/common/contain.h"
+
 #include <cstdint>
 #include <memory>
 
 #include "absl/flags/flag.h"
 #include "absl/status/statusor.h"
-#include "torch_tpu/common/contain.h"
 
 ABSL_FLAG(  // NONSTANDARD_FLAG_NAME_OK=false_positive
     bool, torch_tpu_internal_enable_compilation_container, false,

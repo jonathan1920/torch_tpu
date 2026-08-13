@@ -104,6 +104,7 @@ pybind_extension(
     ],
 )
 
+# copybara:comment_begin(oss-only)
 torch_tpu_py_library(
     name = "multiprocessing",
     srcs = ["multiprocessing.py"],
@@ -111,5 +112,6 @@ torch_tpu_py_library(
         "//shims/absl_py:app",
     ],
 )
+# copybara:comment_end
 
 torch_tpu_package_end()
