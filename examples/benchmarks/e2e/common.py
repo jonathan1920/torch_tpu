@@ -25,6 +25,11 @@ class Platform(enum.Enum):
 
   # The platform names should match the ones in the MLCompass config file. See
   # go/torchtpu-mlcompass#configuration-structure for more details.
+  V7_1X1X1 = "v7_1x1x1"
+  V7_2X2X1 = "v7_2x2x1"
+  V7_2X2X2 = "v7_2x2x2"
+  V7_2X2X4 = "v7_2x2x4"
+  V7_2X4X4 = "v7_2x4x4"
   GFC_1X1X1 = "gfc_1x1x1"
   GFC_2X2X1 = "gfc_2x2x1"
   GFC_2X2X2 = "gfc_2x2x2"
@@ -47,7 +52,7 @@ class Backend(enum.Enum):
 
 PLATFORM = flags.DEFINE_enum_class(
     "platform",
-    Platform.GFC_1X1X1,
+    Platform.V7_1X1X1,
     Platform,
     "The platform to run the tests on.",
 )
@@ -60,6 +65,11 @@ BACKEND = flags.DEFINE_enum_class(
 )
 
 PLATFORM_DEVICE_MAP = {
+    Platform.V7_1X1X1: "tpu",
+    Platform.V7_2X2X1: "tpu",
+    Platform.V7_2X2X2: "tpu",
+    Platform.V7_2X2X4: "tpu",
+    Platform.V7_2X4X4: "tpu",
     Platform.GFC_1X1X1: "tpu",
     Platform.GFC_2X2X1: "tpu",
     Platform.GFC_2X2X2: "tpu",
@@ -74,6 +84,9 @@ PLATFORM_DEVICE_MAP = {
 }
 
 PLATFORM_TO_NODE_CONFIG = {
+    Platform.V7_2X2X2: {"num_nodes": 2, "nproc_per_node": 8},
+    Platform.V7_2X2X4: {"num_nodes": 4, "nproc_per_node": 8},
+    Platform.V7_2X4X4: {"num_nodes": 8, "nproc_per_node": 8},
     Platform.GFC_2X2X2: {"num_nodes": 2, "nproc_per_node": 8},
     Platform.GFC_2X2X4: {"num_nodes": 4, "nproc_per_node": 8},
     Platform.GFC_2X4X4: {"num_nodes": 8, "nproc_per_node": 8},
@@ -104,7 +117,8 @@ class RunMode(enum.Enum):
   EAGER_OPTIMIZED = (  # Run the model in eager mode with DeferAndFuse.
       "eager_optimized"
   )
-  EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING = (  # Run the model in eager mode with DeferNeverAndLaunchBlocking.
+  # Run the model in eager mode with DeferNeverAndLaunchBlocking.
+  EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING = (
       "eager_defer_never_and_launch_blocking"
   )
   COMPILED = "compiled"  # Run the model with torch.compile.

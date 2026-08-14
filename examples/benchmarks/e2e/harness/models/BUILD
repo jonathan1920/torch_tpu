@@ -35,11 +35,14 @@ torch_tpu_py_library(
         "//examples/benchmarks/e2e/harness:context",
         "//examples/benchmarks/e2e/harness:registry",
         "//examples/benchmarks/e2e/harness:step_lib",
+        "//examples/benchmarks/e2e/harness:target",
         "//examples/benchmarks/e2e/harness:torch_device_ops",
         "//examples/benchmarks/e2e/harness/gen_utils",
         "//shims/absl_py/flags",
         "//shims/torch:pytorch",
         "//tests:module_registry",
+        "@pypi//fairscale",
+        "@pypi//llama_models",
     ],
 )
 

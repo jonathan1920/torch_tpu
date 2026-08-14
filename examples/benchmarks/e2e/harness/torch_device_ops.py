@@ -27,6 +27,7 @@ class DeviceCountMismatch(RuntimeError):
   Raised at construction so a misconfigured run fails at startup.
   """
 
+
 _TORCH_DTYPE_MAP = {
     target_lib.DType.BF16: torch.bfloat16,
     target_lib.DType.FP32: torch.float32,
@@ -55,7 +56,11 @@ class TorchDeviceOps:
 
     self.device = self._materialise_device()
     self.dtype = get_torch_dtype(self.target.dtype)
-    self._validate_device_count()
+
+    # In distributed mode, each worker process only sees its single assigned
+    # addressable device (device_count() == 1), so skip the host-level check.
+    if not torch.distributed.is_initialized():
+      self._validate_device_count()
 
   def _materialise_device(self) -> torch.device:
     kind = self.target.device_kind.value
