@@ -186,6 +186,14 @@ class EventsQueue {
   struct DeferredOpEvent {
     static std::optional<DeferredOpEvent> FromDeferredOp(
         const SharedDeviceBufferList& device_buffer_list) {
+      if (device_buffer_list->is_empty()) {
+        // `torch.empty()` and similar ops represent uninitialized memory;
+        // correct user programs should never read them, so we should typically
+        // never need to execute them, and don't need to include them in
+        // the event queue.
+        return std::nullopt;
+      }
+
       const auto deferred_op = device_buffer_list->deferred_op();
       if (!deferred_op || deferred_op->depends_on_placeholder()) {
         // TODO: better identify compiled mode tracing.
@@ -342,26 +350,6 @@ void ProcessDeferredOpEvent(
         nodes_to_materialize_set,
     std::vector<SharedDeviceBufferList>& execution_order,
     DefinedNodeMap& defined_node_map) {
-  if (device_buffer_list->is_empty()) {
-    // `torch.empty()` and similar ops represent uninitialized memory; correct
-    // user programs should never read them, so we should typically never need
-    // to execute them.
-    //
-    // However, partial in-place writes are implemented through
-    // stablehlo.dynamic_update_slice, which merge in valid values with the
-    // uninitialized ones. If we see one of these ops, we will need to
-    // execute it, so we add it to the execution order immediately before this
-    // first read. This is implemented later in this function (see the
-    // input.is_empty() check) below.
-    //
-    // Additionally, users may try to explicitly materialize empty tensors. In
-    // this case, we append them to the last traversal. This is implemented in
-    // PrepareMaterializationTraversals before the final return.
-    ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Skipping empty buffer "
-                 << device_buffer_list.get();
-    return;
-  }
-
   // Mark all inputs as used, and insert any newly-used empty tensors.
   for (const auto& input : deferred_op.inputs()) {
     if (!input.is_deferred()) continue;
