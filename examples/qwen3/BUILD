@@ -192,8 +192,6 @@ torch_tpu_py_test(
     ],
     main = "qwen3_dynamic_kv_cache.py",
     nolocal = "slow example",
-    # TODO(b/543897481): enable in OSS once fixed
-    notest_oss = "currently fails in OSS",
     shuffle_tests = False,
     tags = [
         "cpu:4",
@@ -212,6 +210,7 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/profiler:xprof_adapter",
+        "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
     ],
@@ -242,6 +241,7 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/profiler:xprof_adapter",
+        "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
     ],
@@ -308,6 +308,7 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/profiler:xprof_adapter",
+        "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
     ],

@@ -22,6 +22,7 @@ from typing import Any, Callable, TypeAlias
 
 import numpy as np
 import torch
+from torch_tpu._internal.utils import utils
 
 # A tolerance value can be either a float or a callable that takes the expected
 # value as the only argument and returns the tolerance to use for comparing
@@ -700,3 +701,8 @@ def _assert_tensor_close(
         atol=atol,
         msg=lambda msg: strict_msg_handler(msg, is_relative=True),
     )
+
+
+libtpu_at_least = utils.libtpu_at_least
+libtpu_version = utils.libtpu_version
+parse_version = utils.parse_version

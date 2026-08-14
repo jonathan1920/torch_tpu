@@ -49,6 +49,7 @@ torch_tpu_py_library(
     name = "test_utils",
     srcs = ["test_utils.py"],
     deps = [
+        ":utils",
         "//shims/torch:pytorch",
         "@pypi//numpy",
     ],

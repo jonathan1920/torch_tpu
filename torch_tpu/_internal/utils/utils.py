@@ -594,3 +594,48 @@ class ActivationTracer(contextlib.ContextDecorator):
       handle.remove()
     self._hook_handles.clear()
     return False
+
+
+def parse_version(version: str) -> tuple[int, ...]:
+  """Parses the leading numeric components of a version string into a tuple.
+
+  Stops at the first non-numeric component so pre-release / nightly suffixes
+  (e.g. "0.0.41.dev20260101") compare by their numeric prefix.
+
+  Args:
+    version: A version string such as "0.0.41".
+
+  Returns:
+    The leading numeric components, e.g. (0, 0, 41).
+  """
+  components = []
+  for part in version.split("."):
+    digits = ""
+    for ch in part:
+      if not ch.isdigit():
+        break
+      digits += ch
+    if not digits:
+      break
+    components.append(int(digits))
+  return tuple(components)
+
+
+def libtpu_version() -> tuple[int, ...] | None:
+  """Returns the parsed version of the installed libtpu, or None if unavailable."""
+  try:
+    import libtpu  # pylint: disable=g-import-not-at-top # pytype: disable=import-error
+  except ImportError:
+    return None
+  version = getattr(libtpu, "__version__", None)
+  if not version:
+    return None
+  return parse_version(version)
+
+
+def libtpu_at_least(min_version: tuple[int, ...]) -> bool:
+  """Returns True if libtpu is built from source / in-tree (None) or >= min_version."""
+  ver = libtpu_version()
+  if ver is None:
+    return True  # In-tree / source builds link PJRT directly without a wheel
+  return ver >= min_version

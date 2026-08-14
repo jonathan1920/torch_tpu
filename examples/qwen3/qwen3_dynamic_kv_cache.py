@@ -30,6 +30,7 @@ import torch
 import torch._inductor.config as inductor_config
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import log_utils
+from torch_tpu._internal.utils import utils
 from examples import paths
 from torch_tpu._internal.profiler import xprof_adapter
 import transformers
@@ -685,6 +686,14 @@ def main(argv):
     else:
       modes = [Mode.COMPILED_DYNAMIC]
 
+    if device == Device.TPU and not utils.libtpu_at_least((0, 0, 42)):
+      logging.warning(
+          "Skipping Mode.COMPILED_DYNAMIC: requires libtpu >= 0.0.42 with"
+          " dynamic buffer size relaxation."
+      )
+      if Mode.COMPILED_DYNAMIC in modes:
+        modes.remove(Mode.COMPILED_DYNAMIC)
+
     for mode in modes:
       metrics = _run_with_random_weights(
           config,
@@ -706,6 +715,14 @@ def main(argv):
             else [Mode.COMPILED_DYNAMIC]
         )
     )
+
+    if device == Device.TPU and not utils.libtpu_at_least((0, 0, 42)):
+      logging.warning(
+          "Skipping Mode.COMPILED_DYNAMIC: requires libtpu >= 0.0.42 with"
+          " dynamic buffer size relaxation."
+      )
+      if Mode.COMPILED_DYNAMIC in modes:
+        modes.remove(Mode.COMPILED_DYNAMIC)
 
     output_cpu = None
     if Mode.CPU in modes:

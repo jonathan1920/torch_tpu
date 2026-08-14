@@ -23,6 +23,16 @@ from tests import seed_test_utils
 
 class SplitCompileTest(seed_test_utils.RepeatableTest):
 
+  def setUp(self):
+    super().setUp()
+    # Dynamic shape buffers across partitions and host DMA alignment require
+    # libtpu >= 0.0.44.
+    if not utils.libtpu_at_least((0, 0, 44)):
+      self.skipTest(
+          "Dynamic shape buffer relaxation and host DMA require libtpu >="
+          " 0.0.44"
+      )
+
   def test_split_graph_with_dynamic_tensor(self):
     backend = TpuBackend(debug=True, dynamism=True)
 
