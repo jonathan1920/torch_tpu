@@ -7675,6 +7675,19 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close(golden_result=golden, torch_tpu_result=actual)
 
+  def test_data_ptr_stable_after_inplace(self):
+    x = torch.zeros(2, 3, 4, device="tpu")
+    # torch.Tensor.data_ptr returns the C++ memory address of the tensor data,
+    # expressed as Python int:
+    # https://docs.pytorch.org/docs/2.13/generated/torch.Tensor.data_ptr.html
+    # For TorchTPU this is the heap address of a `new DeviceBufferRef`.
+    x_addr = x.data_ptr()
+
+    x.add_(1)
+
+    # Verify that the data pointer address is unchanged.
+    self.assertEqual(x_addr, x.data_ptr())
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

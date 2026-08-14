@@ -136,13 +136,20 @@ using SharedDeviceBufferList = absl_nonnull std::shared_ptr<DeviceBufferList>;
 // It is nothing more than a container for a std::shared_ptr<DeviceBufferList>
 // and an index into that list, with accessor methods for convenience.
 //
-// The c10::DataPtr at the root of the torch/aten/c10 data hierarchy holds an
-// owning unique pointer (as a c10::UniqueVoidPointer) to a DeviceBufferRef.
+// The c10::DataPtr at the root of the torch/aten/c10 data hierarchy holds a
+// unique pointer (as a c10::UniqueVoidPointer) to a DeviceBufferRef.
+// In most cases, this is an owning pointer that will drop the DeviceBufferRef
+// when the c10::DataPtr is dropped. However, in rare cases (such as
+// `at::from_blob`) it is possible that two c10::DataPtrs will share the same
+// DeviceBufferRef, with all but one being "borrowers" without responsibility
+// for deallocation; the borrowers will have the `c10::detail::deleteNothing`
+// deleter for their DataPtr's context.
+//
 // Whenever an at::Tensor is dropped, it may trigger a deallocation of the
 // entire shared pointer chain (c10::TensorImpl, c10::StorageImpl, c10::DataPtr,
 // DeviceBufferRef, and DeviceBufferList) unless there are additional shared
 // pointers (at::Tensors, c10:Storages, or DeviceBufferRefs) preventing
-// deallocation.
+// deallocation, or the c10::DataPtr is a non-owning borrow.
 //
 // This means that while a DeviceBufferRef can always be safely dereferenced to
 // a DeviceBufferList, it is **unsafe** to hold a DeviceBufferRef& or
@@ -153,10 +160,12 @@ using SharedDeviceBufferList = absl_nonnull std::shared_ptr<DeviceBufferList>;
 // underlying DeviceBufferList may be modified in some ways, such as by
 // materialization.
 //
-// Additionally, the aten/c10 hierarchy may swap out the
+// Additionally, the aten/c10 hierarchy may overwrite the void* data_ in a
 // c10::DataPtr (in the c10::StorageImpl), changing which DeviceBufferRef backs
-// the at::Tensor. This can be used to "mutate" an at::Tensor from the
-// perspective of aten, while respecting immutability at the XLA level.
+// the at::Tensor (and all other shared uses of the buffer). This can be used to
+// "mutate" an at::Tensor from the perspective of aten, while respecting
+// immutability at the XLA level, and preserving the `void* data_` pointer's
+// heap address.
 class DeviceBufferRef {
  public:
   // DeviceBufferRefs require a non-null SharedDeviceBufferList and a valid

@@ -80,6 +80,69 @@
 
 namespace torch_tpu {
 
+namespace {
+
+// Records that a DeviceBufferRef has one more c10::DataPtr using it.
+void AddDataPtrAlias(const DeviceBufferRef& buffer_ref) {
+  buffer_ref.device_buffer_list()->IncrementLiveDataPtrs();
+  // Tensors created during the torch.compile trace process don't need to be
+  // tracked for the purposes of synchronization, as they can't be
+  // materialized anyway.
+  if (GetEagerMode() != EagerMode::kInternalDeferAll) {
+    RecordNewDataPtrCreated(buffer_ref);
+  }
+}
+
+// Records that a ref_ptr has one fewer DataPtr using it.
+void RemoveDataPtrAlias(const DeviceBufferRef& ref) {
+  ABSL_VLOG(3) << "[RemoveDataPtrAlias] Cleaning up DataPtr usage for "
+               << ref.DebugString();
+  ref.device_buffer_list()->DecrementLiveDataPtrs();
+  // Don't check eager mode here.
+  // Compiled mode trace tensors are never registered with
+  // RecordNewDataPtrCreated, so recording their deletion is harmless.
+  // Failing to record the deletion of an eager mode tensor (if it
+  // happens during a torch.compile trace) would be a bug as the refcount
+  // would never go to zero.
+  RecordDataPtrDestroyed(ref);
+}
+
+// Delegate responsibility for deleting the DeviceBufferRef to the
+// c10::DataPtr.
+// The DeviceBufferRef* is used as both the "data" and "context" of the
+// c10::DataPtr; this mirrors the semantics of a std::unique_ptr.
+void DeleteDeviceBufferRef(void* ctx_ptr) {
+  DeviceBufferRef* const ref_ptr = static_cast<DeviceBufferRef*>(ctx_ptr);
+  if (ref_ptr) RemoveDataPtrAlias(*ref_ptr);
+  delete ref_ptr;
+}
+
+// Overwrites the referent of the data_ptr to be the new buffer_ref.
+//
+// This does *not* modify the ctx_ or deleter of the data_ptr. This is because
+// PyTorch will sometimes create "borrowing" DataPtrs, which share the data_
+// of another "owning" DataPtr, but where the deleter is a no-op for the
+// borrowing pointer and DeleteDeviceBufferRef for the owning pointer.
+//
+// An in-place write (AssignBufferToAtTensor) on a "borrowing" DataPtr should
+// be reflected in the owning DataPtr and other borrowing DataPtrs as well;
+// this means that the address of the data_ must be unchanged, but needs to be
+// replaced with the SharedDeviceBufferList and list index of the new
+// buffer_ref so that it references the updated data.
+void OverwriteDataPtr(const c10::DataPtr& data_ptr,
+                      DeviceBufferRef&& buffer_ref) {
+  DeviceBufferRef* const old_ref_ptr =
+      static_cast<DeviceBufferRef*>(data_ptr.get());
+  ABSL_CHECK(old_ref_ptr)  // CRASH_OK
+      << "tensor storage has a null DeviceBufferRef* via c10::DataPtr::get()";
+  RemoveDataPtrAlias(*old_ref_ptr);
+  AddDataPtrAlias(buffer_ref);
+
+  *old_ref_ptr = std::move(buffer_ref);
+}
+
+}  // namespace
+
 absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
                                     const at::Tensor& tensor) {
   ABSL_VLOG(1)
@@ -155,11 +218,10 @@ absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
                     "base buffer of "
                  << result_buf.size_bytes() << " bytes.";
 
-    // Change the c10::DataPtr in storage to use the new DeviceBufferRef.
+    // Overwrite the c10::DataPtr in storage to use the new DeviceBufferRef.
     // This ensures that all active views on this same contiguous base tensor
     // will be updated by the write.
-    tensor.storage().set_data_ptr(
-        MakeDataPtr(std::move(result_buf), tensor.device().index()));
+    OverwriteDataPtr(tensor.storage().data_ptr(), std::move(result_buf));
   } else {
     TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref, GetBaseBuffer(tensor));
     TT_ASSIGN_OR_RETURN(DeviceBufferRef new_base_buffer_ref,
@@ -167,11 +229,11 @@ absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
                             std::move(base_buffer_ref), std::move(result_buf),
                             tpu_layout, tensor.is_conj()));
 
-    // Assign the new deferred DeviceBufferRef to the c10::DataPtr
+    // Overwrite the c10::DataPtr in storage to use the new DeviceBufferRef.
     // All reads that happened before the write will be unaffected, but reads
     // to all extant views will reflect the new value on later accesses.
-    tensor.storage().set_data_ptr(
-        MakeDataPtr(std::move(new_base_buffer_ref), tensor.device().index()));
+    OverwriteDataPtr(tensor.storage().data_ptr(),
+                     std::move(new_base_buffer_ref));
   }
 
   // Bump the version to tell PyTorch how to handle functionalization
@@ -215,9 +277,9 @@ absl::StatusOr<DeviceBufferRef> GetBaseBuffer(const c10::Storage& storage) {
   // construct the tensor, and represents all of the data available to all
   // views that share the same Storage.
   const DeviceBufferRef* base_buffer_ref =
-      static_cast<const DeviceBufferRef*>(storage.data_ptr().get_context());
+      static_cast<const DeviceBufferRef*>(storage.data_ptr().get());
   ABSL_CHECK(base_buffer_ref)  // CRASH_OK
-      << "tensor storage has a null DeviceBufferRef via data_ptr context";
+      << "tensor storage has a null DeviceBufferRef* via c10::DataPtr::get()";
   return *base_buffer_ref;
 }
 
@@ -524,33 +586,10 @@ void RegisterTpuAllocator() {
   at::setHostAllocator(GetPrivateUse1DeviceType(), GetTpuPinnedAllocator());
 }
 
-void DeleteDeviceBufferRef(void* ctx_ptr) {
-  DeviceBufferRef* const ref_ptr = static_cast<DeviceBufferRef*>(ctx_ptr);
-  if (ref_ptr) {
-    ABSL_VLOG(3) << "[c10::DataPtr deleter] deleting "
-                 << ref_ptr->DebugString();
-    ref_ptr->device_buffer_list()->DecrementLiveDataPtrs();
-    // Don't check eager mode here.
-    // Compiled mode trace tensors are never registered with
-    // RecordNewDataPtrCreated, so recording their deletion is harmless.
-    // Failing to record the deletion of an eager mode tensor (if it
-    // happens during a torch.compile trace) would be a bug as the refcount
-    // would never go to zero.
-    RecordDataPtrDestroyed(*ref_ptr);
-  }
-  delete ref_ptr;
-}
-
 c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref, const int device_idx) {
+  AddDataPtrAlias(buffer_ref);
   auto* absl_nonnull const raw_ref_ptr =
       new DeviceBufferRef(std::move(buffer_ref));
-  raw_ref_ptr->device_buffer_list()->IncrementLiveDataPtrs();
-  // Tensors created during the torch.compile trace process don't need to be
-  // tracked for the purposes of synchronization, as they can't be
-  // materialized anyway.
-  if (GetEagerMode() != EagerMode::kInternalDeferAll) {
-    RecordNewDataPtrCreated(*raw_ref_ptr);
-  }
   return c10::DataPtr(raw_ref_ptr, raw_ref_ptr, DeleteDeviceBufferRef,
                       c10::Device(GetPrivateUse1DeviceType(), device_idx));
 }
