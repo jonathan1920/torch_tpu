@@ -481,9 +481,11 @@ absl::StatusOr<absl_nullable std::unique_ptr<Traversal>> FinishTraversal(
         break;
     }
   }
-
-  TT_ASSIGN_OR_RETURN(auto traversal, Traversal::CreateFromExecutionOrder(
-                                          execution_order, output_nodes));
+  absl_nullable std::unique_ptr<Traversal> traversal = nullptr;
+  if (!output_nodes.empty()) {
+    TT_ASSIGN_OR_RETURN(traversal, Traversal::CreateFromExecutionOrder(
+                                       execution_order, output_nodes));
+  }
   execution_order.clear();
   defined_node_map.clear();
   output_nodes.clear();
