@@ -1102,6 +1102,72 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+DEFAULT_TORCH_EXAMPLE_DEPS = [
+    "//shims/absl_py:app",
+    "//shims/torch:pytorch",
+    "//torch_tpu",
+    "@pypi//torchvision",
+]
+
+def oss_torch_example_test(
+        name,
+        torch_example_main,
+        srcs = ["//tests:run_upstream_example.py"],
+        main = "//tests:run_upstream_example.py",
+        torch_example_args = None,
+        deps = DEFAULT_TORCH_EXAMPLE_DEPS,
+        tags = None,
+        **kwargs):
+    """Creates an OSS-only PyTorch upstream example integration test target.
+
+    Args:
+        name: The name of the test.
+        torch_example_main: The path to the example script relative to
+            https://github.com/pytorch/examples repo root.
+        srcs: List of runner source files (defaults to
+            ["//tests:run_upstream_example.py"]).
+        main: Main entrypoint script (defaults to
+            "//tests:run_upstream_example.py").
+        torch_example_args: Optional command line arguments string for the example script.
+        deps: Dependencies for the test (defaults to `DEFAULT_TORCH_EXAMPLE_DEPS`).
+        tags: Optional additional tags.
+        **kwargs: Additional arguments passed to torch_tpu_py_test.
+
+    Returns:
+        The instantiated target returned by `oss_target(torch_tpu_py_test, ...)`,
+        which creates a `torch_tpu_py_test` target when building in OSS.
+    """
+    env = {
+        "TORCH_TPU_INTERNAL_TORCH_EXAMPLE_PATH": torch_example_main,
+    }
+    if torch_example_args:
+        env["TORCH_TPU_INTERNAL_TORCH_EXAMPLE_ARGS"] = torch_example_args
+    env.update(kwargs.pop("env", {}))
+
+    all_tags = [
+        "requires-tpu-v5lite",
+        "wheel_test_excluded",
+    ] + (tags or [])
+
+    return oss_target(
+        torch_tpu_py_test,
+        name = name,
+        srcs = srcs,
+        main = main,
+        env = env,
+        nolocal = "This test requires downloading the raw PyTorch examples tree.",
+        nonightly_oss = "Test in development. To be added to nightly once stable.",
+        nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
+        tags = all_tags,
+        deps = deps,
+        **kwargs
+    )
+
+register_extension_info(
+    extension = oss_torch_example_test,
+    label_regex_for_dep = "{extension_name}",
+)
+
 def _get_subpackage_targets_named(name):
     """Gets targets with the given name from all direct subpackages.
 

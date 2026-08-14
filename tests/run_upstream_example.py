@@ -21,20 +21,108 @@ against CPU or TPU devices in the TorchTPU CI environment.
 Repo: https://github.com/pytorch/examples
 """
 
+import gzip
 import os
 import pathlib
 import runpy
 import shlex
 import shutil
 import sys
+
 from absl import app
 
 # Pre-import torch and torch_tpu to initialize C++ extensions and TPU runtime
 # before any upstream script imports numpy or other native libraries.
 import torch  # pylint: disable=unused-import  # noqa: F401
+import torch.utils.data as data
 import torch_tpu  # pylint: disable=unused-import  # noqa: F401
+import torchvision.datasets as vision_datasets
+
 
 _DATASET_BASE_DIR = "/tmp/gcsfuse/data"
+_MNIST_FILES = (
+    "train-images-idx3-ubyte",
+    "train-labels-idx1-ubyte",
+    "t10k-images-idx3-ubyte",
+    "t10k-labels-idx1-ubyte",
+)
+
+
+def _stage_mnist_datasets():
+  """Stages MNIST raw files from GCS Fuse mount into local TEST_TMPDIR and redirects root.
+
+  Upstream PyTorch examples instantiate datasets.MNIST pointing to arbitrary
+  local directories (e.g. '../data' or './data') with download=True. In CI and
+  internal sandbox environments, we avoid external network downloads and
+  read-only
+  filesystem issues by staging pre-existing MNIST files locally and patching
+  torchvision's dataset class.
+
+  Raises:
+    FileNotFoundError: If the expected dataset mount directory does not exist.
+  """
+
+  # 1. Locate source dataset directory (pre-mounted via GCS fuse).
+  gcs_raw_dir = os.path.join(_DATASET_BASE_DIR, "MNIST", "raw")
+  if not os.path.exists(gcs_raw_dir):
+    raise FileNotFoundError(
+        f"GCS dataset directory '{gcs_raw_dir}' does not exist. Ensure GCS"
+        f" bucket 'torchtpu-shared' is mounted at '{_DATASET_BASE_DIR}'."
+    )
+
+  # 2. Prepare local writable directory in TEST_TMPDIR for decompressed MNIST files.
+  local_mnist_dir = os.environ.get("TEST_TMPDIR", "/tmp/mnist_data")
+  local_raw_dir = os.path.join(local_mnist_dir, "MNIST", "raw")
+  os.makedirs(local_raw_dir, exist_ok=True)
+
+  # 3. Decompress `.gz` archives into uncompressed binary files expected by torchvision.
+  for fname in _MNIST_FILES:
+    target_path = os.path.join(local_raw_dir, fname)
+    if not os.path.exists(target_path):
+      gz_path = os.path.join(gcs_raw_dir, f"{fname}.gz")
+      if not os.path.exists(gz_path):
+        raise FileNotFoundError(f"Required MNIST file missing: {gz_path}")
+      with gzip.open(gz_path, "rb") as f_in, open(target_path, "wb") as f_out:
+        shutil.copyfileobj(f_in, f_out)
+
+  # 4. Monkey-patch torchvision MNIST class.
+  # We override __init__ on the dataset class so that unmodified upstream scripts
+  # (which call MNIST('../data', download=True)) seamlessly use our pre-staged local
+  # files without network requests.
+  cls = vision_datasets.MNIST
+  orig_init = cls.__init__
+
+  # Override __init__ to intercept dataset instantiation:
+  #   1. Force root path to our local writable directory (local_mnist_dir).
+  #   2. Force download=False to prevent outbound network requests in CI runners.
+  def _make_patched_init(orig):
+    def _patched_init(self, *args, **kwargs):
+      # Disable internet downloads.
+      kwargs["download"] = False
+
+      # Force dataset root to our staged directory regardless of what the script requested.
+      if args:
+        args = (local_mnist_dir,) + args[1:]
+      else:
+        kwargs["root"] = local_mnist_dir
+
+      return orig(self, *args, **kwargs)
+
+    return _patched_init
+
+  cls.__init__ = _make_patched_init(orig_init)
+
+
+def _patch_dataloader_no_multiprocessing():
+  """Forces DataLoader to use num_workers=0 to prevent /dev/shm shared memory crashes in container CI runners."""
+  orig_init = data.DataLoader.__init__
+
+  def _patched_init(self, *args, **kwargs):
+    kwargs["num_workers"] = 0
+    kwargs["persistent_workers"] = False
+    return orig_init(self, *args, **kwargs)
+
+  data.DataLoader.__init__ = _patched_init
 
 
 def _copy_cora_dataset():
@@ -81,6 +169,16 @@ def _setup_datasets(example: str):
   match example:
     case "gat/main.py":
       _copy_cora_dataset()
+    case (
+        "mnist/main.py"
+        | "mnist_forward_forward/main.py"
+        | "siamese_network/main.py"
+        | "vae/main.py"
+    ):
+      # Create local './results' directory for saving checkpoints and models.
+      # Required by upstream examples.
+      os.makedirs("results", exist_ok=True)
+      _stage_mnist_datasets()
     case _:
       pass
 
@@ -90,25 +188,23 @@ def main(argv=None):
   if not os.path.exists(_DATASET_BASE_DIR):
     raise FileNotFoundError(
         f"GCS bucket data directory '{_DATASET_BASE_DIR}' does not exist."
-        " Ensure GCS bucket 'torchtpu-shared' is mounted at '/tmp/gcsfuse'."
+        " Ensure GCS bucket 'torchtpu-shared' is mounted at"
+        f" '{_DATASET_BASE_DIR}'."
     )
 
-  pytorch_examples_dir = os.environ.get(
-      "TORCH_TPU_INTERNAL_PYTORCH_EXAMPLES_DIR"
-  )
+  _patch_dataloader_no_multiprocessing()
+  pytorch_examples_dir = os.environ.get("TORCH_TPU_INTERNAL_TORCH_EXAMPLES_DIR")
   if not pytorch_examples_dir:
-    raise EnvironmentError(
-        "TORCH_TPU_INTERNAL_PYTORCH_EXAMPLES_DIR is not set."
-    )
+    raise EnvironmentError("TORCH_TPU_INTERNAL_TORCH_EXAMPLES_DIR is not set.")
 
   rel_path = os.environ.get(
-      "TORCH_TPU_INTERNAL_EXAMPLE_PATH", "regression/main.py"
+      "TORCH_TPU_INTERNAL_TORCH_EXAMPLE_PATH", "regression/main.py"
   )
   example_file_path = str(pathlib.Path(pytorch_examples_dir) / rel_path)
   if not os.path.exists(example_file_path):
     raise FileNotFoundError(f"Example file not found: {example_file_path}")
 
-  extra_args = os.environ.get("TORCH_TPU_INTERNAL_EXAMPLE_ARGS", "")
+  extra_args = os.environ.get("TORCH_TPU_INTERNAL_TORCH_EXAMPLE_ARGS", "")
   sys.argv = [example_file_path] + (
       shlex.split(extra_args) if extra_args else []
   )

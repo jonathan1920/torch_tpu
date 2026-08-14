@@ -14,8 +14,10 @@
 
 load(
     "//build_files:build_defs.bzl",
+    "DEFAULT_TORCH_EXAMPLE_DEPS",
     "if_oss",
     "oss_target",
+    "oss_torch_example_test",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
     "torch_tpu_py_test",
@@ -2140,105 +2142,36 @@ oss_target(
     ],
 )
 
-# TODO(b/543950784): Create Starlark for examples to avoid bloat.
-
 # Test for ensure pytorch example works with torch_tpu. It functions as an integration test and as a
 # documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
 # Therefore, this test is OSS only.
-oss_target(
-    torch_tpu_py_test,
+oss_torch_example_test(
     name = "run_upstream_example_regression_tpu",
-    srcs = ["run_upstream_example.py"],
-    env = {
-        "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "regression/main.py",
-    },
-    main = "run_upstream_example.py",
-    nolocal = "This test requires downloading the raw PyTorch examples tree.",
-    nonightly_oss = "Test in development. To be added to nightly once stable.",
-    nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
-    tags = [
-        "requires-tpu-v5lite",
-        "wheel_test_excluded",
-    ],
-    deps = [
-        "//shims/absl_py:app",
-        "//shims/torch:pytorch",
-        "//torch_tpu",
-    ],
+    torch_example_main = "regression/main.py",
 )
 
 # Test for ensure pytorch example works with torch_tpu. It functions as an integration test and as a
 # documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
 # Therefore, this test is OSS only.
-oss_target(
-    torch_tpu_py_test,
+oss_torch_example_test(
     name = "run_upstream_example_fx_invert_tpu",
-    srcs = ["run_upstream_example.py"],
-    env = {
-        "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "fx/invert.py",
-    },
-    main = "run_upstream_example.py",
-    nolocal = "This test requires downloading the raw PyTorch examples tree.",
-    nonightly_oss = "Test in development. To be added to nightly once stable.",
-    nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
-    tags = [
-        "requires-tpu-v5lite",
-        "wheel_test_excluded",
-    ],
-    deps = [
-        "//shims/absl_py:app",
-        "//shims/torch:pytorch",
-        "//torch_tpu",
-    ],
+    torch_example_main = "fx/invert.py",
 )
 
 # Test for ensure pytorch example works with torch_tpu. It functions as an integration test and as a
 # documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
 # Therefore, this test is OSS only.
-oss_target(
-    torch_tpu_py_test,
+oss_torch_example_test(
     name = "run_upstream_example_fx_module_tracer_tpu",
-    srcs = ["run_upstream_example.py"],
-    env = {
-        "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "fx/module_tracer.py",
-    },
-    main = "run_upstream_example.py",
-    nolocal = "This test requires downloading the raw PyTorch examples tree.",
-    nonightly_oss = "Test in development. To be added to nightly once stable.",
-    nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
-    tags = [
-        "requires-tpu-v5lite",
-        "wheel_test_excluded",
-    ],
-    deps = [
-        "//shims/absl_py:app",
-        "//shims/torch:pytorch",
-        "//torch_tpu",
-        "@pypi//torchvision",
-    ],
+    torch_example_main = "fx/module_tracer.py",
 )
 
 # TODO(b/543942649): Improve pytorch GAT example to of taking in datasets as an argument.
-oss_target(
-    torch_tpu_py_test,
+oss_torch_example_test(
     name = "run_upstream_example_gat_tpu",
-    srcs = ["run_upstream_example.py"],
-    env = {
-        "TORCH_TPU_INTERNAL_EXAMPLE_ARGS": "--dry-run",
-        "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "gat/main.py",
-    },
-    main = "run_upstream_example.py",
-    nolocal = "This test requires downloading the raw PyTorch examples tree.",
-    nonightly_oss = "Test in development. To be added to nightly once stable.",
-    nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
-    tags = [
-        "requires-tpu-v5lite",
-        "wheel_test_excluded",
-    ],
-    deps = [
-        "//shims/absl_py:app",
-        "//shims/torch:pytorch",
-        "//torch_tpu",
+    torch_example_args = "--dry-run",
+    torch_example_main = "gat/main.py",
+    deps = DEFAULT_TORCH_EXAMPLE_DEPS + [
         "@pypi//numpy",
         "@pypi//requests",
     ],
@@ -2247,28 +2180,46 @@ oss_target(
 # Test to ensure pytorch example works with torch_tpu. It functions as an integration test and as a
 # documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
 # Therefore, this test is OSS only.
-oss_target(
-    torch_tpu_py_test,
+oss_torch_example_test(
     name = "run_upstream_example_dcgan_tpu",
-    srcs = ["run_upstream_example.py"],
-    env = {
-        "TORCH_TPU_INTERNAL_EXAMPLE_ARGS": "--dataset=fake --dry-run --accel --batchSize=4 --workers=0",
-        "TORCH_TPU_INTERNAL_EXAMPLE_PATH": "dcgan/main.py",
-    },
-    main = "run_upstream_example.py",
-    nolocal = "This test requires downloading the raw PyTorch examples tree.",
-    nonightly_oss = "Test in development. To be added to nightly once stable.",
-    nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
-    tags = [
-        "requires-tpu-v5lite",
-        "wheel_test_excluded",
-    ],
-    deps = [
-        "//shims/absl_py:app",
-        "//shims/torch:pytorch",
-        "//torch_tpu",
-        "@pypi//torchvision",
-    ],
+    torch_example_args = "--dataset=fake --dry-run --accel --batchSize=4 --workers=0",
+    torch_example_main = "dcgan/main.py",
+)
+
+# Test to ensure pytorch example works with torch_tpu. It functions as an integration test and as a
+# documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
+# Therefore, this test is OSS only.
+oss_torch_example_test(
+    name = "run_upstream_example_mnist_tpu",
+    torch_example_args = "--epochs=1 --dry-run --batch-size=4 --test-batch-size=4",
+    torch_example_main = "mnist/main.py",
+)
+
+# Test to ensure pytorch example works with torch_tpu. It functions as an integration test and as a
+# documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
+# Therefore, this test is OSS only.
+oss_torch_example_test(
+    name = "run_upstream_example_mnist_forward_forward_tpu",
+    torch_example_args = "--epochs=1 --train_size=16 --test_size=16",
+    torch_example_main = "mnist_forward_forward/main.py",
+)
+
+# Test to ensure pytorch example works with torch_tpu. It functions as an integration test and as a
+# documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
+# Therefore, this test is OSS only.
+oss_torch_example_test(
+    name = "run_upstream_example_siamese_network_tpu",
+    torch_example_args = "--epochs=1 --dry-run --batch-size=4 --test-batch-size=4",
+    torch_example_main = "siamese_network/main.py",
+)
+
+# Test to ensure pytorch example works with torch_tpu. It functions as an integration test and as a
+# documentation regression test. Tests downloading the raw PyTorch examples tree from GitHub.
+# Therefore, this test is OSS only.
+oss_torch_example_test(
+    name = "run_upstream_example_vae_tpu",
+    torch_example_args = "--epochs=1 --batch-size=4",
+    torch_example_main = "vae/main.py",
 )
 
 torch_tpu_py_test(
