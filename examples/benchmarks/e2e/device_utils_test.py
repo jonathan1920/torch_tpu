@@ -19,8 +19,7 @@ from unittest import mock
 from absl.testing import absltest
 import torch
 from examples.benchmarks.e2e import device_utils
-
-from torch_tpu._internal.shims.xprof import xprof_analysis_client
+from torch_tpu._internal.profiler import xprof_adapter
 
 
 class DeviceUtilsTest(absltest.TestCase):
@@ -47,9 +46,7 @@ class DeviceUtilsTest(absltest.TestCase):
     self.assertGreater(peak_mem, 0.0)
 
   def test_get_max_total_device_time_success(self):
-    mock_client = mock.create_autospec(
-        xprof_analysis_client.XprofAnalysisClient
-    )
+    mock_client = mock.create_autospec(xprof_adapter.XprofAnalysisClient)
     mock_client.get_hosts.return_value = ['host1', 'host2']
 
     # Mock XSpace structure
@@ -110,9 +107,7 @@ class DeviceUtilsTest(absltest.TestCase):
         ),
         -1.0,
     )
-    mock_client = mock.create_autospec(
-        xprof_analysis_client.XprofAnalysisClient
-    )
+    mock_client = mock.create_autospec(xprof_adapter.XprofAnalysisClient)
     self.assertEqual(
         device_utils.get_max_total_device_time(
             session_id=None, client=mock_client
@@ -121,9 +116,7 @@ class DeviceUtilsTest(absltest.TestCase):
     )
 
   def test_get_max_total_device_time_no_hosts(self):
-    mock_client = mock.create_autospec(
-        xprof_analysis_client.XprofAnalysisClient
-    )
+    mock_client = mock.create_autospec(xprof_adapter.XprofAnalysisClient)
     mock_client.get_hosts.return_value = []
     self.assertEqual(
         device_utils.get_max_total_device_time(
@@ -133,9 +126,7 @@ class DeviceUtilsTest(absltest.TestCase):
     )
 
   def test_get_max_total_device_time_no_devices(self):
-    mock_client = mock.create_autospec(
-        xprof_analysis_client.XprofAnalysisClient
-    )
+    mock_client = mock.create_autospec(xprof_adapter.XprofAnalysisClient)
     mock_client.get_hosts.return_value = ['host1']
 
     mock_plane = mock.MagicMock()

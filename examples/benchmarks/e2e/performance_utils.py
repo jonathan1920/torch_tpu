@@ -36,9 +36,8 @@ from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e.harness import metrics as metrics_lib
+from torch_tpu._internal.profiler import xprof_adapter
 from tests.distributed import distributed_utils
-
-from torch_tpu._internal.shims.xprof import xprof_analysis_client
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 
@@ -93,12 +92,12 @@ DISTRIBUTED_PLATFORMS = (
 
 
 @functools.lru_cache(maxsize=None)
-def get_xprof_client() -> xprof_analysis_client.XprofAnalysisClient | None:
+def get_xprof_client() -> xprof_adapter.XprofAnalysisClient | None:
   """Returns the xprof analysis client.
 
   This function caches the client to avoid creating multiple connections.
   """
-  return xprof_analysis_client.XprofAnalysisClient()
+  return xprof_adapter.XprofAnalysisClient()
 
 
 @dataclasses.dataclass

@@ -23,15 +23,14 @@ import psutil
 import torch
 from torch.utils._pytree import tree_flatten
 from torch_tpu._internal import compile as torch_tpu_compile
-
-from torch_tpu._internal.shims.xprof import xprof_analysis_client
+from torch_tpu._internal.profiler import xprof_adapter
 
 _BYTES_IN_MB = 1024 * 1024
 
 
 def _get_peak_hbm_memory_mb(
     session_id: str | None = None,
-    client: xprof_analysis_client.XprofAnalysisClient | None = None,
+    client: xprof_adapter.XprofAnalysisClient | None = None,
 ) -> float:
   """Get peak HBM usage in MB from Xprof memory profile.
 
@@ -97,7 +96,7 @@ def _get_peak_hbm_memory_mb(
 
 def get_max_total_device_time(
     session_id: str | None = None,
-    client: xprof_analysis_client.XprofAnalysisClient | None = None,
+    client: xprof_adapter.XprofAnalysisClient | None = None,
 ) -> float:
   """Gets the max total device time across all devices running the model.
 
@@ -181,7 +180,7 @@ def get_max_total_device_time(
 def get_peak_memory_hbm(
     device,
     session_id: str | None = None,
-    xprof_client: xprof_analysis_client.XprofAnalysisClient | None = None,
+    xprof_client: xprof_adapter.XprofAnalysisClient | None = None,
 ) -> float:
   """Get peak memory usage for the specified device.
 

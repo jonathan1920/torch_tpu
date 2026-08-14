@@ -26,9 +26,9 @@ import torch._inductor.config as inductor_config
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.utils import log_utils
+from torch_tpu._internal.profiler import xprof_adapter
 import transformers
 
-from torch_tpu._internal.shims.xprof import traceme
 from rules_python.python.runfiles import runfiles
 
 EagerMode: TypeAlias = execution_mode.EagerMode
@@ -229,7 +229,7 @@ class GptOss120BRandomDataTrainingTest(absltest.TestCase):
         "step_times": [],
     }
     for epoch in range(num_epochs):
-      with traceme.TraceMe(f"Epoch_{epoch}_Train"):
+      with xprof_adapter.TraceMe(f"Epoch_{epoch}_Train"):
         step_start_time = time.time()
         accumulated_losses = []
         logging.info("Epoch %d : Zero Grad.", epoch)

@@ -31,9 +31,8 @@ import torch._inductor.config as inductor_config
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import log_utils
 from examples import paths
+from torch_tpu._internal.profiler import xprof_adapter
 import transformers
-
-from torch_tpu._internal.shims.xprof import traceme
 
 log_utils.log_to_stderr()
 
@@ -213,7 +212,7 @@ def model_generate(
           device=initial_inputs.device,
       )
 
-    with traceme.TraceMe(f"[{prefix}] Prefill"):
+    with xprof_adapter.TraceMe(f"[{prefix}] Prefill"):
       prefill_start_time = time.time()
       output = model(
           input_ids=initial_inputs,
@@ -247,7 +246,7 @@ def model_generate(
         min_val = seq_len
         max_val = max_buffer_size
         _mark_dynamic_cache(past_key_values, min_val, max_val)
-      with traceme.TraceMe(f"[{prefix}] Decode step {i + 1}"):
+      with xprof_adapter.TraceMe(f"[{prefix}] Decode step {i + 1}"):
         step_start_time = time.time()
         output = model(
             input_ids=next_token,

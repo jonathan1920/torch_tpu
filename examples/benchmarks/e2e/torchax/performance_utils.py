@@ -34,8 +34,7 @@ from examples.benchmarks.e2e import performance_utils as pt_performance_utils
 import torchax
 from torchax import interop  # pylint: disable=unused-import  # noqa: F401
 from torchax import train  # pylint: disable=unused-import  # noqa: F401
-
-from torch_tpu._internal.shims.xprof import traceme
+from torch_tpu._internal.profiler import xprof_adapter
 
 # Monkeypatch torchax.tensor.Environment._to_copy to handle raw Python scalars (int, float, bool)
 # passed during functorch/vmap tracing, converting them to PyTorch tensors on the fly.
@@ -212,7 +211,7 @@ def _run_torchax_forward_pass(
       "warmup_run", enable_xprof
   ) as warmup_run_context:
     for i in range(pt_benchmark_utils.MIN_WARMUP_STEPS.value):
-      with traceme.TraceMe("Warmup", step_num=i):
+      with xprof_adapter.TraceMe("Warmup", step_num=i):
         step_start = time.perf_counter()
         out = runnable_model(weights, buffers, inputs)
         _sync_jax_device(out.data)
@@ -234,7 +233,7 @@ def _run_torchax_forward_pass(
       "post_warmup_run", enable_xprof
   ) as post_warmup_run_context:
     for i in range(pt_benchmark_utils.POST_WARMUP_STEPS.value):
-      with traceme.TraceMe("Eval", step_num=i):
+      with xprof_adapter.TraceMe("Eval", step_num=i):
         step_start = time.perf_counter()
         out = runnable_model(weights, buffers, inputs)
         _sync_jax_device(out.data)
@@ -340,7 +339,7 @@ def _run_torchax_backward_pass(
       "warmup_run", enable_xprof
   ) as warmup_run_context:
     for i in range(pt_benchmark_utils.MIN_WARMUP_STEPS.value):
-      with traceme.TraceMe("Warmup", step_num=i):
+      with xprof_adapter.TraceMe("Warmup", step_num=i):
         step_start = time.perf_counter()
         loss, weights, opt_state = runnable_step(
             weights, buffers, opt_state, inputs, labels
@@ -364,7 +363,7 @@ def _run_torchax_backward_pass(
       "post_warmup_run", enable_xprof
   ) as post_warmup_run_context:
     for i in range(pt_benchmark_utils.POST_WARMUP_STEPS.value):
-      with traceme.TraceMe("Train", step_num=i):
+      with xprof_adapter.TraceMe("Train", step_num=i):
         step_start = time.perf_counter()
         loss, weights, opt_state = runnable_step(
             weights, buffers, opt_state, inputs, labels

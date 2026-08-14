@@ -31,10 +31,9 @@ from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.utils import log_utils
 from examples import paths
+from torch_tpu._internal.profiler import xprof_adapter
 import tqdm
 import transformers
-
-from torch_tpu._internal.shims.xprof import traceme
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 log_utils.log_to_stderr()
@@ -258,7 +257,7 @@ def _train(
     train_loss = 0.0
 
     # Run training steps
-    with traceme.TraceMe(f"Epoch_{epoch}_Train"):
+    with xprof_adapter.TraceMe(f"Epoch_{epoch}_Train"):
       for _ in pbar:
         step_start_time = time.time()
         accumulated_losses = []
@@ -289,7 +288,7 @@ def _train(
         train_loss += step_train_loss
 
     # Validation loop
-    with traceme.TraceMe(f"Epoch_{epoch}_Eval"):
+    with xprof_adapter.TraceMe(f"Epoch_{epoch}_Eval"):
       model.eval()
       val_losses = []
       with torch.no_grad():

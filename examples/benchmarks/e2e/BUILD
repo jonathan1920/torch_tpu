@@ -50,9 +50,7 @@ torch_tpu_py_library(
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/shims/xprof:traceme",
-        "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
-        "//torch_tpu/_internal/shims/xprof:xprof_session",
+        "//torch_tpu/_internal/profiler:xprof_adapter",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//numpy",
     ],
@@ -90,7 +88,7 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/optim",
-        "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
+        "//torch_tpu/_internal/profiler:xprof_adapter",
         "@pypi//tensorboardx",
     ],
 )
@@ -277,7 +275,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/shims/xprof:traceme",
+        "//torch_tpu/_internal/profiler:xprof_adapter",
         "//torch_tpu/_internal/utils:log_utils",
     ],
 )
@@ -568,7 +566,7 @@ torch_tpu_py_library(
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile",
-        "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
+        "//torch_tpu/_internal/profiler:xprof_adapter",
         "@pypi//psutil",
     ],
 )
@@ -586,7 +584,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
+        "//torch_tpu/_internal/profiler:xprof_adapter",
     ],
 )
 

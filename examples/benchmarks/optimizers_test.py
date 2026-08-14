@@ -21,8 +21,7 @@ from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils import _pytree
 from torch_tpu._internal.compile.compiler import StaticCompiler
 from examples.benchmarks import optimizers
-from torch_tpu._internal.shims.xprof import traceme
-from torch_tpu._internal.shims.xprof import xprof_session
+from torch_tpu._internal.profiler import xprof_adapter
 
 
 def _make_dummy_params(device: torch.device):
@@ -74,10 +73,10 @@ def _validate_compiled_linear_train_step(test_case, custom_opt, device):
   unified_graph = make_fx(flattened_stateless_train_step)(*flat_inputs)
   compiled_executable = StaticCompiler()(unified_graph, flat_inputs)
 
-  session = xprof_session.XprofSession()
+  session = xprof_adapter.XprofSession()
   session.start_session(host_trace_level=3, enable_python_tracer=True)
   try:
-    with traceme.TraceMe("ExecuteCompiledStep"):
+    with xprof_adapter.TraceMe("ExecuteCompiledStep"):
       # Step 1
       flat_inputs, _ = _pytree.tree_flatten((pg, x, target))
       result = compiled_executable(*flat_inputs)

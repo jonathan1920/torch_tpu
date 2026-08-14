@@ -33,10 +33,7 @@ from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e.harness import metrics as metrics_lib
 from examples.benchmarks.ops.op_capture import OpCaptureMode
 from examples.benchmarks.quality_utils import quality_benchmark_model
-
-from torch_tpu._internal.shims.xprof import traceme
-from torch_tpu._internal.shims.xprof import xprof_analysis_client
-from torch_tpu._internal.shims.xprof import xprof_session
+from torch_tpu._internal.profiler import xprof_adapter
 
 log_utils.log_to_stderr()
 
@@ -157,7 +154,7 @@ class XprofContext:
     enable_xprof: Whether to enable xprof profiling. If False, the context
       manager does nothing.
     trace_only_host: Whether to trace only the host.
-    session: The xprof_session.XprofSession object if xprof is enabled,
+    session: The xprof_adapter.XprofSession object if xprof is enabled,
       otherwise None.
     session_id: The ID of the xprof session after it has ended, if xprof was
       enabled. Otherwise None.
@@ -174,7 +171,7 @@ class XprofContext:
 
   def __enter__(self):
     if self.enable_xprof:
-      self.session = xprof_session.XprofSession()
+      self.session = xprof_adapter.XprofSession()
       kwargs = {}
       host_trace_level = 3
       enable_python_tracer = True
@@ -314,7 +311,7 @@ def _warmup_run(
       "warmup_run", enable_xprof, trace_only_host=True
   ) as warmup_run_context:
     for step in range(MAX_WARMUP_STEPS.value):
-      with traceme.TraceMe("Warmup", step_num=step):
+      with xprof_adapter.TraceMe("Warmup", step_num=step):
         step_input = example_inputs[step] if is_sequence else example_inputs
         start_time = time.perf_counter()
         _run_step(
@@ -362,7 +359,7 @@ def _post_warmup_run(
     *,
     optimizer: torch.optim.Optimizer | None = None,
     enable_xprof: bool = False,
-    xprof_client: xprof_analysis_client.XprofAnalysisClient | None = None,
+    xprof_client: xprof_adapter.XprofAnalysisClient | None = None,
     sync_params: bool = False,
 ) -> metrics_lib.PostWarmupRunResult:
   """Runs the model once after the warmup is complete.
@@ -401,7 +398,7 @@ def _post_warmup_run(
   def run_single_step(step, is_profiling_run: bool):
     nonlocal num_cache_misses, xprof_timings, non_xprof_timings
     ctx = (
-        traceme.TraceMe("Eval", step_num=step)
+        xprof_adapter.TraceMe("Eval", step_num=step)
         if is_profiling_run
         else contextlib.nullcontext()
     )
@@ -568,7 +565,7 @@ def run_performance_benchmark(
     *,
     enable_xprof: bool = False,
     optimizer: torch.optim.Optimizer | None = None,
-    xprof_client: xprof_analysis_client.XprofAnalysisClient | None = None,
+    xprof_client: xprof_adapter.XprofAnalysisClient | None = None,
     sync_params: bool = False,
     is_bounded_dynamic: bool = False,
     capture_file_name: Optional[str] = None,

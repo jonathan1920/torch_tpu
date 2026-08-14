@@ -12,9 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""An adapter for xprof_session module."""
+"""OSS implementation of TorchTPU's XProf adapter."""
 
 import contextlib
+
+
+class TraceMe(contextlib.AbstractContextManager):
+  """A no-op context manager for TraceMe for OSS."""
+
+  def __init__(self, *args, **kwargs):
+    pass
+
+  def __enter__(self):
+    pass
+
+  def __exit__(self, *args):
+    pass
 
 
 class XprofSession(contextlib.AbstractContextManager):
@@ -32,6 +45,25 @@ class XprofSession(contextlib.AbstractContextManager):
   def end_session_and_get_url(self):
     # MUST return a string to satisfy the f-string formatter
     return "http://dummy-url-for-oss"
+
+  def __enter__(self):
+    pass
+
+  def __exit__(self, *args):
+    pass
+
+
+class XprofAnalysisClient(contextlib.AbstractContextManager):
+  """A no-op context manager for XprofAnalysisClient for OSS."""
+
+  def __init__(self, *args, **kwargs):
+    pass
+
+  def get_profile_data(self, *args, **kwargs):
+    return None, None
+
+  def upload(self, *args, **kwargs):
+    pass
 
   def __enter__(self):
     pass

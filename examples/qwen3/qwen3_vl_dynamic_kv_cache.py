@@ -35,10 +35,10 @@ from torch_tpu._internal import sync as tpu_sync
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import log_utils
 from examples import paths
+from torch_tpu._internal.profiler import xprof_adapter
 import transformers
 from transformers import Qwen3VLForConditionalGeneration
 
-from torch_tpu._internal.shims.xprof import traceme
 from rules_python.python.runfiles import runfiles
 
 log_utils.log_to_stderr()
@@ -197,7 +197,7 @@ def model_generate(
           device=input_ids.device,
       )
 
-    with traceme.TraceMe(f"[{prefix}] Prefill"):
+    with xprof_adapter.TraceMe(f"[{prefix}] Prefill"):
       prefill_start_time = time.time()
       output = model(
           **initial_inputs,
@@ -240,7 +240,7 @@ def model_generate(
       }
 
       try:
-        with traceme.TraceMe(f"[{prefix}] Decode step {i + 1}"):
+        with xprof_adapter.TraceMe(f"[{prefix}] Decode step {i + 1}"):
           step_start_time = time.time()
           output = model(**decode_inputs)
           logits = output.logits

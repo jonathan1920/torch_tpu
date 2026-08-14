@@ -29,9 +29,8 @@ from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.utils import log_utils
 from examples import paths
+from torch_tpu._internal.profiler import xprof_adapter
 import transformers
-
-from torch_tpu._internal.shims.xprof import traceme
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 log_utils.log_to_stderr()
@@ -233,7 +232,7 @@ class Resnet50RandomDataTrainingTest(absltest.TestCase):
         "step_times": [],
     }
     for epoch in range(num_epochs):
-      with traceme.TraceMe(f"Epoch_{epoch}_Train"):
+      with xprof_adapter.TraceMe(f"Epoch_{epoch}_Train"):
         step_start_time = time.time()
         accumulated_losses = []
         # TODO(gunhyun): Uncomment when backwards pass is supported

@@ -32,8 +32,7 @@ from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
 from examples.benchmarks.e2e import test_utils
 from examples.benchmarks.e2e.harness import metrics as metrics_lib
-
-from torch_tpu._internal.shims.xprof import traceme
+from torch_tpu._internal.profiler import xprof_adapter
 
 log_utils.log_to_stderr()
 
@@ -112,7 +111,7 @@ class CompileBenchmarkTest(test_utils.BenchmarkTest):
     for step in range(benchmark_utils.MIN_WARMUP_STEPS.value):
       if step == 0:
         first_step_start = time.time()
-      with traceme.TraceMe("Warmup", step_num=step):
+      with xprof_adapter.TraceMe("Warmup", step_num=step):
         warmup_func(step)
       if step == 0:
         first_step_time_seconds = time.time() - first_step_start
@@ -122,7 +121,7 @@ class CompileBenchmarkTest(test_utils.BenchmarkTest):
     with benchmark_utils.XprofContext("Eval", True) as xprof_context:
       loop_start_time = time.time()
       for step in range(benchmark_utils.POST_WARMUP_STEPS.value):
-        with traceme.TraceMe("Eval", step_num=step):
+        with xprof_adapter.TraceMe("Eval", step_num=step):
           benchmark_fn(step)
       torch.tpu.synchronize()
       loop_end_time = time.time()

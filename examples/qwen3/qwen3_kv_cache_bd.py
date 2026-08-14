@@ -25,11 +25,11 @@ from absl import flags
 import torch
 from torch_tpu._internal import dynamism
 from torch_tpu._internal.utils import test_utils as utils
+from torch_tpu._internal.profiler import xprof_adapter
 import transformers
 from transformers.cache_utils import DynamicCache, DynamicLayer
 from transformers.models.qwen3 import modeling_qwen3
 
-from torch_tpu._internal.shims.xprof import traceme
 from rules_python.python.runfiles import runfiles
 
 BASE_MODEL_CONFIG_PATH = "__main__/examples/huggingface_transformers/model_configs"
@@ -237,7 +237,7 @@ def model_generate(
   with torch.no_grad():
     # Prefill
     start_time = time.time()
-    with traceme.TraceMe(f"[{run_type}] Prefill"):
+    with xprof_adapter.TraceMe(f"[{run_type}] Prefill"):
       with measure_cache_misses(run_type, "prefill"):
         output = model(input_ids=initial_inputs, **model_kwargs)
         if torch.accelerator.is_available():
@@ -278,7 +278,7 @@ def model_generate(
         model_kwargs.update(bd_overrides)
 
       start_time = time.time()
-      with traceme.TraceMe(f"[{run_type}] Decode step {i + 1}"):
+      with xprof_adapter.TraceMe(f"[{run_type}] Decode step {i + 1}"):
         with measure_cache_misses(run_type, f"decode step {i + 1}"):
           output = model(input_ids=decode_input_ids, **model_kwargs)
         if torch.accelerator.is_available():

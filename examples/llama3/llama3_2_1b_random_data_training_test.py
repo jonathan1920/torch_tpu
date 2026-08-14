@@ -29,9 +29,9 @@ from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.utils import log_utils
+from torch_tpu._internal.profiler import xprof_adapter
 import transformers
 
-from torch_tpu._internal.shims.xprof import traceme
 from rules_python.python.runfiles import runfiles
 
 EagerMode: TypeAlias = execution_mode.EagerMode
@@ -378,7 +378,7 @@ class Llama321BRandomDataTrainingTest(absltest.TestCase):
       raise ValueError(f"Unsupported training style: {_TRAINING_STYLE.value}")
 
     for epoch in range(num_epochs):
-      with traceme.TraceMe(f"Epoch_{epoch}_Train"):
+      with xprof_adapter.TraceMe(f"Epoch_{epoch}_Train"):
         step_start_time = time.time()
 
         step_loss = training_step_fn(epoch, inputs, targets)

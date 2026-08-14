@@ -29,9 +29,7 @@ from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import log_utils
-
-from torch_tpu._internal.shims.xprof import traceme
-from torch_tpu._internal.shims.xprof import xprof_session
+from torch_tpu._internal.profiler import xprof_adapter
 
 EagerMode: TypeAlias = execution_mode.EagerMode
 
@@ -119,12 +117,12 @@ class SchedOverheadTest(parameterized.TestCase):
       y = x @ w
       _ = y.to("cpu")
 
-    session = xprof_session.XprofSession()
+    session = xprof_adapter.XprofSession()
     session.start_session(host_trace_level=3, enable_python_tracer=True)
     cpu_total_time = 0
     loop_start_time = time.time()
     for _ in range(_NUM_STEPS.value):
-      with traceme.TraceMe("Eval"):
+      with xprof_adapter.TraceMe("Eval"):
         cpu_start_time = time.time()
         y = x @ w
         cpu_total_time = time.time() - cpu_start_time
@@ -147,12 +145,12 @@ class SchedOverheadTest(parameterized.TestCase):
       sync_device(y, wait=False)
     sync_device(y, wait=True)
 
-    session = xprof_session.XprofSession()
+    session = xprof_adapter.XprofSession()
     session.start_session(host_trace_level=3, enable_python_tracer=True)
     cpu_total_time = 0
     loop_start_time = time.time()
     for _ in range(_NUM_STEPS.value):
-      with traceme.TraceMe("Eval"):
+      with xprof_adapter.TraceMe("Eval"):
         cpu_start_time = time.time()
         y = x @ w
         sync_device(y, wait=False)
@@ -217,12 +215,12 @@ class SchedOverheadTest(parameterized.TestCase):
     for _ in range(_NUM_WARMUP_STEPS.value):
       _ = model(inp)
 
-    session = xprof_session.XprofSession()
+    session = xprof_adapter.XprofSession()
     session.start_session(host_trace_level=3, enable_python_tracer=True)
 
     loop_start_time = time.time()
     for i in range(_NUM_STEPS.value):
-      with traceme.TraceMe("Eval", i=i):
+      with xprof_adapter.TraceMe("Eval", i=i):
         _ = model(inp)
     time_per_step = (time.time() - loop_start_time) / _NUM_STEPS.value
     xprof_url = session.end_session_and_get_url()
