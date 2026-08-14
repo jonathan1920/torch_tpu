@@ -1108,7 +1108,7 @@ torch_tpu_py_test(
         "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
     },
     main = "ops_unit_test.py",
-    shard_count = 20,
+    shard_count = 30,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
@@ -1144,7 +1144,7 @@ torch_tpu_py_test(
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK": "0",
     },
     main = "ops_unit_test.py",
-    shard_count = 20,
+    shard_count = 30,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
