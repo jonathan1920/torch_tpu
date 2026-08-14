@@ -28,6 +28,7 @@
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -476,7 +477,8 @@ const PythonContext* absl_nullable Traversal::GetPythonContext() const {
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
-    mlir::MLIRContext& mlir_context, bool use_stablehlo_bounds) const {
+    mlir::MLIRContext& mlir_context, bool use_stablehlo_bounds,
+    absl::Span<const int64_t> donated_inputs) const {
   // Read the traversal's values.
   absl::Span<const DeviceBufferRef> arguments = this->arguments();
   absl::Span<const SharedDeviceBufferList> execution_order =
@@ -582,7 +584,15 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
       }
     }
   }
-  if (!donated_values.empty()) {
+  for (int64_t donated_input : donated_inputs) {
+    if (donated_input >= 0 && donated_input < arguments.size()) {
+      if (absl::c_find(donated_arguments, donated_input) ==
+          donated_arguments.end()) {
+        donated_arguments.push_back(donated_input);
+      }
+    }
+  }
+  if (!donated_arguments.empty()) {
     AnnotateBufferDonations(module.get(), donated_arguments);
   }
   return module;
@@ -646,8 +656,8 @@ bool Traversal::HasSparseCoreOp() const {
 
 absl::StatusOr<CompiledKernel> Traversal::Compile(
     CompilationSpec spec, std::string* absl_nullable out_mlir_text,
-    bool use_stablehlo_bounds,
-    absl::Span<const Indices> argument_layouts) const {
+    bool use_stablehlo_bounds, absl::Span<const Indices> argument_layouts,
+    absl::Span<const int64_t> donated_inputs) const {
   if (HasSparseCoreOp()) {
     absl::StatusOr<int> status =
         PjrtBackend::GetInstance().GetGlobalDeviceCount();
@@ -674,11 +684,12 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   // to capture this here since CompilationCache::GetOrCompile() will call this
   // builder before the function returns and in the same thread it is invoked.
   MlirComputationBuilder final_op_builder =
-      [this, use_stablehlo_bounds,
+      [this, use_stablehlo_bounds, donated_inputs,
        out_mlir_text](mlir::MLIRContext& mlir_context)
       -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
-    TT_ASSIGN_OR_RETURN(auto module,
-                        BuildMlirModule(mlir_context, use_stablehlo_bounds));
+    TT_ASSIGN_OR_RETURN(
+        auto module,
+        BuildMlirModule(mlir_context, use_stablehlo_bounds, donated_inputs));
     if (out_mlir_text != nullptr) {
       *out_mlir_text = MlirModuleToString(*module);
     }

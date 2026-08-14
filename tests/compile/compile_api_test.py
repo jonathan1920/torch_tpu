@@ -25,6 +25,7 @@ from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.compile.compiler import StaticCompiler
 from torch_tpu._internal.device_utils import annotations
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
@@ -1155,6 +1156,43 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
 
     expected = torch.tensor([[1, 1, 1, 1]], dtype=torch.int32)
     utils.assert_close(padded_tensor.cpu()[:, :4], expected)
+
+  def test_static_compiler_buffer_donation(self):
+    def simple_fn(x, y):
+      return x + y, x * 2
+
+    x = torch.randn(2, 3, device=self.device)
+    y = torch.randn(2, 3, device=self.device)
+
+    gm = make_fx(simple_fn)(x, y)
+
+    comp = StaticCompiler(debug=True)
+
+    donated_inputs = [0]
+    compiled_executable = comp(gm, [x, y], donated_inputs=donated_inputs)
+
+    self.assertIsNotNone(compiled_executable)
+    self.assertTrue(hasattr(compiled_executable, 'mlir_text'))
+
+    self.assertIn('jax.buffer_donor = true', compiled_executable.mlir_text)
+
+    x_cpu = x.cpu().clone()
+    y_cpu = y.cpu().clone()
+    expected_add = x_cpu + y_cpu
+    expected_mul = x_cpu * 2
+
+    res = compiled_executable(x, y)
+
+    utils.assert_close(res[0].cpu(), expected_add)
+    utils.assert_close(res[1].cpu(), expected_mul)
+
+    with self.assertRaisesRegex(
+        RuntimeError, 'INVALID_ARGUMENT: Buffer has been deleted or donated'
+    ):
+      x.cpu()
+
+    # y should still be accessible
+    y.cpu()
 
   def test_executable_layouts(self):
     with eager_mode_defer_all():

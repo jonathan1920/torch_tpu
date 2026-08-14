@@ -181,6 +181,7 @@ class StaticCompiler(Compiler):
       bounds: Sequence[Any] | None = None,
       argument_layouts: Sequence[Sequence[int]] | None = None,
       dynamic_outputs: Sequence[bool] | None = None,
+      donated_inputs: Sequence[int] | None = None,
   ) -> CompiledArtifact:
     """Compiles the FX graph module for static shapes.
 
@@ -207,6 +208,10 @@ class StaticCompiler(Compiler):
       bounds: Optional sequence of TensorBounds for dynamic inputs.
       argument_layouts: Optional sequence of argument layouts for inputs.
       dynamic_outputs: Optional sequence of booleans indicating dynamic outputs.
+      donated_inputs: Optional sequence of flat tensor indices to donate. This
+        is an "internal" feature only available to StaticCompiler intended to be
+        used directly after tracing with make_fx. TODO(b/545738245): Investigate
+        doing this automatically.
 
     Returns:
       A _TorchTpuCompiledExecutable object, which can be called to execute
@@ -301,6 +306,7 @@ class StaticCompiler(Compiler):
             use_stablehlo_bounds=self._use_stablehlo_bounds,
             argument_layouts=argument_layouts,  # pyrefly: ignore[bad-argument-type]
             dynamic_outputs=dynamic_outputs,
+            donated_inputs=donated_inputs,
         )
 
     if exported_mlir.is_noop:

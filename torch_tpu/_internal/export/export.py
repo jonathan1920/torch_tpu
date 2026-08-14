@@ -479,6 +479,7 @@ def fx_to_mlir(
     use_stablehlo_bounds: bool = False,
     argument_layouts: list[list[int]] | None = None,
     dynamic_outputs: Sequence[bool] | None = None,
+    donated_inputs: Sequence[int] | None = None,
 ) -> ExportedMlir:
   """Converts an FX graph module to MLIR using TorchTPU's defer mode.
 
@@ -498,6 +499,7 @@ def fx_to_mlir(
     argument_layouts: A list of forced layouts for input arguments.
     dynamic_outputs: A list of booleans indicating whether the corresponding
       output is dynamic.
+    donated_inputs: A list of argument indices to donate.
 
   Returns:
     An `ExportedMlir` object containing the MLIR representation of the graph and
@@ -599,6 +601,9 @@ def fx_to_mlir(
         build_mlir_module=build_mlir_module,
         use_stablehlo_bounds=use_stablehlo_bounds,
         argument_layouts=internal_layouts,
+        donated_inputs=list(donated_inputs)
+        if donated_inputs is not None
+        else [],
     )
   finally:
     # Restore original generator states.

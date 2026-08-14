@@ -738,6 +738,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
         "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

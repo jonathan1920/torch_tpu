@@ -99,6 +99,8 @@ struct TraverseAndCompileOptions {
   bool use_stablehlo_bounds = false;
   // Forced layouts for arguments.
   std::vector<Indices> argument_layouts;
+  // Indices of arguments to donate.
+  Indices donated_inputs;
 };
 
 // Traverses the graph from outputs to arguments and compiles it.

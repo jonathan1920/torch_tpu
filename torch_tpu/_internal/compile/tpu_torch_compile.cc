@@ -500,7 +500,12 @@ CompileResult PyTraverseAndCompile(
     const std::vector<at::Tensor>& result_tensors,
     const std::vector<at::Tensor>& argument_tensors, bool fast_compile,
     bool build_mlir_module, bool use_stablehlo_bounds,
-    const std::vector<std::vector<int64_t>>& argument_layouts) {  // INT_VEC_OK
+    const std::optional<std::vector<std::vector<int64_t>>>&  // INT_VEC_OK
+        argument_layouts_opt,
+    const std::vector<int64_t>& donated_inputs = {}) {        // INT_VEC_OK
+  const std::vector<std::vector<int64_t>> argument_layouts =  // INT_VEC_OK
+      argument_layouts_opt.value_or(
+          std::vector<std::vector<int64_t>>{});  // INT_VEC_OK
   if (!argument_layouts.empty()) {
     TT_CHECK_THROW(argument_layouts.size() == argument_tensors.size(),
                    error::kInvalidArgument)
@@ -536,6 +541,8 @@ CompileResult PyTraverseAndCompile(
               .build_mlir_module = build_mlir_module,
               .use_stablehlo_bounds = use_stablehlo_bounds,
               .argument_layouts = converted_layouts,
+              .donated_inputs =
+                  Indices(donated_inputs.begin(), donated_inputs.end()),
           }),
       _.SetPrepend() << "Failed to traverse and compile: ");
   return result;
@@ -1248,8 +1255,8 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         py::arg("argument_tensors"), py::arg("fast_compile") = false,
         py::arg("build_mlir_module") = false,
         py::arg("use_stablehlo_bounds") = false,
-        py::arg("argument_layouts") =
-            std::vector<std::vector<int64_t>>{},  // INT_VEC_OK
+        py::arg("argument_layouts") = py::none(),
+        py::arg("donated_inputs") = std::vector<int64_t>{},  // INT_VEC_OK
         "Traverses the graph from outputs to arguments and compiles it. \n\n"
         "Args:\n"
         "  result_tensors: The output tensors to compile.\n"
@@ -1260,6 +1267,7 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         "    dynamic inputs.\n"
         "  argument_layouts: Optional layout of the input arguments. If not"
         "    empty, the size must match the number of arguments.\n"
+        "  donated_inputs: Optional list of argument indices to donate.\n"
         "Returns:\n"
         "  CompileResult: The compiled module and executable.");
 
