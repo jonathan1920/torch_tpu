@@ -2106,7 +2106,9 @@ def print_reproducer(
   # Not all test cases are expected to pass, skip reproducers for these.
   try:
     fx_reproducer = utils.format_model(wrapped_op_func, *args, pt=True)
-  except RuntimeError as e:
+  # Broad exception catch as this is a best-effort reproducer generation and
+  # invalid inputs may raise varied exceptions.
+  except Exception as e:  # pylint: disable=broad-except
     fx_reproducer = e
   print("Reproducer for:", subtest_name, flush=True)
   print(fx_reproducer, flush=True)
