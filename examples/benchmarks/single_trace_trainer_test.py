@@ -35,6 +35,7 @@ class SingleTraceTrainerTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    torch.manual_seed(42)
     self.device = torch.device("tpu")
 
   def _get_test_models(
