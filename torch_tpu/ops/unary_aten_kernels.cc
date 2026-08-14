@@ -384,15 +384,6 @@ TT_DEFINE_ATEN_UNARY_OUT(OpName::kLiftFreshOut, AtenLiftFresh,
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kSgnOut, AtenSgn, BuildSgnShlo);
 // go/keep-sorted end
 
-at::Tensor AtenCeil(const at::Tensor& self) {
-  TT_KERNEL(OpName::kCeilOut, _, (self), {
-    TT_ASSIGN_OR_THROW(auto result, UnaryOp(self, BuildCeilShlo,
-                                            {.op_param_cache_keys =
-                                                 OpParamCacheKeys::Empty()}));
-    return result;
-  });
-}
-
 at::Tensor& AtenCeilOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kCeilOut, _, (self, out), {
     TT_CHECK_THROW(self.scalar_type() != at::kBool,
@@ -405,15 +396,6 @@ at::Tensor& AtenCeilOut(const at::Tensor& self, at::Tensor& out) {
   });
 }
 
-at::Tensor AtenFloor(const at::Tensor& self) {
-  TT_KERNEL(OpName::kFloorOut, _, (self), {
-    TT_ASSIGN_OR_THROW(auto result, UnaryOp(self, BuildFloorShlo,
-                                            {.op_param_cache_keys =
-                                                 OpParamCacheKeys::Empty()}));
-    return result;
-  });
-}
-
 at::Tensor& AtenFloorOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kFloorOut, _, (self, out), {
     TT_CHECK_THROW(self.scalar_type() != at::kBool,
@@ -423,15 +405,6 @@ at::Tensor& AtenFloorOut(const at::Tensor& self, at::Tensor& out) {
         UnaryOpOut(self, out, BuildFloorShlo,
                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
-  });
-}
-
-at::Tensor AtenSilu(const at::Tensor& self) {
-  TT_KERNEL(OpName::kSiluOut, _, (self), {
-    TT_ASSIGN_OR_THROW(auto result, UnaryOp(self, BuildSiluShlo,
-                                            {.op_param_cache_keys =
-                                                 OpParamCacheKeys::Empty()}));
-    return result;
   });
 }
 
