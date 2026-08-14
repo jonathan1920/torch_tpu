@@ -975,69 +975,6 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.mm(a, b)
 
-  def test_addmm_int64_unsupported(self):
-    t = torch.ones(2, 3, dtype=torch.int64, device=et.device())
-    a = torch.ones(2, 4, dtype=torch.int64, device=et.device())
-    b = torch.ones(4, 3, dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        NotImplementedError,
-        tpu="""addmm(): not implemented for int64""",
-        gpu=""""addmm_cuda" not implemented for 'Long'""",
-    ):
-      torch.addmm(t, a, b)
-
-  def test_addmv_int64_unsupported(self):
-    t = torch.ones(2, dtype=torch.int64, device=et.device())
-    mat = torch.ones(2, 3, dtype=torch.int64, device=et.device())
-    vec = torch.ones(3, dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        NotImplementedError,
-        tpu="""addmv(): not implemented for int64""",
-        gpu=""""addmv_impl_cuda" not implemented for 'Long'""",
-    ):
-      torch.addmv(t, mat, vec)
-
-  def test_baddbmm_int64_unsupported(self):
-    t = torch.ones(2, 3, 4, dtype=torch.int64, device=et.device())
-    b1 = torch.ones(2, 3, 5, dtype=torch.int64, device=et.device())
-    b2 = torch.ones(2, 5, 4, dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        NotImplementedError,
-        tpu="""baddbmm(): not implemented for int64""",
-        gpu=""""baddbmm_cuda" not implemented for 'Long'""",
-    ):
-      torch.baddbmm(t, b1, b2)
-
-  def test_bmm_int64_unsupported(self):
-    a = torch.ones(2, 3, 5, dtype=torch.int64, device=et.device())
-    b = torch.ones(2, 5, 4, dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        NotImplementedError,
-        tpu="""bmm(): not implemented for int64""",
-        gpu=""""baddbmm_cuda" not implemented for 'Long'""",
-    ):
-      torch.bmm(a, b)
-
-  def test_dot_int64_unsupported(self):
-    a = torch.ones(3, dtype=torch.int64, device=et.device())
-    b = torch.ones(3, dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        NotImplementedError,
-        tpu="""dot(): not implemented for int64""",
-        gpu=""""dot" not implemented for 'Long'""",
-    ):
-      torch.dot(a, b)
-
-  def test_vdot_int64_unsupported(self):
-    a = torch.ones(3, dtype=torch.int64, device=et.device())
-    b = torch.ones(3, dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        NotImplementedError,
-        tpu="""vdot(): not implemented for int64""",
-        gpu=""""dot" not implemented for 'Long'""",
-    ):
-      torch.vdot(a, b)
-
   def test_mm_with_mismatched_data_types(self):
     """Tests that mm with mismatched data types fails with expected error."""
     t1 = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
@@ -2396,6 +2333,18 @@ Device-side assertion tracking was not enabled by user.""",
         tpu=tpu_msg,
     ):
       torch.addmm(input_, mat1, mat2, beta=beta, alpha=alpha)
+
+  def test_addmm_int64_unsupported(self):
+    input_ = torch.ones(2, 3, dtype=torch.int64, device=et.device())
+    mat1 = torch.ones(2, 4, dtype=torch.int64, device=et.device())
+    mat2 = torch.ones(4, 3, dtype=torch.int64, device=et.device())
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""addmm(): not implemented for int64""",
+        gpu=""""addmm_cuda" not implemented for 'Long'""",
+    ):
+      torch.addmm(input_, mat1, mat2)
 
   def test_addmm_on_non_matrix_mat1(self):
     input_ = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
@@ -4327,26 +4276,28 @@ Supported combinations for non-constant padding:
     ):
       torch._foreach_clamp_max(self_list, True)
 
-  def test_foreach_div_inplace_int64(self):
-    self_list = [torch.tensor([4, 6], dtype=torch.int64, device=et.device())]
-    other_list = [torch.tensor([2, 3], dtype=torch.int64, device=et.device())]
+  @parameterized.named_parameters(
+      dict(testcase_name="tensor_list", other_kind="tensor_list"),
+      dict(testcase_name="scalar", other_kind="scalar"),
+      dict(testcase_name="scalar_list", other_kind="scalar_list"),
+      dict(testcase_name="tensor", other_kind="tensor"),
+  )
+  def test_foreach_div_inplace_int64(self, other_kind: str):
+    device = et.device()
+    self_list = [torch.tensor([4, 6], dtype=torch.int64, device=device)]
+    other = {
+        "tensor_list": [torch.tensor([2, 3], dtype=torch.int64, device=device)],
+        "scalar": 2,
+        "scalar_list": [2],
+        "tensor": torch.tensor(2, dtype=torch.int64, device=device),
+    }[other_kind]
 
     with et.assert_raises_message(
         RuntimeError,
         tpu="""foreach_div_(): expected all 1 tensors in the self list not to be integral, got 1 integral tensor: int64 at index 0""",
         gpu="""result type Float can't be cast to the desired output type Long""",
     ):
-      torch._foreach_div_(self_list, other_list)
-
-  def test_foreach_div_inplace_scalar_int64(self):
-    self_list = [torch.tensor([4, 6], dtype=torch.int64, device=et.device())]
-
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""foreach_div_(): expected all 1 tensors in the self list not to be integral, got 1 integral tensor: int64 at index 0""",
-        gpu="""result type Float can't be cast to the desired output type Long""",
-    ):
-      torch._foreach_div_(self_list, 2)
+      torch._foreach_div_(self_list, other)
 
   def test_foreach_sub_int_tensors_float_alpha(self):
     self_list = [torch.tensor([1, 2], dtype=torch.int32, device=et.device())]
@@ -4658,6 +4609,18 @@ Supported combinations for non-constant padding:
     ):
       torch.addmv(t.to(torch.bool), mat, vec)
 
+  def test_addmv_int64_unsupported(self):
+    t = torch.ones(5, device=et.device(), dtype=torch.int64)
+    mat = torch.ones(5, 5, device=et.device(), dtype=torch.int64)
+    vec = torch.ones(5, device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""addmv(): not implemented for int64""",
+        gpu=""""addmv_impl_cuda" not implemented for 'Long'""",
+    ):
+      torch.addmv(t, mat, vec)
+
   def test_addmv_not_a_matrix(self):
     inp = torch.ones(5, device=et.device())
     mat = torch.ones(5, 5, 5, device=et.device())
@@ -4783,6 +4746,17 @@ Supported combinations for non-constant padding:
       #   2. PyTorch generated code sets the output dtype to be whatever `b`
       #      dtype is (bool)
       torch.bmm(a, b.to(torch.bool), out=out)
+
+  def test_bmm_int64_unsupported(self):
+    a = torch.ones(1, 2, 3, dtype=torch.int64, device=et.device())
+    b = torch.ones(1, 3, 2, dtype=torch.int64, device=et.device())
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""bmm(): not implemented for int64""",
+        gpu=""""baddbmm_cuda" not implemented for 'Long'""",
+    ):
+      torch.bmm(a, b)
 
   def test_bmm_output_bool(self):
     a = torch.ones(1, 2, 3, dtype=torch.float32, device=et.device())
@@ -4952,6 +4926,18 @@ Supported combinations for non-constant padding:
         message_reviewed_by="wan",
     ):
       torch.baddbmm(input_tensor, batch1, batch2, out=out.to(torch.bool))
+
+  def test_baddbmm_int64_unsupported(self):
+    input_tensor = torch.ones(1, 2, 2, device=et.device(), dtype=torch.int64)
+    batch1 = torch.ones(1, 2, 3, device=et.device(), dtype=torch.int64)
+    batch2 = torch.ones(1, 3, 2, device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""baddbmm(): not implemented for int64""",
+        gpu=""""baddbmm_cuda" not implemented for 'Long'""",
+    ):
+      torch.baddbmm(input_tensor, batch1, batch2)
 
   def test_baddbmm_mismatch_dtypes_batch(self):
     input_tensor = torch.ones(1, 2, 2, dtype=torch.float32, device=et.device())
@@ -5615,6 +5601,21 @@ Supported combinations for non-constant padding:
         tpu=f"""{op_name}(): the input dtypes cannot be bool""",
         gpu=""""dot" not implemented for 'Bool'""",
         message_reviewed_by="wan",
+    ):
+      op(lhs, rhs)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="dot", op=torch.dot, op_name="dot"),
+      dict(testcase_name="vdot", op=torch.vdot, op_name="vdot"),
+  )
+  def test_dot_int64_unsupported(self, op, op_name: str):
+    lhs = torch.ones(2, device=et.device(), dtype=torch.int64)
+    rhs = torch.ones(2, device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu=f"""{op_name}(): not implemented for int64""",
+        gpu=""""dot" not implemented for 'Long'""",
     ):
       op(lhs, rhs)
 

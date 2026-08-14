@@ -55,10 +55,6 @@ absl::Status CheckBmmOut(const at::Tensor& out) {
 absl::Status CheckBmmInputs(const at::Tensor& self, const at::Tensor& mat2) {
   TT_RET_CHECK(!IsBool(self), error::kInvalidArgument)
       << "the dtype of the first argument cannot be bool";
-  // Reject int64 for non-empty inputs to keep consistent with the CUDA impl
-  // in aten/src/ATen/native/cuda/Blas.cpp (baddbmm_out_cuda_impl, which also
-  // backs bmm), which short-circuits and returns success for an empty result
-  // or a zero reduction dimension before dispatching on the input dtype.
   TT_RET_CHECK(
       self.numel() == 0 || mat2.numel() == 0 || self.scalar_type() != at::kLong,
       error::kPythonNotImplementedError)

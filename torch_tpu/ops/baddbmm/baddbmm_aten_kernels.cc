@@ -59,10 +59,6 @@ absl::Status CheckBaddbmmOut(const at::Tensor& out) {
 absl::Status CheckBaddbmmInputs(const at::Tensor& self,
                                 const at::Tensor& batch1,
                                 const at::Tensor& batch2) {
-  // Reject int64 for non-empty inputs to keep consistent with the CUDA impl
-  // in aten/src/ATen/native/cuda/Blas.cpp (baddbmm_out_cuda_impl), which
-  // short-circuits and returns success for an empty result or a zero
-  // reduction dimension before dispatching on the input dtype.
   TT_RET_CHECK(batch1.numel() == 0 || batch2.numel() == 0 ||
                    batch1.scalar_type() != at::kLong,
                error::kPythonNotImplementedError)

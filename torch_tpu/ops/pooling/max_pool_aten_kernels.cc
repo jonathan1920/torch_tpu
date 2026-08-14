@@ -769,12 +769,11 @@ absl::Status BuildMaxPoolWithIndicesBackwardGradInputNd(
   return AssignBufferToAtTensor(std::move(result), grad_input);
 }
 
-// Rejects int64 for non-empty inputs to keep consistent with the CUDA impls
-// in aten/src/ATen/native/cuda/DilatedMaxPool2d.cu and DilatedMaxPool3d.cu
-// ("max_pool2d_with_indices_out_cuda_frame" and
-// "max_pool3d_with_indices_out_frame"), which short-circuit and return
-// success for empty inputs before dispatching on the input dtype.
-void CheckMaxPoolDtypeSupported(const at::Tensor& self) {
+void CheckMaxPoolDtypes(const at::Tensor& self) {
+  TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool,
+                 error::kInvalidArgument)
+      << "bool dtype is not supported";
+
   TT_CHECK_THROW(
       self.numel() == 0 || self.scalar_type() != at::ScalarType::Long,
       error::kPythonNotImplementedError)
@@ -790,10 +789,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool2dWithIndicesOut(
   TT_KERNEL(
       OpName::kMaxPool2dWithIndicesOut, param_keys,
       (self, kernel_size, stride, padding, dilation, ceil_mode, out, indices), {
-        TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool,
-                       error::kInvalidArgument)
-            << "bool dtype is not supported";
-        CheckMaxPoolDtypeSupported(self);
+        CheckMaxPoolDtypes(self);
 
         const int64_t spatial_dim_count = 2;
         TT_THROW_IF_ERROR(BuildMaxPoolWithIndicesOutNd(
@@ -810,10 +806,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool3dWithIndicesOut(
   TT_KERNEL(
       OpName::kMaxPool3dWithIndicesOut, param_keys,
       (self, kernel_size, stride, padding, dilation, ceil_mode, out, indices), {
-        TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool,
-                       error::kInvalidArgument)
-            << "bool dtype is not supported";
-        CheckMaxPoolDtypeSupported(self);
+        CheckMaxPoolDtypes(self);
 
         const int64_t spatial_dim_count = 3;
         TT_THROW_IF_ERROR(BuildMaxPoolWithIndicesOutNd(
@@ -945,10 +938,7 @@ at::Tensor TpuMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
                         at::IntArrayRef dilation, bool ceil_mode) {
   TT_KERNEL(OpName::kMaxPool2d, param_keys,
             (self, kernel_size, stride, padding, dilation, ceil_mode), {
-              TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool,
-                             error::kInvalidArgument)
-                  << "bool dtype is not supported";
-              CheckMaxPoolDtypeSupported(self);
+              CheckMaxPoolDtypes(self);
 
               const int64_t spatial_dim_count = 2;
               TT_ASSIGN_OR_THROW(const auto output_size,

@@ -45,9 +45,6 @@ absl::StatusOr<mlir::ElementType> CheckedGetDotOutputType(
 
   TT_RET_CHECK(!IsBool(output_scalar_type), error::kInvalidArgument)
       << "the input dtypes cannot be bool";
-  // Reject int64 to keep consistent with the CUDA impl in
-  // aten/src/ATen/native/cuda/Blas.cpp (dot_cuda, which also backs vdot),
-  // which dispatches on the input dtype even for empty inputs.
   TT_RET_CHECK(output_scalar_type != at::kLong,
                error::kPythonNotImplementedError)
       << "not implemented for " << ToString(output_scalar_type);

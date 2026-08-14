@@ -165,10 +165,6 @@ absl::Status CheckAddmvInputs(const at::Tensor& self, const at::Tensor& mat,
   TT_RET_CHECK(!IsBool(self), error::kInvalidArgument)
       << "the dtype of the first argument cannot be bool";
 
-  // Reject int64 for a non-empty matrix to keep consistent with the CUDA impl
-  // in aten/src/ATen/native/cuda/Blas.cpp (addmv_out_cuda), which
-  // short-circuits and returns success for an empty matrix before dispatching
-  // on the input dtype.
   TT_RET_CHECK(mat.numel() == 0 || mat.scalar_type() != at::kLong,
                error::kPythonNotImplementedError)
       << "not implemented for " << ToString(mat.scalar_type());

@@ -558,10 +558,6 @@ at::Tensor& AtenAvgPool2dOut(const at::Tensor& self,
       (self, kernel_size, stride, padding, ceil_mode, count_include_pad,
        divisor_override, out),
       {
-        // Reject int64 for non-empty inputs to keep consistent with the CUDA
-        // impl in aten/src/ATen/native/cuda/AveragePool2d.cu
-        // ("avg_pool2d_out_cuda_frame"), which skips the dtype dispatch when
-        // the output is empty.
         TT_CHECK_THROW(
             self.numel() == 0 || self.scalar_type() != at::ScalarType::Long,
             error::kPythonNotImplementedError)

@@ -2167,7 +2167,7 @@ std::vector<at::Tensor> AtenForeachDivTensor(at::TensorList self,
 
 void AtenForeachDiv_List(at::TensorList self, at::TensorList other) {
   TT_KERNEL(OpName::kForeachDiv_List, _, (self, other), {
-    // In-place division on integral tensors must fail: the result type
+    // In-place division on integral tensors must fail. The result type
     // promotes to float, which cannot be cast back to the integral inputs.
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
@@ -2180,7 +2180,7 @@ void AtenForeachDiv_List(at::TensorList self, at::TensorList other) {
 void AtenForeachDiv_Scalar(at::TensorList self, const at::Scalar& scalar) {
   auto promoted_scalar = PromoteScalar(scalar);
   TT_KERNEL(OpName::kForeachDiv_Scalar, _, (self, promoted_scalar), {
-    // In-place division on integral tensors must fail: the result type
+    // In-place division on integral tensors must fail. The result type
     // promotes to float, which cannot be cast back to the integral inputs.
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
@@ -2202,7 +2202,7 @@ void AtenForeachDiv_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars) {
   auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(OpName::kForeachDiv_ScalarList, _, (self, promoted_scalars), {
-    // In-place division on integral tensors must fail: the result type
+    // In-place division on integral tensors must fail. The result type
     // promotes to float, which cannot be cast back to the integral inputs.
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
@@ -2222,7 +2222,7 @@ void AtenForeachDiv_ScalarList(at::TensorList self,
 
 void AtenForeachDiv_Tensor(at::TensorList self, const at::Tensor& other) {
   TT_KERNEL(OpName::kForeachDiv_Tensor, _, (self, other), {
-    // In-place division on integral tensors must fail: the result type
+    // In-place division on integral tensors must fail. The result type
     // promotes to float, which cannot be cast back to the integral inputs.
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     std::vector<at::Tensor> other_list(self.size(), other);

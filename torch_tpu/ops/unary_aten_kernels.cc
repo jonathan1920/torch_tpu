@@ -410,8 +410,6 @@ at::Tensor& AtenFloorOut(const at::Tensor& self, at::Tensor& out) {
 
 at::Tensor& AtenSiluOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kSiluOut, _, (self, out), {
-    // Match the CUDA impl in aten/src/ATen/native/cuda/ActivationSiluKernel.cu
-    // ("silu_cuda"), which only supports floating point and complex dtypes.
     TT_CHECK_THROW(
         self.scalar_type() != at::kBool && self.scalar_type() != at::kLong,
         error::kPythonNotImplementedError)
