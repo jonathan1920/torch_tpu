@@ -22,6 +22,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/ones.h"
+#include "absl/base/casts.h"
 #include "absl/status/statusor.h"
 #include "c10/util/Exception.h"
 #include "c10/util/StringUtil.h"
@@ -172,7 +173,7 @@ TEST(TtKernel, SupportsIgnoreInCacheKeyWithReason) { Kernel6(1, 2, 3); }
 
 void KernelWithPromotedScalars(const at::Tensor& t, const at::Scalar& s,
                                const std::optional<at::Scalar>& os,
-                               const at::ArrayRef<at::Scalar>& as, int ndim) {
+                               const at::ArrayRef<at::Scalar> as, int ndim) {
   auto promoted_s = PromoteScalar(s);
   auto promoted_os = PromoteScalar(os);
   auto promoted_as = PromoteScalar(as);

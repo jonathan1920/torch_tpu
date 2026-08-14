@@ -111,6 +111,7 @@ torch_tpu_cc_test(
         "//torch_tpu/common:oss_test_main",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/ops:op_names",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status:statusor",
     ],
 )

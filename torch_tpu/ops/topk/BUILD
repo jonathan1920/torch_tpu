@@ -50,8 +50,8 @@ torch_tpu_cc_library(
     srcs = ["topk.cc"],
     hdrs = ["topk.h"],
     deps = [
-        "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:utils",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",

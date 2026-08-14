@@ -29,7 +29,7 @@ namespace torch_tpu {
 
 // Resolves negative indices by converting them to positive indices
 absl::Status ResolveNegativeIndices(std::vector<at::Tensor>& indices,
-                                    const at::IntArrayRef& sizes,
+                                    at::IntArrayRef sizes,
                                     const Indices& dimensions);
 
 absl::StatusOr<int64_t> ValidateIndexInputsAndGetDim(const at::Tensor& self,

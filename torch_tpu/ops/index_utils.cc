@@ -44,7 +44,7 @@
 namespace torch_tpu {
 
 absl::Status ResolveNegativeIndices(std::vector<at::Tensor>& indices,
-                                    const at::IntArrayRef& sizes,
+                                    const at::IntArrayRef sizes,
                                     const Indices& dimensions) {
   std::vector<at::Tensor> indices_to_resolve;
   std::vector<at::Tensor> dim_size_tensors;
