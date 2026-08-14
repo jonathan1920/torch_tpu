@@ -636,6 +636,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/scaled_mm:scaled_mm_aten_kernels",
         "//torch_tpu/ops/scatter:scatter_aten_kernels",
         "//torch_tpu/ops:searchsorted_aten_kernels",
+        "//torch_tpu/ops/segment_reduce:segment_reduce_aten_kernels",
         "//torch_tpu/ops/set:set_aten_kernels",
         "//torch_tpu/ops/sigmoid:sigmoid_aten_kernels",
         "//torch_tpu/ops/softmax:_masked_softmax_aten_kernels",

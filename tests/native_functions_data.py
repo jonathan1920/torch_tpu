@@ -348,7 +348,6 @@ UNREGISTERED_OPS = frozenset([
     'rrelu_with_noise',
     'rrelu_with_noise.out',
     'rrelu_with_noise_',
-    'segment_reduce',
     'silu_backward.grad_input',
     'sinc.out',
     'slow_conv3d_forward',

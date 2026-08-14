@@ -1283,6 +1283,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "searchsorted.Tensor";
     case OpName::kSearchsortedTensorOut:
       return "searchsorted.Tensor_out";
+    case OpName::kSegmentReduce:
+      return "segment_reduce";
     case OpName::kSetDimensionLogicalSize:
       return "set_dimension_logical_size";
     case OpName::kSet_:

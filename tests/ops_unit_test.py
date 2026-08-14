@@ -7344,6 +7344,337 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(run)
 
+  def test_segment_reduce_modes(self):
+    """Tests segment_reduce with different reduction modes."""
+    data_cpu = torch.tensor(
+        [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], device=self.golden_device
+    )
+    lengths_cpu = torch.tensor(
+        [2, 3, 1], dtype=torch.long, device=self.golden_device
+    )
+    data_tpu = data_cpu.to("tpu")
+    lengths_tpu = lengths_cpu.to("tpu")
+
+    for reduce_mode in ("sum", "mean", "max", "min", "prod"):
+      golden = torch.segment_reduce(
+          data_cpu, reduce=reduce_mode, lengths=lengths_cpu
+      )
+      actual = torch.segment_reduce(
+          data_tpu, reduce=reduce_mode, lengths=lengths_tpu
+      )
+      self.assert_close(golden_result=golden, torch_tpu_result=actual)
+
+  def test_segment_reduce_lengths_vs_offsets(self):
+    """Tests segment_reduce with lengths vs offsets."""
+    data_cpu = torch.tensor(
+        [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], device=self.golden_device
+    )
+    data_tpu = data_cpu.to("tpu")
+
+    lengths_cpu = torch.tensor(
+        [2, 3, 1], dtype=torch.long, device=self.golden_device
+    )
+    lengths_tpu = lengths_cpu.to("tpu")
+    golden_lengths = torch.segment_reduce(
+        data_cpu, reduce="sum", lengths=lengths_cpu
+    )
+    actual_lengths = torch.segment_reduce(
+        data_tpu, reduce="sum", lengths=lengths_tpu
+    )
+    self.assert_close(
+        golden_result=golden_lengths, torch_tpu_result=actual_lengths
+    )
+
+    offsets_cpu = torch.tensor(
+        [0, 2, 5, 6], dtype=torch.long, device=self.golden_device
+    )
+    offsets_tpu = offsets_cpu.to("tpu")
+    golden_offsets = torch.segment_reduce(
+        data_cpu, reduce="sum", offsets=offsets_cpu
+    )
+    actual_offsets = torch.segment_reduce(
+        data_tpu, reduce="sum", offsets=offsets_tpu
+    )
+    self.assert_close(
+        golden_result=golden_offsets, torch_tpu_result=actual_offsets
+    )
+
+  def test_segment_reduce_axis(self):
+    """Tests segment_reduce with axis parameter (axis=0 and axis=-1)."""
+    data_cpu = torch.arange(
+        24, dtype=torch.float32, device=self.golden_device
+    ).reshape(6, 4)
+    data_tpu = data_cpu.to("tpu")
+
+    lengths0_cpu = torch.tensor(
+        [2, 4], dtype=torch.long, device=self.golden_device
+    )
+    lengths0_tpu = lengths0_cpu.to("tpu")
+    golden0 = torch.segment_reduce(
+        data_cpu, reduce="sum", axis=0, lengths=lengths0_cpu
+    )
+    actual0 = torch.segment_reduce(
+        data_tpu, reduce="sum", axis=0, lengths=lengths0_tpu
+    )
+    self.assert_close(golden_result=golden0, torch_tpu_result=actual0)
+
+    data1_cpu = torch.arange(6, dtype=torch.float32, device=self.golden_device)
+    data1_tpu = data1_cpu.to("tpu")
+    lengths1_cpu = torch.tensor(
+        [2, 4], dtype=torch.long, device=self.golden_device
+    )
+    lengths1_tpu = lengths1_cpu.to("tpu")
+    golden1 = torch.segment_reduce(
+        data1_cpu, reduce="sum", axis=0, lengths=lengths1_cpu
+    )
+    actual1 = torch.segment_reduce(
+        data1_tpu, reduce="sum", axis=0, lengths=lengths1_tpu
+    )
+    self.assert_close(golden_result=golden1, torch_tpu_result=actual1)
+
+  def test_segment_reduce_negative_axis(self):
+    """Tests segment_reduce with negative axis (axis=-2)."""
+    data_cpu = torch.arange(
+        24, dtype=torch.float32, device=self.golden_device
+    ).reshape(6, 4)
+    lengths_cpu = torch.tensor(
+        [2, 4], dtype=torch.long, device=self.golden_device
+    )
+    data_tpu = data_cpu.to("tpu")
+    lengths_tpu = lengths_cpu.to("tpu")
+
+    golden = torch.segment_reduce(
+        data_cpu, reduce="sum", axis=-2, lengths=lengths_cpu
+    )
+    actual = torch.segment_reduce(
+        data_tpu, reduce="sum", axis=-2, lengths=lengths_tpu
+    )
+    self.assert_close(golden_result=golden, torch_tpu_result=actual)
+
+  def test_segment_reduce_initial(self):
+    """Tests segment_reduce with initial scalar parameter across all modes."""
+    data_cpu = torch.tensor(
+        [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], device=self.golden_device
+    )
+    lengths_cpu = torch.tensor(
+        [2, 3, 1], dtype=torch.long, device=self.golden_device
+    )
+    data_tpu = data_cpu.to("tpu")
+    lengths_tpu = lengths_cpu.to("tpu")
+
+    for reduce_mode in ("sum", "mean", "max", "min", "prod"):
+      for init_val in (0.0, 10.0, -5.0):
+        golden = torch.segment_reduce(
+            data_cpu, reduce=reduce_mode, initial=init_val, lengths=lengths_cpu
+        )
+        actual = torch.segment_reduce(
+            data_tpu, reduce=reduce_mode, initial=init_val, lengths=lengths_tpu
+        )
+        self.assert_close(golden_result=golden, torch_tpu_result=actual)
+
+  def test_segment_reduce_empty_segments(self):
+    """Tests segment_reduce with empty segments across all modes and initial values."""
+    data_cpu = torch.tensor([1.0, 2.0, 3.0, 4.0], device=self.golden_device)
+    lengths_cpu = torch.tensor(
+        [2, 0, 2], dtype=torch.long, device=self.golden_device
+    )
+    data_tpu = data_cpu.to("tpu")
+    lengths_tpu = lengths_cpu.to("tpu")
+
+    for reduce_mode in ("sum", "mean", "max", "min", "prod"):
+      for init_val in (None, 0.0, 10.0):
+        golden = torch.segment_reduce(
+            data_cpu, reduce=reduce_mode, initial=init_val, lengths=lengths_cpu
+        )
+        actual = torch.segment_reduce(
+            data_tpu, reduce=reduce_mode, initial=init_val, lengths=lengths_tpu
+        )
+        self.assert_close(golden_result=golden, torch_tpu_result=actual)
+
+  def test_segment_reduce_cache_key_lengths_then_offsets(self):
+    """Tests that lengths vs offsets do not collide in compilation cache."""
+    data_cpu = torch.tensor([10.0, 20.0, 30.0, 40.0], device=self.golden_device)
+    data_tpu = data_cpu.to("tpu")
+
+    # 1. First invocation using lengths: [2, 2] -> 2 segments of sizes 2 and 2
+    lengths_cpu = torch.tensor(
+        [2, 2], dtype=torch.long, device=self.golden_device
+    )
+    lengths_tpu = lengths_cpu.to("tpu")
+    golden_lengths = torch.segment_reduce(
+        data_cpu, reduce="sum", lengths=lengths_cpu
+    )
+    actual_lengths = torch.segment_reduce(
+        data_tpu, reduce="sum", lengths=lengths_tpu
+    )
+    self.assert_close(
+        golden_result=golden_lengths, torch_tpu_result=actual_lengths
+    )
+
+    # 2. Second invocation using offsets of SAME size (2 elements):
+    # [0, 2] -> 1 segment of size 2
+    offsets_cpu = torch.tensor(
+        [0, 2], dtype=torch.long, device=self.golden_device
+    )
+    offsets_tpu = offsets_cpu.to("tpu")
+    golden_offsets = torch.segment_reduce(
+        data_cpu, reduce="sum", offsets=offsets_cpu
+    )
+    actual_offsets = torch.segment_reduce(
+        data_tpu, reduce="sum", offsets=offsets_tpu
+    )
+    self.assert_close(
+        golden_result=golden_offsets, torch_tpu_result=actual_offsets
+    )
+
+  def test_segment_reduce_float_dtypes(self):
+    """Tests segment_reduce with floating-point data types (float32, bfloat16)."""
+    for dtype in (torch.float32, torch.bfloat16):
+      data_cpu = torch.tensor(
+          [1.0, 5.0, 2.0, 8.0, 3.0, 9.0], dtype=dtype, device=self.golden_device
+      )
+      lengths_cpu = torch.tensor(
+          [2, 4], dtype=torch.long, device=self.golden_device
+      )
+      data_tpu = data_cpu.to("tpu")
+      lengths_tpu = lengths_cpu.to("tpu")
+
+      for reduce_mode in ("sum", "max", "min", "prod", "mean"):
+        golden = torch.segment_reduce(
+            data_cpu, reduce=reduce_mode, lengths=lengths_cpu
+        )
+        actual = torch.segment_reduce(
+            data_tpu, reduce=reduce_mode, lengths=lengths_tpu
+        )
+        self.assert_close(golden_result=golden, torch_tpu_result=actual)
+
+  @parameterized.parameters(
+      itertools.product(
+          ("sum", "mean", "max", "min", "prod"),
+          ("lengths", "offsets"),
+      )
+  )
+  def test_segment_reduce_multidimensional_2d(self, reduce_mode, mode):
+    """Tests 2D lengths/offsets on 2D data (5, 5), axis=1."""
+    data_cpu = torch.randn(5, 5, dtype=torch.float32, device=self.golden_device)
+    lengths_cpu = torch.tensor(
+        [
+            [1, 2, 0, 2],
+            [2, 1, 1, 1],
+            [0, 3, 2, 0],
+            [1, 1, 1, 2],
+            [5, 0, 0, 0],
+        ],
+        dtype=torch.long,
+        device=self.golden_device,
+    )
+    data_tpu = data_cpu.to("tpu")
+    lengths_tpu = lengths_cpu.to("tpu")
+
+    if mode == "lengths":
+      golden = torch.segment_reduce(
+          data_cpu, reduce=reduce_mode, lengths=lengths_cpu, axis=1
+      )
+      actual = torch.segment_reduce(
+          data_tpu, reduce=reduce_mode, lengths=lengths_tpu, axis=1
+      )
+    else:
+      offsets_cpu = torch.zeros(
+          5, 5, dtype=torch.long, device=self.golden_device
+      )
+      offsets_cpu[:, 1:] = torch.cumsum(lengths_cpu, dim=-1)
+      offsets_tpu = offsets_cpu.to("tpu")
+      golden = torch.segment_reduce(
+          data_cpu, reduce=reduce_mode, offsets=offsets_cpu, axis=1
+      )
+      actual = torch.segment_reduce(
+          data_tpu, reduce=reduce_mode, offsets=offsets_tpu, axis=1
+      )
+
+    self.assert_close(golden_result=golden, torch_tpu_result=actual)
+
+  @parameterized.parameters(
+      itertools.product(
+          ("sum", "mean", "max", "min", "prod"),
+          ("lengths", "offsets"),
+      )
+  )
+  def test_segment_reduce_multidimensional_3d(self, reduce_mode, mode):
+    """Tests 2D lengths/offsets on 3D data (2, 5, 4), axis=1."""
+    data_cpu = torch.randn(
+        2, 5, 4, dtype=torch.float32, device=self.golden_device
+    )
+    lengths_cpu = torch.tensor(
+        [[2, 1, 2], [1, 3, 1]],
+        dtype=torch.long,
+        device=self.golden_device,
+    )
+    data_tpu = data_cpu.to("tpu")
+    lengths_tpu = lengths_cpu.to("tpu")
+
+    if mode == "lengths":
+      golden = torch.segment_reduce(
+          data_cpu, reduce=reduce_mode, lengths=lengths_cpu, axis=1
+      )
+      actual = torch.segment_reduce(
+          data_tpu, reduce=reduce_mode, lengths=lengths_tpu, axis=1
+      )
+    else:
+      offsets_cpu = torch.zeros(
+          2, 4, dtype=torch.long, device=self.golden_device
+      )
+      offsets_cpu[:, 1:] = torch.cumsum(lengths_cpu, dim=-1)
+      offsets_tpu = offsets_cpu.to("tpu")
+      golden = torch.segment_reduce(
+          data_cpu, reduce=reduce_mode, offsets=offsets_cpu, axis=1
+      )
+      actual = torch.segment_reduce(
+          data_tpu, reduce=reduce_mode, offsets=offsets_tpu, axis=1
+      )
+
+    self.assert_close(golden_result=golden, torch_tpu_result=actual)
+
+  @parameterized.parameters(
+      itertools.product(
+          ("sum", "mean", "max", "min", "prod"),
+          ("lengths", "offsets"),
+      )
+  )
+  def test_segment_reduce_multidimensional_4d(self, reduce_mode, mode):
+    """Tests 3D lengths/offsets on 4D data (2, 3, 5, 4), axis=2."""
+    data_cpu = torch.randn(
+        2, 3, 5, 4, dtype=torch.float32, device=self.golden_device
+    )
+    lengths_cpu = torch.tensor(
+        [[[2, 3], [1, 4], [3, 2]], [[4, 1], [2, 3], [0, 5]]],
+        dtype=torch.long,
+        device=self.golden_device,
+    )
+    data_tpu = data_cpu.to("tpu")
+    lengths_tpu = lengths_cpu.to("tpu")
+
+    if mode == "lengths":
+      golden = torch.segment_reduce(
+          data_cpu, reduce=reduce_mode, lengths=lengths_cpu, axis=2
+      )
+      actual = torch.segment_reduce(
+          data_tpu, reduce=reduce_mode, lengths=lengths_tpu, axis=2
+      )
+    else:
+      offsets_cpu = torch.zeros(
+          2, 3, 3, dtype=torch.long, device=self.golden_device
+      )
+      offsets_cpu[..., 1:] = torch.cumsum(lengths_cpu, dim=-1)
+      offsets_tpu = offsets_cpu.to("tpu")
+      golden = torch.segment_reduce(
+          data_cpu, reduce=reduce_mode, offsets=offsets_cpu, axis=2
+      )
+      actual = torch.segment_reduce(
+          data_tpu, reduce=reduce_mode, offsets=offsets_tpu, axis=2
+      )
+
+    self.assert_close(golden_result=golden, torch_tpu_result=actual)
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

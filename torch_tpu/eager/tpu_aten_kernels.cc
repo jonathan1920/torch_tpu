@@ -176,6 +176,7 @@
 #include "torch_tpu/ops/scaled_mm/scaled_mm_aten_kernels.h"
 #include "torch_tpu/ops/scatter/scatter_aten_kernels.h"
 #include "torch_tpu/ops/searchsorted_aten_kernels.h"
+#include "torch_tpu/ops/segment_reduce/segment_reduce_aten_kernels.h"
 #include "torch_tpu/ops/set/set_aten_kernels.h"
 #include "torch_tpu/ops/sigmoid/sigmoid_aten_kernels.h"
 #include "torch_tpu/ops/softmax/_masked_softmax_aten_kernels.h"
@@ -912,6 +913,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kSearchsortedScalarOut>(m, AtenSearchsortedScalarOut);
   ImplStable<OpName::kSearchsortedTensor>(m, AtenSearchsortedTensor);
   ImplStable<OpName::kSearchsortedTensorOut>(m, AtenSearchsortedTensorOut);
+  ImplStable<OpName::kSegmentReduce>(m, AtenSegmentReduce);
   ImplStable<OpName::kSet_>(m, AtenSet_);
   ImplStable<OpName::kSet_SourceStorage>(m, AtenSet_SourceStorage);
   ImplStable<OpName::kSet_SourceStorageOffset>(m, AtenSet_SourceStorageOffset);

@@ -315,6 +315,118 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.triu(t, 1)
 
+  def test_segment_reduce_indices_not_supported(self):
+    """Tests that segment_reduce with indices raises expected error."""
+    t = torch.ones(5, device=et.device(), dtype=torch.float32)
+    indices = torch.tensor(
+        [0, 0, 1, 1, 2], device=et.device(), dtype=torch.long
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""segment_reduce(): expected lengths or offsets for reduction, got indices""",
+        gpu=re.compile(
+            r".*segment_reduce\(\): indices based reduction is not supported"
+            r" yet\..*"
+        ),
+        message_reviewed_by="gunhyun",
+    ):
+      torch.segment_reduce(t, "sum", indices=indices)
+
+  def test_segment_reduce_neither_lengths_nor_offsets(self):
+    """Tests that segment_reduce without lengths or offsets raises expected error."""
+    t = torch.ones(5, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""segment_reduce(): expected lengths or offsets to be defined, got neither""",
+        gpu=re.compile(
+            r".*segment_reduce\(\): Either lengths or offsets must be"
+            r" defined\..*"
+        ),
+        message_reviewed_by="gunhyun",
+    ):
+      torch.segment_reduce(t, "sum")
+
+  def test_segment_reduce_invalid_reduce_mode(self):
+    """Tests that segment_reduce with invalid reduce mode raises expected error."""
+    t = torch.ones(5, device=et.device(), dtype=torch.float32)
+    lengths = torch.tensor([2, 3], device=et.device(), dtype=torch.long)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""segment_reduce(): expected reduce mode to be sum, mean, max, min, or prod, got invalid_mode""",
+        gpu=re.compile(
+            r".*reduce argument must be either sum, prod, mean, amax or amin,"
+            r" got invalid_mode.*"
+        ),
+        message_reviewed_by="gunhyun",
+    ):
+      torch.segment_reduce(t, "invalid_mode", lengths=lengths)
+
+  def test_segment_reduce_scalar_tensor_invalid_rank(self):
+    """Tests that segment_reduce with a 0-D scalar tensor raises expected error."""
+    t = torch.tensor(5.0, device=et.device(), dtype=torch.float32)
+    lengths = torch.tensor([1], device=et.device(), dtype=torch.long)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""segment_reduce(): expected input with at least 1 dim, got input with 0 dims""",
+        gpu=re.compile(r".*Expected data\.dim\(\) >= lengths_value\.dim\(\).*"),
+        message_reviewed_by="gunhyun",
+    ):
+      torch.segment_reduce(t, "sum", lengths=lengths)
+
+  def test_segment_reduce_invalid_axis(self):
+    """Tests that segment_reduce with out-of-bounds axis raises expected error."""
+    t = torch.ones(5, 5, device=et.device(), dtype=torch.float32)
+    lengths = torch.tensor([2, 3], device=et.device(), dtype=torch.long)
+    with et.assert_raises_message(
+        IndexError,
+        tpu=re.compile(r".*dimension out of range.*"),
+        gpu=re.compile(r".*Dimension out of range.*"),
+        message_reviewed_by="gunhyun",
+    ):
+      torch.segment_reduce(t, "sum", lengths=lengths, axis=10)
+
+  def test_segment_reduce_data_dim_smaller_than_lengths_dim(self):
+    """Tests segment_reduce with data dim smaller than lengths dim."""
+    t = torch.ones(5, device=et.device(), dtype=torch.float32)
+    lengths = torch.ones(2, 3, device=et.device(), dtype=torch.long)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""segment_reduce(): expected data dim >= lengths/offsets dim, got 1""",
+        gpu=re.compile(r".*Expected data\.dim\(\) >= lengths_value\.dim\(\).*"),
+        message_reviewed_by="gunhyun",
+    ):
+      torch.segment_reduce(t, "sum", lengths=lengths)
+
+  def test_segment_reduce_axis_not_last_dim_of_lengths(self):
+    """Tests segment_reduce where axis is not the last dimension of lengths."""
+    t = torch.ones(5, 5, 5, device=et.device(), dtype=torch.float32)
+    lengths = torch.ones(2, 2, device=et.device(), dtype=torch.long)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""segment_reduce(): expected axis to be the last dimension of lengths/offsets, got 0""",
+        gpu=re.compile(
+            r".*segment_reduce\(\): Expected axis to be the last dimension of"
+            r" lengths but got 0\..*"
+        ),
+        message_reviewed_by="gunhyun",
+    ):
+      torch.segment_reduce(t, "sum", lengths=lengths, axis=0)
+
+  def test_segment_reduce_mismatched_outer_dimension(self):
+    """Tests segment_reduce with mismatched outer dimensions between data and lengths."""
+    t = torch.ones(2, 6, device=et.device(), dtype=torch.float32)
+    lengths = torch.ones(3, 2, device=et.device(), dtype=torch.long)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""segment_reduce(): expected outer dimension 0 to match between data and lengths/offsets, got 2 and 3""",
+        gpu=re.compile(
+            r".*segment_reduce\(\): Expected all rows of lengths along axis to"
+            r" sum to data\.size\(lengths\.dim\(\)-1\) when !unsafe\..*"
+        ),
+        message_reviewed_by="gunhyun",
+    ):
+      torch.segment_reduce(t, "sum", lengths=lengths, axis=1)
+
   def test_upsample_bicubic2d_invalid_rank(self):
     t = torch.ones(1, 2, 3, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(

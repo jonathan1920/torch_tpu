@@ -653,6 +653,7 @@ enum class OpName {
   kSearchsortedScalarOut,
   kSearchsortedTensor,
   kSearchsortedTensorOut,
+  kSegmentReduce,
   kSetDimensionLogicalSize,
   kSet_,
   kSet_SourceStorage,
