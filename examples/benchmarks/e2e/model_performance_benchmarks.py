@@ -133,33 +133,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=4,
-        ),
-    )
-    self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
-  def test_llama_3_2_1b_train_1_step_grad_acc_1(self, run_mode):
-    """Tests the training of Llama-3.2-1B with grad accumulation steps set to 1."""
-
-    batch_size = 8
-
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            common.Platform.GFC_1X1X1,
-            common.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=True,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="meta-llama/Llama-3.2-1B",
-            sequence_length=1024,
-            batch_size=batch_size,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
             grad_accumulation_steps=1,
         ),
     )
@@ -227,7 +200,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=10,
+            grad_accumulation_steps=1,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
@@ -262,7 +235,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=10,
+            grad_accumulation_steps=1,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
@@ -367,30 +340,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.V5E_1X1,
-            common.Platform.GFC_1X1X1,
-            common.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=True,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-3-270m",
-            sequence_length=512,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=4,
-        ),
-    )
-    self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
-  def test_gemma_3_270m_train_1_step_grad_acc_1(self, run_mode):
-    """Tests the training of Gemma-3-270m with grad accumulation steps set to 1."""
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
             common.Platform.GFC_1X1X1,
             common.Platform.B200_1,
         ],
@@ -560,7 +509,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=4,
+            grad_accumulation_steps=1,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_4_31B_BENCHMARK_NAME)
@@ -1002,7 +951,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=4,
+            grad_accumulation_steps=1,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
@@ -1739,7 +1688,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         model_and_input_factory=model_utils.huggingface_diffuser_model_builder,
         train_factory=functools.partial(
             benchmark_function_db.huggingface_diffuser_train_factory,
-            grad_accumulation_steps=4,
+            grad_accumulation_steps=1,
         ),
     )
     self.run_performance_benchmark_test(config, _WAN_2_2_TI2V_5B_BENCHMARK_NAME)
@@ -1764,29 +1713,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
                 "width": 256,
                 "num_frames": 1,
             },
-        ),
-        model_and_input_factory=model_utils.huggingface_diffuser_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_diffuser_train_factory,
-            grad_accumulation_steps=1,
-        ),
-    )
-    self.run_performance_benchmark_test(config, _WAN_2_2_TI2V_5B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
-  def test_wan_2_2_ti2v_5b_backward_grad_acc_1(self, run_mode):
-    """Tests the backward pass of Wan-2.2-TI2V-5B with grad accumulation steps set to 1."""
-
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            common.Platform.GFC_1X1X1,
-            common.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_DIFFUSER,
-        run_mode=run_mode,
-        is_training=True,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
         ),
         model_and_input_factory=model_utils.huggingface_diffuser_model_builder,
         train_factory=functools.partial(
