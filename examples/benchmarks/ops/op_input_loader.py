@@ -14,30 +14,44 @@
 
 import ast
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 import torch
+
+_SPECIAL_NAMES = {
+    "inf": float("inf"),
+    "nan": float("nan"),
+    "Ellipsis": Ellipsis,
+}
+
+_QUANTIZED_DTYPES = tuple(
+    d
+    for d in (
+        getattr(torch, "qint8", None),
+        getattr(torch, "quint8", None),
+        getattr(torch, "qint32", None),
+        getattr(torch, "quint4x2", None),
+        getattr(torch, "quint2x4", None),
+    )
+    if d is not None
+)
 
 
 def deserialize_tensor(
-    shape: List[int], dtype: torch.dtype, device: str = "tpu"
+    shape: Sequence[int], dtype: torch.dtype, device: str = "tpu"
 ) -> torch.Tensor:
   """Creates a synthetic random tensor on the specified device supporting all dtypes.
 
   Utilizes PyTorch's native `torch.testing.make_tensor` utility for
-  comprehensive
-  dtype support (floats, ints, uints, bool, complex, float8, and quantized
-  dtypes).
+  comprehensive dtype support (floats, ints, uints, bool, complex, float8, and
+  quantized dtypes).
   """
+  if device == "meta":
+    return torch.empty(shape, dtype=dtype, device="meta")
+
   torch_device = torch.device("tpu" if device == "tpu" else device)
 
   # PyTorch quantized dtypes require affine quantized tensor constructors
-  if dtype in (
-      getattr(torch, "qint8", None),
-      getattr(torch, "quint8", None),
-      getattr(torch, "qint32", None),
-      getattr(torch, "quint4x2", None),
-      getattr(torch, "quint2x4", None),
-  ):
+  if _QUANTIZED_DTYPES and dtype in _QUANTIZED_DTYPES:
     try:
       return torch._empty_affine_quantized(
           shape, scale=1.0, zero_point=0, dtype=dtype, device=torch_device
@@ -57,15 +71,8 @@ def deserialize_tensor(
           torch_device
       )
     except Exception as e:
-      logging.warning(f"Fallback for dtype {dtype}: {e}")
+      logging.warning("Fallback for dtype %s: %s", dtype, e)
       return torch.empty(shape, dtype=dtype, device=torch_device)
-
-
-from examples.benchmarks.shape_utils import _DTYPE_SHORT_NAMES
-from examples.benchmarks.shape_utils import format_shape_signature
-from examples.benchmarks.shape_utils import format_tensor
-from examples.benchmarks.shape_utils import format_tensor_spec
-from examples.benchmarks.shape_utils import shorten_dtype_name
 
 
 def deserialize_args(
@@ -113,6 +120,8 @@ def deserialize_args(
       elif isinstance(node, ast.UnaryOp):
         if isinstance(node.op, ast.USub):
           return -eval_node(node.operand)
+        elif isinstance(node.op, ast.UAdd):
+          return +eval_node(node.operand)
         else:
           raise ValueError(f"Unsupported unary operator: {type(node.op)}")
       elif isinstance(node, ast.Call):
@@ -151,6 +160,18 @@ def deserialize_args(
               "Unsupported function call:"
               f" {node.func.id if isinstance(node.func, ast.Name) else type(node.func)}"
           )
+      elif isinstance(node, ast.Name):
+        if node.id in _SPECIAL_NAMES:
+          return _SPECIAL_NAMES[node.id]
+        raise ValueError(f"Unsupported name: {node.id}")
+      elif isinstance(node, ast.Attribute):
+        if isinstance(node.value, ast.Name) and node.value.id == "torch":
+          attr = getattr(torch, node.attr, None)
+          if attr is not None and isinstance(
+              attr, (torch.dtype, torch.memory_format, torch.layout)
+          ):
+            return attr
+        raise ValueError(f"Unsupported attribute access: {node.attr}")
       else:
         raise ValueError(f"Unsupported AST node: {type(node)}")
 

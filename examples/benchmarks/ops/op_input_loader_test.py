@@ -15,7 +15,7 @@
 from absl.testing import absltest
 import torch
 from examples.benchmarks.ops.op_input_loader import deserialize_args
-from examples.benchmarks.ops.op_input_loader import format_shape_signature
+from examples.benchmarks.shape_utils import format_shape_signature
 
 
 class OpInputLoaderTest(absltest.TestCase):
@@ -195,6 +195,37 @@ class OpInputLoaderTest(absltest.TestCase):
   def test_unsupported_ast_node(self):
     with self.assertRaises(ValueError):
       deserialize_args("({1, 2}, {})", device="cpu")
+
+  def test_deserialize_meta_device(self):
+    inputs_str = "([T([10, 20], torch.float32), 1], {'flag': True})"
+    args, kwargs = deserialize_args(inputs_str, device="meta")
+    self.assertEqual(args[0].device.type, "meta")
+    self.assertEqual(args[0].shape, torch.Size([10, 20]))
+    self.assertEqual(kwargs["flag"], True)
+
+  def test_deserialize_special_constants_and_unary_plus(self):
+    import math
+
+    inputs_str = (
+        "([+5, -3, inf, -inf, +inf, nan, None, True, False, ...],"
+        " {'memory_format': torch.channels_last, 'layout': torch.strided,"
+        " 'dtype': torch.bfloat16})"
+    )
+    args, kwargs = deserialize_args(inputs_str, device="cpu")
+    self.assertEqual(args[0], 5)
+    self.assertEqual(args[1], -3)
+    self.assertTrue(math.isinf(args[2]))
+    self.assertEqual(args[2], float("inf"))
+    self.assertEqual(args[3], float("-inf"))
+    self.assertEqual(args[4], float("inf"))
+    self.assertTrue(math.isnan(args[5]))
+    self.assertIsNone(args[6])
+    self.assertIs(args[7], True)
+    self.assertIs(args[8], False)
+    self.assertEqual(args[9], Ellipsis)
+    self.assertEqual(kwargs["memory_format"], torch.channels_last)
+    self.assertEqual(kwargs["layout"], torch.strided)
+    self.assertEqual(kwargs["dtype"], torch.bfloat16)
 
 
 if __name__ == "__main__":

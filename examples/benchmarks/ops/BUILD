@@ -42,7 +42,6 @@ torch_tpu_py_library(
     name = "op_input_loader",
     srcs = ["op_input_loader.py"],
     deps = [
-        "//examples/benchmarks:shape_utils",
         "//shims/torch:pytorch",
     ],
 )
@@ -52,6 +51,7 @@ torch_tpu_py_test(
     srcs = ["op_input_loader_test.py"],
     deps = [
         ":op_input_loader",
+        "//examples/benchmarks:shape_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
