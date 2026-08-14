@@ -245,17 +245,17 @@ jobs:
         python_version: ${{ fromJSON(needs.setup.outputs.tpu_versions) }}
         wheel_version: ["standard", "v7"]
         include:
-          # v5: Run Nox smoke tests and skip Bazel test suite.
-          # v7: Run Nox both smoke tests and Bazel test suite.
+          # v7 1-Chip: Run Nox smoke tests on single-chip v7 and skip Bazel test suite.
+          # v7 4-Chip: Run Nox smoke tests and full Bazel test suite.
           - wheel_version: "standard"
-            runner: linux-x86-ct5lp-224-8tpu
-            custom_name: "TPU v5"
+            runner: linux-x86-tpu7x-56-1tpu
+            custom_name: "TPU v7 1-Chip"
           - wheel_version: "v7"
             runner: linux-x86-tpu7x-224-4tpu
             config: "wheel_test_tpu_v7"
             extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
             custom_name: "TPU v7"
-    runs-on: ${{ matrix.runner || 'linux-x86-ct5lp-224-8tpu' }}
+    runs-on: ${{ matrix.runner || 'linux-x86-tpu7x-56-1tpu' }}
     container:
       image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996  # Tag infrastructure-public-image-2c74567ee8e0
       options: --privileged
@@ -314,9 +314,9 @@ jobs:
   # refreshes -- a failure there is the signal to refresh the lock, without
   # ever blocking presubmit on drift.
   test_wheel_tpu_nightly:
-    name: "Test wheel on TPU v5 (PyTorch Nightly) (Python ${{ needs.setup.outputs.default_python_version }})"
+    name: "Test wheel on TPU v7 (PyTorch Nightly) (Python ${{ needs.setup.outputs.default_python_version }})"
     needs: [build_wheels, setup]
-    runs-on: linux-x86-ct5lp-224-8tpu
+    runs-on: linux-x86-tpu7x-56-1tpu
     container:
       image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996  # Tag infrastructure-public-image-2c74567ee8e0
       options: --privileged
