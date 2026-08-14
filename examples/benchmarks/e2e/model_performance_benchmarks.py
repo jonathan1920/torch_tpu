@@ -756,6 +756,12 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_swin_base_forward(self, run_mode):
     """Tests the forward pass of Swin-Base."""
+    # TODO: b/546708345 - Re-enable once the bug is fixed.
+    if run_mode == common.RunMode.COMPILED:
+      self.skipTest(
+          "Swin Transformer uses cpu tensors for some operations which crashes"
+          " torchtpu compile."
+      )
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
