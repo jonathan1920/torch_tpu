@@ -9025,6 +9025,50 @@ class MaskedSoftmaxErrorTest(et.ErrorTestBase):
           dim=1,
       )
 
+  def test_histc_bfloat16_unsupported(self):
+    x = torch.ones(2, 2, device=et.device(), dtype=torch.bfloat16)
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""histc(): not implemented for bfloat16""",
+        gpu=""""histc" not implemented for 'BFloat16'""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.histc(x)
+
+  def test_unique_consecutive_dim_out_of_bounds(self):
+    with et.assert_raises_message(
+        IndexError,
+        tpu="""unique_consecutive(): dimension out of range (expected to be in range of [-2, 1], but got 5)""",
+        gpu="""Dimension out of range (expected to be in range of [-2, 1], but got 5)""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.unique_consecutive(
+          torch.ones(2, 3, device=et.device()),
+          dim=5,
+      )
+
+  def test_unique_consecutive_dim_multiple_zero_dims(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""unique_consecutive(): expected at most 1 zero sized dimension when applying unique on a zero sized dimension, got 2""",
+        gpu="""Number of zero sized dimensions is more than one, so unique cannot be applied """,
+    ):
+      torch.unique_consecutive(
+          torch.empty(0, 0, 3, device=et.device()),
+          dim=0,
+      )
+
+  def test_unique_consecutive_dim_unselected_zero_dim(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""unique_consecutive(): expected 0 unselected zero sized dimensions, got 1""",
+        gpu="""There are 0 sized dimensions, and they aren't selected, so unique cannot be applied""",
+    ):
+      torch.unique_consecutive(
+          torch.empty(0, 3, device=et.device()),
+          dim=1,
+      )
+
 
 if __name__ == "__main__":
   multiprocessing.handle_test_main(absltest.main)

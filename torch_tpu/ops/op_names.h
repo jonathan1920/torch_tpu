@@ -713,6 +713,8 @@ enum class OpName {
   kUnfoldBackward,
   kUniform_,
   kUnique2,
+  kUniqueConsecutive,
+  kUniqueDimConsecutive,
   kUnsqueeze,
   kUnsqueezeCopy,
   kUnsqueezeCopyOut,

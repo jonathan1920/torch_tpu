@@ -3961,6 +3961,13 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_unfold(self):
     self.do_test_op("unfold")
 
+  def test_unique_consecutive(self):
+    self.do_test_op(
+        "unique_consecutive",
+        exclude_dtypes=COMPLEX_DTYPES,
+        check_dynamism=False,
+    )
+
   def test_unsqueeze(self):
     self.do_test_op("unsqueeze")
 

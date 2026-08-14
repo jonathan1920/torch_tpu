@@ -205,6 +205,7 @@ def verify_op_supports_dynamism(
       "tril",  # bad broadcast
       "triu",  # bad broadcast, iota-like
       "trunc",  # dynamic triage (invalid result)
+      "unique_consecutive",
       "var",  # dynamic triage (invalid result)
       "vdot",  # MLIR assertion failure (bounds length vs rank)
       "view_as_complex",  # crash (Aborted)

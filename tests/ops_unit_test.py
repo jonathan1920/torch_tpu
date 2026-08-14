@@ -7688,6 +7688,230 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # Verify that the data pointer address is unchanged.
     self.assertEqual(x_addr, x.data_ptr())
 
+  @parameterized.product(
+      shape=[(10,), (4, 5), (2, 3, 4)],
+      return_inverse=[False, True],
+      return_counts=[False, True],
+      dim=[None, 0, -1],
+      dtype=[
+          torch.float32,
+          torch.bfloat16,
+          torch.float16,
+          torch.float64,
+          torch.int64,
+          torch.int32,
+          torch.int16,
+          torch.int8,
+          torch.uint8,
+          torch.bool,
+      ],
+  )
+  def test_unique_consecutive(
+      self, shape, return_inverse, return_counts, dim, dtype
+  ):
+    if dim is not None and len(shape) <= 1 and dim != 0 and dim != -1:
+      return
+
+    numel = math.prod(shape)
+    raw = (torch.arange(numel) // 2 % 5).reshape(shape)
+    if dtype == torch.bool:
+      input_value = (raw % 2).to(torch.bool)
+    else:
+      input_value = raw.to(dtype)
+
+    def compute(device):
+      return torch.unique_consecutive(
+          input_value.to(device),
+          return_inverse=return_inverse,
+          return_counts=return_counts,
+          dim=dim,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  @parameterized.product(
+      shape=[(4, 5), (2, 3, 4)],
+      return_inverse=[False, True],
+      return_counts=[False, True],
+      dim=[0, 1, -1],
+      dtype=[
+          torch.float32,
+          torch.bfloat16,
+          torch.float16,
+          torch.float64,
+          torch.int64,
+          torch.int32,
+          torch.int16,
+          torch.int8,
+          torch.uint8,
+          torch.bool,
+      ],
+  )
+  def test_unique_dim_consecutive(
+      self, shape, return_inverse, return_counts, dim, dtype
+  ):
+    numel = math.prod(shape)
+    raw = (torch.arange(numel) // 2 % 5).reshape(shape)
+    if dtype == torch.bool:
+      input_value = (raw % 2).to(torch.bool)
+    else:
+      input_value = raw.to(dtype)
+
+    def compute(device):
+      out = torch.ops.aten.unique_dim_consecutive(
+          input_value.to(device),
+          dim=dim,
+          return_inverse=return_inverse,
+          return_counts=return_counts,
+      )
+      result = [out[0]]
+      if return_inverse:
+        result.append(out[1])
+      if return_counts:
+        result.append(out[2])
+      return tuple(result) if len(result) > 1 else result[0]
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+    # Verify TPU returns 0-element empty tensors for disabled flags (matching
+    # CUDA)
+    tpu_res = torch.ops.aten.unique_dim_consecutive(
+        input_value.to("tpu"),
+        dim=dim,
+        return_inverse=return_inverse,
+        return_counts=return_counts,
+    )
+    if not return_inverse:
+      self.assertEqual(tpu_res[1].cpu().numel(), 0)
+    if not return_counts:
+      self.assertEqual(tpu_res[2].cpu().numel(), 0)
+
+  @parameterized.product(
+      return_inverse=[False, True],
+      return_counts=[False, True],
+      dtype=[torch.float32, torch.int64],
+  )
+  def test_unique_consecutive_scalar(
+      self, return_inverse, return_counts, dtype
+  ):
+    input_value = torch.tensor(42, dtype=dtype)
+
+    def compute(device):
+      return torch.unique_consecutive(
+          input_value.to(device),
+          return_inverse=return_inverse,
+          return_counts=return_counts,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  @parameterized.product(
+      shape=[(0,), (0, 5), (4, 0, 3)],
+      return_inverse=[False, True],
+      return_counts=[False, True],
+      dim=[None, 0, 1],
+  )
+  def test_unique_consecutive_empty(
+      self, shape, return_inverse, return_counts, dim
+  ):
+    if dim is not None:
+      if dim >= len(shape):
+        return
+      # Only test valid empty dim cases matching PyTorch rules (single zero dim
+      # selected).
+      num_zero_dims = sum(1 for s in shape if s == 0)
+      if shape[dim] == 0 and num_zero_dims > 1:
+        return
+      if shape[dim] != 0 and num_zero_dims > 0:
+        return
+
+    input_value = torch.empty(shape, dtype=torch.float32)
+
+    def compute(device):
+      return torch.unique_consecutive(
+          input_value.to(device),
+          return_inverse=return_inverse,
+          return_counts=return_counts,
+          dim=dim,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique_consecutive_nan(self):
+    input_value = torch.tensor(
+        [float("nan"), float("nan"), 1.0, 1.0, float("nan"), 2.0, 2.0]
+    )
+
+    def compute(device):
+      return torch.unique_consecutive(
+          input_value.to(device),
+          return_inverse=True,
+          return_counts=True,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique_consecutive_infs(self):
+    input_value = torch.tensor([
+        float("inf"),
+        float("inf"),
+        float("-inf"),
+        float("-inf"),
+        1.0,
+        1.0,
+        float("inf"),
+    ])
+
+    def compute(device):
+      return torch.unique_consecutive(
+          input_value.to(device),
+          return_inverse=True,
+          return_counts=True,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique_consecutive_distributions(self):
+    for dtype in [torch.float32, torch.int64]:
+      for distribution in [
+          "all_same",
+          "all_different",
+          "runs",
+      ]:
+        if distribution == "all_same":
+          input_value = torch.full((100,), 42, dtype=dtype)
+        elif distribution == "all_different":
+          input_value = torch.arange(100, dtype=dtype)
+        elif distribution == "runs":
+          input_value = torch.tensor(
+              [1, 1, 1, 2, 2, 3, 3, 3, 3, 1, 1, 4, 4, 4, 4, 4], dtype=dtype
+          )
+        else:
+          raise ValueError(f"Unknown distribution: {distribution}")
+
+        def compute(device, input_value=input_value):
+          return torch.unique_consecutive(
+              input_value.to(device),
+              return_inverse=True,
+              return_counts=True,
+          )
+
+        self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique_consecutive_non_contiguous(self):
+    input_value = (torch.arange(25, dtype=torch.float32).reshape(5, 5) // 2)[
+        ::2, ::2
+    ]
+
+    def compute(device):
+      return torch.unique_consecutive(
+          input_value.to(device),
+          return_inverse=True,
+          return_counts=True,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

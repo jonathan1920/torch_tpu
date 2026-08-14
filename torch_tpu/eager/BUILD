@@ -656,6 +656,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/unfold:unfold_aten_kernels",
         "//torch_tpu/ops/uniform:uniform_aten_kernels",
         "//torch_tpu/ops/unique:unique_aten_kernels",
+        "//torch_tpu/ops/unique_consecutive:unique_consecutive_aten_kernels",
         "//torch_tpu/ops/upsample:upsample_aten_kernels",
         "//torch_tpu/ops/upsample:upsample_bicubic2d_aten_kernels",
         "//torch_tpu/ops/view:view_aten_kernels",
