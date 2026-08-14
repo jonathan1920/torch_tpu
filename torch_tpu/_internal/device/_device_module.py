@@ -383,6 +383,16 @@ class _DeviceModule(abc.ABC, metaclass=_DeviceModuleMeta):
     return False
 
   @classmethod
+  def is_gpu(cls) -> bool:
+    """Returns True if Inductor should treat this device as a GPU-class accelerator.
+
+    Returns:
+      False, as custom backends are conservatively treated as non-GPU until
+      they explicitly opt in.
+    """
+    return False
+
+  @classmethod
   def is_initialized(cls) -> bool:  # This is in torch/cuda/__init__.py.
     """Returns whether PyTorch's TPU state has been initialized."""
     return _device_ops_backend._is_initialized()  # pylint: disable=protected-access

@@ -77,6 +77,9 @@ class TpuDeviceModuleTest(
     self.assertFalse(torch.tpu.is_triton_capable())
     self.assertFalse(torch.tpu.is_triton_capable(device=None))
 
+  def test_is_gpu(self):
+    self.assertFalse(torch.tpu.is_gpu())
+
 
 if __name__ == "__main__":
   absltest.main()
