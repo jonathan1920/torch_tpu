@@ -63,8 +63,7 @@ torch_tpu_py_library(
         ":common",
         "//examples/benchmarks/e2e/harness:metrics",
         "//shims/absl_py/logging",
-        "//torch_tpu/_internal/shims/mlcompass:benchmark_data",
-        "//torch_tpu/_internal/shims/mlcompass:export_lib_borg",
+        "//torch_tpu/_internal/benchmarks:benchmark_adapter",
         "//torch_tpu/_internal/utils:log_utils",
     ],
 )

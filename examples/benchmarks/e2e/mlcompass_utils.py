@@ -18,9 +18,7 @@ from absl import logging
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e.harness import metrics as metrics_lib
-
-from torch_tpu._internal.shims.mlcompass import benchmark_data as benchmark_data_lib
-from torch_tpu._internal.shims.mlcompass import export_lib_borg
+from torch_tpu._internal.benchmarks import benchmark_adapter
 
 
 log_utils.log_to_stderr()
@@ -98,7 +96,7 @@ def export_to_mlcompass(
   if benchmark_group:
     mlcompass_run_tags = (benchmark_group,)
 
-  benchmark_data = benchmark_data_lib.BenchmarkData(
+  benchmark_data = benchmark_adapter.BenchmarkData(
       test_name=test_name,
       wall_time=wall_time,
       base_cl=base_cl,
@@ -112,4 +110,4 @@ def export_to_mlcompass(
   )
   if microbenchmark_name:
     benchmark_data.micro_result_key = microbenchmark_name
-  export_lib_borg.export_results_to_mlcompass(data=benchmark_data)
+  benchmark_adapter.export_benchmark_results(data=benchmark_data)

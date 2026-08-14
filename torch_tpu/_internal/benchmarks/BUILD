@@ -12,25 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shim for MLCompass modules."""
+"""Benchmark adapter for torch_tpu."""
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_library")
+# buildifier: disable=unused-load
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_package_end",
+    "torch_tpu_py_library",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
-    default_visibility = [
-        "//:__subpackages__",
-    ],
+    default_visibility = ["//:__subpackages__"],
 )
 
+# copybara:comment_begin(oss-only)
 torch_tpu_py_library(
-    name = "benchmark_data",
-    srcs = ["benchmark_data.py"],
+    name = "benchmark_adapter",
+    srcs = ["benchmark_adapter.py"],
 )
-
-torch_tpu_py_library(
-    name = "export_lib_borg",
-    srcs = ["export_lib_borg.py"],
-)
+# copybara:comment_end
 
 torch_tpu_package_end()
