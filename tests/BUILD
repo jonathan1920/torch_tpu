@@ -2303,4 +2303,15 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "large_invert_non_strided_slice_test",
+    srcs = ["large_invert_non_strided_slice_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
 torch_tpu_package_end()

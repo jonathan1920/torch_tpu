@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <ostream>
 #include <utility>
 #include <variant>
@@ -33,6 +34,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -588,9 +590,46 @@ ViewSequence GetBitcastSequenceToWritable(mlir::ElementType from_dtype,
   return result;
 }
 
+mlir::MlirOp Invert1DSliceViaConcat(mlir::MlirOp pre_slice_value,
+                                    mlir::MlirOp post_slice_value,
+                                    int64_t start_index, int64_t limit_index,
+                                    int64_t total_size) {
+  std::vector<mlir::MlirOp> parts;
+  if (start_index > 0) {
+    parts.push_back(
+        mlir::stablehlo::Slice(pre_slice_value, {0}, {start_index}, {1}));
+  }
+  parts.push_back(post_slice_value);
+  if (limit_index < total_size) {
+    parts.push_back(mlir::stablehlo::Slice(pre_slice_value, {limit_index},
+                                           {total_size}, {1}));
+  }
+  if (parts.size() == 1) {
+    return parts[0];
+  }
+  return mlir::stablehlo::Concatenate(pre_slice_value.getBuilder(), parts,
+                                      /*dimension=*/0);
+}
+
 mlir::MlirOp InvertNonStridedSliceShlo(mlir::MlirOp pre_slice_value,
                                        mlir::MlirOp post_slice_value,
                                        const SlicePrimitive& slice) {
+  const mlir::stablehlo::Dimensions pre_slice_dims =
+      GetDimensions(pre_slice_value);
+  if (slice.slice_dims.size() == 1 &&
+      pre_slice_dims[0].size > std::numeric_limits<int32_t>::max()) {
+    const SliceDimension& slice_dim = slice.slice_dims[0];
+    ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+        slice_dim.stride, 1)
+        << "expected SlicePrimitive slice dimensions to have stride = 1, got "
+        << slice_dim.stride << "; calling InvertNonStridedSliceShlo() with "
+        << GetViewPrimitiveErrorSuffix(slice, {.leading_semicolon = false});
+
+    return Invert1DSliceViaConcat(pre_slice_value, post_slice_value,
+                                  slice_dim.start_index, slice_dim.limit_index,
+                                  pre_slice_dims[0].size);
+  }
+
   // Use dynamic_update_slice to invert non-strided slices.
   std::vector<mlir::MlirOp> start_indices;
   start_indices.reserve(slice.slice_dims.size());
