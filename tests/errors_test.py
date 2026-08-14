@@ -2343,6 +2343,7 @@ Device-side assertion tracking was not enabled by user.""",
         NotImplementedError,
         tpu="""addmm(): not implemented for int64""",
         gpu=""""addmm_cuda" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.addmm(input_, mat1, mat2)
 
@@ -3066,6 +3067,7 @@ Device-side assertion tracking was not enabled by user.""",
         NotImplementedError,
         tpu="""max_pool2d(): not implemented for int64""",
         gpu=""""max_pool2d_with_indices_out_cuda_frame" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.nn.functional.max_pool2d(t, kernel_size=3)
 
@@ -3075,6 +3077,7 @@ Device-side assertion tracking was not enabled by user.""",
         NotImplementedError,
         tpu="""max_pool2d_with_indices(): not implemented for int64""",
         gpu=""""max_pool2d_with_indices_out_cuda_frame" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.nn.functional.max_pool2d(t, kernel_size=3, return_indices=True)
 
@@ -3212,6 +3215,7 @@ Device-side assertion tracking was not enabled by user.""",
         NotImplementedError,
         tpu="""max_pool3d_with_indices(): not implemented for int64""",
         gpu=""""max_pool3d_with_indices_out_frame" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.nn.functional.max_pool3d(t, kernel_size=3)
 
@@ -3411,6 +3415,7 @@ Device-side assertion tracking was not enabled by user.""",
         NotImplementedError,
         tpu="""avg_pool2d(): not implemented for int64""",
         gpu=""""avg_pool2d_out_cuda_frame" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.nn.functional.avg_pool2d(t, kernel_size=3)
 
@@ -3420,6 +3425,7 @@ Device-side assertion tracking was not enabled by user.""",
         NotImplementedError,
         tpu="""avg_pool3d(): not implemented for int64""",
         gpu=""""avg_pool3d_out_cuda" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.nn.functional.avg_pool3d(t, kernel_size=3)
 
@@ -4296,6 +4302,7 @@ Supported combinations for non-constant padding:
         RuntimeError,
         tpu="""foreach_div_(): expected all 1 tensors in the self list not to be integral, got 1 integral tensor: int64 at index 0""",
         gpu="""result type Float can't be cast to the desired output type Long""",
+        message_reviewed_by="gunhyun",
     ):
       torch._foreach_div_(self_list, other)
 
@@ -4618,6 +4625,7 @@ Supported combinations for non-constant padding:
         NotImplementedError,
         tpu="""addmv(): not implemented for int64""",
         gpu=""""addmv_impl_cuda" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.addmv(t, mat, vec)
 
@@ -4755,6 +4763,7 @@ Supported combinations for non-constant padding:
         NotImplementedError,
         tpu="""bmm(): not implemented for int64""",
         gpu=""""baddbmm_cuda" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.bmm(a, b)
 
@@ -4936,6 +4945,7 @@ Supported combinations for non-constant padding:
         NotImplementedError,
         tpu="""baddbmm(): not implemented for int64""",
         gpu=""""baddbmm_cuda" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.baddbmm(input_tensor, batch1, batch2)
 
@@ -5616,6 +5626,7 @@ Supported combinations for non-constant padding:
         NotImplementedError,
         tpu=f"""{op_name}(): not implemented for int64""",
         gpu=""""dot" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       op(lhs, rhs)
 
@@ -6142,8 +6153,9 @@ Supported combinations for non-constant padding:
     mask = torch.ones((2, 3), device=et.device(), dtype=torch.bool)
     with et.assert_raises_message(
         NotImplementedError,
-        gpu=""""masked_scale" not implemented for 'Long'""",
         tpu="""native_dropout_backward(): not implemented for int64""",
+        gpu=""""masked_scale" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)
 
@@ -6925,6 +6937,7 @@ Device-side assertion tracking was not enabled by user.""",
         NotImplementedError,
         tpu="""silu(): not implemented for int64""",
         gpu=""""silu_cuda" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.nn.functional.silu(t)
 
@@ -8977,8 +8990,9 @@ Device-side assertion tracking was not enabled by user.""",
     t = torch.ones(1, 1, 2, 2, device=et.device(), dtype=torch.int64)
     with et.assert_raises_message(
         NotImplementedError,
-        gpu=f""""{gpu_op_name}" not implemented for 'Long'""",
         tpu=f"""{tpu_op_name}(): not implemented for int64""",
+        gpu=f""""{gpu_op_name}" not implemented for 'Long'""",
+        message_reviewed_by="gunhyun",
     ):
       torch.nn.functional.interpolate(t, scale_factor=2, mode=mode)
 
