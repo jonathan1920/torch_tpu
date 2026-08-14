@@ -16,8 +16,8 @@ name: CI - Postsubmit
 
 on:
   schedule:
-    # Run periodic heavy evaluations every 4 hours
-    - cron: '0 */4 * * *'
+    # Run periodic heavy evaluations every 4 hours (staggered at :15 to avoid concurrency spikes).
+    - cron: '15 */4 * * *'
   # Enable remote connections. Add a workflow dispatch to enable halting.
   # See go/ml-github-actions:connect#enable-workflow-dispatch.
   workflow_dispatch:
