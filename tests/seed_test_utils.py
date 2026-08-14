@@ -15,10 +15,12 @@
 """Provides base classes and utilities for controlling RNG seeds in tests."""
 
 import random
+import time
 from typing import Final
 
 from absl.testing import absltest
 import torch
+from torch_tpu._internal.device import _device_ops_backend
 
 DEFAULT_RANDOM_SEED: Final[int] = 1234
 
@@ -30,10 +32,34 @@ def seed_rngs(seed: int) -> None:
   torch.manual_seed(seed)
 
 
-class RepeatableTest(absltest.TestCase):
+class SeededTest(absltest.TestCase):
+  """Abstract base class that fixes RNG seeds to make tests reproducible.
+
+  This class picks a random seed in setUpClass() and sets it in setUp().
+  A subclass must define choose_seed() to determine the seed.
+  """
+
+  test_random_seed: int = DEFAULT_RANDOM_SEED
+
+  @classmethod
+  def setUpClass(cls) -> None:
+    """Picks the RNG seed for the test class and remembers it."""
+
+    super().setUpClass()
+    # A subclass must define choose_seed(), which must return an int.
+    cls.test_random_seed = cls.choose_seed()  # pytype: disable=attribute-error
+    print(f"Repro with --test_random_seed={cls.test_random_seed}", flush=True)
+
+  def setUp(self) -> None:
+    super().setUp()
+    # Set the random seed for Python and Torch.
+    seed_rngs(self.test_random_seed)
+
+
+class RepeatableTest(SeededTest):
   """Base class that fixes RNG seeds so tests are reproducible.
 
-  This base class uses a constant RNG seed or from the test_random_seed absl
+  This base class uses a constant RNG seed or from the --test_random_seed absl
   flag if provided. It resets the same RNG seed before each test method for
   reproducibility.
 
@@ -47,22 +73,45 @@ class RepeatableTest(absltest.TestCase):
   MyTest -> RepeatableTest -> parameterized.TestCase -> absltest.TestCase
   """
 
-  _test_random_seed: int = DEFAULT_RANDOM_SEED
-
   @classmethod
-  def setUpClass(cls) -> None:
-    super().setUpClass()
-    cls._test_random_seed = cls._choose_seed()
-    print(f"Repro with --test_random_seed={cls._test_random_seed}", flush=True)
+  def choose_seed(cls) -> int:
+    """Chooses the RNG seed for the test class.
 
-  @classmethod
-  def _choose_seed(cls) -> int:
+    A subclass may override this method to provide a different seed.
+    """
+
     if absltest.FLAGS["test_random_seed"].present:
       # The user explicitly passed --test_random_seed=N, so we use that value.
       return absltest.FLAGS.test_random_seed
     return DEFAULT_RANDOM_SEED
 
-  def setUp(self) -> None:
-    super().setUp()
-    # Set the random seed for Python and Torch.
-    seed_rngs(self._test_random_seed)
+
+class VaryingSeedInPostsubmitTest(SeededTest):
+  """Base class for tests that support dynamic postsubmit seeds.
+
+  This base class uses the same RNG seed as RepeatableTest in presubmit. In
+  postsubmit, it chooses a different seed in every run. The seed resets before
+  every test method.
+
+  A subclass can override varies_seed_in_postsubmit() to choose whether to
+  vary the seed in postsubmit.
+  """
+
+  @classmethod
+  def choose_seed(cls) -> int:
+    if (
+        cls.varies_seed_in_postsubmit()
+        and not absltest.FLAGS["test_random_seed"].present  #
+        and _device_ops_backend._is_optimized_build()  # pylint: disable=protected-access
+    ):
+      # --test_random_seed is not set and we are in postsubmit (opt build).
+      # We set the seed based on the time, so that we get more test coverage
+      # over time.
+      return time.time_ns() % 100000
+
+    return RepeatableTest.choose_seed()
+
+  @classmethod
+  def varies_seed_in_postsubmit(cls) -> bool:
+    """Returns whether the test class should vary the RNG seed in postsubmit."""
+    return True

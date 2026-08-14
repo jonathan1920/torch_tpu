@@ -128,6 +128,7 @@ torch_tpu_py_library(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/device:_device_ops_backend",
     ],
 )
 
@@ -139,14 +140,12 @@ torch_tpu_py_library(
     deps = [
         ":seed_test_utils",
         "//shims/absl_py/flags",
-        "//shims/absl_py/testing:absltest",
         "//shims/etils/epath",
         "//shims/safetensors",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/compiler_options",
-        "//torch_tpu/_internal/device:_device_ops_backend",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:test_utils",
         "//torch_tpu/eager:tpu_aten_kernels",
