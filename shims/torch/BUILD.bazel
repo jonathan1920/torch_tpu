@@ -129,6 +129,7 @@ _CUDA_PYPI_DEPS = [
 # Python Rules: Depend on PyPI torch by default, but skip it for local builds
 # (because local builds assume torch is already in the environment)
 py_library(
+    # PY_LIBRARY_OK=OSS torch shim target
     name = "pytorch",
     deps = select({
         ":use_local_torch": [
@@ -146,6 +147,7 @@ py_library(
 )
 
 py_library(
+    # PY_LIBRARY_OK=OSS torch shim target
     name = "testing_internal",
     deps = select({
         ":use_local_torch": [
@@ -292,6 +294,7 @@ cc_library(
 )
 
 py_library(
+    # PY_LIBRARY_OK=OSS torch shim target
     name = "tensorboard_support",
     deps = [
         "@pypi//tensorboard",

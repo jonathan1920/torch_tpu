@@ -24,11 +24,17 @@ visibility(BZL_VISIBILITY)
 def pytype_strict_binary(**kwargs):
     py_binary(**kwargs)
 
-def pytype_strict_library(**kwargs):
-    py_library(**kwargs)
+def pytype_strict_library(**kwargs):  # PY_LIBRARY_OK=OSS pytype stub macro definition
+    py_library(
+        # PY_LIBRARY_OK=OSS pytype stub macro
+        **kwargs
+    )
 
-def pytype_library(**kwargs):
-    py_library(**kwargs)
+def pytype_library(**kwargs):  # PY_LIBRARY_OK=OSS pytype stub macro definition
+    py_library(
+        # PY_LIBRARY_OK=OSS pytype stub macro
+        **kwargs
+    )
 
 def pytype_strict_contrib_test(**kwargs):
     py_test(

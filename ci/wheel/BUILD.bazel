@@ -19,11 +19,11 @@ load("@torch_tpu_version//:version.bzl", "WHEEL_VERSION")
 load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
 load("//bazel:pytorch_versions.bzl", "NIGHTLY_TORCH_VERSION", "WHEEL_TORCH_VERSIONS")
 load("//bazel:supported_python_versions.bzl", "SUPPORTED_PYTHON_VERSIONS")
-load("//build_files:build_defs.bzl", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_py_library", "torch_tpu_py_test")
 load("//build_files:entry_points.bzl", "ENTRY_POINTS")
 load("//ci/wheel:pywrap_mapper.bzl", "remap_pywrap_binaries")
 load("//shims/build_files:torch_version.bzl", "version_suffix")
-load("//shims/py_rules:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
+load("//shims/py_rules:pytype.bzl", "pytype_strict_binary")
 
 package(
     default_visibility = PACKAGE_DEFAULT_VISIBILITY,
@@ -91,7 +91,7 @@ remap_pywrap_binaries(
     }),
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "all_torch_tpu_files",
     srcs = [
         # go/keep-sorted start
@@ -131,6 +131,7 @@ pytype_strict_library(
         "//torch_tpu:_loader",
         # go/keep-sorted end
     ],
+    allow_multiple_srcs = True,
     visibility = ["//visibility:public"],
 )
 

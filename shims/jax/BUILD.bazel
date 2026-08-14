@@ -18,16 +18,19 @@ load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
 package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
 
 py_library(
+    # PY_LIBRARY_OK=OSS JAX shim target
     name = "pallas",
     deps = ["@pypi//jax"],
 )
 
 py_library(
+    # PY_LIBRARY_OK=OSS JAX shim target
     name = "pallas_tpu",
     deps = ["@pypi//jax"],
 )
 
 py_library(
+    # PY_LIBRARY_OK=OSS JAX shim target
     name = "pallas_tpu_ops",
     deps = ["@pypi//jax"],
 )

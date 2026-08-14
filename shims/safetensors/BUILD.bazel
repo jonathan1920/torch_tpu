@@ -18,6 +18,7 @@ load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
 package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
 
 py_library(
+    # PY_LIBRARY_OK=OSS safetensors shim target
     name = "safetensors",
     deps = [
         "@pypi//packaging:pkg",
