@@ -567,6 +567,7 @@ torch_tpu_py_library(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/profiler:xprof_adapter",
+        "//torch_tpu/_internal/sync",
         "@pypi//psutil",
     ],
 )
