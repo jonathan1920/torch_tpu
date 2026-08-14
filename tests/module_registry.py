@@ -79,12 +79,13 @@ _AUDIO_MODEL_TYPES = (
     "audio-spectrogram-transformer",
     "audio_flamingo",
     "clap",
-    "data2vec",
     "data2vec-audio",
     "fastspeech",
     "fastspeech2",
     "gemma3naudio",
     "gemma4audio",
+    "granite-speech",
+    "granite_speech",
     "hubert",
     "musicgen",
     "omnitoken2wav",
@@ -123,9 +124,11 @@ _VISION_MODEL_TYPES = (
     "glpn",
     "ijepa",
     "lightglue",
+    "manga-ocr",
     "mask2former",
     "maskformer",
-    "mobile",
+    "mobilenet",
+    "mobilenetv2",
     "oneformer",
     "resnet",
     "segformer",
@@ -134,6 +137,7 @@ _VISION_MODEL_TYPES = (
     "swin2sr",
     "table-transformer",
     "timm_wrapper",
+    "trocr",
     "vision",
     "vit",
     "vitpose",
@@ -149,12 +153,14 @@ _TEXT_MODEL_TYPES = (
     "bert",
     "camembert",
     "convbert",
+    "data2vec-text",
     "deberta",
     "deberta-v2",
     "distilbert",
     "electra",
     "funnel",
     "megatron-bert",
+    "mobilebert",
     "modernbert",
     "roberta",
     "tapas",
@@ -636,8 +642,11 @@ def _determine_modality(config: Any) -> Modality:
 
 
 def _parse_image_size(config: Any, default_size: int = 224) -> int:
-  """Extracts image_size as an integer from config or vision_config."""
+  """Extracts image_size as an integer from config or vision_config or encoder."""
   vision_config = getattr(config, "vision_config", None)
+  if vision_config is None:
+    vision_config = getattr(config, "encoder", None)
+
   val = None
   if isinstance(vision_config, dict):
     val = vision_config.get("image_size")
@@ -654,8 +663,11 @@ def _parse_image_size(config: Any, default_size: int = 224) -> int:
 
 
 def _get_num_channels(config: Any, default_channels: int = 3) -> int:
-  """Extracts num_channels from config or vision_config."""
+  """Extracts num_channels from config or vision_config or encoder."""
   vision_config = getattr(config, "vision_config", None)
+  if vision_config is None:
+    vision_config = getattr(config, "encoder", None)
+
   if isinstance(vision_config, dict):
     return vision_config.get("num_channels", default_channels)
   elif vision_config is not None:
@@ -897,6 +909,25 @@ def _generate_transformers_inputs(
     )
     input_kwargs["pixel_values"] = dummy_img
 
+    if any(
+        k in model_type
+        for k in [
+            "trocr",
+            "vision-encoder-decoder",
+            "vision_encoder_decoder",
+            "visionencoderdecoder",
+        ]
+    ):
+      decoder_config = getattr(config, "decoder", None)
+      vocab_size = (
+          getattr(decoder_config, "vocab_size", 50265)
+          if decoder_config
+          else 50265
+      )
+      input_kwargs["decoder_input_ids"] = torch.randint(
+          0, vocab_size, (batch_size, 8), device=device, dtype=torch.long
+      )
+
   elif modality == Modality.AUDIO:
     batch_size = shape[0] if shape else 1
     if "whisper" in model_type:
@@ -962,6 +993,42 @@ def _generate_transformers_inputs(
       )
       # High speaking_rate prevents uninitialized to_empty log_duration exp() overflow
       input_kwargs["speaking_rate"] = 1e15
+    elif "granite" in model_type:
+      batch_size = shape[0] if shape else 1
+      encoder_cfg = getattr(
+          config, "encoder", getattr(config, "speech_config", None)
+      )
+      num_mel = (
+          getattr(
+              encoder_cfg,
+              "input_dim",
+              getattr(encoder_cfg, "num_mel_bins", 160),
+          )
+          if encoder_cfg
+          else 160
+      )
+      window_size = getattr(config, "window_size", 15)
+      downsample_rate = getattr(config, "downsample_rate", 5)
+      audio_len = window_size  # nblocks = 1
+
+      input_kwargs["input_features"] = torch.randn(
+          batch_size, audio_len, num_mel, device=device
+      )
+      # Calculate exact number of audio tokens expected by GraniteSpeech
+      num_audio_tokens = window_size // downsample_rate
+      audio_token_id = getattr(
+          config, "audio_token_id", getattr(config, "audio_token_index", 49152)
+      )
+
+      input_kwargs["input_ids"] = torch.full(
+          (batch_size, num_audio_tokens),
+          audio_token_id,
+          device=device,
+          dtype=torch.long,
+      )
+      input_kwargs["attention_mask"] = torch.ones(
+          (batch_size, num_audio_tokens), device=device, dtype=torch.long
+      )
     else:
       seq_len = shape[1] if shape and len(shape) > 1 else 16000
       input_kwargs["input_values"] = torch.randn(
@@ -1000,6 +1067,10 @@ def _generate_transformers_inputs(
             )
         )
       input_kwargs["token_type_ids"] = torch.stack(token_type_ids, dim=-1)
+    elif "mobilebert" in model_type:
+      input_kwargs["token_type_ids"] = torch.zeros(
+          actual_shape, device=device, dtype=torch.long
+      )
 
     if modality == Modality.SEQ2SEQ and getattr(
         config, "is_encoder_decoder", False
