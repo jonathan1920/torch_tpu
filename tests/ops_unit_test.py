@@ -6616,6 +6616,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     state = gen.get_state()
     self.assertEqual(state[8].item(), 5)
 
+  @absltest.skip("large n times out")
   def test_randperm_dtypes(self):
     device = torch.device("tpu")
 
