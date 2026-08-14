@@ -138,6 +138,35 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_library(
+    name = "single_trace_trainer",
+    srcs = ["single_trace_trainer.py"],
+    deps = [
+        ":optimizers",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:compiler",
+        "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
+    ],
+)
+
+torch_tpu_py_test(
+    name = "single_trace_trainer_test",
+    srcs = ["single_trace_trainer_test.py"],
+    main = "single_trace_trainer_test.py",
+    tags = [
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":single_trace_trainer",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_library(
     name = "init",
     srcs = ["__init__.py"],
 )
