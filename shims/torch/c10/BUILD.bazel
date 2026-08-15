@@ -22,6 +22,7 @@ package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
 # in a headers-only configuration (see the select-chain note in
 # //shims/torch:BUILD.bazel).
 cc_library(
+    # ALLOW_CC_TARGETS=Shim for c10 runtime libs
     name = "c10_runtime_libs",
     deps = select({
         "//shims/torch:use_local_torch": [
@@ -40,6 +41,7 @@ cc_library(
 )
 
 cc_library(
+    # ALLOW_CC_TARGETS=Shim for c10
     name = "c10",
     deps = select({
         # Per-version wheel glues: headers only, torch symbols resolved at runtime.

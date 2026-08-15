@@ -193,6 +193,7 @@ def torch_tpu_cc_library(name, srcs = [], hdrs = [], copts = None, features = No
 
     copts, features = adjust_cc_options(copts, features)
     cc_library(
+        # ALLOW_CC_TARGETS=Definition of torch_tpu_cc_library
         name = name,
         srcs = srcs,
         hdrs = hdrs,
@@ -730,6 +731,7 @@ def torch_tpu_cc_test(
 
     # Define the C++ test target (handles compilation, compilation options, and static linking)
     cc_test(
+        # ALLOW_CC_TARGETS=Definition of torch_tpu_cc_test
         name = cc_test_name,
         size = size,
         timeout = timeout,

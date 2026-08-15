@@ -189,6 +189,7 @@ alias(
 # Reached only through the //conditions:default rows of the shims below, i.e.
 # never in a headers-only configuration.
 cc_library(
+    # ALLOW_CC_TARGETS=External PyTorch dependency
     name = "torch_runtime_libs",
     deps = select({
         ":use_local_torch": [
@@ -209,6 +210,7 @@ cc_library(
 )
 
 cc_library(
+    # ALLOW_CC_TARGETS=External PyTorch dependency
     name = "torch",
     deps = [
         ":aten",
@@ -221,6 +223,7 @@ cc_library(
 )
 
 cc_library(
+    # ALLOW_CC_TARGETS=External PyTorch dependency
     name = "aten",
     deps = select({
         # Per-version wheel glues: headers only, torch symbols resolved at runtime.
@@ -230,6 +233,7 @@ cc_library(
 )
 
 cc_library(
+    # ALLOW_CC_TARGETS=External PyTorch dependency
     name = "aten_headers",
     deps = select(torch_headers_select({
         ":use_local_torch": ["@local_torch//:torch_headers"],
@@ -239,6 +243,7 @@ cc_library(
 )
 
 cc_library(
+    # ALLOW_CC_TARGETS=External PyTorch dependency
     name = "torch_headers",
     deps = select(torch_headers_select(
         {
@@ -261,6 +266,7 @@ cc_library(
 
 # Note: @local_torch//:libtorch_python is added for local builds to fix ABI linking
 cc_library(
+    # ALLOW_CC_TARGETS=External PyTorch dependency
     name = "torch_python_runtime_libs",
     deps = select({
         ":use_local_torch": [
@@ -279,6 +285,7 @@ cc_library(
 )
 
 cc_library(
+    # ALLOW_CC_TARGETS=External PyTorch dependency
     name = "torch_python",
     deps = select({
         # Per-version wheel glues: headers only, torch symbols resolved at runtime.
@@ -288,6 +295,7 @@ cc_library(
 )
 
 cc_library(
+    # ALLOW_CC_TARGETS=External PyTorch dependency
     name = "kineto",
     visibility = ["//visibility:public"],
     deps = [":torch"],

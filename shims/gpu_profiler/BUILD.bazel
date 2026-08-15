@@ -18,5 +18,6 @@ load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
 package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
 
 cc_library(
+    # ALLOW_CC_TARGETS=Shim for GPU profiler
     name = "gpuprof_lib",
 )

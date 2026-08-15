@@ -51,6 +51,13 @@ def glue_common_package(version):
     return "torch_tpu/common/glue_{}".format(version_suffix(version))
 
 def pybind_extension(name, **kwargs):
+    """Creates a pybind11 extension.
+
+    Args:
+      name: The name of the pybind extension.
+      **kwargs: Additional keyword arguments to pass to the underlying pybind_extension.
+    """
+
     # On OSS we have not needed any python dependencies for these. If that
     # changes we will need to incorporate these dependencies.
     kwargs.pop("py_deps", None)
@@ -77,6 +84,7 @@ def pybind_extension(name, **kwargs):
     # code is compiled under the sentinel torch_version and matches no glue, so
     # it is ignored.
     cc_library(
+        # ALLOW_CC_TARGETS=Probe library for XLA base filter
         name = "{}_backend_probe".format(name),
         deps = pin_glue_backend_deps("{}_probe".format(name), raw_deps),
         testonly = testonly,

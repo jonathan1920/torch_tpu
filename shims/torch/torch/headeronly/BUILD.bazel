@@ -19,6 +19,7 @@ load("//shims/torch:torch_wheel_select.bzl", "torch_headers_select")
 package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
 
 cc_library(
+    # ALLOW_CC_TARGETS=Shim for torch headeronly
     name = "torch_headeronly",
     # torch_headers_select adds the per-version wheel-glue rows (matching
     # //shims/torch:torch_headers) so this header set follows the //:_torch_version

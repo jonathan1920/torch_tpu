@@ -19,6 +19,7 @@ load("//shims/build_defs_testing:bzl_library.bzl", "bzl_library")
 package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
 
 cc_library(
+    # ALLOW_CC_TARGETS=Shim for pybind11
     name = "pybind11",
 )
 
