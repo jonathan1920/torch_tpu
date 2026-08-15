@@ -69,11 +69,13 @@ configs = {
 
 
 _MODEL = flags.DEFINE_string(
-    "model",
+    "torch_tpu_internal_model",
     "32B",
     "Model flavor (one of: 0.6B, 32B)",
 )
-_ITERS = flags.DEFINE_integer("iterations", 100, "# of iterations to run.")
+_ITERS = flags.DEFINE_integer(
+    "torch_tpu_internal_iterations", 100, "# of iterations to run."
+)
 
 
 class FeedForward(nn.Module):

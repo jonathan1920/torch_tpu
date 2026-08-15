@@ -21,7 +21,7 @@ import torch
 
 
 _ACC = flags.DEFINE_enum(
-    "acc",
+    "torch_tpu_internal_acc",
     "tpu",
     ["tpu", "cuda"],
     required=False,
