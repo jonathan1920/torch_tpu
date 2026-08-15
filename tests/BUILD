@@ -1619,6 +1619,41 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "rng_cuda_ref_test",
+    srcs = ["rng_cuda_ref_test.py"],
+    args = ["--backend=tpu"],
+    main = "rng_cuda_ref_test.py",
+    tags = ["requires-tpu-v5lite:8"],
+    deps = [
+        ":oss_utils",
+        ":seed_test_utils",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "rng_cuda_ref_test_cuda",
+    srcs = ["rng_cuda_ref_test.py"],
+    args = ["--backend=gpu"],
+    main = "rng_cuda_ref_test.py",
+    nolocal = "Skipping in local runs by default as it requires --config=cuda.",
+    tags = [
+        "requires-gpu-nvidia:2",
+    ],
+    deps = [
+        ":oss_utils",
+        ":seed_test_utils",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_test(
     name = "synchronize_test",
     srcs = ["synchronize_test.py"],
     main = "synchronize_test.py",
