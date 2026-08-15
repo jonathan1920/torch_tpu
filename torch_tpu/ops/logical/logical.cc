@@ -40,36 +40,38 @@ inline absl::StatusOr<mlir::MlirOp> CastToBooleanIfNeeded(mlir::MlirOp op) {
   return op;
 }
 
-absl::StatusOr<std::pair<mlir::MlirOp, mlir::MlirOp>> BroadcastLogicalOperands(
+struct BroadcastedOperands {
+  mlir::MlirOp self;
+  mlir::MlirOp other;
+};
+
+absl::StatusOr<BroadcastedOperands> BroadcastLogicalOperands(
     mlir::MlirOp self, mlir::MlirOp other) {
   TT_ASSIGN_OR_RETURN(self, CastToBooleanIfNeeded(self));
   TT_ASSIGN_OR_RETURN(other, CastToBooleanIfNeeded(other));
   TT_ASSIGN_OR_RETURN((auto [self_broadcast, other_broadcast]),
                       ApplyBroadcastIfNeeded(self, other));
-  return std::make_pair(self_broadcast, other_broadcast);
+  return BroadcastedOperands{.self = self_broadcast, .other = other_broadcast};
 }
 
 }  // namespace
 
 absl::StatusOr<mlir::MlirOp> BuildLogicalAndShlo(mlir::MlirOp self,
                                                  mlir::MlirOp other) {
-  TT_ASSIGN_OR_RETURN((auto [self_broadcast, other_broadcast]),
-                      BroadcastLogicalOperands(self, other));
-  return stablehlo::And(self_broadcast, other_broadcast);
+  TT_ASSIGN_OR_RETURN(auto operands, BroadcastLogicalOperands(self, other));
+  return stablehlo::And(operands.self, operands.other);
 }
 
 absl::StatusOr<mlir::MlirOp> BuildLogicalOrShlo(mlir::MlirOp self,
                                                 mlir::MlirOp other) {
-  TT_ASSIGN_OR_RETURN((auto [self_broadcast, other_broadcast]),
-                      BroadcastLogicalOperands(self, other));
-  return stablehlo::Or(self_broadcast, other_broadcast);
+  TT_ASSIGN_OR_RETURN(auto operands, BroadcastLogicalOperands(self, other));
+  return stablehlo::Or(operands.self, operands.other);
 }
 
 absl::StatusOr<mlir::MlirOp> BuildLogicalXorShlo(mlir::MlirOp self,
                                                  mlir::MlirOp other) {
-  TT_ASSIGN_OR_RETURN((auto [self_broadcast, other_broadcast]),
-                      BroadcastLogicalOperands(self, other));
-  return stablehlo::Xor(self_broadcast, other_broadcast);
+  TT_ASSIGN_OR_RETURN(auto operands, BroadcastLogicalOperands(self, other));
+  return stablehlo::Xor(operands.self, operands.other);
 }
 
 absl::StatusOr<mlir::MlirOp> BuildLogicalNotShlo(mlir::MlirOp self) {

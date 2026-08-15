@@ -204,7 +204,8 @@ template <typename T>
 // Returns a string representation of the given pair.
 // Both element types in the pair must support ToString().
 template <typename T1, typename T2>
-[[nodiscard]] std::string ToString(const std::pair<T1, T2>& pair) {
+[[nodiscard]] std::string ToString(
+    const std::pair<T1, T2>& pair) {  // STD_PAIR_OK=Generic code.
   return absl::StrCat("(", ToString(pair.first), ", ", ToString(pair.second),
                       ")");
 }

@@ -127,7 +127,8 @@ struct Fingerprint64Impl<float, /*kIsSmallIntegral=*/false> {
 template <typename T, typename U>
 struct Fingerprint64Impl<std::pair<T, U>,  // STD_PAIR_OK=generic code.
                          /*kIsSmallIntegral=*/false> {
-  [[nodiscard]] static FingerprintType Compute(const std::pair<T, U>& pair) {
+  [[nodiscard]] static FingerprintType Compute(
+      const std::pair<T, U>& pair) {  // STD_PAIR_OK=Generic code.
     return tsl::FingerprintCat64(Fingerprint(pair.first),
                                  Fingerprint(pair.second));
   }

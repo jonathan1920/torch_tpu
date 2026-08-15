@@ -37,7 +37,12 @@ struct DistributedWorkerConfiguration {
   std::string topology;
 };
 
-absl::StatusOr<std::pair<std::string, int64_t>> GetSlicebuilderMeshConfig(
+struct SlicebuilderMeshConfig {
+  std::string address;
+  int64_t port;
+};
+
+absl::StatusOr<SlicebuilderMeshConfig> GetSlicebuilderMeshConfig(
     int rank, int world_size, std::string master_addr, int master_port);
 
 absl::Status InitializeAsDistributedWorker(
