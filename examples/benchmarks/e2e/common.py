@@ -52,7 +52,7 @@ class Backend(enum.Enum):
 
 PLATFORM = flags.DEFINE_enum_class(
     "platform",
-    Platform.V7_1X1X1,
+    Platform.GFC_1X1X1,
     Platform,
     "The platform to run the tests on.",
 )
