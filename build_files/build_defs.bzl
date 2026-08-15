@@ -1109,7 +1109,7 @@ DEFAULT_TORCH_EXAMPLE_DEPS = [
     "@pypi//torchvision",
 ]
 
-def oss_torch_example_test(
+def torch_tpu_oss_torch_example(
         name,
         torch_example_main,
         srcs = ["//tests:run_upstream_example.py"],
@@ -1164,7 +1164,7 @@ def oss_torch_example_test(
     )
 
 register_extension_info(
-    extension = oss_torch_example_test,
+    extension = torch_tpu_oss_torch_example,
     label_regex_for_dep = "{extension_name}",
 )
 

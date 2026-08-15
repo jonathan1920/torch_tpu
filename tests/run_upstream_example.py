@@ -165,6 +165,40 @@ def _copy_cora_dataset():
     shutil.copyfile(gcs_cites, cites_path)
 
 
+def _copy_bsds300_dataset():
+  """Stages BSDS300 dataset from GCS Fuse mount into local './dataset/BSDS300/images' directory.
+
+  Upstream PyTorch Super Resolution example (super_resolution/main.py) looks for
+  './dataset/BSDS300/images' containing 'train' and 'test' folders. If missing,
+  it downloads BSDS300-images.tgz from berkeley.edu. In CI and internal sandbox
+  environments, we avoid external network downloads by staging the BSDS300
+  dataset
+  from the pre-mounted GCS bucket.
+
+  Raises:
+    FileNotFoundError: If the expected dataset files do not exist under the
+      GCS mount directory.
+  """
+  # 1. Locate source BSDS300 dataset directory (pre-mounted via GCS fuse at _DATASET_BASE_DIR/BSDS300).
+  gcs_bsds_dir = os.path.join(_DATASET_BASE_DIR, "BSDS300")
+  if os.path.exists(os.path.join(gcs_bsds_dir, "images")):
+    gcs_images_dir = os.path.join(gcs_bsds_dir, "images")
+  else:
+    raise FileNotFoundError(
+        "GCS dataset directory './dataset/BSDS300/images' does not exist."
+        " Ensure GCS bucket 'torchtpu-shared' is mounted at"
+        f" '{_DATASET_BASE_DIR}'."
+    )
+
+  # 2. Prepare local './dataset/BSDS300/images' directory where super_resolution/data.py expects it.
+  local_images_dir = os.path.join(os.getcwd(), "dataset", "BSDS300", "images")
+  os.makedirs(os.path.dirname(local_images_dir), exist_ok=True)
+
+  # 3. Copy dataset files locally so super_resolution/data.py detects them and skips network downloads.
+  if not os.path.exists(local_images_dir):
+    shutil.copytree(gcs_images_dir, local_images_dir, dirs_exist_ok=True)
+
+
 def _setup_datasets(example: str):
   match example:
     case "gat/main.py":
@@ -179,6 +213,8 @@ def _setup_datasets(example: str):
       # Required by upstream examples.
       os.makedirs("results", exist_ok=True)
       _stage_mnist_datasets()
+    case "super_resolution/main.py":
+      _copy_bsds300_dataset()
     case _:
       pass
 
