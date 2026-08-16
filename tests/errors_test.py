@@ -6138,23 +6138,33 @@ Supported combinations for non-constant padding:
     ):
       torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)
 
-  def test_native_dropout_backward_bool_unsupported(self):
-    grad_output = torch.ones((2, 3), device=et.device(), dtype=torch.bool)
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="bool",
+          dtype=torch.bool,
+          tpu_dtype="bool",
+          gpu_dtype="Bool",
+      ),
+      dict(
+          testcase_name="int64",
+          dtype=torch.int64,
+          tpu_dtype="int64",
+          gpu_dtype="Long",
+      ),
+  )
+  def test_native_dropout_backward_unsupported_dtypes(
+      self,
+      dtype: torch.dtype,
+      tpu_dtype: str,
+      gpu_dtype: str,
+  ):
+    grad_output = torch.ones((2, 3), device=et.device(), dtype=dtype)
     mask = torch.ones((2, 3), device=et.device(), dtype=torch.bool)
-    with et.assert_raises_message(
-        NotImplementedError,
-        gpu=""""masked_scale" not implemented for 'Bool'""",
-        tpu="""native_dropout_backward(): not implemented for bool""",
-    ):
-      torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)
 
-  def test_native_dropout_backward_int64_unsupported(self):
-    grad_output = torch.ones((2, 3), device=et.device(), dtype=torch.int64)
-    mask = torch.ones((2, 3), device=et.device(), dtype=torch.bool)
     with et.assert_raises_message(
         NotImplementedError,
-        tpu="""native_dropout_backward(): not implemented for int64""",
-        gpu=""""masked_scale" not implemented for 'Long'""",
+        tpu=f"""native_dropout_backward(): not implemented for {tpu_dtype}""",
+        gpu=f""""masked_scale" not implemented for '{gpu_dtype}'""",
         message_reviewed_by="gunhyun",
     ):
       torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)

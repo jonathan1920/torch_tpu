@@ -593,9 +593,6 @@ at::Tensor& AtenAvgPool3dOut(const at::Tensor& self,
       (self, kernel_size, stride, padding, ceil_mode, count_include_pad,
        divisor_override, out),
       {
-        // Reject int64 to keep consistent with the CUDA impl in
-        // aten/src/ATen/native/cuda/AveragePool3d.cu ("avg_pool3d_out_cuda"),
-        // which dispatches on the input dtype even for empty inputs.
         TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Long,
                        error::kPythonNotImplementedError)
             << "not implemented for "
