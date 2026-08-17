@@ -55,6 +55,10 @@ absl::Status CheckBmmOut(const at::Tensor& out) {
 absl::Status CheckBmmInputs(const at::Tensor& self, const at::Tensor& mat2) {
   TT_RET_CHECK(!IsBool(self), error::kInvalidArgument)
       << "the dtype of the first argument cannot be bool";
+  TT_RET_CHECK(
+      self.numel() == 0 || mat2.numel() == 0 || self.scalar_type() != at::kLong,
+      error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(self.scalar_type());
   TT_RET_CHECK(self.dim() == 3, error::kInvalidArgument)
       << "expected the first argument to be a 3D tensor (batch of matrices), "
          "got "

@@ -1905,7 +1905,7 @@ class TestOps(op_testing.OpInfoTestBase):
         # is OK (UNIMPLEMENTED: Converting from type C128 to type F32 is not
         # implemented.
         exclude_dtypes={
-            "cpu": COMPLEX_DTYPES,
+            "cpu": COMPLEX_DTYPES + (torch.int64,),
             # TODO: make addmm fail for integral dtypes to match GPU.
             "gpu": (
                 COMPLEX_DTYPES
@@ -1914,7 +1914,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
             ),
         },
@@ -1923,7 +1922,7 @@ class TestOps(op_testing.OpInfoTestBase):
         # is OK (UNIMPLEMENTED: Converting from type C128 to type F32 is not
         # implemented.
         exclude_inplace_dtypes={
-            "cpu": COMPLEX_DTYPES,
+            "cpu": COMPLEX_DTYPES + (torch.int64,),
             "gpu": (
                 COMPLEX_DTYPES
                 + (
@@ -1931,7 +1930,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
             ),
         },
@@ -1943,22 +1941,22 @@ class TestOps(op_testing.OpInfoTestBase):
         "addmv",
         # GPU (CUDA) does not support integral dtypes for addmv.
         exclude_dtypes={
+            "cpu": (torch.int64,),
             "gpu": (
                 torch.uint8,
                 torch.int8,
                 torch.int16,
                 torch.int32,
-                torch.int64,
-            )
+            ),
         },
         exclude_inplace_dtypes={
+            "cpu": (torch.int64,),
             "gpu": (
                 torch.uint8,
                 torch.int8,
                 torch.int16,
                 torch.int32,
-                torch.int64,
-            )
+            ),
         },
     )
 
@@ -2038,9 +2036,7 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_avg_pool2d(self):
     self.do_test_op(
         "nn.functional.avg_pool2d",
-        # TODO: fix avg_pool2d() succeeding for int64 on TPU.
-        # GPU (CUDA) does not support int64 for avg_pool2d.
-        exclude_dtypes={"gpu": (torch.int64,)},
+        exclude_dtypes={"cpu": (torch.int64,)},
     )
 
   def test_avg_pool3d(self):
@@ -2049,11 +2045,12 @@ class TestOps(op_testing.OpInfoTestBase):
         # TODO: GPU does not support integral, complex,
         # `bfloat16` and `float16` dtypes.
         exclude_dtypes={
+            "cpu": (torch.int64,),
             "gpu": (
-                (torch.uint8, torch.int8, torch.int16, torch.int64)
+                (torch.uint8, torch.int8, torch.int16)
                 + COMPLEX_DTYPES
                 + (torch.bfloat16, torch.float16)
-            )
+            ),
         },
     )
 
@@ -2063,12 +2060,24 @@ class TestOps(op_testing.OpInfoTestBase):
         # TODO(b/495524286): Failed to generate integral golden results on GPU
         # GPU (CUDA) does not support integral dtypes for baddbmm.
         exclude_dtypes={
-            "cpu": (torch.bool,),
-            "gpu": INTEGRAL_DTYPES,
+            "cpu": (torch.bool, torch.int64),
+            "gpu": (
+                torch.uint8,
+                torch.int8,
+                torch.int16,
+                torch.int32,
+                torch.bool,
+            ),
         },
         exclude_inplace_dtypes={
-            "cpu": (torch.bool,),
-            "gpu": INTEGRAL_DTYPES,
+            "cpu": (torch.bool, torch.int64),
+            "gpu": (
+                torch.uint8,
+                torch.int8,
+                torch.int16,
+                torch.int32,
+                torch.bool,
+            ),
         },
     )
 
@@ -2133,12 +2142,12 @@ class TestOps(op_testing.OpInfoTestBase):
         "bmm",
         # GPU (CUDA) does not support integral dtypes for bmm.
         exclude_dtypes={
+            "cpu": (torch.int64,),
             "gpu": (
                 torch.uint8,
                 torch.int8,
                 torch.int16,
                 torch.int32,
-                torch.int64,
             ),
         },
     )
@@ -2297,12 +2306,12 @@ class TestOps(op_testing.OpInfoTestBase):
         # 1e-05.
         # GPU (CUDA) does not support integral dtypes for dot.
         exclude_dtypes={
+            "cpu": (torch.int64,),
             "gpu": (
                 torch.uint8,
                 torch.int8,
                 torch.int16,
                 torch.int32,
-                torch.int64,
             ),
         },
     )
@@ -2320,7 +2329,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
                 + COMPLEX_DTYPES
             ),
@@ -2600,7 +2608,19 @@ class TestOps(op_testing.OpInfoTestBase):
         # TODO: CPU returns nans but TPU returns 0.
         # TODO(b/485291373): fix _foreach_div_() failing with integral and
         # complex dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
+        exclude_inplace_dtypes={
+            "cpu": INTEGRAL_DTYPES + COMPLEX_DTYPES,
+            "gpu": (
+                (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.bool,
+                )
+                + COMPLEX_DTYPES
+            ),
+        },
     )
 
   @category("foreach")
@@ -3237,7 +3257,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
             ),
         },
@@ -3266,7 +3285,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
             ),
         },
@@ -3635,7 +3653,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
                 + COMPLEX_DTYPES
             ),
@@ -3649,7 +3666,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
                 + COMPLEX_DTYPES
             ),
@@ -3766,7 +3782,21 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "torch._scaled_mm_v2",
         extra_dtypes=common_methods_invocations.float8_types(),
-        exclude_dtypes=NUMERIC_DTYPES,
+        exclude_dtypes={
+            "cpu": NUMERIC_DTYPES,
+            "gpu": (
+                torch.complex64,
+                torch.float64,
+                torch.float32,
+                torch.float16,
+                torch.bfloat16,
+                torch.uint8,
+                torch.int8,
+                torch.int16,
+                torch.int32,
+                torch.bool,
+            ),
+        },
     )
 
   def test_scatter(self):
@@ -3998,7 +4028,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
             ),
         },
@@ -4017,7 +4046,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
             ),
         },
@@ -4036,7 +4064,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
             ),
         },
@@ -4057,7 +4084,6 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int8,
                     torch.int16,
                     torch.int32,
-                    torch.int64,
                 )
             ),
         },
@@ -4074,12 +4100,12 @@ class TestOps(op_testing.OpInfoTestBase):
         "vdot",
         # GPU (CUDA) does not support integral dtypes for vdot.
         exclude_dtypes={
+            "cpu": (torch.int64,),
             "gpu": (
                 torch.uint8,
                 torch.int8,
                 torch.int16,
                 torch.int32,
-                torch.int64,
             ),
         },
     )

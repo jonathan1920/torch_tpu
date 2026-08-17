@@ -59,6 +59,11 @@ absl::Status CheckBaddbmmOut(const at::Tensor& out) {
 absl::Status CheckBaddbmmInputs(const at::Tensor& self,
                                 const at::Tensor& batch1,
                                 const at::Tensor& batch2) {
+  TT_RET_CHECK(batch1.numel() == 0 || batch2.numel() == 0 ||
+                   batch1.scalar_type() != at::kLong,
+               error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(batch1.scalar_type());
+
   TT_RET_CHECK(self.scalar_type() == batch1.scalar_type() &&
                    batch1.scalar_type() == batch2.scalar_type(),
                error::kInvalidArgument)

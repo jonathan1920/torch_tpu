@@ -148,7 +148,8 @@ at::Tensor AtenNativeDropoutBackward(const at::Tensor& grad_output,
                                      const at::Tensor& mask, double scale) {
   TT_KERNEL(
       OpName::kNativeDropoutBackward, param_keys, (grad_output, mask, scale), {
-        TT_CHECK_THROW(grad_output.scalar_type() != at::kBool,
+        TT_CHECK_THROW(grad_output.scalar_type() != at::kBool &&
+                           grad_output.scalar_type() != at::kLong,
                        error::kPythonNotImplementedError)
             << "not implemented for " << ToString(grad_output.scalar_type());
         TT_CHECK_THROW(mask.scalar_type() == at::kBool, error::kInvalidArgument)

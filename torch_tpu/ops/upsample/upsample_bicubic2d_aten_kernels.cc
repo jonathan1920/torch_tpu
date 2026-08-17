@@ -577,9 +577,10 @@ absl::StatusOr<mlir::MlirOp> BuildUpsampleBicubic2dBackwardShlo(
   return grad_input;
 }
 
-void CheckNotBool(const at::Tensor& tensor) {
-  TT_CHECK_THROW(tensor.scalar_type() != at::kBool,
-                 error::kPythonNotImplementedError)
+void CheckUpsampleDtypes(const at::Tensor& tensor) {
+  TT_CHECK_THROW(
+      tensor.scalar_type() != at::kBool && tensor.scalar_type() != at::kLong,
+      error::kPythonNotImplementedError)
       << "not implemented for " << ToString(tensor.scalar_type());
 }
 
@@ -599,7 +600,7 @@ at::Tensor& AtenUpsampleBicubic2dOut(const at::Tensor& self,
         TT_THROW_IF_ERROR(
             ResizeTensorIfShapeDiffers(out, expected_output_shape));
 
-        CheckNotBool(self);
+        CheckUpsampleDtypes(self);
 
         TT_CHECK_THROW(self.scalar_type() == out.scalar_type(),
                        error::kInvalidArgument)
@@ -660,7 +661,7 @@ at::Tensor& AtenUpsampleBicubic2dBackwardGradInput(
         TT_THROW_IF_ERROR(
             ResizeTensorIfShapeDiffers(grad_input, expected_grad_input_shape));
 
-        CheckNotBool(grad_output);
+        CheckUpsampleDtypes(grad_output);
 
         TT_CHECK_THROW(grad_output.scalar_type() == grad_input.scalar_type(),
                        error::kInvalidArgument)

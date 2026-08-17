@@ -45,6 +45,9 @@ absl::StatusOr<mlir::ElementType> CheckedGetDotOutputType(
 
   TT_RET_CHECK(!IsBool(output_scalar_type), error::kInvalidArgument)
       << "the input dtypes cannot be bool";
+  TT_RET_CHECK(output_scalar_type != at::kLong,
+               error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(output_scalar_type);
 
   TT_ASSIGN_OR_RETURN(auto output_type,
                       ConvertTo<mlir::ElementType>(at::result_type(lhs, rhs)));
