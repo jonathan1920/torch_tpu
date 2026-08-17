@@ -48,6 +48,7 @@ test = [
     "transformers>=5.8.0",
     "pytest>=9",
     "six>=1.17",
+    "hypothesis>=6.100",
 ]
 
 benchmark = [
