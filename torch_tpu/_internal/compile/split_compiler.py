@@ -304,6 +304,7 @@ class SplitCompiler(compiler.Compiler):
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[InputType],
       is_fwd: bool = True,
+      **kwargs,
   ) -> CompiledArtifact:
     """Splits the graph on collectives and compiles the submodules."""
 
@@ -398,7 +399,9 @@ class SplitCompiler(compiler.Compiler):
     if fake_mode is None:
       fake_mode = torch._subclasses.fake_tensor.FakeTensorMode()  # pylint: disable=protected-access
 
-    compiler_fn = functools.partial(self.base_compiler.__call__, is_fwd=is_fwd)
+    compiler_fn = functools.partial(
+        self.base_compiler.__call__, is_fwd=is_fwd, **kwargs
+    )
     submod_compiler = _SubmodCompiler(split_gm, compiler_fn, fake_mode)
 
     # See NOTE: [Deferring tensor pack/unpack hooks until runtime]

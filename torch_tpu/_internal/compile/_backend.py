@@ -254,6 +254,28 @@ def _log_gm_and_inputs(
     logging.debug(c)
 
 
+def make_backend_compiler(
+    example_inputs: Sequence[Any],
+    debug: bool = False,
+) -> split_compiler.SplitCompiler:
+  """Creates a SplitCompiler configured for static or dynamic compilation.
+
+  Args:
+    example_inputs: Example inputs to inspect for dynamic SymInts.
+    debug: If True, enable debug mode on the base compiler.
+
+  Returns:
+    A SplitCompiler instance wrapping either DynamicCompiler or StaticCompiler.
+  """
+  has_dynamic_symints = compiler.has_dynamic_symints(example_inputs)
+  if has_dynamic_symints:
+    base_compiler = dynamic_compiler.DynamicCompiler(debug=debug)
+  else:
+    base_compiler = compiler.StaticCompiler(debug=debug)
+
+  return split_compiler.SplitCompiler(base_compiler)
+
+
 class TpuBackend:
   """TPU backend for torch.compile() integration."""
 
@@ -302,19 +324,14 @@ class TpuBackend:
 
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
 
-    has_dynamic_symints = compiler.has_dynamic_symints(example_inputs)
-    if has_dynamic_symints:
-      base_compiler = dynamic_compiler.DynamicCompiler(debug=self._debug)
-    else:
-      base_compiler = compiler.StaticCompiler(debug=self._debug)
-
-    compiler_instance = split_compiler.SplitCompiler(base_compiler)
+    compiler_instance = make_backend_compiler(example_inputs, debug=self._debug)
     compiler_instance.execute_pre_grad_passes(graph_module)
 
     # DynamicCompiler artifacts are not pickleable yet, so only static
     # compilations can participate in AOTAutogradCache.
     enable_serialization = (
-        self._enable_serialization and not has_dynamic_symints
+        self._enable_serialization
+        and not compiler.has_dynamic_symints(example_inputs)
     )
 
     if enable_serialization:
