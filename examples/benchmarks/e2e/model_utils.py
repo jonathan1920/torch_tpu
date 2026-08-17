@@ -20,6 +20,7 @@ import functools
 from importlib import resources
 import math
 import re
+import typing
 from typing import Any, Callable
 
 from fairscale.nn.model_parallel import initialize as fairscale_init
@@ -31,10 +32,14 @@ from torch.distributed import fsdp
 import torch.distributed.tensor as dt
 from torch.nn import parallel
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e import ragged_moe
 from tests import module_registry
 import transformers
 from transformers import activations
+from transformers.configuration_utils import PreTrainedConfig
+from transformers.masking_utils import create_causal_mask
+from transformers.masking_utils import create_sliding_window_causal_mask
 from transformers.models.bert import modeling_bert
 from transformers.models.mamba2 import configuration_mamba2
 from transformers.models.mamba2 import modeling_mamba2
@@ -267,6 +272,113 @@ def get_module_registry():
   return module_registry.ModuleRegistry()
 
 
+def _precompute_attention_mask(
+    config: Any,
+    example_inputs: dict[str, Any],
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    masking_device: str | torch.device = "tpu",
+) -> Any:
+  """Precomputes attention mask and moves to device.
+
+  Nuance: This function fully materializes a 4D mask (or multi-head specific
+  masks)
+  in eager mode. By injecting a 4D mask into the model inputs, we bypass
+  heuristic control-flow checks in Transformers' `masking_utils.py` (e.g.,
+  `_ignore_causal_mask_sdpa` or `find_packed_sequence_indices`) which evaluate
+  tensor contents via `fast_all` or `.item()`. These evaluations constitute
+  data-dependent control flow that breaks graph compilation (make_fx,
+  torch.compile).
+  A 4D mask triggers an early return in Transformers masking preprocess,
+  bypassing
+  these checks completely.
+  """
+  input_ids = example_inputs["input_ids"]
+  batch_size, seq_len = input_ids.shape
+
+  hidden_size = getattr(config, "hidden_size", None)
+  if hidden_size is None:
+    text_config = getattr(config, "text_config", None)
+    if text_config is not None:
+      hidden_size = text_config.hidden_size
+    else:
+      raise ValueError("Could not find hidden_size in config")
+
+  dummy_inputs_embeds = torch.zeros(
+      (batch_size, seq_len, hidden_size),
+      device=masking_device,
+      dtype=weights_dtype,
+  )
+
+  position_ids = example_inputs.get("position_ids", None)
+  if position_ids is not None:
+    position_ids = position_ids.to(masking_device)
+  else:
+    position_ids = (
+        torch.arange(0, seq_len, dtype=torch.long, device=masking_device)
+        .unsqueeze(0)
+        .expand(batch_size, -1)
+    )
+
+  layer_types = getattr(config, "layer_types", None)
+  if layer_types is None:
+    text_config = getattr(config, "text_config", None)
+    if text_config is not None:
+      layer_types = getattr(text_config, "layer_types", None)
+
+  if layer_types and (
+      "sliding_attention" in layer_types or "full_attention" in layer_types
+  ):
+    precomputed_masks = {}
+    effective_config = getattr(config, "text_config", config)
+    effective_config = typing.cast(PreTrainedConfig, effective_config)
+
+    if effective_config is None:
+      raise ValueError("effective_config is None")
+
+    if "full_attention" in layer_types:
+      mask = create_causal_mask(
+          config=effective_config,
+          inputs_embeds=dummy_inputs_embeds,
+          attention_mask=None,
+          past_key_values=None,
+          position_ids=position_ids,
+          layer_idx=None,
+      )
+      if mask is not None:
+        mask = mask.to(device)
+      precomputed_masks["full_attention"] = mask
+
+    if "sliding_attention" in layer_types:
+      mask = create_sliding_window_causal_mask(
+          config=effective_config,
+          inputs_embeds=dummy_inputs_embeds,
+          attention_mask=None,
+          past_key_values=None,
+          position_ids=position_ids,
+          layer_idx=None,
+      )
+      if mask is not None:
+        mask = mask.to(device)
+      precomputed_masks["sliding_attention"] = mask
+
+    return precomputed_masks
+  else:
+    precomputed_4d_mask = create_causal_mask(
+        config=config,
+        inputs_embeds=dummy_inputs_embeds,
+        attention_mask=None,
+        past_key_values=None,
+        position_ids=position_ids,
+        layer_idx=None,
+    )
+
+    if precomputed_4d_mask is not None:
+      precomputed_4d_mask = precomputed_4d_mask.to(device)
+
+    return precomputed_4d_mask
+
+
 def huggingface_llm_model_builder(
     model_and_input_args: Any,
     device: torch.device,
@@ -312,11 +424,17 @@ def huggingface_llm_model_builder(
   _, example_inputs = module_spec.sample_inputs_factory(
       (batch_size, sequence_length), str(device)
   )
-  # Pop attention_mask to trigger transformers model-internal fully static
-  # causal attention mask fallback. This avoids JAX/XLA JIT compilation
-  # control-flow tracing errors in masking_utils.py while keeping identical
-  # benchmark workload/math.
+
+  # Pop the 2D attention mask and precompute the entire 4d one. We need to avoid
+  # internal calls to tensor.all() which introduce data dependent dynamism.
   example_inputs.pop("attention_mask", None)
+
+  if model_and_input_args.custom_kwargs.get("precompute_attention_mask", False):
+    example_inputs["attention_mask"] = _precompute_attention_mask(
+        model_cpu.config, example_inputs, device, weights_dtype
+    )
+    device_utils.synchronize(device.type, example_inputs["attention_mask"])
+
   if model_and_input_args.custom_kwargs.get("disable_vision_inputs", False):
     example_inputs.pop("pixel_values", None)
     example_inputs.pop("image_position_ids", None)
@@ -324,6 +442,10 @@ def huggingface_llm_model_builder(
   for k, v in example_inputs.items():
     if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
       example_inputs[k] = v.to(weights_dtype)
+    elif isinstance(v, dict):
+      for dk, dv in v.items():
+        if isinstance(dv, torch.Tensor) and torch.is_floating_point(dv):
+          v[dk] = dv.to(weights_dtype)
 
   if is_training:
     vocab_size = get_vocab_size(model_cpu.config)

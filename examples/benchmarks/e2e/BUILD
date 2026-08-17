@@ -537,6 +537,7 @@ torch_tpu_py_library(
     srcs = ["model_utils.py"],
     deps = [
         ":benchmark_utils",
+        ":device_utils",
         ":ragged_moe",
         "//examples/gemma4:model",
         "//shims/torch:pytorch",

@@ -537,6 +537,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             custom_kwargs={
                 "modify_config_hook": _modify_gemma4_config_to_small,
                 "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
+                "precompute_attention_mask": True,
             },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
@@ -981,6 +982,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
             custom_kwargs={
                 "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
+                "precompute_attention_mask": True,
             },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
