@@ -1325,20 +1325,17 @@ torch_tpu_cc_test(
     ],
 )
 
-# Like tier3_compilation_cache_test, but uses a remote filesystem for the tier-3 cache.
+# Like tier3_compilation_cache_test, but uses a remote filesystem for the
+# tier-3 cache.
 torch_tpu_cc_test(
     name = "remote_tier3_compilation_cache_test",
     srcs = ["tier3_compilation_cache_test.cc"],
     env = {
-        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT":
-        # Alternatively, set it to a GCS directory.
-        # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/remote_tier3_compilation_cache_test"
-        "",
+        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "gs://torchtpu-shared/remote_tier3_compilation_cache_test",
     },
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    notest_oss = "Need to set up a GCS bucket for OSS tests to write to.",
     tags = [
         "requires-net:external",  # Requires remote file access.
         "requires-tpu-v5lite",
