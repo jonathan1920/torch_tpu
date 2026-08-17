@@ -78,7 +78,7 @@ done
 # lock. The version list is read from the single source of truth in
 # //bazel:pytorch_versions.bzl so it stays in step with the pip hubs in
 # MODULE.bazel.
-for version in $(uv run bazel/pytorch_versions.py EXTRA_PYTORCH_VERSIONS); do
+for version in $(uv run --no-project bazel/pytorch_versions.py EXTRA_PYTORCH_VERSIONS); do
   version_und=$(echo "$version" | tr '.' '_')
   REQUIREMENTS_FILE="requirements/requirements_torch_${version_und}.txt"
 
@@ -136,7 +136,7 @@ EOF
 # let a stale name ship a glue built against a different ABI.
 pinned_snapshot=$(grep -m1 '^torch==' "$REQUIREMENTS_FILE" | cut -d'=' -f3)
 pinned_release=$(echo "$pinned_snapshot" | cut -d'+' -f1 | cut -d'.' -f1-3)
-declared=$(uv run bazel/pytorch_versions.py NIGHTLY_TORCH_VERSION)
+declared=$(uv run --no-project bazel/pytorch_versions.py NIGHTLY_TORCH_VERSION)
 if [ "$pinned_release" != "$declared" ]; then
   echo "ERROR: the nightly lock now pins torch $pinned_snapshot (release $pinned_release)," >&2
   echo "but NIGHTLY_TORCH_VERSION is $declared. Update it in bazel/pytorch_versions.bzl" >&2
