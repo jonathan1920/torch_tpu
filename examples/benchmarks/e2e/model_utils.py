@@ -244,8 +244,12 @@ def _load_fsdp_model(
   Returns:
       The FSDP-sharded model with weights loaded on the specified device.
   """
-  for layer in model.model.layers:
-    fsdp.fully_shard(layer)
+  layers = getattr(model, "layers", None)
+  if layers is None and hasattr(model, "model"):
+    layers = getattr(model.model, "layers", None)
+  if layers is not None:
+    for layer in layers:
+      fsdp.fully_shard(layer)
   fsdp.fully_shard(model)
   model.to_empty(device=device)
 
