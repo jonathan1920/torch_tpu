@@ -420,6 +420,12 @@ class _DeviceModule(abc.ABC, metaclass=_DeviceModuleMeta):
     _device_ops_backend.manual_seed_all(seed)
 
   @classmethod
+  def initial_seed(cls) -> int:
+    """Returns the current random seed of the current TPU device."""
+    idx = cls.current_device()
+    return cls.default_generators[idx].initial_seed()
+
+  @classmethod
   def get_local_device_attributes(cls) -> Mapping[str, Any]:
     """Returns attributes of the local PJRT device, initializing options if needed."""
     cls._init_runtime_options()
