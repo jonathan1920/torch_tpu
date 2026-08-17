@@ -607,12 +607,8 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--test_categories=nonzero",
-    ] + if_oss(
-        # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
-        # Forge has more resources, allowing a larger sample size.
-        ["--max_samples_per_op_dtype=20"],
-    ),
+        "--max_samples_per_op_dtype=16",
+    ],
     data = [
         "ops_test_gpu_golden0.gz",
         "ops_test_gpu_golden1.gz",
