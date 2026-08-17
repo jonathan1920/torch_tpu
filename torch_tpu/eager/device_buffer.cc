@@ -69,7 +69,7 @@ DeviceBufferList::Data::Data(bool placeholder)
 
 DeviceBufferList::Data::Data(
     absl_nonnull std::shared_ptr<DeferredOp> deferred_op)
-    : empty_(IsEmptyOp(deferred_op->op_name())),
+    : constant_(IsConstantOp(deferred_op->op_name())),
       deferred_op_(std::move(deferred_op)) {
   auto [promise, future] = xla::MakePromise<void>();
   materialization_promise_ = std::move(promise);
@@ -586,8 +586,8 @@ absl::StatusOr<size_t> DeviceBufferRef::pjrt_buffer_size() const {
   return device_buffer_list_->is_materialized();
 }
 
-[[nodiscard]] bool DeviceBufferRef::is_empty() const {
-  return device_buffer_list_->is_empty();
+[[nodiscard]] bool DeviceBufferRef::is_constant() const {
+  return device_buffer_list_->is_constant();
 }
 
 [[nodiscard]] const Shape& DeviceBufferRef::shape() const {

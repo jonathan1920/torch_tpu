@@ -109,8 +109,8 @@ class EventsQueue {
   // Records on the events queue that a new c10::DataPtr referencing the given
   // DeviceBufferRef has been created.
   void RecordNewDataPtrCreated(const DeviceBufferRef& device_buffer_ref) {
-    // Placeholders and empty tensors are never inserted into the map.
-    if (device_buffer_ref.is_placeholder() || device_buffer_ref.is_empty()) {
+    // Placeholders and constant tensors are never inserted into the map.
+    if (device_buffer_ref.is_placeholder() || device_buffer_ref.is_constant()) {
       return;
     }
     absl::MutexLock lock(data_ptr_mu_);
@@ -126,8 +126,8 @@ class EventsQueue {
   // Records on the events queue that a c10::DataPtr referencing the given
   // DeviceBufferRef has been destroyed.
   void RecordDataPtrDestroyed(const DeviceBufferRef& device_buffer_ref) {
-    // Placeholders and empty tensors are never inserted into the map.
-    if (device_buffer_ref.is_placeholder() || device_buffer_ref.is_empty()) {
+    // Placeholders and constant tensors are never inserted into the map.
+    if (device_buffer_ref.is_placeholder() || device_buffer_ref.is_constant()) {
       return;
     }
     absl::MutexLock lock(data_ptr_mu_);
@@ -186,11 +186,12 @@ class EventsQueue {
   struct DeferredOpEvent {
     static std::optional<DeferredOpEvent> FromDeferredOp(
         const SharedDeviceBufferList& device_buffer_list) {
-      if (device_buffer_list->is_empty()) {
-        // `torch.empty()` and similar ops represent uninitialized memory;
-        // correct user programs should never read them, so we should typically
-        // never need to execute them, and don't need to include them in
-        // the event queue.
+      if (device_buffer_list->is_constant()) {
+        // Compiled mode constants and empty tensors are handled specially;
+        // normally, memoizing a computation by materializing it is used to
+        // prevent later reexecution.
+        // However, materializing a constant prevents later constant folding;
+        // re-execution preserves their constantness in later compilations.
         return std::nullopt;
       }
 
@@ -369,14 +370,14 @@ void ProcessDeferredOpEvent(
         case OpUsage::kOutput:
           break;
       }
-    } else if (input.is_empty() &&
+    } else if (input.is_constant() &&
                defined_node_map
                    .try_emplace(input_device_buffer_list, OpUsage::kUsed)
                    .second) {
-      // The first time an empty tensor is read by a later op, we insert
+      // The first time a constant tensor is read by a later op, we insert
       // it into the execution order, but not as an output as we don't want to
       // materialize it unless the user explicitly asks for it.
-      ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Empty buffer "
+      ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Constant buffer "
                    << input_device_buffer_list << " is read by "
                    << device_buffer_list.get() << "("
                    << ToString(deferred_op.op_name())
@@ -385,19 +386,7 @@ void ProcessDeferredOpEvent(
     }
   }
 
-  if (deferred_op.op_name() == OpName::kTorchTpuInternalConstant) {
-    if (nodes_to_materialize_set.contains(device_buffer_list.get())) {
-      ABSL_VLOG(3)
-          << "[ProcessDeferredOpEvent] Adding explicitly materialized constant "
-          << device_buffer_list.get() << " as output";
-      defined_node_map[device_buffer_list.get()] = OpUsage::kOutput;
-    } else {
-      ABSL_VLOG(3)
-          << "[ProcessDeferredOpEvent] Skipping materialization of constant "
-          << device_buffer_list.get() << ", adding to execution order only";
-      defined_node_map[device_buffer_list.get()] = OpUsage::kUsed;
-    }
-  } else if (!device_buffer_list->is_stale()) {
+  if (!device_buffer_list->is_stale()) {
     // TODO(bawilson): use data pointer events to determine liveness instead
     // of the live_data_ptr atomic to remove the dispatch/materialize race.
     ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Adding live buffer "
@@ -506,10 +495,10 @@ PrepareMaterializationTraversals(
   //     must be an output.
   //   - If a node has live c10::DataPtrs, it must be an output.
   //   - If a node is in nodes_to_materialize, it must be an output.
-  //   - Every non-empty op in execution_order must be executed by at least one
-  //     output.
-  //   - Empty() ops are added immediately before the first read, or at
-  //     the end if they are explicitly materialized but not read.
+  //   - Every non-constant op in execution_order must be executed by at least
+  //     one output.
+  //   - Constant and empty ops are added immediately before the first read, or
+  //     at the end if they are explicitly materialized but not read.
   // Reuse working memory for efficiency.
   std::vector<SharedDeviceBufferList> execution_order;
   std::vector<SharedDeviceBufferList> output_nodes;
@@ -557,18 +546,18 @@ PrepareMaterializationTraversals(
     }
   }
 
-  // We never materialize an empty tensor unless it is explicitly
-  // requested by the user. If that does happen, then we append the
-  // empty tensors to the last Traversal to make sure they have defined buffers.
+  // We never materialize a constant (or empty) tensor unless it is explicitly
+  // requested by the user. If that does happen, then we append these constant
+  // tensors to the last Traversal to make sure they have defined buffers.
   // This is necessary for downstream uses that require physical data buffers,
   // such as torch.compile invocations.
   for (const auto& node : nodes_to_materialize) {
-    if (node->is_empty() && node->is_deferred()) {
+    if (node->is_constant() && node->is_deferred()) {
       bool inserted =
           defined_node_map.insert_or_assign(node.get(), OpUsage::kOutput)
               .second;
       if (inserted) {
-        ABSL_VLOG(3) << "[PrepareMaterializationTraversals] empty buffer "
+        ABSL_VLOG(3) << "[PrepareMaterializationTraversals] constant buffer "
                      << node.get()
                      << " is an explicit output. Appending to final traversal.";
         execution_order.push_back(node);

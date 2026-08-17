@@ -810,13 +810,15 @@ inline std::ostream& operator<<(std::ostream& os, const OpName op_name) {
   return IsDistributedOp(op_name);
 }
 
-// Returns true if the op is an "empty" op, i.e. one that creates a tensor
-// with uninitialized data.
-[[nodiscard]] inline bool IsEmptyOp(OpName op_name) {
+// Returns true if the op is a constant op, i.e. one that creates a tensor
+// with a known value in all positions. This includes the "empty" ops,
+// which fill the buffer with a deterministic value.
+[[nodiscard]] inline bool IsConstantOp(OpName op_name) {
   switch (op_name) {
     case OpName::kEmpty:
     case OpName::kEmptyMemoryFormat:
     case OpName::kEmptyStrided:
+    case OpName::kTorchTpuInternalConstant:
       return true;
     default:
       return false;

@@ -228,13 +228,14 @@ class DeviceBufferRef {
   // It may have succeeded or failed.
   [[nodiscard]] bool is_materialized() const;
 
-  // Returns true if this DeviceBufferRef was created by a deferred op like
-  // `torch.empty()`.
-  // This buffer represents uninitialized memory and is therefore expected to
-  // never be read; we avoid materialization when possible.
-  // If it is read, then it is handled according to the semantics of
-  // `torch.utils.deterministic.fill_uninitialized_memory`
-  [[nodiscard]] bool is_empty() const;
+  // Returns true if this DeviceBufferRef was created by a deferred op with a
+  // statically-known constant value.
+  // This includes "empty" operations (e.g. torch.empty) where the constant
+  // value is a deterministic fill with NaN or max-value ints, matching the
+  // semantics of `torch.utils.deterministic.fill_uninitialized_memory`.
+  // We avoid materializing these buffers whenever possible, to preserve
+  // constant-folding and avoiding materializing uninitialized memory.
+  [[nodiscard]] bool is_constant() const;
 
   [[nodiscard]] const Shape& shape() const;
 
@@ -639,15 +640,14 @@ class DeviceBufferList {
     return data_.is_materializing();
   }
 
-  // Returns true if this DeviceBufferList was created from a deferred op like
-  // `torch.empty()` or `torch.empty_like()`.
-  // While these lists have a DeferredOp, they have special materialization
-  // requirements, as they represent uninitialized memory and not an actual
-  // operation most of the time. Reading uninitialized memory is not expected
-  // behavior, but is technically valid in rare cases (such as partial in-place
-  // writes).
-  // Once materialized, "empty" buffers are no longer treated as a special case.
-  [[nodiscard]] bool is_empty() const { return data_.is_empty(); }
+  // Returns true if this DeviceBufferList was created by a deferred op with a
+  // statically-known constant value.
+  // This includes "empty" operations (e.g. torch.empty) where the constant
+  // value is a deterministic fill with NaN or max-value ints, matching the
+  // semantics of `torch.utils.deterministic.fill_uninitialized_memory`.
+  // We avoid materializing these buffers whenever possible, to preserve
+  // constant-folding and avoiding materializing uninitialized memory.
+  [[nodiscard]] bool is_constant() const { return data_.is_constant(); }
 
   // Returns true if this DeviceBufferList is executing.
   // The execution may or may not have completed.
@@ -988,9 +988,9 @@ class DeviceBufferList {
       return materialization_future_.IsKnownReady();
     }
 
-    // Returns true if the DeviceBufferList::Data was created by a
-    // "torch.empty()" op.
-    [[nodiscard]] bool is_empty() const { return empty_; }
+    // Returns true if the DeviceBufferList::Data was created as a constant or
+    // by a "torch.empty()" op.
+    [[nodiscard]] bool is_constant() const { return constant_; }
 
     // Prints a debug string for the DeviceBufferList::Data into the ostream.
     std::ostream& PrintDebug(std::ostream& os) const;
@@ -998,10 +998,10 @@ class DeviceBufferList {
    private:
     void ValidateMaterializedBuffers(int64_t index) const;
 
-    // If the DeviceBufferList::Data was created by a "torch.empty()" op, then
-    // we will try to avoid materializing it, as it is expected to never be
-    // read.
-    const bool empty_ = false;
+    // If the DeviceBufferList::Data was created by a constant or
+    // "torch.empty()" op, then we will try to avoid materializing it, to
+    // preserve constant folding capability in the compiler.
+    const bool constant_ = false;
 
     // If the DeviceBufferList::Data has a DeferredOp, it is stored here,
     // protected by a mutex. This ensures that if one thread is trying to access
