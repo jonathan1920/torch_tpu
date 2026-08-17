@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# pylint: disable=g-unsafe-pickle-load
+
 import pickle
 import random
 import tempfile
@@ -200,6 +202,11 @@ class BackendSerializationTest(seed_test_utils.RepeatableTest):
       restored_fn = deserialize_bundled_cache_entry(entry)
       result = _backend.to_device(restored_fn(x), "cpu")
       utils.assert_close(result[0], x.cpu() + 1)
+
+  def test_pickling_constant_attribute_tensor_on_tpu(self):
+    pickled = pickle.dumps(torch.tensor(2.0, device="tpu"))
+    restored = pickle.loads(pickled).cpu()
+    utils.assert_close(restored, torch.tensor(2.0))
 
 
 if __name__ == "__main__":

@@ -264,9 +264,9 @@ absl::StatusOr<DeviceBufferRef> GetBaseBuffer(const at::Tensor& tensor) {
          "is null. This is usually caused by FakeTensor being run on TPU ops. "
          "And it is not supported";
 
-  ABSL_CHECK_EQ(tensor.storage().allocator(), GetTpuAllocator())  // CRASH_OK
-      << "tensor is on PrivateUse1 device, but is not allocated by "
-         "g_tpu_allocator";
+  ABSL_CHECK(tensor.storage().allocator() == nullptr ||  // CRASH_OK
+             tensor.storage().allocator() == GetTpuAllocator())
+      << "If tensor storage is owning, it must be allocated by g_tpu_allocator";
 
   return GetBaseBuffer(tensor.storage());
 }
