@@ -139,12 +139,14 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
     """
     return self._unpack_device_rng_uint64(8, 16, device_idx)
 
+  # TODO(b/547900213): Remove _fail_on_tpu once `torch.tpu.initial_seed` is implemented.
   @_fail_on_tpu("torch.tpu does not implement initial_seed().")
   def test_initial_seed_return_current_device_seed(self):
     """Verifies backend_mod.initial_seed returns current device seed."""
     torch.manual_seed(42)
     self.assertEqual(self.backend_mod.initial_seed(), 42)
 
+  # TODO(b/547900213): Remove _fail_on_tpu once `torch.tpu.initial_seed` is implemented.
   @_fail_on_tpu("torch.tpu does not implement initial_seed().")
   def test_manual_seed_sets_current_device_seed(self):
     """Verifies torch.manual_seed sets initial seed on device backend."""
@@ -154,6 +156,7 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
     torch.manual_seed(42)
     self.assertEqual(self.backend_mod.initial_seed(), 42)
 
+  # TODO(b/547900660): Remove _fail_on_tpu once querying non-current device RNG state is supported.
   @_fail_on_tpu(
       "TPU backend does not support querying non-current device RNG state."
   )
@@ -174,6 +177,7 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
       self.assertEqual(self._get_device_rng_seed(i), 42)
       self.assertEqual(self._get_device_rng_offset(i), 0)
 
+  # TODO(b/547900213): Remove _fail_on_tpu once `torch.tpu.initial_seed` is implemented.
   @_fail_on_tpu("torch.tpu does not implement initial_seed().")
   def test_rand_does_not_change_device_seed(self):
     """Verifies torch.rand on device does not change initial_seed."""
