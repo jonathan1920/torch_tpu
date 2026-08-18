@@ -508,6 +508,18 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "clone_mutated_returned_placeholders_test",
+    srcs = ["clone_mutated_returned_placeholders_test.py"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile/fx_passes:clone_mutated_returned_placeholders",
+    ],
+)
+
+torch_tpu_py_test(
     name = "async_compiled_artifact_test",
     srcs = ["async_compiled_artifact_test.py"],
     deps = [

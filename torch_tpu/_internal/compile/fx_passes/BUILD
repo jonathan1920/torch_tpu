@@ -56,6 +56,14 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "clone_mutated_returned_placeholders",
+    srcs = ["clone_mutated_returned_placeholders.py"],
+    deps = [
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
     name = "reorder_symints",
     srcs = ["reorder_symints.py"],
     deps = [
