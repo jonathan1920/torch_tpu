@@ -342,6 +342,52 @@ enum class OpUsage {
 
 using DefinedNodeMap = absl::flat_hash_map<const DeviceBufferList*, OpUsage>;
 
+// Returns the OpUsage of the given device buffer list, switching between
+// kOutput (if it's a required output) or kUnused (if it's not).
+OpUsage GetOpUsage(
+    const DeferredOp& deferred_op,
+    const SharedDeviceBufferList& device_buffer_list,
+    const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        nodes_to_materialize_set) {
+  // Explicitly materialized nodes are always outputs, even if they normally
+  // wouldn't be (e.g. constants)
+  if (nodes_to_materialize_set.contains(device_buffer_list.get())) {
+    ABSL_VLOG(3)
+        << "[ProcessDeferredOpEvent] Adding explicitly materialized buffer "
+        << device_buffer_list.get() << " as output";
+    return OpUsage::kOutput;
+  }
+
+  if (!device_buffer_list->is_stale()) {
+    // TODO(bawilson): use data pointer events to determine liveness instead
+    // of the live_data_ptr atomic to remove the dispatch/materialize race.
+    ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Adding live buffer "
+                 << device_buffer_list.get() << " as output";
+    return OpUsage::kOutput;
+  }
+
+  bool has_dynamic_dimensions = false;
+  for (int i = 0; i < device_buffer_list->size(); ++i) {
+    if (!device_buffer_list->dynamic_dimensions(i).empty()) {
+      has_dynamic_dimensions = true;
+      break;
+    }
+  }
+  if (has_dynamic_dimensions) {
+    // Nodes with dynamic dimensions must be materialized to resolve them
+    // to static shapes.
+    ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Adding dynamic-dimension buffer "
+                 << device_buffer_list.get() << " as output";
+    return OpUsage::kOutput;
+  }
+
+  // Non-output nodes need to be used by at least one output to ensure they get
+  // executed.
+  ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Adding non-output buffer "
+               << device_buffer_list.get() << " to execution order";
+  return OpUsage::kUnused;
+}
+
 // Helper function for PrepareMaterializationTraversals.
 // Pushes the device buffer list to the execution order (unless it is empty),
 // and updates the defined node map.
@@ -386,40 +432,8 @@ void ProcessDeferredOpEvent(
     }
   }
 
-  if (!device_buffer_list->is_stale()) {
-    // TODO(bawilson): use data pointer events to determine liveness instead
-    // of the live_data_ptr atomic to remove the dispatch/materialize race.
-    ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Adding live buffer "
-                 << device_buffer_list.get() << " as output";
-    defined_node_map[device_buffer_list.get()] = OpUsage::kOutput;
-  } else if (nodes_to_materialize_set.contains(device_buffer_list.get())) {
-    ABSL_VLOG(3)
-        << "[ProcessDeferredOpEvent] Adding explicitly materialized buffer "
-        << device_buffer_list.get() << " as output";
-    defined_node_map[device_buffer_list.get()] = OpUsage::kOutput;
-  } else {
-    bool has_dynamic_dimensions = false;
-    for (int i = 0; i < device_buffer_list->size(); ++i) {
-      if (!device_buffer_list->dynamic_dimensions(i).empty()) {
-        has_dynamic_dimensions = true;
-        break;
-      }
-    }
-    if (has_dynamic_dimensions) {
-      // Nodes with dynamic dimensions must be materialized to resolve them
-      // to static shapes.
-      ABSL_VLOG(3)
-          << "[ProcessDeferredOpEvent] Adding dynamic-dimension buffer "
-          << device_buffer_list.get() << " as output";
-      defined_node_map[device_buffer_list.get()] = OpUsage::kOutput;
-    } else {
-      // Non-output nodes need to be used by at least one output to ensure
-      // they get executed.
-      ABSL_VLOG(3) << "[ProcessDeferredOpEvent] Adding non-output buffer "
-                   << device_buffer_list.get() << " to execution order";
-      defined_node_map[device_buffer_list.get()] = OpUsage::kUnused;
-    }
-  }
+  defined_node_map[device_buffer_list.get()] =
+      GetOpUsage(deferred_op, device_buffer_list, nodes_to_materialize_set);
 
   execution_order.push_back(std::move(device_buffer_list));
 }
