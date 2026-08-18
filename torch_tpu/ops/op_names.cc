@@ -1387,6 +1387,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "optimization_barrier";
     case OpName::kTorchTpuStorageAllocate:
       return "storage.allocate";
+    case OpName::kTransformerEncoderLayerFwd:
+      return "_transformer_encoder_layer_fwd";
     case OpName::kTrilIndices:
       return "tril_indices";
     case OpName::kTrilOut:

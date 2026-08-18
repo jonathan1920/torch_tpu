@@ -3613,6 +3613,53 @@ module {
     ):
       torch.ops.tpu.optimization_barrier([])
 
+  @et.why_tpu_only(
+      "Native PyTorch accepts 2-D proj_bias without throwing an error."
+  )
+  def test_transformer_encoder_layer_fwd_invalid_proj_bias_dim(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(16, 1, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 1-D proj_bias, got 2-D tensor""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

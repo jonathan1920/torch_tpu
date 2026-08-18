@@ -164,7 +164,6 @@ UNREGISTERED_OPS = frozenset([
     '_to_sparse_csr',
     '_to_sparse_semi_structured',
     '_transform_bias_rescale_qkv',
-    '_transformer_encoder_layer_fwd',
     '_triton_multi_head_attention',
     '_triton_scaled_dot_attention',
     '_unique',

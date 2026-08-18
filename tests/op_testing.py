@@ -534,6 +534,224 @@ def _sample_inputs_native_multi_head_attention(
   )
 
 
+def _sample_inputs_transformer_encoder_layer_fwd(
+    op_info: OpInfo,
+    device: torch.device,
+    dtype: torch.dtype,
+    requires_grad: bool,
+    **kwargs,
+):
+  """Sample inputs generator for _transformer_encoder_layer_fwd."""
+  del op_info, kwargs
+  if not dtype.is_floating_point:
+    return
+  make_arg = functools.partial(
+      torch.randn, device=device, dtype=dtype, requires_grad=requires_grad
+  )
+
+  embed_dim = 8
+  num_heads = 2
+  d_ff = 16
+  batch_size = 2
+  seq_len = 4
+  eps = 1e-5
+
+  src = make_arg((batch_size, seq_len, embed_dim))
+  qkv_weight = make_arg((3 * embed_dim, embed_dim))
+  qkv_bias = make_arg((3 * embed_dim,))
+  proj_weight = make_arg((embed_dim, embed_dim))
+  proj_bias = make_arg((embed_dim,))
+  norm_weight_1 = torch.ones(embed_dim, device=device, dtype=dtype)
+  norm_bias_1 = torch.zeros(embed_dim, device=device, dtype=dtype)
+  norm_weight_2 = torch.ones(embed_dim, device=device, dtype=dtype)
+  norm_bias_2 = torch.zeros(embed_dim, device=device, dtype=dtype)
+  ffn_weight_1 = make_arg((d_ff, embed_dim))
+  ffn_bias_1 = make_arg((d_ff,))
+  ffn_weight_2 = make_arg((embed_dim, d_ff))
+  ffn_bias_2 = make_arg((embed_dim,))
+
+  # Case 1: Post-LN ReLU without mask
+  yield SampleInput(
+      src,
+      args=(
+          embed_dim,
+          num_heads,
+          qkv_weight,
+          qkv_bias,
+          proj_weight,
+          proj_bias,
+          False,
+          False,
+          eps,
+          norm_weight_1,
+          norm_bias_1,
+          norm_weight_2,
+          norm_bias_2,
+          ffn_weight_1,
+          ffn_bias_1,
+          ffn_weight_2,
+          ffn_bias_2,
+          None,
+          None,
+      ),
+  )
+
+  # Case 2: Pre-LN GELU without mask
+  yield SampleInput(
+      src.detach().clone().requires_grad_(requires_grad),
+      args=(
+          embed_dim,
+          num_heads,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          True,
+          True,
+          eps,
+          norm_weight_1,
+          norm_bias_1,
+          norm_weight_2,
+          norm_bias_2,
+          ffn_weight_1.detach().clone().requires_grad_(requires_grad),
+          ffn_bias_1.detach().clone().requires_grad_(requires_grad),
+          ffn_weight_2.detach().clone().requires_grad_(requires_grad),
+          ffn_bias_2.detach().clone().requires_grad_(requires_grad),
+          None,
+          None,
+      ),
+  )
+
+  # Case 3: 2D Bool Attention Mask (mask_type=0)
+  mask_2d_bool = torch.triu(
+      torch.ones(seq_len, seq_len, device=device, dtype=torch.bool), diagonal=1
+  )
+  yield SampleInput(
+      src.detach().clone().requires_grad_(requires_grad),
+      args=(
+          embed_dim,
+          num_heads,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          False,
+          False,
+          eps,
+          norm_weight_1,
+          norm_bias_1,
+          norm_weight_2,
+          norm_bias_2,
+          ffn_weight_1.detach().clone().requires_grad_(requires_grad),
+          ffn_bias_1.detach().clone().requires_grad_(requires_grad),
+          ffn_weight_2.detach().clone().requires_grad_(requires_grad),
+          ffn_bias_2.detach().clone().requires_grad_(requires_grad),
+          mask_2d_bool,
+          0,
+      ),
+  )
+
+  # Case 4: 2D Bool Key Padding Mask (mask_type=1)
+  mask_2d_padding = torch.zeros(
+      batch_size, seq_len, device=device, dtype=torch.bool
+  )
+  mask_2d_padding[:, -1] = True
+  yield SampleInput(
+      src.detach().clone().requires_grad_(requires_grad),
+      args=(
+          embed_dim,
+          num_heads,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          False,
+          False,
+          eps,
+          norm_weight_1,
+          norm_bias_1,
+          norm_weight_2,
+          norm_bias_2,
+          ffn_weight_1.detach().clone().requires_grad_(requires_grad),
+          ffn_bias_1.detach().clone().requires_grad_(requires_grad),
+          ffn_weight_2.detach().clone().requires_grad_(requires_grad),
+          ffn_bias_2.detach().clone().requires_grad_(requires_grad),
+          mask_2d_padding,
+          1,
+      ),
+  )
+
+  # Case 5: Float Additive Mask [B, num_heads, seq_len, seq_len] (mask_type=2)
+  mask_float = torch.zeros(
+      batch_size, num_heads, seq_len, seq_len, device=device, dtype=dtype
+  )
+  mask_float.masked_fill_(
+      torch.triu(
+          torch.ones(
+              batch_size,
+              num_heads,
+              seq_len,
+              seq_len,
+              device=device,
+              dtype=torch.bool,
+          ),
+          diagonal=1,
+      ),
+      -1e4,
+  )
+  yield SampleInput(
+      src.detach().clone().requires_grad_(requires_grad),
+      args=(
+          embed_dim,
+          num_heads,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          False,
+          False,
+          eps,
+          norm_weight_1,
+          norm_bias_1,
+          norm_weight_2,
+          norm_bias_2,
+          ffn_weight_1.detach().clone().requires_grad_(requires_grad),
+          ffn_bias_1.detach().clone().requires_grad_(requires_grad),
+          ffn_weight_2.detach().clone().requires_grad_(requires_grad),
+          ffn_bias_2.detach().clone().requires_grad_(requires_grad),
+          mask_float,
+          2,
+      ),
+  )
+
+  # Case 6: Empty tensor input
+  src_empty = make_arg((0, seq_len, embed_dim))
+  yield SampleInput(
+      src_empty,
+      args=(
+          embed_dim,
+          num_heads,
+          qkv_weight.detach().clone().requires_grad_(requires_grad),
+          qkv_bias.detach().clone().requires_grad_(requires_grad),
+          proj_weight.detach().clone().requires_grad_(requires_grad),
+          proj_bias.detach().clone().requires_grad_(requires_grad),
+          False,
+          False,
+          eps,
+          norm_weight_1,
+          norm_bias_1,
+          norm_weight_2,
+          norm_bias_2,
+          ffn_weight_1.detach().clone().requires_grad_(requires_grad),
+          ffn_bias_1.detach().clone().requires_grad_(requires_grad),
+          ffn_weight_2.detach().clone().requires_grad_(requires_grad),
+          ffn_bias_2.detach().clone().requires_grad_(requires_grad),
+          None,
+          None,
+      ),
+  )
+
+
 def _ref_thnn_fused_lstm_cell(
     input_gates: torch.Tensor,
     hidden_gates: torch.Tensor,
@@ -985,6 +1203,16 @@ _ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
         aten_name="_native_multi_head_attention",
         dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
         sample_inputs_func=_sample_inputs_native_multi_head_attention,
+        supports_forward_ad=True,
+        supports_fwgrad_bwgrad=True,
+        supports_out=False,
+    ),
+    OpInfo(
+        "_transformer_encoder_layer_fwd",
+        op=torch.ops.aten._transformer_encoder_layer_fwd,  # pylint: disable=protected-access
+        aten_name="_transformer_encoder_layer_fwd",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_transformer_encoder_layer_fwd,
         supports_forward_ad=True,
         supports_fwgrad_bwgrad=True,
         supports_out=False,

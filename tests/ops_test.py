@@ -923,6 +923,11 @@ ACCURACY_OVERRIDES_VS_GPU = {
     "_thnn_fused_lstm_cell": {
         torch.float32: {"rtol": 1e-4, "atol": 1e-4},
     },
+    "_transformer_encoder_layer_fwd": {
+        torch.bfloat16: {"rtol": 1.1e-1, "atol": 1.6e-1},
+        torch.float16: {"rtol": 6.7e-2, "atol": 1.2e-1},
+        torch.float32: {"rtol": 6.9e-2, "atol": 2.3e-1},
+    },
     "acos": {
         torch.complex64: {"rtol": 5.5e-5, "atol": 2.2e-5},
     },
@@ -4278,6 +4283,14 @@ class TestOps(op_testing.OpInfoTestBase):
             + INTEGRAL_DTYPES
             + _if_tpu_vs_gpu_compiled((torch.float64,), ())
         ),
+        check_dynamism=False,
+        check_grad=False,
+    )
+
+  def test_transformer_encoder_layer_fwd(self):
+    self.do_test_op(
+        "_transformer_encoder_layer_fwd",
+        exclude_dtypes=((torch.float64,) + COMPLEX_DTYPES + INTEGRAL_DTYPES),
         check_dynamism=False,
         check_grad=False,
     )

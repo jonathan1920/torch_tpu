@@ -7429,6 +7429,122 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(run)
 
+  @parameterized.product(
+      batch_first=[True, False],
+      norm_first=[True, False],
+      use_gelu=[True, False],
+      dtype=[torch.float32, torch.bfloat16],
+      mask_kind=[None, "2d_bool", "2d_float"],
+  )
+  def test_transformer_encoder_layer_fwd(
+      self, batch_first, norm_first, use_gelu, dtype, mask_kind
+  ):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    eps = 1e-5
+
+    dim0, dim1 = (2, 8) if batch_first else (8, 2)
+    batch_size, seq_len = dim0, dim1
+
+    scale = 1.0 / math.sqrt(embed_dim)
+    cpu_src = (
+        torch.linspace(-1.0, 1.0, dim0 * dim1 * embed_dim, dtype=dtype).reshape(
+            dim0, dim1, embed_dim
+        )
+        * 0.5
+    )
+    cpu_qkv_w = (
+        torch.linspace(
+            -1.0, 1.0, 3 * embed_dim * embed_dim, dtype=dtype
+        ).reshape(3 * embed_dim, embed_dim)
+        * scale
+    )
+    cpu_qkv_b = torch.linspace(-0.1, 0.1, 3 * embed_dim, dtype=dtype)
+    cpu_proj_w = (
+        torch.linspace(-1.0, 1.0, embed_dim * embed_dim, dtype=dtype).reshape(
+            embed_dim, embed_dim
+        )
+        * scale
+    )
+    cpu_proj_b = torch.linspace(-0.1, 0.1, embed_dim, dtype=dtype)
+    cpu_norm_w1 = torch.ones(embed_dim, dtype=dtype)
+    cpu_norm_b1 = torch.zeros(embed_dim, dtype=dtype)
+    cpu_norm_w2 = torch.ones(embed_dim, dtype=dtype)
+    cpu_norm_b2 = torch.zeros(embed_dim, dtype=dtype)
+    cpu_ffn_w1 = (
+        torch.linspace(-1.0, 1.0, d_ff * embed_dim, dtype=dtype).reshape(
+            d_ff, embed_dim
+        )
+        * scale
+    )
+    cpu_ffn_b1 = torch.linspace(-0.1, 0.1, d_ff, dtype=dtype)
+    cpu_ffn_w2 = torch.linspace(
+        -1.0, 1.0, embed_dim * d_ff, dtype=dtype
+    ).reshape(embed_dim, d_ff) * (1.0 / math.sqrt(d_ff))
+    cpu_ffn_b2 = torch.linspace(-0.1, 0.1, embed_dim, dtype=dtype)
+
+    cpu_mask = None
+    mask_type = None
+    if mask_kind == "2d_bool":
+      cpu_mask = ~torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool))
+      cpu_mask = cpu_mask.view(1, 1, seq_len, seq_len).expand(
+          batch_size, num_heads, seq_len, seq_len
+      )
+      mask_type = 2
+    elif mask_kind == "2d_float":
+      cpu_mask = torch.zeros(seq_len, seq_len, dtype=dtype)
+      cpu_mask.masked_fill_(
+          ~torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool)), -10000.0
+      )
+      cpu_mask = cpu_mask.view(1, 1, seq_len, seq_len).expand(
+          batch_size, num_heads, seq_len, seq_len
+      )
+      mask_type = 2
+
+    def compute(device):
+      src = cpu_src.to(device)
+      qkv_w = cpu_qkv_w.to(device)
+      qkv_b = cpu_qkv_b.to(device)
+      proj_w = cpu_proj_w.to(device)
+      proj_b = cpu_proj_b.to(device)
+      norm_w1 = cpu_norm_w1.to(device)
+      norm_b1 = cpu_norm_b1.to(device)
+      norm_w2 = cpu_norm_w2.to(device)
+      norm_b2 = cpu_norm_b2.to(device)
+      ffn_w1 = cpu_ffn_w1.to(device)
+      ffn_b1 = cpu_ffn_b1.to(device)
+      ffn_w2 = cpu_ffn_w2.to(device)
+      ffn_b2 = cpu_ffn_b2.to(device)
+      mask = cpu_mask.to(device) if cpu_mask is not None else None
+
+      return torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          use_gelu,
+          norm_first,
+          eps,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+          mask,
+          mask_type,
+      )
+
+    rtol = 3e-2
+    atol = 3e-2
+    self.assert_close_tpu_vs_cpu(compute, rtol=rtol, atol=atol)
+
   def test_segment_reduce_modes(self):
     """Tests segment_reduce with different reduction modes."""
     data_cpu = torch.tensor(

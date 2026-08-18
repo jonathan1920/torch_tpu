@@ -1578,3 +1578,81 @@ class NativeMultiHeadAttentionConfig:
 NATIVE_MULTI_HEAD_ATTENTION_CONFIGS = (
     NativeMultiHeadAttentionConfig.get_base_configs()
 )
+
+
+@dataclasses.dataclass(frozen=True)
+class TransformerEncoderLayerFwdConfig:
+  batch_size: Any  # Supports int or DynamicDimension
+  seq_len: int
+  embed_dim: int
+  num_heads: int
+  dim_feedforward: int = 2048
+  use_gelu: bool = False
+  norm_first: bool = False
+  mask_type: Optional[int] = None
+  dtype: torch.dtype = torch.bfloat16
+
+  @classmethod
+  def get_base_configs(cls):
+    return [
+        # 1. Standard Post-LN ReLU
+        TransformerEncoderLayerFwdConfig(
+            batch_size=2,
+            seq_len=128,
+            embed_dim=512,
+            num_heads=8,
+            dim_feedforward=2048,
+            use_gelu=False,
+            norm_first=False,
+            mask_type=None,
+        ),
+        # 2. Pre-LN GELU (e.g. modern Transformer architectures)
+        TransformerEncoderLayerFwdConfig(
+            batch_size=2,
+            seq_len=128,
+            embed_dim=512,
+            num_heads=8,
+            dim_feedforward=2048,
+            use_gelu=True,
+            norm_first=True,
+            mask_type=None,
+        ),
+        # 3. Attention Mask (mask_type=0) - shape [T, T]
+        TransformerEncoderLayerFwdConfig(
+            batch_size=2,
+            seq_len=128,
+            embed_dim=512,
+            num_heads=8,
+            dim_feedforward=2048,
+            use_gelu=False,
+            norm_first=False,
+            mask_type=0,
+        ),
+        # 4. Key-Padding Mask (mask_type=1) - shape [B, T]
+        TransformerEncoderLayerFwdConfig(
+            batch_size=2,
+            seq_len=128,
+            embed_dim=512,
+            num_heads=8,
+            dim_feedforward=2048,
+            use_gelu=False,
+            norm_first=False,
+            mask_type=1,
+        ),
+        # 5. Large-Scale Transformer Layer (B=4, T=512, D=1024, H=16, d_ff=4096)
+        TransformerEncoderLayerFwdConfig(
+            batch_size=4,
+            seq_len=512,
+            embed_dim=1024,
+            num_heads=16,
+            dim_feedforward=4096,
+            use_gelu=True,
+            norm_first=True,
+            mask_type=None,
+        ),
+    ]
+
+
+TRANSFORMER_ENCODER_LAYER_FWD_CONFIGS = (
+    TransformerEncoderLayerFwdConfig.get_base_configs()
+)

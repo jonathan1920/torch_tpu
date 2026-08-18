@@ -705,6 +705,7 @@ enum class OpName {
   kTorchTpuInternalZeroSize,
   kTorchTpuOptimizationBarrier,
   kTorchTpuStorageAllocate,
+  kTransformerEncoderLayerFwd,
   kTrilIndices,
   kTrilOut,
   kTriuOut,

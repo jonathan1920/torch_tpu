@@ -1885,6 +1885,159 @@ def ml_layer_model_builder(
         return (query, key, value, mask)
 
     example_inputs = _generate_inputs(batch_size, sequence_length, shape_fn)
+  elif model_name == "aten._transformer_encoder_layer_fwd":
+    embed_dim = kwargs["embed_dim"]
+    num_heads = kwargs["num_heads"]
+    dim_feedforward = kwargs.get("dim_feedforward", 2048)
+    use_gelu = kwargs.get("use_gelu", False)
+    norm_first = kwargs.get("norm_first", False)
+    eps = kwargs.get("eps", 1e-5)
+    mask_type = kwargs.get("mask_type", None)
+
+    class TransformerEncoderLayerFwdModel(torch.nn.Module):
+
+      def __init__(
+          self,
+          embed_dim,
+          num_heads,
+          dim_feedforward,
+          use_gelu,
+          norm_first,
+          eps,
+          mask_type,
+      ):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.dim_feedforward = dim_feedforward
+        self.use_gelu = use_gelu
+        self.norm_first = norm_first
+        self.eps = eps
+        self.mask_type = mask_type
+
+        self.qkv_weight = torch.nn.Parameter(
+            torch.empty((3 * embed_dim, embed_dim), dtype=weights_dtype)
+        )
+        self.qkv_bias = torch.nn.Parameter(
+            torch.empty(3 * embed_dim, dtype=weights_dtype)
+        )
+        self.proj_weight = torch.nn.Parameter(
+            torch.empty((embed_dim, embed_dim), dtype=weights_dtype)
+        )
+        self.proj_bias = torch.nn.Parameter(
+            torch.empty(embed_dim, dtype=weights_dtype)
+        )
+        self.norm_weight_1 = torch.nn.Parameter(
+            torch.empty(embed_dim, dtype=weights_dtype)
+        )
+        self.norm_bias_1 = torch.nn.Parameter(
+            torch.empty(embed_dim, dtype=weights_dtype)
+        )
+        self.norm_weight_2 = torch.nn.Parameter(
+            torch.empty(embed_dim, dtype=weights_dtype)
+        )
+        self.norm_bias_2 = torch.nn.Parameter(
+            torch.empty(embed_dim, dtype=weights_dtype)
+        )
+        self.ffn_weight_1 = torch.nn.Parameter(
+            torch.empty((dim_feedforward, embed_dim), dtype=weights_dtype)
+        )
+        self.ffn_bias_1 = torch.nn.Parameter(
+            torch.empty(dim_feedforward, dtype=weights_dtype)
+        )
+        self.ffn_weight_2 = torch.nn.Parameter(
+            torch.empty((embed_dim, dim_feedforward), dtype=weights_dtype)
+        )
+        self.ffn_bias_2 = torch.nn.Parameter(
+            torch.empty(embed_dim, dtype=weights_dtype)
+        )
+
+        torch.nn.init.normal_(self.qkv_weight)
+        torch.nn.init.zeros_(self.qkv_bias)
+        torch.nn.init.normal_(self.proj_weight)
+        torch.nn.init.zeros_(self.proj_bias)
+        torch.nn.init.ones_(self.norm_weight_1)
+        torch.nn.init.zeros_(self.norm_bias_1)
+        torch.nn.init.ones_(self.norm_weight_2)
+        torch.nn.init.zeros_(self.norm_bias_2)
+        torch.nn.init.normal_(self.ffn_weight_1)
+        torch.nn.init.zeros_(self.ffn_bias_1)
+        torch.nn.init.normal_(self.ffn_weight_2)
+        torch.nn.init.zeros_(self.ffn_bias_2)
+
+      def forward(self, src, mask=None):
+        return torch.ops.aten._transformer_encoder_layer_fwd(
+            src,
+            self.embed_dim,
+            self.num_heads,
+            self.qkv_weight,
+            self.qkv_bias,
+            self.proj_weight,
+            self.proj_bias,
+            self.use_gelu,
+            self.norm_first,
+            self.eps,
+            self.norm_weight_1,
+            self.norm_bias_1,
+            self.norm_weight_2,
+            self.norm_bias_2,
+            self.ffn_weight_1,
+            self.ffn_bias_1,
+            self.ffn_weight_2,
+            self.ffn_bias_2,
+            mask=mask,
+            mask_type=self.mask_type,
+        )
+
+    model = TransformerEncoderLayerFwdModel(
+        embed_dim,
+        num_heads,
+        dim_feedforward,
+        use_gelu,
+        norm_first,
+        eps,
+        mask_type,
+    )
+    model = model.to(dtype=weights_dtype)
+
+    def shape_fn(bs, seq):
+      src = torch.randn(
+          (bs, seq, embed_dim),
+          dtype=weights_dtype,
+          device=device,
+          requires_grad=is_training,
+      )
+      if mask_type is None:
+        return (src,)
+      elif mask_type == 0:
+        mask = torch.randint(
+            0,
+            2,
+            (seq, seq),
+            dtype=torch.bool,
+            device=device,
+        )
+        return (src, mask)
+      elif mask_type == 1:
+        mask = torch.randint(
+            0,
+            2,
+            (bs, seq),
+            dtype=torch.bool,
+            device=device,
+        )
+        return (src, mask)
+      else:
+        mask = torch.randint(
+            0,
+            2,
+            (bs, num_heads, seq, seq),
+            dtype=torch.bool,
+            device=device,
+        )
+        return (src, mask)
+
+    example_inputs = _generate_inputs(batch_size, sequence_length, shape_fn)
   elif model_name == "Mamba2Block":
     config = configuration_mamba2.Mamba2Config(
         hidden_size=kwargs["hidden_size"],

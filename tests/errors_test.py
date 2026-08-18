@@ -9263,6 +9263,955 @@ Device-side assertion tracking was not enabled by user.""",
       ):
         torch.nn.functional.interpolate(t, scale_factor=2, mode=mode)
 
+  def test_transformer_encoder_layer_fwd_invalid_src_dim(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 3-D src, got 2-D tensor""",
+        gpu="""expected 3-D `query`, got 2-D tensor""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_mismatch_embed_dim(self):
+    embed_dim = 32
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected last dimension of src to match embed_dim 32, got 16""",
+        gpu="""Given normalized_shape=[32], expected input with shape [*, 32], but got input of size[2, 8, 16]""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_num_heads(self):
+    embed_dim = 16
+    num_heads = 5
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected embed_dim to divide cleanly by num_heads, got embed_dim 16 and num_heads 5""",
+        gpu="""`embed_dim` must divide evenly by `num_heads`""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_weight_shape_mismatch(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(30, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected qkv_weight shape [48, 16], got [30, 16]""",
+        gpu="""expected `qkv_weight` first dim to be 3x embed_dim""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_qkv_weight_dim(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3, 48, 16, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 2-D qkv_weight, got 3-D tensor""",
+        gpu="""expected 2-D `qkv_weight`, got 3-D tensor""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_qkv_bias_dim(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(48, 1, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 1-D qkv_bias, got 2-D tensor""",
+        gpu="""expected 1-D `qkv_bias`, got 2-D tensor""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_qkv_bias_size(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(30, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected qkv_bias size 48, got 30""",
+        gpu="""expected `qkv_bias` first dim and first dim of query to be equal""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_proj_weight_dim(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(16, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 2-D proj_weight, got 1-D tensor""",
+        gpu="""addmm: mat2 must be a matrix, got 1-D tensor""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_proj_weight_shape(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(16, 32, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected proj_weight shape [16, 16], got [16, 32]""",
+        gpu="""addmm: mat1 and mat2 shapes cannot be multiplied (16x16 and 32x16)""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_proj_bias_size(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(32, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected proj_bias size 16, got 32""",
+        gpu="""The expanded size of the tensor (16) must match the existing size (32) at non-singleton dimension 1.  Target sizes: [16, 16].  Tensor sizes: [32]""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_norm_weight_1(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(32, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 1-D norm_weight_1 with size 16, got [32]""",
+        gpu="""Expected weight to be of same shape as normalized_shape, but got weight of shape [32] and normalized_shape = [16]""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_norm_bias_1(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(32, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 1-D norm_bias_1 with size 16, got [32]""",
+        gpu="""Expected bias to be of same shape as normalized_shape, but got bias of shape [32] and normalized_shape = [16]""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_norm_weight_2(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(32, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 1-D norm_weight_2 with size 16, got [32]""",
+        gpu="""Expected weight to be of same shape as normalized_shape, but got weight of shape [32] and normalized_shape = [16]""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_norm_bias_2(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(32, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 1-D norm_bias_2 with size 16, got [32]""",
+        gpu="""Expected bias to be of same shape as normalized_shape, but got bias of shape [32] and normalized_shape = [16]""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_ffn_weight_1_dim(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(32, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 2-D ffn_weight_1, got 1-D tensor""",
+        gpu="""2d weights expected""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_ffn_weight_1_size1(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(32, 24, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected ffn_weight_1 second dim to be 16, got 24""",
+        gpu="""addmm: mat1 and mat2 shapes cannot be multiplied (16x16 and 24x32)""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_ffn_bias_1(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(16, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 1-D ffn_bias_1 with size 32, got [16]""",
+        gpu="""The expanded size of the tensor (32) must match the existing size (16) at non-singleton dimension 1.  Target sizes: [16, 32].  Tensor sizes: [16]""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_ffn_weight_2_shape(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, 16, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected ffn_weight_2 shape [16, 32], got [16, 16]""",
+        gpu="""addmm: mat1 and mat2 shapes cannot be multiplied (16x32 and 16x16)""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_ffn_bias_2(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 1-D ffn_bias_2 with size 16, got [32]""",
+        gpu="""The expanded size of the tensor (16) must match the existing size (32) at non-singleton dimension 1.  Target sizes: [16, 16].  Tensor sizes: [32]""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_mask_dim(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+    mask = torch.randn(16, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected 2-D, 3-D, or 4-D mask, got 1-D tensor""",
+        gpu="""Mask Type should be defined""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+          mask,
+      )
+
+  def test_transformer_encoder_layer_fwd_invalid_mask_dtype(self):
+    embed_dim = 16
+    num_heads = 4
+    d_ff = 32
+    device = et.device()
+    src = torch.randn(2, 8, 16, device=device)
+    qkv_w = torch.randn(3 * embed_dim, embed_dim, device=device)
+    qkv_b = torch.randn(3 * embed_dim, device=device)
+    proj_w = torch.randn(embed_dim, embed_dim, device=device)
+    proj_b = torch.randn(embed_dim, device=device)
+    norm_w1 = torch.ones(embed_dim, device=device)
+    norm_b1 = torch.zeros(embed_dim, device=device)
+    norm_w2 = torch.ones(embed_dim, device=device)
+    norm_b2 = torch.zeros(embed_dim, device=device)
+    ffn_w1 = torch.randn(d_ff, embed_dim, device=device)
+    ffn_b1 = torch.randn(d_ff, device=device)
+    ffn_w2 = torch.randn(embed_dim, d_ff, device=device)
+    ffn_b2 = torch.randn(embed_dim, device=device)
+    mask = torch.zeros(2, 8, 16, dtype=torch.int32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""transformer_encoder_layer_fwd(): expected mask dtype to be bool or floating-point, got int32""",
+        gpu="""Mask Type should be defined""",
+    ):
+      torch._transformer_encoder_layer_fwd(
+          src,
+          embed_dim,
+          num_heads,
+          qkv_w,
+          qkv_b,
+          proj_w,
+          proj_b,
+          True,
+          True,
+          1e-5,
+          norm_w1,
+          norm_b1,
+          norm_w2,
+          norm_b2,
+          ffn_w1,
+          ffn_b1,
+          ffn_w2,
+          ffn_b2,
+          mask,
+      )
+
 
 class InputPreprocessingErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
