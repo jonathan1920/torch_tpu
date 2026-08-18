@@ -2365,4 +2365,15 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_library(
+    name = "run_upstream_example",
+    srcs = ["run_upstream_example.py"],
+    deps = [
+        "//shims/absl_py:app",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "@pypi//torchvision",
+    ],
+)
+
 torch_tpu_package_end()

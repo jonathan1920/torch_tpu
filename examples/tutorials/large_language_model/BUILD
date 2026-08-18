@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//shims/pynball:build_defs.bzl", "ipynb_deps")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -37,6 +38,16 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//accelerate",  # buildcleaner: keep
+        "@pypi//transformers",
+    ],
+)
+
+ipynb_deps(
+    name = "hello_world_llm_deps",
+    srcs = ["hello_world_llm.ipynb"],
+    pytype = False,
+    deps = [
+        "//shims/torch:pytorch",
         "@pypi//transformers",
     ],
 )
