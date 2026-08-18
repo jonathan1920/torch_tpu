@@ -73,11 +73,10 @@ std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(
                      MakeScalarConstant(builder, int64_t{0},
                                         builder.getOpBuilder().getI64Type())}};
           }
-          TT_ASSIGN_OR_RETURN(
-              auto topk_outputs,
-              BuildTopKShlo(input, k, wrapped_dim,
-                            largest ? TopKMode::kLargest : TopKMode::kSmallest,
-                            TopKStableMode::kUnstable));
+          TT_ASSIGN_OR_RETURN(auto topk_outputs,
+                              BuildTopKShlo(input, k, wrapped_dim,
+                                            largest ? TopKMode::kLargest
+                                                    : TopKMode::kSmallest));
           return {{topk_outputs.values, topk_outputs.indices}};
         };
         TT_ASSIGN_OR_THROW(

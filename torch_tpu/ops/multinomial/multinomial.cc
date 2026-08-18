@@ -107,10 +107,9 @@ absl::StatusOr<mlir::MlirOp> BuildMultinomialShlo(mlir::MlirOp input_op,
 
     mlir::MlirOp perturbed_logits = stablehlo::Add(logits, gumbel_noise);
 
-    TT_ASSIGN_OR_RETURN(
-        TopKOutputs topk_results,
-        BuildTopKShlo(perturbed_logits, num_samples, feature_dim,
-                      TopKMode::kLargest, TopKStableMode::kUnstable));
+    TT_ASSIGN_OR_RETURN(TopKOutputs topk_results,
+                        BuildTopKShlo(perturbed_logits, num_samples,
+                                      feature_dim, TopKMode::kLargest));
     return topk_results.indices;
   }
 }

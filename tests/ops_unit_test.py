@@ -1067,6 +1067,91 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     gathered = torch.gather(t, 1, tpu_indices)
     utils.assert_close(gathered, tpu_values)
 
+  def test_topk_chlo(self):
+    """Tests torch.topk lowering across dtypes, dims, k, and edge cases."""
+
+    def _verify_topk(cpu_t, k, dim, largest, check_indices=True):
+      def compute(device):
+        t = cpu_t.to(device)
+        values, indices = torch.topk(
+            t, k=k, dim=dim, largest=largest, sorted=True
+        )
+        self.assertEqual(indices.dtype, torch.int64)
+        gathered = torch.gather(t, dim, indices)
+        if check_indices:
+          return values, indices, gathered
+        else:
+          return values, gathered
+
+      self.assert_close_tpu_vs_cpu(compute)
+
+    for dtype in [torch.bfloat16, torch.float32]:
+      # Distinct values (2D tensor) where tie-breaking is not an issue.
+      cpu_t = torch.tensor(
+          [
+              [1.0, 5.0, 2.0, 8.0, 3.0],
+              [10.0, -1.0, 4.0, 6.0, 7.0],
+              [-5.0, 0.0, 9.0, 2.5, 1.5],
+          ],
+          dtype=dtype,
+      )
+      for largest in [True, False]:
+        for dim in [0, 1, -1]:
+          dim_size = cpu_t.size(dim)
+          for k in [0, 1, 2, dim_size]:
+            _verify_topk(
+                cpu_t, k=k, dim=dim, largest=largest, check_indices=True
+            )
+
+      # Duplicates and zeroes (check values and gather,
+      # skip indices check due to ties).
+      cpu_dup = torch.tensor(
+          [
+              [0.0, 0.0, 0.0, 5.0, 5.0],
+              [2.0, 2.0, -1.0, -1.0, 0.0],
+          ],
+          dtype=dtype,
+      )
+      for largest in [True, False]:
+        for dim in [0, 1, -1]:
+          dim_size = cpu_dup.size(dim)
+          for k in [0, 1, 2, dim_size]:
+            _verify_topk(
+                cpu_dup, k=k, dim=dim, largest=largest, check_indices=False
+            )
+
+      # Varied dimensions (1D, 3D), single-element, and all-zero tensors.
+      cpu_1d = torch.tensor([4.0, 1.0, 3.0, 2.0, 0.0], dtype=dtype)
+      for largest in [True, False]:
+        for dim in [0, -1]:
+          for k in [0, 1, 3, 5]:
+            _verify_topk(
+                cpu_1d, k=k, dim=dim, largest=largest, check_indices=True
+            )
+
+      cpu_3d = torch.arange(24, dtype=dtype).reshape(2, 3, 4)
+      for largest in [True, False]:
+        for dim in [0, 1, 2, -1, -2]:
+          for k in [0, 1, 2]:
+            _verify_topk(
+                cpu_3d, k=k, dim=dim, largest=largest, check_indices=True
+            )
+
+      cpu_single = torch.tensor([[-42.0]], dtype=dtype)
+      for largest in [True, False]:
+        for dim in [0, 1, -1]:
+          _verify_topk(
+              cpu_single, k=1, dim=dim, largest=largest, check_indices=True
+          )
+
+      cpu_zeroes = torch.zeros((2, 3, 4), dtype=dtype)
+      for largest in [True, False]:
+        for dim in [0, 1, 2, -1]:
+          for k in [0, 1, 2]:
+            _verify_topk(
+                cpu_zeroes, k=k, dim=dim, largest=largest, check_indices=False
+            )
+
   def test_max_pool2d_no_indices(self):
     """Tests nn.functional.max_pool2d without indices."""
     device = torch.device("tpu")

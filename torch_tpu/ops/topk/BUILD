@@ -51,15 +51,16 @@ torch_tpu_cc_library(
     hdrs = ["topk.h"],
     deps = [
         "//torch_tpu/common:dimension_types",
-        "//torch_tpu/common:utils",
+        "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_builder_utils",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:chlo_builder",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 
