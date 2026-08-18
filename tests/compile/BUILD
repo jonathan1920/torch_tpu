@@ -89,6 +89,8 @@ torch_tpu_py_test(
         "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile:collective_ops",
+        "//torch_tpu/_internal/compile:compiler",
+        "//torch_tpu/_internal/compile:split_compiler",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils:test_utils",
     ],

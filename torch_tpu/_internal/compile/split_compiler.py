@@ -33,6 +33,7 @@ from torch.fx.passes.split_module import split_module
 from torch_tpu._internal.compile import collective_ops
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.compile.fx_passes import clone_mutated_returned_placeholders
 from torch_tpu._internal.compile.fx_passes import force_collectives_output
 from torch_tpu._internal.compile.fx_passes import propagate_symints
 from torch_tpu._internal.compile.fx_passes import reorder_symints
@@ -307,6 +308,9 @@ class SplitCompiler(compiler.Compiler):
       **kwargs,
   ) -> CompiledArtifact:
     """Splits the graph on collectives and compiles the submodules."""
+    graph_transform_observer.GraphTransformObserver(
+        graph_module, "clone_mutated_returned_placeholders"
+    ).apply_graph_pass(clone_mutated_returned_placeholders.apply)
 
     materialize_collectives = (
         tpu_torch_compile.get_materialize_collective_tensors_env_value()

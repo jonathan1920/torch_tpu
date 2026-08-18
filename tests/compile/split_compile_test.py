@@ -16,6 +16,8 @@ import unittest.mock
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.compile import collective_ops
+from torch_tpu._internal.compile import compiler
+from torch_tpu._internal.compile import split_compiler
 from torch_tpu._internal.compile._backend import TpuBackend
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
@@ -82,6 +84,29 @@ class SplitCompileTest(seed_test_utils.RepeatableTest):
 
     expected = torch.full((8, 1, 6, 1), 5.0, device="cpu")
     utils.assert_close(res.cpu(), expected)
+
+  def test_split_graph_with_mutated_returned_placeholder(self):
+    """Verifies that an FX graph returning in-place mutated input placeholders is correctly compiled by SplitCompiler and returns updated tensors."""
+    graph = torch.fx.Graph()
+    p_weight = graph.placeholder("weight")
+    p_grad = graph.placeholder("grad")
+    add_node = graph.call_function(
+        torch.ops.aten.add_.Tensor, (p_weight, p_grad)
+    )
+    graph.output((add_node, p_weight))
+    gm = torch.fx.GraphModule(torch.nn.Module(), graph)
+
+    base_compiler = compiler.StaticCompiler(debug=True)
+    split_comp = split_compiler.SplitCompiler(base_compiler)
+
+    weight = torch.ones((2, 2), device="tpu")
+    grad = torch.full((2, 2), 2.0, device="tpu")
+    executable = split_comp(gm, (weight, grad))
+    res_add, res_weight = executable(weight, grad)
+
+    expected = torch.full((2, 2), 3.0, device="cpu")
+    utils.assert_close(res_add.cpu(), expected)
+    utils.assert_close(res_weight.cpu(), expected)
 
 
 if __name__ == "__main__":
