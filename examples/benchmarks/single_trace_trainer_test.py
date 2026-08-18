@@ -18,6 +18,7 @@ import copy
 from absl.testing import absltest
 import torch
 from examples.benchmarks import single_trace_trainer
+from tests import seed_test_utils
 
 
 class ToyLinearModule(torch.nn.Module):
@@ -31,7 +32,7 @@ class ToyLinearModule(torch.nn.Module):
     return self.linear(x)
 
 
-class SingleTraceTrainerTest(absltest.TestCase):
+class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -208,6 +209,68 @@ class SingleTraceTrainerTest(absltest.TestCase):
         lr=1e-2,
         momentum=0.9,
     )
+
+
+class SingleTraceTrainerSignatureTest(seed_test_utils.RepeatableTest):
+
+  def setUp(self):
+    super().setUp()
+    self.device = torch.device("tpu")
+
+  def test_with_targets(self):
+    model = ToyLinearModule().to(device=self.device)
+
+    x = torch.randn((32, 128), device=self.device)
+    target = torch.randn((32, 64), device=self.device)
+
+    trainer = single_trace_trainer.SingleTraceTrainer(
+        model, single_trace_trainer.ReferenceAdamw()
+    )
+
+    train_step = trainer.make_compiled_train_step(x, target)
+    self.assertIsNotNone(train_step(x, target))
+
+  def test_no_targets(self):
+    model = ToyLinearModule().to(device=self.device)
+
+    x = torch.randn((32, 128), device=self.device)
+
+    trainer = single_trace_trainer.SingleTraceTrainer(
+        model, single_trace_trainer.ReferenceAdamw()
+    )
+
+    train_step = trainer.make_compiled_train_step(x)
+    self.assertIsNotNone(train_step(x))
+
+  def test_traced_with_targets_none_for_step(self):
+    model = ToyLinearModule().to(device=self.device)
+
+    x = torch.randn((32, 128), device=self.device)
+    target = torch.randn((32, 64), device=self.device)
+
+    trainer = single_trace_trainer.SingleTraceTrainer(
+        model, single_trace_trainer.ReferenceAdamw()
+    )
+
+    train_step = trainer.make_compiled_train_step(x, target)
+
+    with self.assertRaises(AssertionError):
+      train_step(x)
+
+  def test_traced_without_targets_provided_for_step(self):
+    model = ToyLinearModule().to(device=self.device)
+
+    x = torch.randn((32, 128), device=self.device)
+    target = torch.randn((32, 64), device=self.device)
+
+    trainer = single_trace_trainer.SingleTraceTrainer(
+        model, single_trace_trainer.ReferenceAdamw()
+    )
+
+    train_step = trainer.make_compiled_train_step(x)
+
+    with self.assertRaises(AssertionError):
+      train_step(x, target)
 
 
 if __name__ == "__main__":

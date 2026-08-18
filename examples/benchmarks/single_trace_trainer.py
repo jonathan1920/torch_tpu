@@ -128,15 +128,18 @@ class SingleTraceTrainer:
       example_targets: Any = None,
   ) -> Callable[..., torch.Tensor]:
     """Returns a callable for the training step with the model compiled."""
-
+    # We don't actually want to trace through example_targets if it is None.
+    # Static compiler doesn't support optional input args.
     flat_inputs, in_spec = _pytree.tree_flatten(
-        (self.param_group, self.buffers, example_inputs, example_targets)
+        (self.param_group, self.buffers, example_inputs)
+        + ((example_targets,) if example_targets is not None else ())
     )
 
     # Pure tensor-level functional step captured by make_fx and compiled.
     def flattened_stateless_train_step(*flat_args):
       structured_args = _pytree.tree_unflatten(flat_args, in_spec)
-      p_group, bufs, inps, tgts = structured_args
+      p_group, bufs, inps = structured_args[:3]
+      tgts = structured_args[-1] if example_targets is not None else None
 
       bound_loss = functools.partial(
           _compute_loss,
@@ -178,8 +181,14 @@ class SingleTraceTrainer:
     # Stateful wrapper returned to user; handles flattening, running compiled
     # graph, and state updates.
     def train_step(inputs: Any, targets: Any = None) -> torch.Tensor:
+      # Targets allowed here iff they were provided as examples.
+      assert (targets is None) == (
+          example_targets is None
+      ), "Targets passed to step but not as examples, or vice versa."
+
       flat_inputs, _ = _pytree.tree_flatten(
-          (self.param_group, self.buffers, inputs, targets)
+          (self.param_group, self.buffers, inputs)
+          + ((targets,) if targets is not None else ())
       )
 
       result = compiled_step(*flat_inputs)
