@@ -100,6 +100,7 @@ jobs:
           bazel build -c opt //ci/wheel:torch_tpu_wheel \
             --config=wheel_common \
             --config=local_torch \
+            --color=yes --curses=no \
             --repo_env=TORCH_SOURCE=$TORCH_SOURCE
 
           cp bazel-bin/ci/wheel/torch_tpu-*.whl dist/
@@ -172,6 +173,7 @@ jobs:
           bazel build -c opt //ci/wheel:torch_tpu_wheel \
             --config=wheel_common \
             --config=local_torch \
+            --color=yes --curses=no \
             --repo_env=TORCH_SOURCE=$TORCH_SOURCE
 
           cp bazel-bin/ci/wheel/torch_tpu-*.whl dist/

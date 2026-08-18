@@ -50,7 +50,8 @@ runs:
         EXTRA_BAZEL_ARGS: ${{ inputs.extra_bazel_args }}
       run: |
         read -ra EXTRA_ARGS <<< "${EXTRA_BAZEL_ARGS}"
-        ci/build_wheels.sh --output-dir dist "${PYTHON_VERSION}" -- ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+        ci/build_wheels.sh --output-dir dist "${PYTHON_VERSION}" -- \
+          --color=yes --curses=no ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
     - name: Check wheel metadata
       shell: bash
       run: |
