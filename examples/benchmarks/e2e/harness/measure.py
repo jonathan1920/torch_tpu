@@ -26,6 +26,7 @@ import numpy as np
 from examples.benchmarks.e2e.harness import device_ops as device_ops_lib
 from examples.benchmarks.e2e.harness import metrics
 from examples.benchmarks.e2e.harness import step_lib
+from torch_tpu._internal.profiler import xprof_adapter
 
 MAX_WARMUP_STEPS = flags.DEFINE_integer(
     "max_warmup_steps", 20, "Maximum number of warmup steps.", lower_bound=0
@@ -35,6 +36,12 @@ MIN_WARMUP_STEPS = flags.DEFINE_integer(
 )
 POST_WARMUP_STEPS = flags.DEFINE_integer(
     "post_warmup_steps", 10, "Number of post-warmup steps.", lower_bound=0
+)
+XPROF_STEPS = flags.DEFINE_integer(
+    "xprof_steps",
+    2,
+    "Number of steps to collect xprof for after warmup.",
+    lower_bound=0,
 )
 
 
@@ -50,6 +57,66 @@ def _is_warmup_only() -> bool:
       and POST_WARMUP_STEPS.value == 0
       and MAX_WARMUP_STEPS.value == 1
   )
+
+
+# This limit is enough to measure two steps for fsdp benchmark which is
+# currently the longest running benchmark. Without the limit, the
+# process uploading profile can fail health checks and die.
+_PROFILE_MAX_BYTES = 500 * 1024 * 1024  # 500 MB
+
+
+class XprofContext:
+  """A context manager for Xprof sessions that logs the session URL.
+
+  Attributes:
+    name: A name for the xprof session, used in logging.
+    enable_xprof: Whether to enable xprof profiling. If False, the context
+      manager does nothing.
+    trace_only_host: Whether to trace only the host.
+    session: The xprof_adapter.XprofSession object if xprof is enabled,
+      otherwise None.
+    session_id: The ID of the xprof session after it has ended, if xprof was
+      enabled. Otherwise None.
+  """
+
+  def __init__(
+      self, *, name: str, enable_xprof: bool, trace_only_host: bool = False
+  ):
+    self.name = name
+    self.enable_xprof = enable_xprof
+    self.trace_only_host = trace_only_host
+    self.session = None
+    self.session_id = None
+
+  def __enter__(self):
+    if self.enable_xprof:
+      self.session = xprof_adapter.XprofSession()
+      kwargs = {}
+      host_trace_level = 3
+      enable_python_tracer = True
+      if self.trace_only_host:
+        kwargs["trace_mode"] = "TRACE_ONLY_HOST"
+        host_trace_level = 1
+        enable_python_tracer = False
+      self.session.start_session(
+          host_trace_level=host_trace_level,
+          enable_python_tracer=enable_python_tracer,
+          host_cpu_profile=True,
+          response_max_bytes=_PROFILE_MAX_BYTES,
+          **kwargs,
+      )
+    return self
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    # End the session and log the URL if it was started. If there is an
+    # exception, we let the exception propagate.
+    if self.session:
+      self.session_id = self.session.end_session_and_get_session_id()
+      logging.info(
+          "%s xprof URL: http://xprof/?session_id=%s",
+          self.name,
+          self.session_id,
+      )
 
 
 class PostWarmupRecompileError(AssertionError):
@@ -112,6 +179,7 @@ def _warmup_run(
     device_ops: device_ops_lib.DeviceOps,
     *,
     name: str,
+    enable_xprof: bool = False,
 ) -> metrics.WarmupRunResult:
   """Runs the model to warmup the caches.
 
@@ -127,6 +195,7 @@ def _warmup_run(
     stepper: The stepper to run.
     device_ops: The device operations to use.
     name: The name of the benchmark.
+    enable_xprof: Whether to enable xprof profiling.
 
   Returns:
     A WarmupRunResult instance containing the number of warmup steps, the time
@@ -140,7 +209,9 @@ def _warmup_run(
   # warmup measurements. Collect garbage once before the warmup loop.
   gc.collect()
 
-  with gc_disabled():
+  with gc_disabled(), XprofContext(
+      name="warmup_run", enable_xprof=enable_xprof, trace_only_host=True
+  ) as warmup_run_context:
     step_fn = stepper.get_step_fn()
     for step in range(MAX_WARMUP_STEPS.value):
       start_time = time.perf_counter()
@@ -170,11 +241,17 @@ def _warmup_run(
 
   logging.info("Warmup Timings for %s: %s", name, timings)
   logging.info("Warmup compile counts for %s: %s", name, compile_count)
+  warmup_session_xprof_url = None
+  if enable_xprof and warmup_run_context.session_id:
+    warmup_session_xprof_url = (
+        f"http://xprof/?session_id={warmup_run_context.session_id}"
+    )
 
   return metrics.WarmupRunResult(
       num_warmup_steps=num_warmup_steps,
       first_step_time_seconds=timings[0],
       warmup_overhead_seconds=_get_warmup_overhead(timings, num_warmup_steps),
+      warmup_session_xprof_url=warmup_session_xprof_url,
   )
 
 
@@ -183,6 +260,7 @@ def _post_warmup_run(
     device_ops: device_ops_lib.DeviceOps,
     *,
     name: str,
+    enable_xprof: bool = False,
 ) -> metrics.PostWarmupRunResult:
   """Runs the model once after the warmup is complete.
 
@@ -190,6 +268,7 @@ def _post_warmup_run(
     stepper: The stepper to run.
     device_ops: The device operations to use.
     name: The name of the benchmark.
+    enable_xprof: Whether to enable xprof profiling.
 
   Returns:
     A PostWarmupRunResult instance containing the average step time and peak
@@ -197,7 +276,7 @@ def _post_warmup_run(
   """
 
   timings = np.zeros(POST_WARMUP_STEPS.value, dtype=np.float64)
-
+  xprof_timings = np.zeros(XPROF_STEPS.value, dtype=np.float64)
   # gc is explicitly disabled below to prevent GC pauses from affecting the
   # measurements. Collect garbage once before the timed loop.
   gc.collect()
@@ -205,30 +284,51 @@ def _post_warmup_run(
 
   compile_count_before = device_ops.compile_count()
 
-  with gc_disabled():
-    step_fn = stepper.get_step_fn()
-    for step in range(POST_WARMUP_STEPS.value):
-      start_time = time.perf_counter()
-      out = step_fn()
-      device_ops.await_result(out)
-      elapsed = time.perf_counter() - start_time
-      timings[step] = elapsed
-      stepper.post_warmup_hook()
+  step_fn = stepper.get_step_fn()
 
-      step_compile_count = device_ops.compile_count()
-      if step_compile_count != compile_count_before:
-        raise PostWarmupRecompileError(
-            "Recompilation happened inside the post warmup loop. Expected"
-            f" {compile_count_before}, got {step_compile_count}"
-        )
+  def _run_single_step(expected_compile_count: int) -> float:
+    start_time = time.perf_counter()
+    out = step_fn()
+    device_ops.await_result(out)
+    elapsed = time.perf_counter() - start_time
+    stepper.post_warmup_hook()
+
+    step_compile_count = device_ops.compile_count()
+    if step_compile_count != expected_compile_count:
+      raise PostWarmupRecompileError(
+          "Recompilation happened inside the post warmup loop. Expected"
+          f" {expected_compile_count}, got {step_compile_count}"
+      )
+    return elapsed
+
+  with gc_disabled():
+    for step in range(POST_WARMUP_STEPS.value):
+      timings[step] = _run_single_step(compile_count_before)
+
+  post_warmup_run_session_xprof_url = None
+  if enable_xprof and XPROF_STEPS.value > 0:
+    with gc_disabled(), XprofContext(
+        name="post_warmup_run",
+        enable_xprof=enable_xprof,
+        trace_only_host=False,
+    ) as xprof_context:
+      for xprof_step in range(XPROF_STEPS.value):
+        xprof_timings[xprof_step] = _run_single_step(compile_count_before)
+
+    if xprof_context.session_id:
+      post_warmup_run_session_xprof_url = (
+          f"http://xprof/?session_id={xprof_context.session_id}"
+      )
 
   memory_usage = device_ops.peak_memory_mb()
 
   logging.info("Post Warmup Timings for %s: %s", name, timings)
+  logging.info("Post Warmup Xprof Timings for %s: %s", name, xprof_timings)
 
   return metrics.PostWarmupRunResult(
       post_warmup_step_time_seconds=float(np.mean(timings)),
       peak_device_memory_mb=memory_usage,
+      post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
   )
 
 
@@ -237,6 +337,7 @@ def measure(
     device_ops: device_ops_lib.DeviceOps,
     *,
     name: str,
+    enable_xprof: bool = False,
 ) -> metrics.PerformanceMetrics:
   result_kwargs = {}
   start_time = time.perf_counter()
@@ -248,6 +349,7 @@ def measure(
           stepper,
           device_ops,
           name=name,
+          enable_xprof=enable_xprof,
       )
   )
 
@@ -258,6 +360,7 @@ def measure(
             stepper,
             device_ops,
             name=name,
+            enable_xprof=enable_xprof,
         )
     )
 

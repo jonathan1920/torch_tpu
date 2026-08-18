@@ -139,6 +139,7 @@ class TorchaxBenchmarkTest(parameterized.TestCase):
           run_step,
           device_ops,
           name=f"{spec.name}_{mode.value}",
+          enable_xprof=flags_lib.ENABLE_XPROF.value,
       )
     except target_lib.UnsupportedBenchmark as e:
       self.skipTest(f"{spec.name}: {e}")

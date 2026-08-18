@@ -31,6 +31,7 @@ torch_tpu_py_test(
         "//examples/benchmarks/e2e/harness:metrics",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
+        "//tests:seed_test_utils",
         "//torch_tpu",
     ],
 )

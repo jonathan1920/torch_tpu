@@ -21,6 +21,7 @@ from absl.testing import absltest
 from absl.testing import flagsaver
 from examples.benchmarks.e2e.harness import measure as measure_lib
 from examples.benchmarks.e2e.harness import metrics as metrics_lib
+from tests import seed_test_utils
 
 
 class CountingStep:
@@ -78,19 +79,29 @@ class RecordingOps:
 
 
 def _run_measure(
-    step, ops, steps, min_warmup, max_warmup=None, name="test"
+    step,
+    ops,
+    steps,
+    min_warmup,
+    max_warmup=None,
+    xprof_steps=None,
+    name="test",
+    enable_xprof=False,
 ) -> metrics_lib.PerformanceMetrics:
-  with flagsaver.flagsaver(
-      min_warmup_steps=min_warmup,
-      max_warmup_steps=max_warmup
-      if max_warmup is not None
-      else min_warmup + 10,
-      post_warmup_steps=steps,
-  ):
-    return measure_lib.measure(step, ops, name=name)
+  flag_kwargs = {
+      "min_warmup_steps": min_warmup,
+      "max_warmup_steps": (
+          max_warmup if max_warmup is not None else min_warmup + 10
+      ),
+      "post_warmup_steps": steps,
+  }
+  if xprof_steps is not None:
+    flag_kwargs["xprof_steps"] = xprof_steps
+  with flagsaver.flagsaver(**flag_kwargs):
+    return measure_lib.measure(step, ops, name=name, enable_xprof=enable_xprof)
 
 
-class MeasureGcTest(absltest.TestCase):
+class MeasureGcTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     self.assertTrue(gc.isenabled(), "test precondition: GC starts enabled")
@@ -159,7 +170,7 @@ class MeasureGcTest(absltest.TestCase):
     self.assertTrue(gc.isenabled(), "GC must be restored even on failure")
 
 
-class MeasureSequenceTest(absltest.TestCase):
+class MeasureSequenceTest(seed_test_utils.RepeatableTest):
 
   def test_run_step_called_warmup_plus_steps_times(self):
     step, ops = CountingStep(), RecordingOps()
@@ -200,7 +211,7 @@ class MeasureSequenceTest(absltest.TestCase):
     self.assertEqual(ops.awaited, ["out-1", "out-2", "out-3", "out-4"])
 
 
-class MeasureRecompileGuardTest(absltest.TestCase):
+class MeasureRecompileGuardTest(seed_test_utils.RepeatableTest):
 
   def test_no_recompiles_finds_min_warmup_steps(self):
     m = _run_measure(CountingStep(), RecordingOps(), steps=3, min_warmup=2)
@@ -239,7 +250,7 @@ class MeasureRecompileGuardTest(absltest.TestCase):
       _run_measure(CountingStep(), ops, steps=3, min_warmup=2, max_warmup=3)
 
 
-class MeasureMetricsTest(absltest.TestCase):
+class MeasureMetricsTest(seed_test_utils.RepeatableTest):
 
   def test_peak_memory_passed_through(self):
     m = _run_measure(
@@ -290,6 +301,213 @@ class MeasureMetricsTest(absltest.TestCase):
     # Warmup timings: 10.0, 2.0, 2.0. Stabilized time is 2.0.
     # overhead = (10.0 + 2.0 + 2.0) - (2.0 * 3) = 8.0
     self.assertEqual(m.warmup_overhead_seconds, 8.0)
+
+
+class XprofContextTest(seed_test_utils.RepeatableTest):
+
+  def test_xprof_disabled(self):
+    with mock.patch.object(
+        measure_lib.xprof_adapter, "XprofSession"
+    ) as mock_session_cls:
+      with measure_lib.XprofContext(
+          name="test_disabled", enable_xprof=False
+      ) as ctx:
+        self.assertIsNone(ctx.session)
+        self.assertIsNone(ctx.session_id)
+      self.assertIsNone(ctx.session)
+      self.assertIsNone(ctx.session_id)
+      mock_session_cls.assert_not_called()
+
+  def test_xprof_enabled_default(self):
+    with mock.patch.object(
+        measure_lib.xprof_adapter, "XprofSession"
+    ) as mock_session_cls:
+      mock_session = mock_session_cls.return_value
+      mock_session.end_session_and_get_session_id.return_value = "session_123"
+
+      with measure_lib.XprofContext(
+          name="test_session", enable_xprof=True
+      ) as ctx:
+        self.assertEqual(ctx.session, mock_session)
+        mock_session_cls.assert_called_once()
+        mock_session.start_session.assert_called_once_with(
+            host_trace_level=3,
+            enable_python_tracer=True,
+            host_cpu_profile=True,
+            response_max_bytes=measure_lib._PROFILE_MAX_BYTES,
+        )
+        self.assertIsNone(ctx.session_id)
+
+      mock_session.end_session_and_get_session_id.assert_called_once()
+      self.assertEqual(ctx.session_id, "session_123")
+
+  def test_xprof_enabled_trace_only_host(self):
+    with mock.patch.object(
+        measure_lib.xprof_adapter, "XprofSession"
+    ) as mock_session_cls:
+      mock_session = mock_session_cls.return_value
+      mock_session.end_session_and_get_session_id.return_value = (
+          "session_host_only"
+      )
+
+      with measure_lib.XprofContext(
+          name="host_trace", enable_xprof=True, trace_only_host=True
+      ) as ctx:
+        mock_session.start_session.assert_called_once_with(
+            host_trace_level=1,
+            enable_python_tracer=False,
+            host_cpu_profile=True,
+            response_max_bytes=measure_lib._PROFILE_MAX_BYTES,
+            trace_mode="TRACE_ONLY_HOST",
+        )
+
+      mock_session.end_session_and_get_session_id.assert_called_once()
+      self.assertEqual(ctx.session_id, "session_host_only")
+
+  def test_xprof_enabled_exception_propagates_and_session_ends(self):
+    with mock.patch.object(
+        measure_lib.xprof_adapter, "XprofSession"
+    ) as mock_session_cls:
+      mock_session = mock_session_cls.return_value
+      mock_session.end_session_and_get_session_id.return_value = "session_err"
+
+      with self.assertRaises(ValueError):
+        with measure_lib.XprofContext(
+            name="err_trace", enable_xprof=True
+        ) as ctx:
+          raise ValueError("test error")
+
+      mock_session.end_session_and_get_session_id.assert_called_once()
+      self.assertEqual(ctx.session_id, "session_err")
+
+
+class MeasureWarmupXprofTest(seed_test_utils.RepeatableTest):
+
+  def test_warmup_with_xprof_enabled(self):
+    step, ops = CountingStep(), RecordingOps()
+    with mock.patch.object(
+        measure_lib.xprof_adapter, "XprofSession"
+    ) as mock_session_cls:
+      mock_session = mock_session_cls.return_value
+      mock_session.end_session_and_get_session_id.return_value = (
+          "warmup_sess_id"
+      )
+
+      with flagsaver.flagsaver(min_warmup_steps=2, max_warmup_steps=10):
+        result = measure_lib._warmup_run(
+            step, ops, name="test_warmup", enable_xprof=True
+        )
+
+      mock_session.start_session.assert_called_once_with(
+          host_trace_level=1,
+          enable_python_tracer=False,
+          host_cpu_profile=True,
+          response_max_bytes=measure_lib._PROFILE_MAX_BYTES,
+          trace_mode="TRACE_ONLY_HOST",
+      )
+      mock_session.end_session_and_get_session_id.assert_called_once()
+      self.assertEqual(
+          result.warmup_session_xprof_url,
+          "http://xprof/?session_id=warmup_sess_id",
+      )
+      self.assertEqual(step.calls, 2)
+
+  def test_warmup_with_xprof_disabled(self):
+    step, ops = CountingStep(), RecordingOps()
+    with mock.patch.object(
+        measure_lib.xprof_adapter, "XprofSession"
+    ) as mock_session_cls:
+      with flagsaver.flagsaver(min_warmup_steps=2, max_warmup_steps=10):
+        result = measure_lib._warmup_run(
+            step, ops, name="test_warmup", enable_xprof=False
+        )
+      mock_session_cls.assert_not_called()
+      self.assertIsNone(result.warmup_session_xprof_url)
+      self.assertEqual(step.calls, 2)
+
+
+class MeasurePostWarmupXprofTest(seed_test_utils.RepeatableTest):
+
+  def test_post_warmup_with_xprof_enabled_runs_additional_profiling_steps(self):
+    step, ops = CountingStep(), RecordingOps()
+    with mock.patch.object(
+        measure_lib.xprof_adapter, "XprofSession"
+    ) as mock_session_cls:
+      mock_session = mock_session_cls.return_value
+      mock_session.end_session_and_get_session_id.return_value = (
+          "post_warmup_sess_id"
+      )
+
+      with flagsaver.flagsaver(post_warmup_steps=3, xprof_steps=2):
+        result = measure_lib._post_warmup_run(
+            step, ops, name="test_post_warmup", enable_xprof=True
+        )
+
+      mock_session.start_session.assert_called_once_with(
+          host_trace_level=3,
+          enable_python_tracer=True,
+          host_cpu_profile=True,
+          response_max_bytes=measure_lib._PROFILE_MAX_BYTES,
+      )
+      mock_session.end_session_and_get_session_id.assert_called_once()
+      self.assertEqual(
+          result.post_warmup_run_session_xprof_url,
+          "http://xprof/?session_id=post_warmup_sess_id",
+      )
+      # 3 non-profiling steps + 2 profiling steps = 5 steps total
+      self.assertEqual(step.calls, 5)
+
+  def test_post_warmup_with_xprof_disabled_does_not_run_profiling_steps(self):
+    step, ops = CountingStep(), RecordingOps()
+    with mock.patch.object(
+        measure_lib.xprof_adapter, "XprofSession"
+    ) as mock_session_cls:
+      with flagsaver.flagsaver(post_warmup_steps=3, xprof_steps=2):
+        result = measure_lib._post_warmup_run(
+            step, ops, name="test_post_warmup", enable_xprof=False
+        )
+      mock_session_cls.assert_not_called()
+      self.assertIsNone(result.post_warmup_run_session_xprof_url)
+      # Only 3 non-profiling steps
+      self.assertEqual(step.calls, 3)
+
+  def test_post_warmup_recompile_during_profiling_steps_raises(self):
+    # Calls 1, 2, 3 are non-profiling steps. Call 4 is 1st profiling step.
+    step, ops = CountingStep(), RecordingOps(recompile_on_calls={4})
+    with mock.patch.object(measure_lib.xprof_adapter, "XprofSession"):
+      with flagsaver.flagsaver(post_warmup_steps=3, xprof_steps=2):
+        with self.assertRaises(measure_lib.PostWarmupRecompileError):
+          measure_lib._post_warmup_run(
+              step, ops, name="test_post_warmup", enable_xprof=True
+          )
+
+  def test_full_measure_with_xprof_enabled(self):
+    step, ops = CountingStep(), RecordingOps()
+    warmup_session = mock.MagicMock()
+    warmup_session.end_session_and_get_session_id.return_value = "warmup_id"
+    post_warmup_session = mock.MagicMock()
+    post_warmup_session.end_session_and_get_session_id.return_value = (
+        "post_warmup_id"
+    )
+
+    with mock.patch.object(
+        measure_lib.xprof_adapter,
+        "XprofSession",
+        side_effect=[warmup_session, post_warmup_session],
+    ):
+      m = _run_measure(
+          step, ops, steps=3, min_warmup=2, xprof_steps=2, enable_xprof=True
+      )
+
+      # 2 warmup + 3 post warmup non-profiling + 2 post warmup profiling = 7 steps
+      self.assertEqual(step.calls, 7)
+      self.assertEqual(
+          m.warmup_session_xprof_url, "http://xprof/?session_id=warmup_id"
+      )
+      self.assertEqual(
+          m.post_warmup_run_session_xprof_url,
+          "http://xprof/?session_id=post_warmup_id",
+      )
 
 
 if __name__ == "__main__":

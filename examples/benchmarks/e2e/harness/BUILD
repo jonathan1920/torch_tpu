@@ -56,6 +56,7 @@ torch_tpu_py_library(
         ":step_lib",
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
+        "//torch_tpu/_internal/profiler:xprof_adapter",
         "@pypi//numpy",
     ],
 )
