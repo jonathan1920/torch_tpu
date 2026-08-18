@@ -939,9 +939,13 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     """Tests that mm with non-2D argument 1 fails with expected error."""
     t1 = torch.ones(2, device=et.device(), dtype=torch.float32)
     t2 = torch.ones(4, 2, device=et.device(), dtype=torch.float32)
+    if env.IS_INTERNAL_TORCH_TPU:
+      tpu_error_msg = "mm: self must be a matrix, got 1-D tensor"
+    else:
+      tpu_error_msg = "self must be a matrix"
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""self must be a matrix""",
+        tpu=tpu_error_msg,
     ):
       torch.mm(t1, t2)
 
@@ -949,9 +953,13 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     """Tests that mm with non-2D argument 2 fails with expected error."""
     t1 = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     t2 = torch.ones(3, 3, 4, device=et.device(), dtype=torch.float32)
+    if env.IS_INTERNAL_TORCH_TPU:
+      tpu_error_msg = "mm: mat2 must be a matrix, got 3-D tensor"
+    else:
+      tpu_error_msg = "mat2 must be a matrix"
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""mat2 must be a matrix""",
+        tpu=tpu_error_msg,
     ):
       torch.mm(t1, t2)
 
@@ -959,9 +967,15 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     """Tests that mm with mismatched sizes fails with expected error."""
     t1 = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     t2 = torch.ones(4, 2, device=et.device(), dtype=torch.float32)
+    if env.IS_INTERNAL_TORCH_TPU:
+      tpu_error_msg = (
+          "mm: mat1 and mat2 shapes cannot be multiplied (2x3 and 4x2)"
+      )
+    else:
+      tpu_error_msg = "mat1 and mat2 shapes cannot be multiplied (2x3 and 4x2)"
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""mat1 and mat2 shapes cannot be multiplied (2x3 and 4x2)""",
+        tpu=tpu_error_msg,
     ):
       torch.mm(t1, t2)
 
@@ -1753,8 +1767,9 @@ Device-side assertion tracking was not enabled by user.""",
 
   def test_view_as_real_non_complex(self):
     t = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    err_type = TypeError if et.is_on_gpu() else RuntimeError
     with et.assert_raises_message(
-        RuntimeError,
+        err_type,
         tpu="""view_as_real(): expected the input dtype to be complex, got float32""",
         gpu="""view_as_real is only supported for complex tensors""",
         message_reviewed_by="wan",
@@ -2352,9 +2367,13 @@ Device-side assertion tracking was not enabled by user.""",
     mat1 = torch.ones(2, device=et.device(), dtype=torch.float32)
     mat2 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     # This error is created by pytorch before our kernel is called.
+    if env.IS_INTERNAL_TORCH_TPU:
+      tpu_error_msg = "addmm: self must be a matrix, got 1-D tensor"
+    else:
+      tpu_error_msg = "mat1 must be a matrix, got 1-D tensor"
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""mat1 must be a matrix, got 1-D tensor""",
+        tpu=tpu_error_msg,
     ):
       torch.addmm(input_, mat1, mat2)
 
@@ -2363,9 +2382,13 @@ Device-side assertion tracking was not enabled by user.""",
     mat1 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     mat2 = torch.ones(2, device=et.device(), dtype=torch.float32)
     # This error is created by pytorch before our kernel is called.
+    if env.IS_INTERNAL_TORCH_TPU:
+      tpu_error_msg = "addmm: mat2 must be a matrix, got 1-D tensor"
+    else:
+      tpu_error_msg = "mat2 must be a matrix, got 1-D tensor"
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""mat2 must be a matrix, got 1-D tensor""",
+        tpu=tpu_error_msg,
     ):
       torch.addmm(input_, mat1, mat2)
 
@@ -2374,9 +2397,17 @@ Device-side assertion tracking was not enabled by user.""",
     mat1 = torch.ones(3, 13, device=et.device(), dtype=torch.float32)
     mat2 = torch.ones(11, 2, device=et.device(), dtype=torch.float32)
     # This error is created by pytorch before our kernel is called.
+    if env.IS_INTERNAL_TORCH_TPU:
+      tpu_error_msg = (
+          "addmm: mat1 and mat2 shapes cannot be multiplied (3x13 and 11x2)"
+      )
+    else:
+      tpu_error_msg = (
+          "mat1 and mat2 shapes cannot be multiplied (3x13 and 11x2)"
+      )
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""mat1 and mat2 shapes cannot be multiplied (3x13 and 11x2)""",
+        tpu=tpu_error_msg,
     ):
       torch.addmm(input_, mat1, mat2)
 
@@ -2430,9 +2461,15 @@ Device-side assertion tracking was not enabled by user.""",
     input_ = torch.ones(3, 2, device=et.device(), dtype=torch.float32)
     mat1 = torch.ones(3, 4, device=et.device(), dtype=torch.float32)
     mat2 = torch.ones(5, 2, device=et.device(), dtype=torch.float32)
+    if env.IS_INTERNAL_TORCH_TPU:
+      tpu_error_msg = (
+          "addmm: mat1 and mat2 shapes cannot be multiplied (3x4 and 5x2)"
+      )
+    else:
+      tpu_error_msg = "mat1 and mat2 shapes cannot be multiplied (3x4 and 5x2)"
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""mat1 and mat2 shapes cannot be multiplied (3x4 and 5x2)""",
+        tpu=tpu_error_msg,
     ):
       torch.ops.aten._addmm_activation(
           input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False
@@ -2445,7 +2482,7 @@ Device-side assertion tracking was not enabled by user.""",
     out = torch.empty(3, 2, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        gpu="""mat1 and mat2 shapes cannot be multiplied (3x4 and 5x2)""",
+        gpu="""addmm: mat1 and mat2 shapes cannot be multiplied (3x4 and 5x2)""",
         tpu="""addmm_activation(): size 1 of mat1 must be same as size 0 of mat2, got 4 and 5 respectively""",
     ):
       torch.ops.aten._addmm_activation.out(
@@ -2456,9 +2493,13 @@ Device-side assertion tracking was not enabled by user.""",
     input_ = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     mat1 = torch.ones(2, device=et.device(), dtype=torch.float32)
     mat2 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    if env.IS_INTERNAL_TORCH_TPU:
+      tpu_error_msg = "addmm: self must be a matrix, got 1-D tensor"
+    else:
+      tpu_error_msg = "mat1 must be a matrix, got 1-D tensor"
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""mat1 must be a matrix, got 1-D tensor""",
+        tpu=tpu_error_msg,
     ):
       torch.ops.aten._addmm_activation(
           input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False
@@ -2471,7 +2512,7 @@ Device-side assertion tracking was not enabled by user.""",
     out = torch.empty(2, 2, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        gpu="""mat1 must be a matrix, got 1-D tensor""",
+        gpu="""addmm: self must be a matrix, got 1-D tensor""",
         tpu="""addmm_activation(): mat1 must be a matrix, got 1-D tensor""",
     ):
       torch.ops.aten._addmm_activation.out(
@@ -2482,9 +2523,13 @@ Device-side assertion tracking was not enabled by user.""",
     input_ = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     mat1 = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     mat2 = torch.ones(2, 2, 2, device=et.device(), dtype=torch.float32)
+    if env.IS_INTERNAL_TORCH_TPU:
+      tpu_error_msg = "addmm: mat2 must be a matrix, got 3-D tensor"
+    else:
+      tpu_error_msg = "mat2 must be a matrix, got 3-D tensor"
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""mat2 must be a matrix, got 3-D tensor""",
+        tpu=tpu_error_msg,
     ):
       torch.ops.aten._addmm_activation(
           input_, mat1, mat2, beta=1.0, alpha=1.0, use_gelu=False
@@ -2497,7 +2542,7 @@ Device-side assertion tracking was not enabled by user.""",
     out = torch.empty(2, 2, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        gpu="""mat2 must be a matrix, got 3-D tensor""",
+        gpu="""addmm: mat2 must be a matrix, got 3-D tensor""",
         tpu="""addmm_activation(): mat2 must be a matrix, got 3-D tensor""",
     ):
       torch.ops.aten._addmm_activation.out(
@@ -4513,10 +4558,19 @@ Supported combinations for non-constant padding:
   def test_aminmax_complex(self, op_name_cpu: str, op_name_tpu: str, op: Any):
     tensor = torch.ones(5, device=et.device(), dtype=torch.complex64)
 
+    if op is torch.aminmax and env.IS_INTERNAL_TORCH_TPU:
+      err_type = TypeError
+      tpu_msg = "aminmax not implemented for ComplexFloat"
+      gpu_msg = "aminmax not implemented for ComplexFloat"
+    else:
+      err_type = RuntimeError
+      tpu_msg = f"""{op_name_tpu}(): expected the dtype of the input not to be complex, got complex64"""
+      gpu_msg = f""""{op_name_cpu}_cuda" not implemented for 'ComplexFloat'"""
+
     with et.assert_raises_message(
-        RuntimeError,
-        tpu=f"""{op_name_tpu}(): expected the dtype of the input not to be complex, got complex64""",
-        gpu=f""""{op_name_cpu}_cuda" not implemented for 'ComplexFloat'""",
+        err_type,
+        tpu=tpu_msg,
+        gpu=gpu_msg,
         message_reviewed_by="wan",
     ):
       op(tensor, dim=0)
@@ -5259,8 +5313,12 @@ Supported combinations for non-constant padding:
 
       inp = torch.ones(2, 2, device=et.device(), dtype=dtype)
 
+      err_type = RuntimeError
+      if et.is_on_gpu() and dtype == torch.complex64:
+        err_type = TypeError
+
       with et.assert_raises_message(
-          RuntimeError,
+          err_type,
           tpu=f"""{op_name}(): expected the input dtype to be neither complex nor"""
           f""" bool, got {tpu}""",
           gpu=f"""{op_name}(): does not support {gpu} input""",
@@ -5311,7 +5369,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""mm(): expected the first argument to be a 2D tensor (matrix), got 3D of shape [3, 4, 5]""",
-        gpu="""self must be a matrix""",
+        gpu="""mm: self must be a matrix, got 3-D tensor""",
         message_reviewed_by="wan",
     ):
       torch.mm(not_a_matrix_tensor, matrix_tensor, out=out)
@@ -5319,7 +5377,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""mm(): expected the second argument to be a 2D tensor (matrix), got 3D of shape [3, 4, 5]""",
-        gpu="""mat2 must be a matrix""",
+        gpu="""mm: mat2 must be a matrix, got 3-D tensor""",
         message_reviewed_by="wan",
     ):
       torch.mm(matrix_tensor, not_a_matrix_tensor, out=out)
@@ -5334,7 +5392,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""mm(): expected the column size of the first matrix to match the row size of the second matrix, got shape [3, 4] vs [5, 6] where 4 != 5""",
-        gpu="""mat1 and mat2 shapes cannot be multiplied (3x4 and 5x6)""",
+        gpu="""mm: mat1 and mat2 shapes cannot be multiplied (3x4 and 5x6)""",
         message_reviewed_by="wan",
     ):
       torch.mm(lhs, rhs, out=out)
@@ -8749,7 +8807,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""native_multi_head_attention(): expected 2-D proj_weight, got 1-D tensor""",
-        gpu="""mat2 must be a matrix, got 1-D tensor""",
+        gpu="""addmm: mat2 must be a matrix, got 1-D tensor""",
     ):
       torch.ops.aten._native_multi_head_attention(
           query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
@@ -8785,7 +8843,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""native_multi_head_attention(): expected proj_weight second dim to be embed_dim (8), got 7""",
-        gpu="""mat1 and mat2 shapes cannot be multiplied (8x8 and 7x8)""",
+        gpu="""addmm: mat1 and mat2 shapes cannot be multiplied (8x8 and 7x8)""",
     ):
       torch.ops.aten._native_multi_head_attention(
           query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
