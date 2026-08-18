@@ -29,6 +29,8 @@ import unittest
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
+import torch
+from torch_tpu._internal import testing as tt_testing
 from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e.harness import base_test
 from examples.benchmarks.e2e.harness import cases
@@ -86,6 +88,20 @@ def _make_run_step(
   return runner
 
 
+def reset_state(
+    target: target_lib.Target,
+    device: torch.device,
+    run_mode: common.RunMode,
+) -> None:
+  """Resets framework and hardware compilation/runtime state."""
+  if target.device_kind.value == "tpu":
+    getattr(torch, "tpu")._clear_cache()  # pylint: disable=protected-access
+    if device.type == "tpu":
+      tt_testing.reset_eager_state()
+  if common.is_torch_compile(run_mode):
+    torch._dynamo.reset()
+
+
 class BenchmarkTest(base_test.BaseBenchmarkTest, parameterized.TestCase):
   """One test method, parameterised over the registry x mode matrix."""
 
@@ -121,6 +137,8 @@ class BenchmarkTest(base_test.BaseBenchmarkTest, parameterized.TestCase):
     ctx = context_lib.Context(
         target=target, run_scope=context_lib.RUN_SCOPE.value
     )
+
+    reset_state(target, device_ops.device, mode)
 
     if is_skipped and flags_lib.SKIP_BEHAVIOR.value == "assert_raise":
       with self.assertRaises(Exception):

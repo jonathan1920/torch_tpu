@@ -30,6 +30,7 @@ import unittest
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
+import jax
 from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e.harness import base_test
 from examples.benchmarks.e2e.harness import cases
@@ -85,6 +86,11 @@ def _make_run_step(
   return runner
 
 
+def reset_state() -> None:
+  """Resets the JAX compilation cache."""
+  jax.clear_caches()
+
+
 class TorchaxBenchmarkTest(base_test.BaseBenchmarkTest, parameterized.TestCase):
   """One test method, parameterized over the registry x mode matrix for TorchAx."""
 
@@ -126,6 +132,8 @@ class TorchaxBenchmarkTest(base_test.BaseBenchmarkTest, parameterized.TestCase):
     ctx = context_lib.Context(
         target=target, run_scope=context_lib.RUN_SCOPE.value
     )
+
+    reset_state()
 
     if is_skipped and flags_lib.SKIP_BEHAVIOR.value == "assert_raise":
       with self.assertRaises(Exception):
