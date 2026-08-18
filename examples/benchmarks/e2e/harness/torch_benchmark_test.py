@@ -26,11 +26,11 @@ Environment & Flags:
 
 from typing import Iterator, Tuple
 import unittest
-from absl import flags
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 from examples.benchmarks.e2e import common
+from examples.benchmarks.e2e.harness import base_test
 from examples.benchmarks.e2e.harness import cases
 from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import context as context_lib
@@ -86,12 +86,8 @@ def _make_run_step(
   return runner
 
 
-class BenchmarkTest(parameterized.TestCase):
+class BenchmarkTest(base_test.BaseBenchmarkTest, parameterized.TestCase):
   """One test method, parameterised over the registry x mode matrix."""
-
-  def setUp(self):
-    super().setUp()
-    logging._log_counter_per_token.clear()  # pylint: disable=protected-access
 
   def test_benchmark_imports(self):
     if failures:
@@ -115,6 +111,10 @@ class BenchmarkTest(parameterized.TestCase):
           f"Benchmark {spec.name} is not skipped for run mode {mode.value},"
           " skipping due to skip_behavior=run_skipped"
       )
+
+    if flags_lib.DRY_RUN.value:
+      self._dry_run_test()
+      return
 
     target = target_lib.make_target(_PLATFORM, dtype=spec.dtype)
     device_ops = torch_device_ops.TorchDeviceOps(target)

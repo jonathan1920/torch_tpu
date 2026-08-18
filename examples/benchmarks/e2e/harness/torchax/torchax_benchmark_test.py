@@ -24,14 +24,14 @@ Environment & Flags:
 
 import torch_xla2 as torchax  # pylint: disable=unused-import # noqa: F401
 from torchax import interop  # pylint: disable=unused-import # noqa: F401
+
 from typing import Iterator, Tuple
 import unittest
-
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
-
 from examples.benchmarks.e2e import common
+from examples.benchmarks.e2e.harness import base_test
 from examples.benchmarks.e2e.harness import cases
 from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import context as context_lib
@@ -44,7 +44,6 @@ from examples.benchmarks.e2e.harness import mode as mode_lib
 from examples.benchmarks.e2e.harness import models
 from examples.benchmarks.e2e.harness import registry as registry_lib
 from examples.benchmarks.e2e.harness import step_lib
-from examples.benchmarks.e2e.harness import steps
 from examples.benchmarks.e2e.harness import target as target_lib
 from examples.benchmarks.e2e.harness.torchax import torchax_device_ops
 from examples.benchmarks.e2e.harness.torchax import torchax_step
@@ -86,12 +85,8 @@ def _make_run_step(
   return runner
 
 
-class TorchaxBenchmarkTest(parameterized.TestCase):
+class TorchaxBenchmarkTest(base_test.BaseBenchmarkTest, parameterized.TestCase):
   """One test method, parameterized over the registry x mode matrix for TorchAx."""
-
-  def setUp(self):
-    super().setUp()
-    logging._log_counter_per_token.clear()  # pylint: disable=protected-access
 
   def test_benchmark_imports(self):
     if failures:
@@ -121,6 +116,10 @@ class TorchaxBenchmarkTest(parameterized.TestCase):
           f"Benchmark {spec.name} is not skipped for run mode {mode.value},"
           " skipping due to skip_behavior=run_skipped"
       )
+
+    if flags_lib.DRY_RUN.value:
+      self._dry_run_test()
+      return
 
     target = target_lib.make_target(_PLATFORM, dtype=spec.dtype)
     device_ops = torchax_device_ops.TorchaxDeviceOps(target)

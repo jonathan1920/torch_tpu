@@ -34,3 +34,12 @@ ENABLE_XPROF = flags.DEFINE_bool(
     "Whether to enable xprof profiling.",
     allow_override=True,
 )
+
+DRY_RUN = flags.DEFINE_bool(
+    "dry_run",
+    False,
+    "Whether to run in dry-run mode. If True, actual benchmark execution is"
+    " skipped, and the list of targets that would have run are logged and"
+    " written to the test outputs directory specified by environment variable"
+    " TEST_UNDECLARED_OUTPUTS_DIR.",
+)

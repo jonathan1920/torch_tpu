@@ -26,6 +26,16 @@ package(
 )
 
 torch_tpu_py_library(
+    name = "base_test",
+    testonly = True,
+    srcs = ["base_test.py"],
+    deps = [
+        "//shims/absl_py/logging",
+        "//tests:seed_test_utils",
+    ],
+)
+
+torch_tpu_py_library(
     name = "flags",
     srcs = ["flags.py"],
     deps = [
@@ -175,6 +185,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":base_test",
         ":cases",
         ":compile",
         ":context",
@@ -191,7 +202,6 @@ torch_tpu_py_test(
         "//examples/benchmarks/e2e:common",
         "//examples/benchmarks/e2e/harness/models",
         "//examples/benchmarks/e2e/harness/steps",
-        "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
