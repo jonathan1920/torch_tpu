@@ -193,6 +193,31 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
 
     self.assertTrue(torch.equal(t1, t2))
 
+  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
+  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
+  def test_backend_manual_seed_sets_current_device_seed(self):
+    """Verifies backend_mod.manual_seed sets initial seed on current device."""
+    self.backend_mod.manual_seed(1)
+    self.assertEqual(self.backend_mod.initial_seed(), 1)
+    self.assertEqual(self._get_device_rng_seed(), 1)
+    self.assertEqual(self._get_device_rng_offset(), 0)
+
+    self.backend_mod.manual_seed(42)
+    self.assertEqual(self.backend_mod.initial_seed(), 42)
+    self.assertEqual(self._get_device_rng_seed(), 42)
+    self.assertEqual(self._get_device_rng_offset(), 0)
+
+  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
+  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
+  def test_backend_manual_seed_resets_offset_after_rand(self):
+    """Verifies re-seeding with backend_mod.manual_seed resets device offset back to 0."""
+    self.backend_mod.manual_seed(42)
+    _ = torch.rand(100, device=self.device)
+    self.assertGreater(self._get_device_rng_offset(), 0)
+
+    self.backend_mod.manual_seed(77)
+    self.assertEqual(self._get_device_rng_offset(), 0)
+
   def test_rand_does_not_change_device_seed(self):
     """Verifies torch.rand on device does not change initial_seed."""
     torch.manual_seed(42)
