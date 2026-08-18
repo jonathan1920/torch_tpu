@@ -197,6 +197,13 @@ _PERF_DIR: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
     "non-empty string in the perf mode.",
 )
 
+_GOLDEN_DATA_BASE_DIR: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
+    "golden_data_base_dir",
+    "",
+    "Directory containing golden data files. If not specified, standard test"
+    " and runfiles locations are searched.",
+)
+
 
 # Example of how to use --base_perf_dir to study the impact of a change on op
 # performance:
@@ -3633,10 +3640,35 @@ def _save_golden_file() -> None:
 def _load_golden_files() -> None:
   """Loads the checked in golden files into _GOLDEN_GPU_DATA."""
   golden_file_pattern = f"{_golden_file_prefix()}*.gz"
-  golden_files = list(pathlib.Path(__file__).parent.glob(golden_file_pattern))
+  candidate_dirs: list[pathlib.Path] = []
+
+  # 1. User-specified directory via flag.
+  if _GOLDEN_DATA_BASE_DIR.value:
+    candidate_dirs.append(pathlib.Path(_GOLDEN_DATA_BASE_DIR.value))
+
+  # 2. Directory of __file__ (standard source test mode).
+  candidate_dirs.append(pathlib.Path(__file__).parent)
+
+  # 3. Specific runfiles directories when executing under Bazel or unpacked wheel.
+  candidate_dirs.append(pathlib.Path.cwd() / "tests")
+  if "TEST_SRCDIR" in os.environ:
+    test_srcdir = pathlib.Path(os.environ["TEST_SRCDIR"])
+    candidate_dirs.extend([
+        test_srcdir / "_main" / "tests",
+        test_srcdir / "google3" / "third_party" / "py" / "torch_tpu" / "tests",
+    ])
+
+  golden_files: list[pathlib.Path] = []
+  for candidate_dir in candidate_dirs:
+    if candidate_dir.is_dir():
+      golden_files = list(candidate_dir.glob(golden_file_pattern))
+      if golden_files:
+        break
+
   if not golden_files:
     raise ValueError(
-        f"No golden files found matching the pattern: {golden_file_pattern}"
+        f"No golden files found matching the pattern: {golden_file_pattern} in"
+        f" candidate directories: {[str(d) for d in candidate_dirs]}"
     )
 
   _GOLDEN_GPU_DATA.clear()
