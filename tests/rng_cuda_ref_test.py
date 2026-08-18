@@ -218,6 +218,30 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
     self.backend_mod.manual_seed(77)
     self.assertEqual(self._get_device_rng_offset(), 0)
 
+  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
+  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
+  def test_backend_manual_seed_different_seeds_produce_different_tensors(self):
+    """Verifies different seeds with backend_mod.manual_seed produce distinct tensors."""
+    self.backend_mod.manual_seed(1)
+    t1 = torch.rand(100, device=self.device)
+
+    self.backend_mod.manual_seed(2)
+    t2 = torch.rand(100, device=self.device)
+
+    self.assertFalse(torch.equal(t1, t2))
+
+  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
+  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
+  def test_backend_manual_seed_reproducibility(self):
+    """Verifies setting the same seed with backend_mod.manual_seed produces identical tensors."""
+    self.backend_mod.manual_seed(42)
+    t1 = torch.rand(100, device=self.device)
+
+    self.backend_mod.manual_seed(42)
+    t2 = torch.rand(100, device=self.device)
+
+    self.assertTrue(torch.equal(t1, t2))
+
   def test_rand_does_not_change_device_seed(self):
     """Verifies torch.rand on device does not change initial_seed."""
     torch.manual_seed(42)
