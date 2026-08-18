@@ -4315,7 +4315,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""foreach_abs_(): expected all 4 tensors in the self list not to be complex, got 2 complex tensors: complex64 at index 1 and complex64 at index 2""",
+        tpu="""foreach_abs_(): expected no tensor in the self list to be complex, got 2 complex tensors: complex64 at index 1 and complex64 at index 2""",
         gpu="""In-place abs is not supported for complex tensors.""",
         message_reviewed_by="wan",
     ):
@@ -4381,7 +4381,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""foreach_sub(): expected all 2 tensors in the self list not to be bool, got 1 bool tensor: bool at index 1""",
+        tpu="""foreach_sub(): expected no tensor in the self list to be bool, got 1 bool tensor: bool at index 1""",
         gpu="""Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.""",
         message_reviewed_by="wan",
     ):
@@ -4409,7 +4409,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""foreach_sub(): expected all 2 scalars in the scalars list not to be bool, got 1 bool scalar: true at index 1""",
+        tpu="""foreach_sub(): expected no scalar in the scalars list to be bool, got 1 bool scalar: true at index 1""",
         gpu="""Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.""",
         message_reviewed_by="wan",
     ):
@@ -4449,7 +4449,7 @@ Supported combinations for non-constant padding:
 
       with et.assert_raises_message(
           RuntimeError,
-          tpu=f"""foreach_div_(): expected all 1 tensors in the self list not to be integral, got 1 integral tensor: {tpu_dtype} at index 0""",
+          tpu=f"""foreach_div_(): expected no tensor in the self list to be integral, got 1 integral tensor: {tpu_dtype} at index 0""",
           gpu=f"""result type Float can't be cast to the desired output type {gpu_dtype}""",
           message_reviewed_by="gunhyun",
       ):
@@ -4486,7 +4486,7 @@ Supported combinations for non-constant padding:
     ]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""foreach_sqrt_(): expected all 4 tensors in the self list not to be integral, got 2 integral tensors: int32 at index 0 and int32 at index 2""",
+        tpu="""foreach_sqrt_(): expected no tensor in the self list to be integral, got 2 integral tensors: int32 at index 0 and int32 at index 2""",
         gpu="""result type Float can't be cast to the desired output type Int""",
     ):
       torch._foreach_sqrt_(self_list)
@@ -4532,8 +4532,8 @@ Supported combinations for non-constant padding:
         with et.assert_raises_message(
             RuntimeError,
             tpu=re.compile(
-                r"foreach_[a-z0-9_]+\(\): expected all 1 tensors in the self"
-                r" list not to be complex, got 1 complex tensor: "
+                r"foreach_[a-z0-9_]+\(\): expected no tensor in the self"
+                r" list to be complex, got 1 complex tensor: "
                 r"complex(64|128) at index 0"
             ),
             gpu=re.compile(r".*not implemented for 'Complex(Float|Double)'"),

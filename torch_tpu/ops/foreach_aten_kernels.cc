@@ -441,8 +441,7 @@ absl::Status CheckNotBool(at::ArrayRef<at::Scalar> scalars,
                     [scalars](const int64_t i) { return IsBool(scalars[i]); });
 
   TT_RET_CHECK(bool_indices.empty(), error::kInvalidArgument)
-      << "expected all " << scalars.size() << " scalars in the " << arg_name
-      << " list not to be bool, got "
+      << "expected no scalar in the " << arg_name << " list to be bool, got "
       << FormatCount(bool_indices.size(), /* singular= */ "bool scalar",
                      /* plural= */ "bool scalars")
       << ": "
@@ -463,8 +462,8 @@ absl::Status CheckTensorsNotTypeImpl(at::TensorList tensors,
       [tensors, &is_type](const int64_t i) { return is_type(tensors[i]); });
 
   TT_RET_CHECK(bad_indices.empty(), error::kInvalidArgument)
-      << "expected all " << tensors.size() << " tensors in the " << arg_name
-      << " list not to be " << type_name << ", got "
+      << "expected no tensor in the " << arg_name << " list to be " << type_name
+      << ", got "
       << FormatCount(bad_indices.size(),
                      /* singular= */ absl::StrCat(type_name, " tensor"),
                      /* plural= */ absl::StrCat(type_name, " tensors"))
