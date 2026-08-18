@@ -291,16 +291,6 @@ class MultihostRunnerTest(parameterized.TestCase):
     self.assertIsNotNone(captured_ctx)
     self.assertEqual(captured_ctx.run_scope, context_lib.RunScope.FULL)
 
-  def test_runner_flags_registered(self):
-    """Verifies that runner flags (e.g.
-
-    mlcompass_tracking_id, base_cl) are registered in absl.flags.
-    """
-    from absl import flags  # pylint: disable=g-import-not-at-top
-
-    self.assertIn("mlcompass_tracking_id", flags.FLAGS)
-    self.assertIn("base_cl", flags.FLAGS)
-
   @mock.patch.object(llama, "_load_meta_llama")
   def test_meta_llama_8b_forward_supports_single_and_multihost(
       self, mock_loader

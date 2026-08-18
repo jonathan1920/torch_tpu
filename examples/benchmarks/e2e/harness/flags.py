@@ -34,35 +34,3 @@ ENABLE_XPROF = flags.DEFINE_bool(
     "Whether to enable xprof profiling.",
     allow_override=True,
 )
-
-# Flags passed by launcher for metadata and tracking.
-MLCOMPASS_TRACKING_ID = flags.DEFINE_string(
-    "mlcompass_tracking_id", "", "MLCompass tracking UUID.", allow_override=True
-)
-MLCOMPASS_EXECUTION_MODE = flags.DEFINE_string(
-    "mlcompass_execution_mode",
-    "oneshot",
-    "MLCompass execution mode.",
-    allow_override=True,
-)
-BASE_CL = flags.DEFINE_string(
-    "base_cl", "", "Base CL used for the benchmark run.", allow_override=True
-)
-PENDING_CL = flags.DEFINE_string(
-    "pending_cl",
-    "",
-    "Pending CL used for the benchmark run.",
-    allow_override=True,
-)
-BENCHMARK_GROUP = flags.DEFINE_string(
-    "benchmark_group", "experiment", "Benchmark group.", allow_override=True
-)
-CONFIG_PATH = flags.DEFINE_string(
-    "config_path", "", "MLCompass config file path.", allow_override=True
-)
-CELL = flags.DEFINE_string(
-    "cell", "", "Cell to run the job in.", allow_override=True
-)
-PRIORITY = flags.DEFINE_integer(
-    "priority", 200, "Priority to launch the job at.", allow_override=True
-)
