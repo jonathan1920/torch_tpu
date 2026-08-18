@@ -17,6 +17,7 @@ load(
     "torch_tpu_package_end",
     "torch_tpu_py_library",
     "torch_tpu_py_test",
+    "tpu_gen",
 )
 
 package(
@@ -69,6 +70,12 @@ torch_tpu_py_test(
     ],
     data = glob(["captured_ops/*.json"]),
     notap = "Tested on guitar workflow.",
+    # Explicitly set to v7 to ensure presubmit-v7 tag is assigned in OSS.
+    # Otherwise, build_defs.bzl defaults any requires-tpu* target to presubmit-v5.
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Op benchmarks executed on TPU v7",
+    ),
     shard_count = 50,
     tags = [
         "nomsan",  # b/516945438

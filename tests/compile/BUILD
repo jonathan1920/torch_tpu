@@ -16,6 +16,7 @@ load(
     "torch_tpu_package_end",
     "torch_tpu_py_library",
     "torch_tpu_py_test",
+    "tpu_gen",
 )
 
 package(
@@ -28,6 +29,10 @@ exports_files(["data/goldfish.jpg"])
 torch_tpu_py_test(
     name = "backend_serialization_test",
     srcs = ["backend_serialization_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -45,6 +50,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "small_graph_test",
     srcs = ["small_graph_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "nomsan",  # b/516945438
         "requires-net:external",
@@ -66,6 +75,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "split_compile_test",
     srcs = ["split_compile_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -84,6 +97,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "activation_checkpointing_test",
     srcs = ["activation_checkpointing_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -100,6 +117,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "activation_checkpointing_mem_test",
     srcs = ["activation_checkpointing_mem_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -116,6 +137,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "dtensor_test",
     srcs = ["dtensor_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -130,6 +155,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "random_ops_test",
     srcs = ["random_ops_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -149,6 +178,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "ensure_no_dynamic_test",
     srcs = ["ensure_no_dynamic_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -194,6 +227,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "compile_api_test",
     srcs = ["compile_api_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -257,6 +294,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "output_modify_test",
     srcs = ["output_modify_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -275,6 +316,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "compile_with_inference_mode_test",
     srcs = ["compile_with_inference_mode_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -399,6 +444,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "trace_autograd_ops_test",
     srcs = ["trace_autograd_ops_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
     strict = "true",
     tags = [
         "nomsan",  # 3p 'py/torch' error: use-of-uninitialized-value in 3 in reduced_float_type_copy

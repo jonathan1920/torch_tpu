@@ -446,6 +446,14 @@ def _test_oss_presubmit_tpu_generation_implicit_v6(env):
     )
     env.expect.that_collection(tags).contains("presubmit-v6")
 
+def _test_oss_presubmit_tpu_generation_implicit_default_v5(env):
+    tags = ["requires-tpu"]
+    check_and_adjust_test_tags_for_testing(
+        is_oss = True,
+        tags = tags,
+    )
+    env.expect.that_collection(tags).contains("presubmit-v5")
+
 def build_defs_test_suite(name):
     """Creates a test suite for build_defs.bzl, which will run all tests in this file.
 
@@ -484,6 +492,7 @@ def build_defs_test_suite(name):
             _test_oss_notest_oss_nobuild_oss,
             _test_oss_presubmit_tpu_generation_explicit,
             _test_oss_presubmit_tpu_generation_implicit,
+            _test_oss_presubmit_tpu_generation_implicit_default_v5,
             _test_oss_presubmit_tpu_generation_implicit_v6,
             # go/keep-sorted end
         ],

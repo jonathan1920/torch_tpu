@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_package_end",
+    "torch_tpu_py_test",
+    "tpu_gen",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -39,6 +44,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "dynamic_view_test",
     srcs = ["dynamic_view_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Faster dynamic shape compilation on TPU v7",
+    ),
     tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
@@ -52,6 +61,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "sym_expr_arg_test",
     srcs = ["sym_expr_arg_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Faster symbolic expression evaluation on TPU v7",
+    ),
     tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",

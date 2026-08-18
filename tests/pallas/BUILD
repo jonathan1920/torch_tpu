@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_package_end", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "if_oss",
+    "torch_tpu_package_end",
+    "torch_tpu_py_test",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -27,6 +32,7 @@ torch_tpu_py_test(
         "TPU_PREMAPPED_BUFFER_SIZE": "0",
         "IS_OSS": if_oss("1", "0"),
     },
+    shard_count = 4,
     tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
