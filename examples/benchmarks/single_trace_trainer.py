@@ -42,7 +42,7 @@ def _compute_loss(
     buffers: dict[str, torch.Tensor],
     inputs: Any,
     targets: Any,
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
   """Computes loss for functional execution."""
   p_orig = {key_map[k]: v for k, v in params.items()}
   b_orig = {key_map[k]: v for k, v in buffers.items()}
@@ -56,26 +56,28 @@ def _compute_loss(
 
   out = func.functional_call(model, (p_orig, b_orig), args, kwargs)
 
+  loss = None
   if targets is not None:
-    return torch.nn.functional.mse_loss(out, targets)
+    loss = torch.nn.functional.mse_loss(out, targets)
+  elif hasattr(out, "loss") and out.loss is not None:
+    loss = out.loss
+  elif isinstance(out, dict) and "loss" in out:
+    loss = out["loss"]
+  elif hasattr(out, "logits") and out.logits is not None:
+    loss = torch.mean(out.logits)
+  elif hasattr(out, "sample") and out.sample is not None:
+    loss = torch.mean(out.sample)
+  else:
+    flat_out, _ = _pytree.tree_flatten(out)
+    for item in flat_out:
+      if torch.is_tensor(item):
+        loss = torch.mean(item)
+        break
 
-  # Specific heuristics
-  if hasattr(out, "loss") and out.loss is not None:
-    return out.loss
-  if isinstance(out, dict) and "loss" in out:
-    return out["loss"]
-  if hasattr(out, "logits") and out.logits is not None:
-    return torch.mean(out.logits)
-  if hasattr(out, "sample") and out.sample is not None:
-    return torch.mean(out.sample)
+  if loss is None:
+    raise TypeError(f"Cannot extract loss from output of type {type(out)}")
 
-  # Generic fallback using pytree
-  flat_out, _ = _pytree.tree_flatten(out)
-  for item in flat_out:
-    if torch.is_tensor(item):
-      return torch.mean(item)
-
-  raise TypeError(f"Cannot extract loss from output of type {type(out)}")
+  return loss, buffers
 
 
 class SingleTraceTrainer:
@@ -117,10 +119,27 @@ class SingleTraceTrainer:
 
     self.param_group = self.optimizer.init_param_group(initial_params)
 
+  # Update state in this container and in user model.
+  # Not technically required for params; all of the optimizers internalize an
+  # # inplace update, and that part of the trace is not functionalized.
+  # Buffers on the other hand may be mutated by the model inside stuff traced
+  # by func.grad_and_value. This is functionalized so we will need an update
+  # for buffers.
+  def _update(self, new_pg, updated_bufs):
+    self.buffers = updated_bufs
+    self.param_group = new_pg
+    self.model.load_state_dict(self.params, strict=False)
+    self.model.load_state_dict(self.bufs, strict=False)
+
   @property
   def params(self) -> dict[str, torch.Tensor]:
     """Returns parameters with their original names."""
     return {self._key_map[k]: v for k, v in self.param_group.params.items()}
+
+  @property
+  def bufs(self) -> dict[str, torch.Tensor]:
+    """Returns buffers with their original names."""
+    return {self._key_map[k]: v for k, v in self.buffers.items()}
 
   def make_compiled_train_step(
       self,
@@ -145,15 +164,16 @@ class SingleTraceTrainer:
           _compute_loss,
           self.model,
           self._key_map,
-          buffers=bufs,
           inputs=inps,
           targets=tgts,
       )
 
-      grads, loss = func.grad_and_value(bound_loss)(p_group.params)
+      grads, (loss, updated_bufs) = func.grad_and_value(
+          bound_loss, has_aux=True, argnums=0
+      )(p_group.params, bufs)
       new_p_group = self.optimizer(p_group, grads)
 
-      flat_outputs, _ = _pytree.tree_flatten((loss, new_p_group))
+      flat_outputs, _ = _pytree.tree_flatten((loss, new_p_group, updated_bufs))
       return tuple(flat_outputs)
 
     unified_graph = make_fx(
@@ -176,7 +196,9 @@ class SingleTraceTrainer:
     # Build a template to capture output structure (`TreeSpec`) for
     # restoring backend flat results.
     dummy_loss = torch.tensor(0.0)
-    _, out_spec = _pytree.tree_flatten((dummy_loss, self.param_group))
+    _, out_spec = _pytree.tree_flatten(
+        (dummy_loss, self.param_group, self.buffers)
+    )
 
     # Stateful wrapper returned to user; handles flattening, running compiled
     # graph, and state updates.
@@ -194,9 +216,11 @@ class SingleTraceTrainer:
       result = compiled_step(*flat_inputs)
 
       assert out_spec is not None
-      loss, new_param_group = _pytree.tree_unflatten(result, out_spec)
+      loss, new_param_group, updated_bufs = _pytree.tree_unflatten(
+          result, out_spec
+      )
 
-      self.param_group = new_param_group
+      self._update(new_param_group, updated_bufs)
 
       return loss
 

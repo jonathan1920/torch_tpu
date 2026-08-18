@@ -273,5 +273,37 @@ class SingleTraceTrainerSignatureTest(seed_test_utils.RepeatableTest):
       train_step(x, target)
 
 
+class SingleTraceTrainerBufferMutationTest(seed_test_utils.RepeatableTest):
+
+  def setUp(self):
+    super().setUp()
+    self.device = torch.device("tpu")
+
+  def test_model_inplace_buf_update(self):
+    class Model(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+
+        self.register_buffer("add_count", torch.tensor(0))
+        self.linear = torch.nn.Linear(128, 64)
+
+      def forward(self, x):
+        self.add_count.add_(1)
+        return self.linear(x) + 1
+
+    model = Model().to(self.device)
+    self.assertEqual(model.add_count, 0)
+    x = torch.randn((32, 128), device=self.device)
+
+    trainer = single_trace_trainer.SingleTraceTrainer(
+        model, single_trace_trainer.ReferenceAdamw()
+    )
+
+    train_step = trainer.make_compiled_train_step(x)
+    _ = train_step(x)
+    self.assertEqual(model.add_count, 1)
+
+
 if __name__ == "__main__":
   absltest.main()
