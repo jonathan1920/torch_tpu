@@ -18,6 +18,7 @@ load(
     "torch_tpu_py_library",
     "torch_tpu_py_test",
 )
+load("//shims/py_rules:pytype.bzl", "pytype_strict_binary")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -196,6 +197,49 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//torch_tpu",
     ],
+)
+
+torch_tpu_py_library(
+    name = "multihost_runner_lib",
+    testonly = 1,
+    srcs = ["multihost_runner.py"],
+    deps = [
+        ":compile",
+        ":context",
+        ":discovery",
+        ":flags",
+        ":measure",
+        ":mode",
+        ":registry",
+        ":step_lib",
+        ":target",
+        ":torch_device_ops",
+        "//examples/benchmarks/e2e:common",
+        "//examples/benchmarks/e2e/harness/models",
+        "//examples/benchmarks/e2e/harness/steps",
+        "//shims/absl_py:app",
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+        "//tests/distributed:distributed_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/distributed:multiprocessing",
+        "@pypi//fairscale",
+    ],
+)
+
+pytype_strict_binary(
+    name = "multihost_runner_bin",
+    testonly = 1,
+    srcs = ["multihost_runner.py"],
+    main = "multihost_runner.py",
+    deps = [
+        ":multihost_runner_lib",
+    ],
+)
+
+alias(
+    name = "multihost_runner",
+    actual = ":multihost_runner_bin",
 )
 
 torch_tpu_package_end()
