@@ -12,17 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""No-op benchmark adapter for OSS."""
+"""No-op export adapter for OSS."""
 
 
-class BenchmarkData:
-  """No-op BenchmarkData for OSS."""
-
-  def __init__(self, *args, **kwargs):
-    pass
-
-
-# DEPRECATED: Use torch_tpu._internal.benchmarks.export_adapter instead.
 def export_benchmark_results(*args, **kwargs):
   """No-op export_benchmark_results for OSS."""
   del args, kwargs

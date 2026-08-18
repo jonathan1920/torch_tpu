@@ -87,6 +87,7 @@ torch_tpu_py_test(
         "//examples/benchmarks/e2e/harness:compile",
         "//examples/benchmarks/e2e/harness:context",
         "//examples/benchmarks/e2e/harness:discovery",
+        "//examples/benchmarks/e2e/harness:export",
         "//examples/benchmarks/e2e/harness:flags",
         "//examples/benchmarks/e2e/harness:measure",
         "//examples/benchmarks/e2e/harness:metrics",

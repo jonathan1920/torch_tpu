@@ -25,6 +25,7 @@ Environment & Flags:
 """
 
 from typing import Iterator, Tuple
+import unittest
 from absl import flags
 from absl import logging
 from absl.testing import absltest
@@ -34,6 +35,7 @@ from examples.benchmarks.e2e.harness import cases
 from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import context as context_lib
 from examples.benchmarks.e2e.harness import discovery as discovery_lib
+from examples.benchmarks.e2e.harness import export as export_lib
 from examples.benchmarks.e2e.harness import flags as flags_lib
 from examples.benchmarks.e2e.harness import measure as measure_lib
 from examples.benchmarks.e2e.harness import metrics as metrics_lib
@@ -123,10 +125,39 @@ class BenchmarkTest(parameterized.TestCase):
     if is_skipped and flags_lib.SKIP_BEHAVIOR.value == "assert_raise":
       with self.assertRaises(Exception):
         self._run_and_measure(spec, mode, target, device_ops, ctx)
-    else:
-      self._run_and_measure(spec, mode, target, device_ops, ctx)
+      return
 
-  def _run_and_measure(self, spec, mode, target, device_ops, ctx):
+    try:
+      metrics = self._run_and_measure(spec, mode, target, device_ops, ctx)
+    except unittest.SkipTest:
+      raise
+    except Exception:
+      export_lib.export(
+          export_lib.BenchmarkData(
+              spec_name=spec.name,
+              platform=target.platform,
+              framework=_FRAMEWORK,
+              run_mode=mode,
+              succeeded=False,
+              metrics=metrics_lib.PerformanceMetrics(),
+          )
+      )
+      raise
+
+    export_lib.export(
+        export_lib.BenchmarkData(
+            spec_name=spec.name,
+            platform=target.platform,
+            framework=_FRAMEWORK,
+            run_mode=mode,
+            succeeded=True,
+            metrics=metrics,
+        )
+    )
+
+  def _run_and_measure(
+      self, spec, mode, target, device_ops, ctx
+  ) -> metrics_lib.PerformanceMetrics:
     try:
       with mode_lib.run_mode_context(mode, target):
         run_step = _make_run_step(spec, ctx, mode)
@@ -141,6 +172,7 @@ class BenchmarkTest(parameterized.TestCase):
 
     logging.info("Metrics for %s_%s:\n%s", spec.name, mode.value, metrics)
     self._assert_measured(metrics)
+    return metrics
 
   def _assert_measured(self, metrics: metrics_lib.PerformanceMetrics) -> None:
     self.assertGreater(metrics.e2e_wall_time_seconds, 0.0)

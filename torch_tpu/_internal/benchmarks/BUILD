@@ -33,4 +33,11 @@ torch_tpu_py_library(
 )
 # copybara:comment_end
 
+# copybara:comment_begin(oss-only)
+torch_tpu_py_library(
+    name = "export_adapter",
+    srcs = ["export_adapter.py"],
+)
+# copybara:comment_end
+
 torch_tpu_package_end()

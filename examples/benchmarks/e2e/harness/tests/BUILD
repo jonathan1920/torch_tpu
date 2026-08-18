@@ -24,6 +24,22 @@ package(
 )
 
 torch_tpu_py_test(
+    name = "export_test",
+    srcs = ["export_test.py"],
+    deps = [
+        "//examples/benchmarks/e2e:common",
+        "//examples/benchmarks/e2e/harness:export",
+        "//examples/benchmarks/e2e/harness:metrics",
+        "//examples/benchmarks/e2e/harness:mode",
+        "//examples/benchmarks/e2e/harness:target",
+        "//shims/absl_py/testing:absltest",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/benchmarks:export_adapter",
+    ],
+)
+
+torch_tpu_py_test(
     name = "measure_test",
     srcs = ["measure_test.py"],
     deps = [

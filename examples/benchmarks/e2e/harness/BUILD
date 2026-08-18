@@ -33,6 +33,18 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "export",
+    srcs = ["export.py"],
+    deps = [
+        ":metrics",
+        ":mode",
+        ":target",
+        "//examples/benchmarks/e2e:common",
+        "//torch_tpu/_internal/benchmarks:export_adapter",
+    ],
+)
+
+torch_tpu_py_library(
     name = "metrics",
     srcs = ["metrics.py"],
 )
@@ -166,6 +178,7 @@ torch_tpu_py_test(
         ":compile",
         ":context",
         ":discovery",
+        ":export",
         ":flags",
         ":measure",
         ":metrics",
