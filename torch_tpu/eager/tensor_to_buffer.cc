@@ -594,41 +594,33 @@ c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref, const int device_idx) {
                       c10::Device(GetPrivateUse1DeviceType(), device_idx));
 }
 
-absl::StatusOr<std::vector<DeviceBufferRef>> MaterializeAndReturn(
-    absl::Span<const at::Tensor> tensors, MaterializationReason reason) {
+absl::StatusOr<DeviceBufferRef> MaterializeAndReturn(
+    const at::Tensor& tensor, MaterializationReason reason) {
   tsl::profiler::TraceMe trace("MaterializeAndReturn");
-  if (tensors.empty()) {
-    return std::vector<DeviceBufferRef>();
-  }
-  // We need to materialize both the base and view for each tensor.
-  // Materialization is by node, not by buffer.
-  std::vector<SharedDeviceBufferList> nodes_to_materialize;
-  nodes_to_materialize.reserve(tensors.size() * 2);
-
-  // We always return one buffer per input tensor.
-  std::vector<DeviceBufferRef> buffers_to_return;
-  buffers_to_return.reserve(tensors.size());
-
-  for (const at::Tensor& tensor : tensors) {
-    // If the tensor is a (non-trivial) view, these will be two different
-    // buffers. If the tensor's base is the same shape and layout as the tensor,
-    // these will be the same buffer.
+  // If the tensor is a (non-trivial) view, these will be two different
+  // buffers. If the tensor's base is the same shape and layout as the tensor,
+  // these will be the same buffer.
+  TT_ASSIGN_OR_RETURN(const DeviceBufferRef base_buffer_ref,
+                      GetBaseBuffer(tensor));
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef view_buffer_ref, GetBuffer(tensor));
+  if (base_buffer_ref.device_index() != view_buffer_ref.device_index() ||
+      base_buffer_ref.stream_id() != view_buffer_ref.stream_id()) {
+    // The base and view were created on different streams, but the implied
+    // dependency forces the base buffer to materialize first.
+    TT_RETURN_IF_ERROR(
+        Materialize(base_buffer_ref, reason, MaterializationMode::kSplitGraph));
+    TT_RETURN_IF_ERROR(
+        Materialize(view_buffer_ref, reason, MaterializationMode::kSplitGraph));
+  } else {
     // Deduplication will happen inside the Materialize() call; this will cover
-    // both the case where a tensor is a trivial view, and the case where two
-    // tensors are different views of the same base buffer.
-    TT_ASSIGN_OR_RETURN(const DeviceBufferRef base_buffer_ref,
-                        GetBaseBuffer(tensor));
-    TT_ASSIGN_OR_RETURN(const DeviceBufferRef view_buffer_ref,
-                        GetBuffer(tensor));
-
-    nodes_to_materialize.push_back(base_buffer_ref.device_buffer_list());
-    nodes_to_materialize.push_back(view_buffer_ref.device_buffer_list());
-    buffers_to_return.push_back(std::move(view_buffer_ref));
+    // the case where a tensor is a trivial view.
+    // If the view is not trivial but the base and view are on the same stream,
+    // we can materialize them jointly.
+    TT_RETURN_IF_ERROR(Materialize({base_buffer_ref, view_buffer_ref}, reason,
+                                   MaterializationMode::kSplitGraph));
   }
-  TT_RETURN_IF_ERROR(Materialize(nodes_to_materialize, reason,
-                                 MaterializationMode::kSplitGraph));
-  nodes_to_materialize.clear();
-  return buffers_to_return;
+
+  return view_buffer_ref;
 }
 
 namespace {
