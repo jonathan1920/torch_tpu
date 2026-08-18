@@ -145,6 +145,10 @@ class PerformanceBenchmarkConfig:
     optim: The optimizer to use for training ("adamw", "tpu_adamw", "adam").
     fullgraph: Whether to pass fullgraph=True to torch.compile for this
       benchmark.
+    is_distributed: Whether to run the benchmark in distributed mode across
+      multiple processes/devices. Only required for dual-device single-chip
+      platforms (e.g. gfc_1x1x1). Multi-chip platforms (e.g. gfc_2x2x1, b200_4)
+      are automatically recognized as distributed.
   """
 
   supported_platforms: Sequence[common.Platform]
@@ -159,6 +163,7 @@ class PerformanceBenchmarkConfig:
   use_fused_optim: bool = True
   optim: str = "adamw"
   fullgraph: bool = False
+  is_distributed: bool = False
 
 
 # LINT.ThenChange(../../../g3doc/benchmarking.md)
@@ -528,6 +533,19 @@ def _run_distributed_benchmark(
             microbenchmark_name,
         ),
     )
+  elif platform == common.Platform.GFC_1X1X1:
+    singlehost_wrapper.prepare_tpu_environment(world_size=2)
+    distributed_utils.dist_run(
+        2,
+        run_torch_tpu_task,
+        run_single_process_benchmark,
+        (
+            config,
+            test_method_name,
+            benchmark_name,
+            microbenchmark_name,
+        ),
+    )
   elif platform == common.Platform.GFC_2X2X1:
     singlehost_wrapper.prepare_tpu_environment(world_size=8)
     distributed_utils.dist_run(
@@ -566,7 +584,7 @@ def run_benchmark(
   """
 
   platform = common.PLATFORM.value
-  if platform in DISTRIBUTED_PLATFORMS:
+  if config.is_distributed or platform in DISTRIBUTED_PLATFORMS:
     logging.info("Running distributed benchmark on platform %s", platform)
     _run_distributed_benchmark(
         config,
