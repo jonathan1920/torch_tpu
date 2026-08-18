@@ -173,6 +173,26 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
       self.assertEqual(self._get_device_rng_seed(i), 42)
       self.assertEqual(self._get_device_rng_offset(i), 0)
 
+  def test_torch_manual_seed_different_seeds_produce_different_tensors(self):
+    """Verifies different seeds produce distinct random tensors."""
+    torch.manual_seed(1)
+    t1 = torch.rand(100, device=self.device)
+
+    torch.manual_seed(2)
+    t2 = torch.rand(100, device=self.device)
+
+    self.assertFalse(torch.equal(t1, t2))
+
+  def test_torch_manual_seed_reproducibility(self):
+    """Verifies setting the same seed produces identical random tensors."""
+    torch.manual_seed(42)
+    t1 = torch.rand(100, device=self.device)
+
+    torch.manual_seed(42)
+    t2 = torch.rand(100, device=self.device)
+
+    self.assertTrue(torch.equal(t1, t2))
+
   def test_rand_does_not_change_device_seed(self):
     """Verifies torch.rand on device does not change initial_seed."""
     torch.manual_seed(42)
