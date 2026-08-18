@@ -78,7 +78,7 @@ def all_tensors_are_close_to_reference(
       tensor,
       reference_tensor,
       rtol=3e-2,
-      atol=5e-5,
+      atol=3.8e-4,
   )
 
 
