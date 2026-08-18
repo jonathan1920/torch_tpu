@@ -900,6 +900,7 @@ torch_tpu_cc_test(
     },
     requires_libtpu = True,
     deps = [
+        ":current_stream",
         ":device_buffer",
         ":device_buffer_utils",
         ":events_queue",

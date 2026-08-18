@@ -38,6 +38,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "c10/core/Device.h"
+#include "c10/core/Stream.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -238,43 +239,33 @@ class EventsQueue {
   // Partitions the deferred ops queue.
   //
   // The returned vector contains all the DeferredOpEvents that were in the
-  // queue, up to and including the last node that is in nodes_to_materialize.
+  // queue, up to and including the last node that meets the predicate.
   //
-  // Anything after the last node in nodes_to_materialize is left in the queue.
-  // If the last node in the queue is in nodes_to_materialize, then the entire
+  // Anything after the last node that meets the predicate is left in the queue.
+  // If the last node in the queue meets the predicate, then the entire
   // queue is returned (as a vector) and the queue is cleared.
   //
-  // Any nodes in nodes_to_materialize that are not in the deferred ops queue
-  // are ignored. If no nodes are found, returns an empty vector and does not
-  // modify the queue.
-  std::vector<DeferredOpEvent> TakeUntil(
-      const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-          nodes_to_materialize) {
-    if (nodes_to_materialize.empty()) {
-      return {};
-    }
-
+  // If no such nodes are found, returns an empty vector and does not modify the
+  // queue.
+  template <typename Predicate>
+  std::vector<DeferredOpEvent> TakeUntil(Predicate predicate) {
     absl::MutexLock lock(deferred_ops_mu_);
     std::deque<DeferredOpEvent> retained_ops;
 
     // Pop off the back of the queue until we see a node to materialize.
     while (!deferred_ops_.empty()) {
       auto op_list = deferred_ops_.back().lock();
-      if (op_list && nodes_to_materialize.contains(op_list.get())) {
+      if (op_list && predicate(op_list)) {
         // Found the last event in deferred_ops_ which needs to be materialized.
         break;
       } else {
-        // Since nodes_to_materialize holds strong pointers, if we see an
-        // expired weak pointer, we know it wasn't one of the nodes to
-        // materialize.
         retained_ops.push_front(std::move(deferred_ops_.back()));
         deferred_ops_.pop_back();
       }
     }
     if (deferred_ops_.empty()) {
-      ABSL_VLOG(1) << "[EventsQueue::TakeUntil] None of "
-                   << nodes_to_materialize.size()
-                   << " nodes to materialize were found in deferred ops queue.";
+      ABSL_VLOG(1) << "[EventsQueue::TakeUntil] No nodes to materialize were "
+                      "found in deferred ops queue.";
       std::swap(deferred_ops_, retained_ops);
       return {};
     }
@@ -297,6 +288,72 @@ class EventsQueue {
       std::swap(deferred_ops_, retained_ops);
     }
     return result;
+  }
+
+  // Partitions the deferred ops queue.
+  //
+  // The returned vector contains all the DeferredOpEvents that were in the
+  // queue, up to and including the last node that is in nodes_to_materialize.
+  //
+  // Anything after the last node in nodes_to_materialize is left in the queue.
+  // If the last node in the queue is in nodes_to_materialize, then the entire
+  // queue is returned (as a vector) and the queue is cleared.
+  //
+  // Any nodes in nodes_to_materialize that are not in the deferred ops queue
+  // are ignored. If no nodes are found, returns an empty vector and does not
+  // modify the queue.
+  std::vector<DeferredOpEvent> TakeUntilNodes(
+      const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+          nodes_to_materialize) {
+    if (nodes_to_materialize.empty()) {
+      return {};
+    }
+    auto predicate = [&nodes_to_materialize](
+                         const SharedDeviceBufferList& device_buffer_list) {
+      return nodes_to_materialize.contains(device_buffer_list.get());
+    };
+    return TakeUntil(predicate);
+  }
+
+  // Partitions the deferred ops queue.
+  //
+  // The returned vector contains all the DeferredOpEvents that were in the
+  // queue, up to and including the last node on the given device.
+  //
+  // Anything after the last node on the given device is left in the queue.
+  // If the last node in the queue is on the given device, then the entire
+  // queue is returned (as a vector) and the queue is cleared.
+  //
+  // If no nodes are found, returns an empty vector and does not modify the
+  // queue.
+  std::vector<DeferredOpEvent> TakeUntilDevice(
+      const c10::DeviceIndex device_index) {
+    auto predicate =
+        [device_index](const SharedDeviceBufferList& device_buffer_list) {
+          return device_buffer_list->device_index() == device_index;
+        };
+    return TakeUntil(predicate);
+  }
+
+  // Partitions the deferred ops queue.
+  //
+  // The returned vector contains all the DeferredOpEvents that were in the
+  // queue, up to and including the last node on the given device and stream.
+  //
+  // Anything after the last node on the given device is left in the queue.
+  // If the last node in the queue is on the given device, then the entire
+  // queue is returned (as a vector) and the queue is cleared.
+  //
+  // If no nodes are found, returns an empty vector and does not modify the
+  // queue.
+  std::vector<DeferredOpEvent> TakeUntilStream(
+      const c10::DeviceIndex device_index, const c10::StreamId stream_id) {
+    auto predicate = [device_index, stream_id](
+                         const SharedDeviceBufferList& device_buffer_list) {
+      return device_buffer_list->device_index() == device_index &&
+             device_buffer_list->stream_id() == stream_id;
+    };
+    return TakeUntil(predicate);
   }
 
  private:
@@ -483,25 +540,13 @@ absl::StatusOr<absl_nullable std::unique_ptr<Traversal>> FinishTraversal(
   return traversal;
 }
 
-}  // namespace
-
 absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
-PrepareMaterializationTraversals(
-    absl::Span<const SharedDeviceBufferList> nodes_to_materialize) {
+PrepareTraversals(
+    absl::Span<const EventsQueue::DeferredOpEvent> deferred_op_events,
+    absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
+    const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        nodes_to_materialize_set) {
   std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals;
-  if (nodes_to_materialize.empty()) {
-    return traversals;
-  }
-
-  absl::flat_hash_set<const DeviceBufferList*> nodes_to_materialize_set;
-  for (const auto& node : nodes_to_materialize) {
-    nodes_to_materialize_set.insert(node.get());
-  }
-
-  // Do the partitioning of the deferred ops queue.
-  // This is the only part than needs to hold the lock.
-  std::vector<EventsQueue::DeferredOpEvent> deferred_op_events =
-      EventsQueue::GetInstance().TakeUntil(nodes_to_materialize_set);
 
   // Partition the deferred ops queue into separate traversals with these rules:
   //   - If an op is SplitBefore, it must be first in its execution order.
@@ -532,7 +577,7 @@ PrepareMaterializationTraversals(
           auto maybe_traversal,
           FinishTraversal(execution_order, defined_node_map, output_nodes));
       if (maybe_traversal != nullptr) {
-        ABSL_VLOG(2) << "[PrepareMaterializationTraversals] Split out "
+        ABSL_VLOG(2) << "[PrepareTraversals] Split out "
                      << maybe_traversal->execution_order().size()
                      << " nodes before SplitBefore buffer "
                      << device_buffer_list.get() << "("
@@ -550,7 +595,7 @@ PrepareMaterializationTraversals(
           auto maybe_traversal,
           FinishTraversal(execution_order, defined_node_map, output_nodes));
       if (maybe_traversal != nullptr) {
-        ABSL_VLOG(2) << "[PrepareMaterializationTraversals] Split out "
+        ABSL_VLOG(2) << "[PrepareTraversals] Split out "
                      << maybe_traversal->execution_order().size()
                      << " nodes after SplitAfter buffer "
                      << device_buffer_list.get() << "("
@@ -571,8 +616,7 @@ PrepareMaterializationTraversals(
           defined_node_map.insert_or_assign(node.get(), OpUsage::kOutput)
               .second;
       if (inserted) {
-        ABSL_VLOG(3) << "[PrepareMaterializationTraversals] constant buffer "
-                     << node.get()
+        ABSL_VLOG(3) << "[PrepareTraversals] constant buffer " << node.get()
                      << " is an explicit output. Appending to final traversal.";
         execution_order.push_back(node);
       }
@@ -583,16 +627,59 @@ PrepareMaterializationTraversals(
       auto maybe_traversal,
       FinishTraversal(execution_order, defined_node_map, output_nodes));
   if (maybe_traversal != nullptr) {
-    ABSL_VLOG(2)
-        << "[PrepareMaterializationTraversals] Final traversal has size "
-        << maybe_traversal->execution_order().size() << ", ending with node "
-        << maybe_traversal->execution_order().back().get();
+    ABSL_VLOG(2) << "[PrepareTraversals] Final traversal has size "
+                 << maybe_traversal->execution_order().size()
+                 << ", ending with node "
+                 << maybe_traversal->execution_order().back().get();
     traversals.push_back(std::move(maybe_traversal));
   }
-  ABSL_VLOG(1) << "[PrepareMaterializationTraversals] Created "
-               << traversals.size() << " traversals to materialize "
-               << nodes_to_materialize.size() << " nodes.";
+  ABSL_VLOG(1) << "[PrepareTraversals] Created " << traversals.size()
+               << " traversals to materialize " << nodes_to_materialize.size()
+               << " nodes.";
   return traversals;
+}
+
+}  // namespace
+
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+PrepareMaterializationTraversals(
+    absl::Span<const SharedDeviceBufferList> nodes_to_materialize) {
+  if (nodes_to_materialize.empty()) {
+    return std::vector<absl_nonnull std::unique_ptr<Traversal>>();
+  }
+
+  absl::flat_hash_set<const DeviceBufferList*> nodes_to_materialize_set;
+  for (const auto& node : nodes_to_materialize) {
+    nodes_to_materialize_set.insert(node.get());
+  }
+
+  // Do the partitioning of the deferred ops queue.
+  // This is the only part than needs to hold the lock.
+  std::vector<EventsQueue::DeferredOpEvent> deferred_op_events =
+      EventsQueue::GetInstance().TakeUntilNodes(nodes_to_materialize_set);
+  return PrepareTraversals(deferred_op_events, nodes_to_materialize,
+                           nodes_to_materialize_set);
+}
+
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+PrepareStreamTraversals(c10::DeviceIndex device_index,
+                        c10::StreamId stream_id) {
+  // Do the partitioning of the deferred ops queue.
+  // This is the only part than needs to hold the lock.
+  std::vector<EventsQueue::DeferredOpEvent> deferred_op_events =
+      EventsQueue::GetInstance().TakeUntilStream(device_index, stream_id);
+  return PrepareTraversals(deferred_op_events, /*nodes_to_materialize=*/{},
+                           /*nodes_to_materialize_set=*/{});
+}
+
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+PrepareDeviceTraversals(c10::DeviceIndex device_index) {
+  // Do the partitioning of the deferred ops queue.
+  // This is the only part than needs to hold the lock.
+  std::vector<EventsQueue::DeferredOpEvent> deferred_op_events =
+      EventsQueue::GetInstance().TakeUntilDevice(device_index);
+  return PrepareTraversals(deferred_op_events, /*nodes_to_materialize=*/{},
+                           /*nodes_to_materialize_set=*/{});
 }
 
 namespace {

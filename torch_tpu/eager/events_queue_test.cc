@@ -29,6 +29,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/eager/current_stream.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/materialize.h"
@@ -725,6 +726,112 @@ TEST_F(EventsQueueTest, SideEffectsUsingPlaceholdersSkipped) {
   // We should get nothing. The side-effect op was identified as part of a
   // compiled mode trace and therefore should not be materialized.
   ASSERT_EQ(traversals_or.value().size(), 0);
+}
+
+TEST_F(EventsQueueTest, PrepareDeviceTraversals) {
+  ClearAllStreams();
+  ScopedPythonContextCapturer capturer(OpName::kEmpty);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+
+  const auto device_index = GetCurrentDeviceIndex();
+
+  // Put three deferred ops in the queue;
+  // a -> b are on device 0, with b having a live DataPtr.
+  // c is on device 1.
+  absl::StatusOr<std::vector<DeviceBufferRef>> refs_or;
+  refs_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_or.ok());
+  auto ref_a = refs_or.value()[0];
+  auto list_a = ref_a.device_buffer_list();
+  RecordDeferredOpCreated(list_a);
+
+  refs_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {ref_a}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_or.ok());
+  auto ref_b = refs_or.value()[0];
+  auto list_b = ref_b.device_buffer_list();
+  RecordDeferredOpCreated(list_b);
+  RecordNewDataPtrCreated(ref_b);
+
+  ExchangeCurrentDeviceIndex(device_index + 1);
+
+  refs_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_or.ok());
+  auto ref_c = refs_or.value()[0];
+  auto list_c = ref_c.device_buffer_list();
+  RecordDeferredOpCreated(list_c);
+  RecordNewDataPtrCreated(ref_c);
+
+  ExchangeCurrentDeviceIndex(device_index);
+
+  // Ask for a plan to materialize the device for a and b (but not c).
+  auto traversals_or = PrepareDeviceTraversals(device_index);
+  ASSERT_TRUE(traversals_or.ok());
+
+  // The execution will contain a and b but not c. Only b is output as it is
+  // the only executed op with a live DataPtr.
+  ASSERT_EQ(traversals_or.value().size(), 1);
+  const Traversal& traversal = *traversals_or.value()[0];
+  EXPECT_THAT(traversal.arguments(), testing::IsEmpty());
+  EXPECT_THAT(traversal.execution_order(),
+              testing::ElementsAre(list_a, list_b));
+  EXPECT_THAT(traversal.outputs(), testing::ElementsAre(ref_b));
+}
+
+TEST_F(EventsQueueTest, PrepareStreamTraversals) {
+  ClearAllStreams();
+  ScopedPythonContextCapturer capturer(OpName::kEmpty);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+
+  const auto device_index = GetCurrentDeviceIndex();
+
+  // Put three deferred ops in the queue;
+  // a -> b are on the default stream, with b having a live DataPtr.
+  // c is on a non-default stream.
+  absl::StatusOr<std::vector<DeviceBufferRef>> refs_or;
+  refs_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_or.ok());
+  auto ref_a = refs_or.value()[0];
+  auto list_a = ref_a.device_buffer_list();
+  RecordDeferredOpCreated(list_a);
+
+  refs_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {ref_a}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_or.ok());
+  auto ref_b = refs_or.value()[0];
+  auto list_b = ref_b.device_buffer_list();
+  RecordDeferredOpCreated(list_b);
+  RecordNewDataPtrCreated(ref_b);
+
+  const auto non_default_stream_id = NextStreamId(device_index);
+  const auto default_stream_id =
+      ExchangeCurrentStreamId(device_index, non_default_stream_id);
+
+  refs_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_or.ok());
+  auto ref_c = refs_or.value()[0];
+  auto list_c = ref_c.device_buffer_list();
+  RecordDeferredOpCreated(list_c);
+  RecordNewDataPtrCreated(ref_c);
+
+  ExchangeCurrentStreamId(device_index, default_stream_id);
+
+  // Ask for a plan to materialize the stream for a and b (but not c).
+  auto traversals_or = PrepareStreamTraversals(device_index, default_stream_id);
+  ASSERT_TRUE(traversals_or.ok());
+
+  // The execution will contain a and b but not c. Only b is output as it is
+  // the only executed op with a live DataPtr.
+  ASSERT_EQ(traversals_or.value().size(), 1);
+  const Traversal& traversal = *traversals_or.value()[0];
+  EXPECT_THAT(traversal.arguments(), testing::IsEmpty());
+  EXPECT_THAT(traversal.execution_order(),
+              testing::ElementsAre(list_a, list_b));
+  EXPECT_THAT(traversal.outputs(), testing::ElementsAre(ref_b));
 }
 
 }  // namespace

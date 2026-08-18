@@ -68,6 +68,20 @@ absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
 PrepareMaterializationTraversals(
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
 
+// Returns a sequence of Traversals that, if compiled and executed, would
+// materialize all live tensors created on the given device and stream.
+//
+// This clears these nodes from the events queue.
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+PrepareStreamTraversals(c10::DeviceIndex device_index, c10::StreamId stream_id);
+
+// Returns a sequence of Traversals that, if compiled and executed, would
+// materialize all live tensors created on the given device.
+//
+// This clears these nodes from the events queue.
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+PrepareDeviceTraversals(c10::DeviceIndex device_index);
+
 // Tracks that a background materialization has been started for the given
 // outputs on the current stream.
 void RecordBackgroundMaterialization(absl::Span<const DeviceBufferRef> outputs);
