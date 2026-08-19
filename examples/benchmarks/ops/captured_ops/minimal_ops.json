@@ -1,8 +1,0 @@
-{
-    "aten.add.Tensor": [
-        {
-            "inputs": "([T([10], torch.float32), T([10], torch.float32)], {})",
-            "count": 1
-        }
-    ]
-}
