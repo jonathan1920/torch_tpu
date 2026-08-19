@@ -460,13 +460,9 @@ void TpuKinetoProfilerSession::start() {
 namespace {
 
 // Synchronizes all TPU devices and deferred operations before stopping trace
-// collection.
-//
-// PyTorch TPU execution is decoupled into two asynchronous layers:
-// 1. Deferred Tensor Computation Graphs (sync.cc): Compiled and synchronized
-//    via SynchronizeAll(WaitOnExecution::kYes).
-// 2. Stream Execution Futures (events_queue.h): Synchronized per-device via
-//    SynchronizeDevice(device_index).
+// collection. This uses the TPU device guard to synchronize all TPU devices,
+// which has the same behavior as using the Python `torch.tpu.synchronize()`
+// API for all TPU devices.
 //
 // Synchronizing both layers before CollectData(&xspace_) ensures trace
 // completeness for asynchronous operations without requiring pjrt_state.

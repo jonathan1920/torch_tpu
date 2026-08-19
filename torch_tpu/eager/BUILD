@@ -693,6 +693,8 @@ torch_tpu_cc_library(
         ":device_buffer_utils",
         ":device_gen_impl",
         ":events_queue",
+        ":materialize",
+        ":structured_log_buffer",
         ":tensor_to_buffer",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",  # TODO: keep macros

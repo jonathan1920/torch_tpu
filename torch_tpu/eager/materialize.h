@@ -17,15 +17,19 @@
 #ifndef TORCH_TPU_EAGER_MATERIALIZE_H_
 #define TORCH_TPU_EAGER_MATERIALIZE_H_
 
+#include <memory>
 #include <string_view>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "c10/core/Device.h"
+#include "c10/core/Stream.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 
 // When an aten op is dispatched, we always create a DeviceBufferList to contain
@@ -95,6 +99,25 @@ absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
 
 // Shuts down the materialization worker and joins its threads.
 void ShutDownMaterializationState();
+
+// Materializes all live tensors on the given stream.
+// This is an async operation; after the live tensor state has been evaluated,
+// and all work on the stream has been enqueued for materialization, the
+// snapshot is returned and can be queried or awaited to determine when the
+// materialization is complete.
+absl::StatusOr<std::shared_ptr<EventSnapshot>> MaterializeStream(
+    c10::DeviceIndex device_index, c10::StreamId stream_id,
+    MaterializationReason reason,
+    MaterializationMode mode = MaterializationMode::kSplitGraph);
+
+// Materializes all live tensors on the given device.
+// This is an async operation; after the live tensor state has been evaluated,
+// and all work on the device has been enqueued for materialization, one
+// snapshot is returned for each stream on the device, and each stream can be
+// queried or awaited to determine when the materialization is complete.
+absl::StatusOr<std::vector<std::shared_ptr<EventSnapshot>>> MaterializeDevice(
+    c10::DeviceIndex device_index, MaterializationReason reason,
+    MaterializationMode mode = MaterializationMode::kSplitGraph);
 
 }  // namespace torch_tpu
 

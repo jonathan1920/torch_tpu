@@ -88,9 +88,8 @@ void PySynchronizeDevice(int device_index, bool wait) {
 
     impl->synchronizeDevice(device_index);
   } else {
-    // TODO(bawilson): only materialize DeferredOps on the specific device, not
-    // all devices.
-    TT_THROW_IF_ERROR(MaterializeAll());
+    TT_THROW_IF_ERROR(
+        MaterializeDevice(device_index, MaterializationReason::kExplicitSync));
   }
 }
 

@@ -146,27 +146,6 @@ class EventsQueue {
     }
   }
 
-  // Returns a vector of all the DeviceBufferLists that are currently referenced
-  // by at least one c10::DataPtr, and are not in a final "ready" state.
-  std::vector<SharedDeviceBufferList> GetAllLiveUnsyncedDataPtrs() {
-    absl::MutexLock lock(data_ptr_mu_);
-    std::vector<SharedDeviceBufferList> result;
-    result.reserve(live_nodes_.size());
-    // Can't clear the map while also iterating over it.
-    std::vector<const DeviceBufferList*> to_remove;
-    for (const auto& [node, _] : live_nodes_) {
-      if (node->is_materialized()) {
-        to_remove.push_back(node.get());
-      } else {
-        result.push_back(node);
-      }
-    }
-    for (const auto* device_buffer_list : to_remove) {
-      live_nodes_.erase(device_buffer_list);
-    }
-    return result;
-  }
-
   // Clears all tracked DeviceBufferLists from the events queue.
   void Clear() {
     {
@@ -381,9 +360,6 @@ void RecordDeferredOpCreated(const SharedDeviceBufferList& device_buffer_list) {
   EventsQueue::GetInstance().RecordDeferredOpCreated(device_buffer_list);
 }
 
-std::vector<SharedDeviceBufferList> GetAllLiveUnsyncedDataPtrs() {
-  return EventsQueue::GetInstance().GetAllLiveUnsyncedDataPtrs();
-}
 namespace {
 
 // The usage of a node within an execution region.

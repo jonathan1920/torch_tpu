@@ -82,37 +82,18 @@ TEST_F(EventsQueueTest, GetsLiveDeferredBuffers) {
   RecordDeferredOpCreated(ref_b.device_buffer_list());
   RecordNewDataPtrCreated(ref_b);
 
-  // Both a and b are live and unsynced.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(),
-              testing::UnorderedElementsAre(ref_a.device_buffer_list(),
-                                            ref_b.device_buffer_list()));
-
-  // Create another DataPtr for buffer "b".
-  RecordNewDataPtrCreated(ref_b);
-
-  // Both "a" and "b" are still live and unsynced.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(),
-              testing::UnorderedElementsAre(ref_a.device_buffer_list(),
-                                            ref_b.device_buffer_list()));
-
-  // Destroy one DataPtr for buffer "b".
-  RecordDataPtrDestroyed(ref_b);
-
-  // "b" still has a reference, so is still live and unsynced.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(),
-              testing::UnorderedElementsAre(ref_a.device_buffer_list(),
-                                            ref_b.device_buffer_list()));
-
-  // Destroy the last DataPtr for buffer "b".
-  RecordDataPtrDestroyed(ref_b);
-
-  // "b" is no longer live, only "a" is live and unsynced.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(),
-              testing::UnorderedElementsAre(ref_a.device_buffer_list()));
-
-  // Destroy the last DataPtr for buffer "a".
-  RecordDataPtrDestroyed(ref_a);
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
+  // Both a and b are live and unsynced and will be materialized on the next
+  // stream materialization or device materialization.
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+  auto traversals_or = PrepareStreamTraversals(device_index, stream_id);
+  ASSERT_TRUE(traversals_or.ok());
+  ASSERT_EQ(traversals_or.value().size(), 1);
+  const Traversal& traversal = *traversals_or.value()[0];
+  EXPECT_THAT(traversal.arguments(), testing::IsEmpty());
+  EXPECT_THAT(traversal.execution_order(),
+              testing::ElementsAre(ref_a.device_buffer_list(),
+                                   ref_b.device_buffer_list()));
+  EXPECT_THAT(traversal.outputs(), testing::ElementsAre(ref_a, ref_b));
 }
 
 TEST_F(EventsQueueTest, IgnoresPlaceholderBuffers) {
@@ -128,11 +109,10 @@ TEST_F(EventsQueueTest, IgnoresPlaceholderBuffers) {
   RecordNewDataPtrCreated(ref);
 
   // The placeholder does not need to be synced.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
-
-  // Deleting the DataPtr is a no-op for the events queue.
-  RecordDataPtrDestroyed(ref);
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+  auto traversals_or = PrepareStreamTraversals(device_index, stream_id);
+  ASSERT_TRUE(traversals_or.ok());
+  EXPECT_THAT(traversals_or.value(), testing::IsEmpty());
 }
 
 TEST_F(EventsQueueTest, SyncIgnoresEmptyBuffers) {
@@ -147,11 +127,10 @@ TEST_F(EventsQueueTest, SyncIgnoresEmptyBuffers) {
   RecordNewDataPtrCreated(ref);
 
   // The empty buffer does not need to be synced.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
-
-  // Deleting the DataPtr is a no-op for the events queue.
-  RecordDataPtrDestroyed(ref);
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+  auto traversals_or = PrepareStreamTraversals(device_index, stream_id);
+  ASSERT_TRUE(traversals_or.ok());
+  EXPECT_THAT(traversals_or.value(), testing::IsEmpty());
 }
 
 TEST_F(EventsQueueTest, IgnoresAlreadyMaterializedBuffers) {
@@ -168,11 +147,10 @@ TEST_F(EventsQueueTest, IgnoresAlreadyMaterializedBuffers) {
   RecordNewDataPtrCreated(ref);
 
   // The placeholder does not need to be synced.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
-
-  // Deleting the DataPtr is a no-op for the events queue.
-  RecordDataPtrDestroyed(ref);
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+  auto traversals_or = PrepareStreamTraversals(device_index, stream_id);
+  ASSERT_TRUE(traversals_or.ok());
+  EXPECT_THAT(traversals_or.value(), testing::IsEmpty());
 }
 
 TEST_F(EventsQueueTest, ClearsBuffersAfterMaterialization) {
@@ -206,9 +184,6 @@ TEST_F(EventsQueueTest, ClearsBuffersAfterMaterialization) {
   RecordNewDataPtrCreated(ref);
 
   // The deferred buffer needs to be synced.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(),
-              testing::UnorderedElementsAre(ref.device_buffer_list()));
-
   // Materialize the buffer and wait for it to finish.
   auto materialization_status =
       Materialize(ref, MaterializationReason::kExplicitSync);
@@ -219,17 +194,17 @@ TEST_F(EventsQueueTest, ClearsBuffersAfterMaterialization) {
   ASSERT_TRUE(ref.is_materialized());
 
   // We don't need to sync the buffer anymore.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
-
-  // Deleting the DataPtr is a no-op for the events queue.
-  RecordDataPtrDestroyed(ref);
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+  auto traversals_or = PrepareStreamTraversals(device_index, stream_id);
+  ASSERT_TRUE(traversals_or.ok());
+  EXPECT_THAT(traversals_or.value(), testing::IsEmpty());
 }
 
 TEST_F(EventsQueueTest, StopsTrackingAfterClearEventsQueue) {
   ClearAllStreams();
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
 
   // Record creation of a deferred buffer.
   absl::StatusOr<std::vector<DeviceBufferRef>> refs_or;
@@ -243,25 +218,18 @@ TEST_F(EventsQueueTest, StopsTrackingAfterClearEventsQueue) {
   ClearAllStreams();
 
   // The buffer is no longer tracked.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
+  auto traversals_or = PrepareStreamTraversals(device_index, stream_id);
+  ASSERT_TRUE(traversals_or.ok());
+  EXPECT_THAT(traversals_or.value(), testing::IsEmpty());
 
   // Create a second data pointer to the same buffer.
   RecordNewDataPtrCreated(ref);
 
-  // The buffer is now tracked again.
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(),
-              testing::UnorderedElementsAre(ref.device_buffer_list()));
-
-  // Delete one data pointer.
-  // The first data pointer (before the clear) was forgotten, so this clears the
-  // buffer from the queue.
-  RecordDataPtrDestroyed(ref);
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
-
-  // Delete the second data pointer.
-  // We'd already removed the buffer from the queue, so this is a no-op.
-  RecordDataPtrDestroyed(ref);
-  EXPECT_THAT(GetAllLiveUnsyncedDataPtrs(), testing::IsEmpty());
+  // The buffer is live, but the DeferredOp was cleared and so does not need
+  // to be materialized.
+  traversals_or = PrepareStreamTraversals(device_index, stream_id);
+  ASSERT_TRUE(traversals_or.ok());
+  EXPECT_THAT(traversals_or.value(), testing::IsEmpty());
 }
 
 TEST_F(EventsQueueTest, NoTraversalIfNothingToMaterialize) {

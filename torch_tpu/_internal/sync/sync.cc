@@ -33,7 +33,6 @@
 #include "mlir/Support/DebugStringHelper.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -64,16 +63,6 @@ absl::Status SynchronizeTensors(absl::Span<const at::Tensor> tensors) {
   }
 
   return absl::OkStatus();
-}
-
-absl::Status MaterializeAll() {
-  const std::vector<SharedDeviceBufferList> needs_sync =
-      GetAllLiveUnsyncedDataPtrs();
-  if (needs_sync.empty()) {
-    return absl::OkStatus();
-  }
-
-  return Materialize(needs_sync, MaterializationReason::kExplicitSync);
 }
 
 absl::StatusOr<bool> IsMaterializing(const at::Tensor& tensor) {

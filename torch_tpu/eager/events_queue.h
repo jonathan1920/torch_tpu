@@ -49,12 +49,6 @@ void RecordDataPtrDestroyed(const DeviceBufferRef& device_buffer_ref);
 // Records on the events queue that a new deferred op has been created.
 void RecordDeferredOpCreated(const SharedDeviceBufferList& device_buffer_list);
 
-// Returns a vector of all the DeviceBufferLists that are currently referenced
-// by at least one c10::DataPtr, and are not in a final "ready" state.
-// The order of the returned vector is **not** specified, but will not contain
-// duplicates.
-std::vector<SharedDeviceBufferList> GetAllLiveUnsyncedDataPtrs();
-
 // Clears all references to DeviceBufferLists from the events queue, forgets all
 // prior stream futures, and resets to only a single default stream per device.
 void ClearAllStreams();

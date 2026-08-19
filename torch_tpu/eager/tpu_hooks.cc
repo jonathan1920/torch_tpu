@@ -40,7 +40,6 @@
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch/headeronly/macros/Export.h"
-#include "torch_tpu/_internal/sync/sync.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/dtype.h"
@@ -50,6 +49,8 @@
 #include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/events_queue.h"
+#include "torch_tpu/eager/materialize.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
@@ -219,18 +220,16 @@ bool TpuDeviceGuardImpl::queryStream(const c10::Stream& stream) const {
   return true;
 }
 void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
-  // TODO(bawilson): only materialize DeferredOps on the specific stream, not
-  // all streams.
-  TT_THROW_IF_ERROR(MaterializeAll());
-  auto event = EventSnapshot::Record(stream.device_index(), stream.id());
+  TT_ASSIGN_OR_THROW(auto event,
+                     MaterializeStream(stream.device_index(), stream.id(),
+                                       MaterializationReason::kExplicitSync));
   TT_THROW_IF_ERROR(event->Wait());
 }
 void TpuDeviceGuardImpl::synchronizeDevice(
     c10::DeviceIndex device_index) const {
-  // TODO(bawilson): only materialize DeferredOps on the specific device, not
-  // all devices.
-  TT_THROW_IF_ERROR(MaterializeAll());
-  auto events = RecordDeviceSnapshots(device_index);
+  TT_ASSIGN_OR_THROW(
+      auto events,
+      MaterializeDevice(device_index, MaterializationReason::kExplicitSync));
   for (const auto& event : events) {
     TT_THROW_IF_ERROR(event->Wait());
   }
