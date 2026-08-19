@@ -220,7 +220,9 @@ void TpuDeviceGuardImpl::record(void** event, const c10::Stream& stream,
   if (*event != nullptr) {
     this->destroyEvent(*event, device_index);
   }
-  auto shared_event = EventSnapshot::Record(stream.device_index(), stream.id());
+  TT_ASSIGN_OR_THROW(auto shared_event,
+                     MaterializeStream(stream.device_index(), stream.id(),
+                                       MaterializationReason::kExplicitSync));
   *event = new std::shared_ptr<EventSnapshot>(std::move(shared_event));
 }
 void TpuDeviceGuardImpl::block(void* event, const c10::Stream& stream) const {

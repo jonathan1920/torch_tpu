@@ -207,6 +207,30 @@ class TpuStreamsTest(seed_test_utils.RepeatableTest):
         # Leaving the default stream should materialize x.
         self.assertTrue(sync.is_materializing(x))
 
+  def test_stream_materialize_on_event(self):
+    """Tests that streams materialize on event recording."""
+    new_stream = torch.tpu.Stream()
+    # Use DEFER_AND_FUSE to avoid automatic materialization.
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Do some work on the new stream.
+      with torch.tpu.stream(new_stream):
+        x = torch.zeros(1, device='tpu')
+        # Since we are in DEFER_AND_FUSE, it should not be materializing.
+        self.assertFalse(sync.is_materializing(x))
+
+        # Record an event on the stream. This should trigger materialization.
+        event = torch.tpu.Event()
+        event.record()
+
+        # Verify that the tensor is now materializing.
+        self.assertTrue(sync.is_materializing(x))
+
+    # Wait for the event to complete.
+    event.synchronize()
+
+    # Verify that the tensor is now materialized.
+    self.assertTrue(sync.is_materialized(x))
+
 
 class TorchStreamsTest(seed_test_utils.RepeatableTest):
   """Tests for torch.Stream and torch.Event.
@@ -312,6 +336,34 @@ class TorchStreamsTest(seed_test_utils.RepeatableTest):
       with new_stream:
         # Leaving the default stream should materialize x.
         self.assertTrue(sync.is_materializing(x))
+
+  def test_stream_materialize_on_event(self):
+    """Tests that streams materialize on event recording."""
+    # PyTorch bug: torch.Stream(device='tpu') raises UnicodeDecodeError
+    # "'utf-8' codec can't decode byte 0xff in position 28: invalid start byte"
+    dummy = torch.empty(1, device='tpu')
+    new_stream = torch.Stream(device=dummy.device)
+    del dummy
+
+    # Use DEFER_AND_FUSE to avoid automatic materialization.
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Do some work on the new stream.
+      with new_stream:
+        x = torch.zeros(1, device='tpu')
+        # Since we are in DEFER_AND_FUSE, it should not be materializing.
+        self.assertFalse(sync.is_materializing(x))
+
+        # Record an event on the stream. This should trigger materialization.
+        event = new_stream.record_event()
+
+        # Verify that the tensor is now materializing.
+        self.assertTrue(sync.is_materializing(x))
+
+    # Wait for the event to complete.
+    event.synchronize()
+
+    # Verify that the tensor is now materialized.
+    self.assertTrue(sync.is_materialized(x))
 
 
 if __name__ == '__main__':

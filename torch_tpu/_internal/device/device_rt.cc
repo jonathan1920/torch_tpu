@@ -35,7 +35,6 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep, needed for at::Tensor mapping
-#include "torch_tpu/_internal/sync/sync.h"
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/discovery.h"
@@ -45,6 +44,7 @@
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/materialize.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/tpu_hooks.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
@@ -112,7 +112,10 @@ PyTpuEventBase PyRecordEvent(std::optional<int> device_index,
         impl->getStream(c10::Device(GetPrivateUse1DeviceType(), index));
     id = current_stream.id();
   }
-  return PyTpuEventBase(EventSnapshot::Record(index, id));
+  TT_ASSIGN_OR_THROW(
+      auto event_snapshot,
+      MaterializeStream(index, id, MaterializationReason::kExplicitSync));
+  return PyTpuEventBase(std::move(event_snapshot));
 }
 
 void InitRuntimeOptions(const std::string& device_type) {
