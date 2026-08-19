@@ -650,10 +650,12 @@ absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
       << "TorchTPU does not yet support dtype complex32";
   // Check that we support all the provided options.
   CheckDeviceIsTpu(device_opt, "empty");
-  TT_RET_CHECK(layout_opt.value_or(at::Layout::Strided) == at::Layout::Strided,
-               error::kPythonNotImplementedError)
-      << "only layout=torch.strided is supported by TorchTPU for now, "
-         "got "
+  const auto layout = layout_opt.value_or(at::Layout::Strided);
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch catches other layouts first.
+      layout == at::Layout::Strided || layout == at::Layout::Jagged,
+      error::kPythonNotImplementedError)
+      << "only layout=torch.strided or layout=torch.jagged is supported by "
+         "TorchTPU for now, got "
       << LayoutToString(layout_opt);
 
   // If device_opt is unspecified, we use the global default dtype.

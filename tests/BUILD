@@ -1296,6 +1296,27 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "jagged_tensor_test",
+    srcs = ["jagged_tensor_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "nomsan",  # TODO: fix the test in msan mode.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":seed_test_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils:test_utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
     name = "fp4_test",
     srcs = ["fp4_test.py"],
     tags = [

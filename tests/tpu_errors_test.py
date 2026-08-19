@@ -380,14 +380,6 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.empty_strided((2,), (1,), dtype=torch.complex32, device="tpu")
 
-  @et.why_tpu_only("TODO: support jagged layout on TPU.")
-  def test_empty_unsupported_layout(self):
-    with et.assert_raises_message(
-        NotImplementedError,
-        tpu="""empty(): only layout=torch.strided is supported by TorchTPU for now, got torch.jagged""",
-    ):
-      torch.empty(2, layout=torch.jagged, device="tpu")
-
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_histc_bounds_unsupported_dtype(self):
     """Tests that torch.histc() fails when the bounds have an unsupported dtype."""
