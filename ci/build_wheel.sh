@@ -84,8 +84,6 @@ echo "===> torch_tpu wheel build and verification successful!"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RAIDEN_DIR="${RAIDEN_DIR:-${SCRIPT_DIR}/../../tpu_raiden}"
 
-RAIDEN_PIN="de0dbd56ed692e9b9d7646efe87735e9747fa7e1"
-
 if [[ ! -d "${RAIDEN_DIR}" ]]; then
   echo "===> [Non-Fatal Stage] tpu_raiden directory not found at '${RAIDEN_DIR}'. Cloning from GitHub..."
   git clone https://github.com/google/tpu-raiden.git "${RAIDEN_DIR}" || {
@@ -93,19 +91,7 @@ if [[ ! -d "${RAIDEN_DIR}" ]]; then
   }
 fi
 
-# Freeze raiden at a known-good revision until b/545704161 is fixed.
-# This is a temporary mitigation during repo renaming.
-RAIDEN_PINNED=0
-if [[ -d "${RAIDEN_DIR}" ]]; then
-  if git -C "${RAIDEN_DIR}" fetch origin "${RAIDEN_PIN}" \
-      && git -C "${RAIDEN_DIR}" checkout --force --detach "${RAIDEN_PIN}"; then
-    RAIDEN_PINNED=1
-  else
-    echo "WARNING: could not pin tpu-raiden to ${RAIDEN_PIN}; skipping the raiden wheel build." >&2
-  fi
-fi
-
-if [[ "${RAIDEN_PINNED}" == "1" && -f "${RAIDEN_DIR}/ci/build_wheel.sh" ]]; then
+if [[ -f "${RAIDEN_DIR}/ci/build_wheel.sh" ]]; then
   echo "===> [Non-Fatal Stage] Invoking tpu_raiden wheel build: ${RAIDEN_DIR}/ci/build_wheel.sh..."
   (
     export KOKORO_ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}"
@@ -114,6 +100,7 @@ if [[ "${RAIDEN_PINNED}" == "1" && -f "${RAIDEN_DIR}/ci/build_wheel.sh" ]]; then
   ) || {
     echo "WARNING: tpu_raiden wheel build failed. Continuing with torch_tpu wheels only..." >&2
   }
+
   # Warn-only Twine check on generated tpu_raiden wheels (remove broken wheel if invalid)
   if ls "${WHEEL_DIR}"/tpu_raiden_torch-*.whl >/dev/null 2>&1; then
     echo "===> [Non-Fatal Stage] Running Twine check over tpu_raiden wheels..."
