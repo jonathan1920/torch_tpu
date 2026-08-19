@@ -180,6 +180,23 @@ c10::Stream TpuDeviceGuardImpl::exchangeStream(c10::Stream s) const {
   ValidateDevice(s.device());
   c10::StreamId old_stream_id =
       ExchangeCurrentStreamId(s.device_index(), s.id());
+  // Explanation: CUDA users expect that work on a stream begins as soon as
+  // the op or transfer is called.
+  //
+  // Strictly speaking, anything which depends on the completion of another
+  // stream should use syncs or waits, to avoid reading uninitialized data
+  // (on CUDA) or crashing due to unresolved dependencies (on TPU).
+  //
+  // In practice though, users may not be this defensive and assume that work on
+  // stream that was started sufficiently long ago has completed. In TorchTPU's
+  // DeferAndFuse mode, work on a stream can remain deferred indefinitely until
+  // something forces it to materialize.
+  //
+  // Defensively materializing on exiting a stream means that any cross-stream
+  // dependencies after this point will have the ability to await the result,
+  // even without an explicit wait or sync.
+  TT_THROW_IF_ERROR(MaterializeStream(s.device_index(), old_stream_id,
+                                      MaterializationReason::kExplicitSync));
   return c10::Stream(c10::Stream::UNSAFE, s.device(), old_stream_id);
 }
 

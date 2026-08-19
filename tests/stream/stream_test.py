@@ -13,8 +13,11 @@
 # limitations under the License.
 
 import concurrent.futures
+
 from absl.testing import absltest
 import torch
+from torch_tpu._internal import execution_mode
+from torch_tpu._internal import sync
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
 
@@ -189,6 +192,21 @@ class TpuStreamsTest(seed_test_utils.RepeatableTest):
     self.assertTrue(transfer_event.query())
     utils.assert_close(t_cpu, torch.ones(size, dtype=torch.float32))
 
+  def test_materialize_on_stream_switch(self):
+    """Tests that a stream begins executing when leaving its context."""
+    new_stream = torch.tpu.Stream()
+
+    # Use DEFER_AND_FUSE to avoid automatic materialization.
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Do some work on the default stream.
+      x = torch.ones(1, device='tpu')
+      self.assertFalse(sync.is_materializing(x))
+
+      # Switch to the new stream.
+      with torch.tpu.stream(new_stream):
+        # Leaving the default stream should materialize x.
+        self.assertTrue(sync.is_materializing(x))
+
 
 class TorchStreamsTest(seed_test_utils.RepeatableTest):
   """Tests for torch.Stream and torch.Event.
@@ -276,6 +294,24 @@ class TorchStreamsTest(seed_test_utils.RepeatableTest):
 
     self.assertTrue(transfer_event.query())
     utils.assert_close(t_cpu, torch.ones(size, dtype=torch.float32))
+
+  def test_materialize_on_stream_switch(self):
+    """Tests that a stream begins executing when leaving its context."""
+    # PyTorch bug: torch.Stream(device='tpu') raises UnicodeDecodeError
+    # "'utf-8' codec can't decode byte 0xff in position 28: invalid start byte"
+    dummy = torch.empty(1, device='tpu')
+    new_stream = torch.Stream(device=dummy.device)
+    del dummy
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      # Do some work on the default stream.
+      x = torch.ones(1, device='tpu')
+      self.assertFalse(sync.is_materializing(x))
+
+      # Switch to the new stream.
+      with new_stream:
+        # Leaving the default stream should materialize x.
+        self.assertTrue(sync.is_materializing(x))
 
 
 if __name__ == '__main__':

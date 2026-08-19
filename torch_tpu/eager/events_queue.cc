@@ -97,16 +97,11 @@ SharedDeviceBufferList CreateNoOpDependency(
   return refs_or->at(0).device_buffer_list();
 }
 
-// A singleton class that records events related to the creation and destruction
-// of c10::DataPtrs referencing DeviceBufferRefs.s
+// An ordered queue of "work" events on a stream. This includes:
+//  - Deferred op creation (which represents an on-device execution)
+//  - DataPtr creation and destruction (allocation/deallocation events)
 class EventsQueue {
  public:
-  // Returns the singleton instance of the EventsQueue.
-  static EventsQueue& GetInstance() {
-    static absl::NoDestructor<EventsQueue> instance;
-    return *instance;
-  }
-
   // Records on the events queue that a new c10::DataPtr referencing the given
   // DeviceBufferRef has been created.
   void RecordNewDataPtrCreated(const DeviceBufferRef& device_buffer_ref) {
@@ -215,68 +210,28 @@ class EventsQueue {
     }
   }
 
-  // Partitions the deferred ops queue.
-  //
-  // The returned vector contains all the DeferredOpEvents that were in the
-  // queue, up to and including the last node that meets the predicate.
-  //
-  // Anything after the last node that meets the predicate is left in the queue.
-  // If the last node in the queue meets the predicate, then the entire
-  // queue is returned (as a vector) and the queue is cleared.
-  //
-  // If no such nodes are found, returns an empty vector and does not modify the
-  // queue.
-  template <typename Predicate>
-  std::vector<DeferredOpEvent> TakeUntil(Predicate predicate) {
+  // Returns all the DeferredOpEvents in the queue and clears the queue.
+  std::vector<DeferredOpEvent> TakeAll() {
     absl::MutexLock lock(deferred_ops_mu_);
-    std::deque<DeferredOpEvent> retained_ops;
-
-    // Pop off the back of the queue until we see a node to materialize.
-    while (!deferred_ops_.empty()) {
-      auto op_list = deferred_ops_.back().lock();
-      if (op_list && predicate(op_list)) {
-        // Found the last event in deferred_ops_ which needs to be materialized.
-        break;
-      } else {
-        retained_ops.push_front(std::move(deferred_ops_.back()));
-        deferred_ops_.pop_back();
-      }
-    }
-    if (deferred_ops_.empty()) {
-      ABSL_VLOG(1) << "[EventsQueue::TakeUntil] No nodes to materialize were "
-                      "found in deferred ops queue.";
-      std::swap(deferred_ops_, retained_ops);
-      return {};
-    }
-
+    ABSL_VLOG(1) << "[EventsQueue::TakeAll] Returning all "
+                 << deferred_ops_.size() << " DeferredOpEvents.";
     std::vector<DeferredOpEvent> result(
         std::make_move_iterator(deferred_ops_.begin()),
         std::make_move_iterator(deferred_ops_.end()));
     deferred_ops_.clear();
-    if (retained_ops.empty()) {
-      ABSL_VLOG(1) << "[EventsQueue::TakeUntil] The last node to materialize "
-                      "was the last deferred op. Returning the entire "
-                      "queue.\nReturning all "
-                   << result.size() << " DeferredOpEvents.";
-    } else {
-      ABSL_VLOG(1) << "[EventsQueue::TakeUntil] Partitioned deferred ops "
-                      "queue.\nRetaining the last "
-                   << retained_ops.size()
-                   << " DeferredOpEvents, and returning the first "
-                   << result.size() << " DeferredOpEvents.";
-      std::swap(deferred_ops_, retained_ops);
-    }
     return result;
   }
 
   // Partitions the deferred ops queue.
   //
   // The returned vector contains all the DeferredOpEvents that were in the
-  // queue, up to and including the last node that is in nodes_to_materialize.
+  // queue, up to and including the last-enqueued node that is in
+  // nodes_to_materialize.
   //
-  // Anything after the last node in nodes_to_materialize is left in the queue.
-  // If the last node in the queue is in nodes_to_materialize, then the entire
-  // queue is returned (as a vector) and the queue is cleared.
+  // Anything in the queue after the last-enqueued node in nodes_to_materialize
+  // is left in the queue. If the last node in the queue is in
+  // nodes_to_materialize, then the entire queue is returned (as a vector) and
+  // the queue is cleared.
   //
   // Any nodes in nodes_to_materialize that are not in the deferred ops queue
   // are ignored. If no nodes are found, returns an empty vector and does not
@@ -287,52 +242,46 @@ class EventsQueue {
     if (nodes_to_materialize.empty()) {
       return {};
     }
-    auto predicate = [&nodes_to_materialize](
-                         const SharedDeviceBufferList& device_buffer_list) {
-      return nodes_to_materialize.contains(device_buffer_list.get());
-    };
-    return TakeUntil(predicate);
-  }
+    absl::MutexLock lock(deferred_ops_mu_);
+    std::deque<DeferredOpEvent> retained_ops;
+    // Pop off the back of the queue until we see a node to materialize.
+    while (!deferred_ops_.empty()) {
+      auto op_list = deferred_ops_.back().lock();
+      if (op_list && nodes_to_materialize.contains(op_list.get())) {
+        // Found the last event in deferred_ops_ which needs to be materialized.
+        break;
+      } else {
+        retained_ops.push_front(std::move(deferred_ops_.back()));
+        deferred_ops_.pop_back();
+      }
+    }
+    if (deferred_ops_.empty()) {
+      ABSL_VLOG(1)
+          << "[EventsQueue::TakeUntilNodes] No nodes to materialize were "
+             "found in deferred ops queue.";
+      std::swap(deferred_ops_, retained_ops);
+      return {};
+    }
 
-  // Partitions the deferred ops queue.
-  //
-  // The returned vector contains all the DeferredOpEvents that were in the
-  // queue, up to and including the last node on the given device.
-  //
-  // Anything after the last node on the given device is left in the queue.
-  // If the last node in the queue is on the given device, then the entire
-  // queue is returned (as a vector) and the queue is cleared.
-  //
-  // If no nodes are found, returns an empty vector and does not modify the
-  // queue.
-  std::vector<DeferredOpEvent> TakeUntilDevice(
-      const c10::DeviceIndex device_index) {
-    auto predicate =
-        [device_index](const SharedDeviceBufferList& device_buffer_list) {
-          return device_buffer_list->device_index() == device_index;
-        };
-    return TakeUntil(predicate);
-  }
-
-  // Partitions the deferred ops queue.
-  //
-  // The returned vector contains all the DeferredOpEvents that were in the
-  // queue, up to and including the last node on the given device and stream.
-  //
-  // Anything after the last node on the given device is left in the queue.
-  // If the last node in the queue is on the given device, then the entire
-  // queue is returned (as a vector) and the queue is cleared.
-  //
-  // If no nodes are found, returns an empty vector and does not modify the
-  // queue.
-  std::vector<DeferredOpEvent> TakeUntilStream(
-      const c10::DeviceIndex device_index, const c10::StreamId stream_id) {
-    auto predicate = [device_index, stream_id](
-                         const SharedDeviceBufferList& device_buffer_list) {
-      return device_buffer_list->device_index() == device_index &&
-             device_buffer_list->stream_id() == stream_id;
-    };
-    return TakeUntil(predicate);
+    std::vector<DeferredOpEvent> result(
+        std::make_move_iterator(deferred_ops_.begin()),
+        std::make_move_iterator(deferred_ops_.end()));
+    deferred_ops_.clear();
+    if (retained_ops.empty()) {
+      ABSL_VLOG(1)
+          << "[EventsQueue::TakeUntilNodes] The last node to materialize "
+             "was the last deferred op. Returning the entire "
+             "queue.\nReturning all "
+          << result.size() << " DeferredOpEvents.";
+    } else {
+      ABSL_VLOG(1) << "[EventsQueue::TakeUntilNodes] Partitioned deferred ops "
+                      "queue.\nRetaining the last "
+                   << retained_ops.size()
+                   << " DeferredOpEvents, and returning the first "
+                   << result.size() << " DeferredOpEvents.";
+      std::swap(deferred_ops_, retained_ops);
+    }
+    return result;
   }
 
  private:
@@ -345,22 +294,6 @@ class EventsQueue {
   absl::Mutex deferred_ops_mu_;
   std::deque<DeferredOpEvent> deferred_ops_ ABSL_GUARDED_BY(deferred_ops_mu_);
 };
-
-}  // namespace
-
-void RecordNewDataPtrCreated(const DeviceBufferRef& device_buffer_ref) {
-  EventsQueue::GetInstance().RecordNewDataPtrCreated(device_buffer_ref);
-}
-
-void RecordDataPtrDestroyed(const DeviceBufferRef& device_buffer_ref) {
-  EventsQueue::GetInstance().RecordDataPtrDestroyed(device_buffer_ref);
-}
-
-void RecordDeferredOpCreated(const SharedDeviceBufferList& device_buffer_list) {
-  EventsQueue::GetInstance().RecordDeferredOpCreated(device_buffer_list);
-}
-
-namespace {
 
 // The usage of a node within an execution region.
 enum class OpUsage {
@@ -615,51 +548,6 @@ PrepareTraversals(
   return traversals;
 }
 
-}  // namespace
-
-absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
-PrepareMaterializationTraversals(
-    absl::Span<const SharedDeviceBufferList> nodes_to_materialize) {
-  if (nodes_to_materialize.empty()) {
-    return std::vector<absl_nonnull std::unique_ptr<Traversal>>();
-  }
-
-  absl::flat_hash_set<const DeviceBufferList*> nodes_to_materialize_set;
-  for (const auto& node : nodes_to_materialize) {
-    nodes_to_materialize_set.insert(node.get());
-  }
-
-  // Do the partitioning of the deferred ops queue.
-  // This is the only part than needs to hold the lock.
-  std::vector<EventsQueue::DeferredOpEvent> deferred_op_events =
-      EventsQueue::GetInstance().TakeUntilNodes(nodes_to_materialize_set);
-  return PrepareTraversals(deferred_op_events, nodes_to_materialize,
-                           nodes_to_materialize_set);
-}
-
-absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
-PrepareStreamTraversals(c10::DeviceIndex device_index,
-                        c10::StreamId stream_id) {
-  // Do the partitioning of the deferred ops queue.
-  // This is the only part than needs to hold the lock.
-  std::vector<EventsQueue::DeferredOpEvent> deferred_op_events =
-      EventsQueue::GetInstance().TakeUntilStream(device_index, stream_id);
-  return PrepareTraversals(deferred_op_events, /*nodes_to_materialize=*/{},
-                           /*nodes_to_materialize_set=*/{});
-}
-
-absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
-PrepareDeviceTraversals(c10::DeviceIndex device_index) {
-  // Do the partitioning of the deferred ops queue.
-  // This is the only part than needs to hold the lock.
-  std::vector<EventsQueue::DeferredOpEvent> deferred_op_events =
-      EventsQueue::GetInstance().TakeUntilDevice(device_index);
-  return PrepareTraversals(deferred_op_events, /*nodes_to_materialize=*/{},
-                           /*nodes_to_materialize_set=*/{});
-}
-
-namespace {
-
 void PruneCompletedFutures(std::vector<xla::Future<void>>& futures) {
   futures.erase(std::remove_if(futures.begin(), futures.end(),
                                [](const xla::Future<void>& future) {
@@ -673,7 +561,7 @@ struct StreamState {
     if (new_futures.empty()) {
       return;
     }
-    absl::MutexLock lock(mutex);
+    absl::MutexLock lock(futures_mu);
     if (futures.size() + new_futures.size() > futures.capacity()) {
       PruneCompletedFutures(futures);
     }
@@ -682,7 +570,7 @@ struct StreamState {
   }
 
   xla::Future<void> JoinFutures() {
-    absl::MutexLock lock(mutex);
+    absl::MutexLock lock(futures_mu);
     if (!futures.empty()) {
       PruneCompletedFutures(futures);
     }
@@ -696,12 +584,15 @@ struct StreamState {
   }
 
   void Clear() {
-    absl::MutexLock lock(mutex);
+    events_queue.Clear();
+    absl::MutexLock lock(futures_mu);
     futures.clear();
   }
 
-  absl::Mutex mutex;
-  std::vector<xla::Future<void>> futures ABSL_GUARDED_BY(mutex);
+  absl::Mutex futures_mu;
+  std::vector<xla::Future<void>> futures ABSL_GUARDED_BY(futures_mu);
+
+  EventsQueue events_queue;
 };
 
 struct DeviceState {
@@ -806,7 +697,34 @@ void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
   MarkStreamActive(device_index, stream_id, std::move(futures));
 }
 
+StreamState* absl_nonnull GetStreamFor(
+    const SharedDeviceBufferList& device_buffer_list) {
+  return GetOrCreateStreamState(device_buffer_list->device_index(),
+                                device_buffer_list->stream_id());
+}
+
+StreamState* absl_nonnull GetStreamFor(
+    const DeviceBufferRef& device_buffer_ref) {
+  return GetOrCreateStreamState(device_buffer_ref.device_index(),
+                                device_buffer_ref.stream_id());
+}
+
 }  // namespace
+
+void RecordNewDataPtrCreated(const DeviceBufferRef& device_buffer_ref) {
+  GetStreamFor(device_buffer_ref)
+      ->events_queue.RecordNewDataPtrCreated(device_buffer_ref);
+}
+
+void RecordDataPtrDestroyed(const DeviceBufferRef& device_buffer_ref) {
+  GetStreamFor(device_buffer_ref)
+      ->events_queue.RecordDataPtrDestroyed(device_buffer_ref);
+}
+
+void RecordDeferredOpCreated(const SharedDeviceBufferList& device_buffer_list) {
+  GetStreamFor(device_buffer_list)
+      ->events_queue.RecordDeferredOpCreated(device_buffer_list);
+}
 
 void RecordBackgroundMaterialization(
     absl::Span<const DeviceBufferRef> outputs) {
@@ -860,6 +778,118 @@ void RecordBackgroundMaterialization(
                      std::move(stream.futures));
   }
 }
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+PrepareMaterializationTraversals(
+    absl::Span<const SharedDeviceBufferList> nodes_to_materialize) {
+  if (nodes_to_materialize.empty()) {
+    return std::vector<absl_nonnull std::unique_ptr<Traversal>>();
+  }
+
+  // Partition nodes_to_materialize into streams.
+  // Using a vector instead of a map because the number of distinct streams is
+  // expected to be small.
+  struct StreamNodes {
+    c10::DeviceIndex device_index;
+    c10::StreamId stream_id;
+    std::vector<SharedDeviceBufferList> stream_nodes;
+    absl::flat_hash_set<const DeviceBufferList*> stream_node_set;
+  };
+  std::vector<StreamNodes> nodes_by_stream;
+  for (const auto& node : nodes_to_materialize) {
+    auto it = std::find_if(nodes_by_stream.begin(), nodes_by_stream.end(),
+                           [&node](const StreamNodes& stream_nodes) {
+                             return stream_nodes.device_index ==
+                                        node->device_index() &&
+                                    stream_nodes.stream_id == node->stream_id();
+                           });
+    if (it == nodes_by_stream.end()) {
+      nodes_by_stream.push_back(
+          StreamNodes{.device_index = node->device_index(),
+                      .stream_id = node->stream_id(),
+                      .stream_nodes = {node},  // intentional copy
+                      .stream_node_set = {node.get()}});
+    } else {
+      if (it->stream_node_set.insert(node.get()).second) {
+        it->stream_nodes.push_back(node);
+      }
+    }
+  }
+
+  // Get the traversals for each stream represented in nodes_to_materialize,
+  // and concatenate them into a single list.
+  std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals;
+
+  for (const auto& stream_nodes : nodes_by_stream) {
+    // Do the partitioning of the deferred ops queue for this stream.
+    // This is the only part that needs to hold the lock.
+    ABSL_CHECK(!stream_nodes.stream_nodes.empty());  // CRASH_OK
+    auto stream_state = GetStreamFor(stream_nodes.stream_nodes.front());
+    auto deferred_op_events =
+        stream_state->events_queue.TakeUntilNodes(stream_nodes.stream_node_set);
+    TT_ASSIGN_OR_RETURN(
+        auto stream_traversals,
+        PrepareTraversals(deferred_op_events, stream_nodes.stream_nodes,
+                          stream_nodes.stream_node_set));
+    if (nodes_by_stream.size() == 1) {
+      // Only one stream, return directly.
+      ABSL_VLOG(1) << "[PrepareMaterializationTraversals] Created "
+                   << stream_traversals.size() << " traversals for "
+                   << nodes_to_materialize.size() << " nodes, all on device "
+                   << static_cast<int>(stream_nodes.device_index)
+                   << " and stream "
+                   << static_cast<int>(stream_nodes.stream_id);
+      return stream_traversals;
+    } else {
+      ABSL_VLOG(2) << "[PrepareMaterializationTraversals] Created "
+                   << stream_traversals.size() << " traversals for device "
+                   << static_cast<int>(stream_nodes.device_index) << ", stream "
+                   << static_cast<int>(stream_nodes.stream_id);
+    }
+
+    traversals.insert(traversals.end(),
+                      std::make_move_iterator(stream_traversals.begin()),
+                      std::make_move_iterator(stream_traversals.end()));
+  }
+  ABSL_VLOG(1) << "[PrepareMaterializationTraversals] Created "
+               << traversals.size() << " traversals for "
+               << nodes_to_materialize.size() << " nodes over "
+               << nodes_by_stream.size() << " streams.";
+  return traversals;
+}
+
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+PrepareStreamTraversals(c10::DeviceIndex device_index,
+                        c10::StreamId stream_id) {
+  StreamState* stream_state = GetOrCreateStreamState(device_index, stream_id);
+  // Do the partitioning of the deferred ops queue.
+  // This is the only part than needs to hold the lock.
+  std::vector<EventsQueue::DeferredOpEvent> deferred_op_events =
+      stream_state->events_queue.TakeAll();
+  return PrepareTraversals(deferred_op_events, /*nodes_to_materialize=*/{},
+                           /*nodes_to_materialize_set=*/{});
+}
+
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+PrepareDeviceTraversals(c10::DeviceIndex device_index) {
+  // Get all the stream states for the device.
+  auto streams = GetDeviceStreamStates(device_index);
+
+  std::vector<absl_nonnull std::unique_ptr<Traversal>> device_traversals;
+
+  // Partition each stream's deferred ops queue into separate traversals, and
+  // concatenate them into a single list.
+  for (auto* stream : streams) {
+    auto deferred_op_events = stream->events_queue.TakeAll();
+    TT_ASSIGN_OR_RETURN(
+        auto stream_traversals,
+        PrepareTraversals(deferred_op_events, /*nodes_to_materialize=*/{},
+                          /*nodes_to_materialize_set=*/{}));
+    device_traversals.insert(device_traversals.end(),
+                             std::make_move_iterator(stream_traversals.begin()),
+                             std::make_move_iterator(stream_traversals.end()));
+  }
+  return device_traversals;
+}
 
 void RecordAsyncHostToDevice(const DeviceBufferRef& device_buffer_ref) {
   MarkStreamActive(device_buffer_ref.device_index(),
@@ -905,7 +935,6 @@ absl::Status EventSnapshot::Wait() const { return future_.Await(); }
 absl::StatusOr<bool> EventSnapshot::Query() const { return future_.IsReady(); }
 
 void ClearAllStreams() {
-  EventsQueue::GetInstance().Clear();
   GetStreamStates().Clear();
   ResetStreamIdCounters();
 }

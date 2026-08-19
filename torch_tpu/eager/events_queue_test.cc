@@ -802,6 +802,60 @@ TEST_F(EventsQueueTest, PrepareStreamTraversals) {
   EXPECT_THAT(traversal.outputs(), testing::ElementsAre(ref_b));
 }
 
+TEST_F(EventsQueueTest, StreamsMaterializeSeparately) {
+  ClearAllStreams();
+  ScopedPythonContextCapturer capturer(OpName::kEmpty);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+
+  const auto device_index = GetCurrentDeviceIndex();
+
+  // Put three deferred ops in the queue;
+  // a -> b are on the default stream, with b having a live DataPtr.
+  // c is on a non-default stream.
+  absl::StatusOr<std::vector<DeviceBufferRef>> refs_or;
+  refs_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_or.ok());
+  auto ref_a = refs_or.value()[0];
+  auto list_a = ref_a.device_buffer_list();
+  RecordDeferredOpCreated(list_a);
+
+  refs_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {ref_a}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_or.ok());
+  auto ref_b = refs_or.value()[0];
+  auto list_b = ref_b.device_buffer_list();
+  RecordDeferredOpCreated(list_b);
+  RecordNewDataPtrCreated(ref_b);
+
+  const auto non_default_stream_id = NextStreamId(device_index);
+  const auto default_stream_id =
+      ExchangeCurrentStreamId(device_index, non_default_stream_id);
+
+  refs_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_or.ok());
+  auto ref_c = refs_or.value()[0];
+  auto list_c = ref_c.device_buffer_list();
+  RecordDeferredOpCreated(list_c);
+  RecordNewDataPtrCreated(ref_c);
+
+  ExchangeCurrentStreamId(device_index, default_stream_id);
+
+  // Ask for a plan to materialize the stream for c (but not a or b)
+  auto traversals_or =
+      PrepareStreamTraversals(device_index, non_default_stream_id);
+  ASSERT_TRUE(traversals_or.ok());
+
+  // The execution will contain c, but not a or b, even though they were
+  // created first; different streams have no relative order.
+  ASSERT_EQ(traversals_or.value().size(), 1);
+  const Traversal& traversal = *traversals_or.value()[0];
+  EXPECT_THAT(traversal.arguments(), testing::IsEmpty());
+  EXPECT_THAT(traversal.execution_order(), testing::ElementsAre(list_c));
+  EXPECT_THAT(traversal.outputs(), testing::ElementsAre(ref_c));
+}
+
 }  // namespace
 
 }  // namespace torch_tpu
