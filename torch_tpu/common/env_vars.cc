@@ -16,9 +16,28 @@
 
 #include "torch_tpu/common/env_vars.h"
 
+#include <string>
+
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 
 namespace torch_tpu {
+
+const absl::flat_hash_set<const char*>& GetExperimentalEnvVars() {
+  static const absl::NoDestructor<absl::flat_hash_set<const char*>>
+      experimental_env_vars({kTorchTpuTier2CompilationCacheEnvVar,      //
+                             kTorchTpuTier3CompilationCacheRootEnvVar,  //
+                             kXlaFlagsEnvVar});
+  return *experimental_env_vars;
+}
+
+const absl::flat_hash_map<const char*, std::string>& GetDeprecatedEnvVars() {
+  static const absl::NoDestructor<absl::flat_hash_map<const char*, std::string>>
+      deprecated_env_vars({});
+  return *deprecated_env_vars;
+}
 
 bool GetMaterializeCollectiveTensorsEnvValue() {
   static const bool env_value = []() {

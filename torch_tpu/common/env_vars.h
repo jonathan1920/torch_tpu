@@ -20,9 +20,10 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
-#include <string_view>
 
 #include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "c10/util/Exception.h"
 
 namespace torch_tpu {
@@ -158,13 +159,33 @@ inline void SetEnv(const char* name, const std::string& value) {
   setenv(name, value.c_str(), /*overwrite=*/1);
 }
 
+// Returns the set of environment variables that are considered experimental.
+//
+// Note: for efficiency, we use raw pointers as keys in the set and the lookup
+// is done via pointer equality; therefore, when the caller looks up an
+// environment variable from the set, they must provide a kFooEnvVar variable
+// defined in this file.
+const absl::flat_hash_set<const char*>& GetExperimentalEnvVars();
+
+// Returns the map of environment variables that are considered deprecated.
+// The key is the name of the environment variable and the value is the
+// TorchTPU version that deprecated the environment variable.
+//
+// Note: for efficiency, we use raw pointers as keys in the map and the lookup
+// is done via pointer equality; therefore, when the caller looks up an
+// environment variable from the map, they must provide a kFooEnvVar variable
+// defined in this file.
+const absl::flat_hash_map<const char*, std::string>& GetDeprecatedEnvVars();
+
 // Returns the value of the environment variable with the given name, or
 // std::nullopt if it is not set.
 //
 // This function is memoized, so the environment variable is only read once.
 //
 // We make the name a template parameter so that different env vars are
-// memoized separately.
+// memoized separately and the TORCH_WARN_ONCE() call works for each env var
+// individually. The name must be one of the kFooEnvVar variables defined in
+// this file.
 template <const char* name>
 const std::optional<std::string>& GetEnvOnce() {
   static const absl::NoDestructor<std::optional<std::string>> env_var(
@@ -172,18 +193,21 @@ const std::optional<std::string>& GetEnvOnce() {
         const char* const env_var =  //
             std::getenv(name);       // GETENV_OK=implementing GetEnvOnce().
         if (env_var == nullptr) return std::nullopt;
-        if (std::string_view(name) == kTorchTpuTier2CompilationCacheEnvVar &&
-            env_var[0] != '\0') {
+        if (env_var[0] == '\0') return std::string();
+
+        // The env var is set to a non-empty string. Warn the user if the env
+        // var is experimental or deprecated.
+        if (GetExperimentalEnvVars().contains(name)) {
+          TORCH_WARN_ONCE("the ", name,
+                          " environment variable is an experimental feature "
+                          "and may change or be removed without notice.");
+        } else if (auto it = GetDeprecatedEnvVars().find(name);
+                   it != GetDeprecatedEnvVars().end()) {
+          const std::string& deprecated_since = it->second;
           TORCH_WARN_ONCE(
-              "TORCH_TPU_TIER2_COMPILATION_CACHE is an experimental feature "
-              "and may change or be removed without notice.");
-        }
-        if (std::string_view(name) ==
-                kTorchTpuTier3CompilationCacheRootEnvVar &&
-            env_var[0] != '\0') {
-          TORCH_WARN_ONCE(
-              "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT is an experimental "
-              "feature and may change or be removed without notice.");
+              "the ", name,
+              " environment variable is deprecated since TorchTPU v",
+              deprecated_since, " and will be removed in a future release.");
         }
         return std::string(env_var);
       }());
