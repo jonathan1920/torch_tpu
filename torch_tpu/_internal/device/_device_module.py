@@ -420,8 +420,16 @@ class _DeviceModule(abc.ABC, metaclass=_DeviceModuleMeta):
     _device_ops_backend.manual_seed_all(seed)
 
   @classmethod
+  @experimental(
+      "initial_seed() is experimental and may change or be removed without"
+      " notice."
+  )
   def initial_seed(cls) -> int:
-    """Returns the current random seed of the current TPU device."""
+    """Returns the current random seed of the current TPU device.
+
+    .. warning::
+        This API is experimental and subject to change in future releases.
+    """
     idx = cls.current_device()
     return cls.default_generators[idx].initial_seed()
 

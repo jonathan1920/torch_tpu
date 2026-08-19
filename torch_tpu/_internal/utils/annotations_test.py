@@ -326,6 +326,18 @@ class AnnotationsTest(seed_test_utils.RepeatableTest):
         getattr(fn, annotations.TT_API_STAGE_REASON, ""),
     )
 
+  def test_annotated_real_api_initial_seed(self):
+    """Verifies that real API initial_seed is annotated."""
+    fn = getattr(torch.tpu, "initial_seed", None)
+    self.assertIsNotNone(fn)
+    self.assertEqual(
+        getattr(fn, annotations.TT_API_STAGE, None), "Experimental"
+    )
+    self.assertIn(
+        "initial_seed",
+        getattr(fn, annotations.TT_API_STAGE_REASON, ""),
+    )
+
   def test_annotated_real_enum_class_api_precision(self):
     """Verifies that real Enum Class API Precision is annotated with @experimental."""
     cls = Precision
