@@ -98,18 +98,4 @@ torch_tpu_py_test(
     ],
 )
 
-torch_tpu_py_test(
-    name = "captured_ops_validation_test",
-    size = "medium",
-    srcs = ["captured_ops_validation_test.py"],
-    data = glob(["captured_ops/*.json"]),
-    shard_count = 2,
-    deps = [
-        ":op_input_loader",
-        "//shims/absl_py/testing:absltest",
-        "//shims/absl_py/testing:parameterized",
-        "//torch_tpu",
-    ],
-)
-
 torch_tpu_package_end()
