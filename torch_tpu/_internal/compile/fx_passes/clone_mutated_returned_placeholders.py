@@ -48,8 +48,10 @@ def _is_returned_compute_placeholder(
     node: torch.fx.Node,
     returned_nodes: set[torch.fx.Node],
 ) -> bool:
-  """Checks if a node is an output placeholder consumed by compute operations."""
+  """Checks if a node is a torch.Tensor output placeholder consumed by compute operations."""
   if node.op != "placeholder" or node not in returned_nodes:
+    return False
+  if "val" in node.meta and not isinstance(node.meta["val"], torch.Tensor):
     return False
   return any(user.op != "output" for user in node.users)
 

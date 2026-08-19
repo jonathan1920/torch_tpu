@@ -180,6 +180,42 @@ class CloneMutatedReturnedPlaceholdersTest(seed_test_utils.RepeatableTest):
       cloned_user = list(p.users.keys())[0]
       self.assertEqual(cloned_user.target, torch.ops.aten.clone.default)
 
+  def test_symint_placeholder_not_cloned(self):
+    """Verifies that SymInt placeholders in compute/output are not cloned."""
+    shape_env = torch.fx.experimental.symbolic_shapes.ShapeEnv()
+    symint_s0 = shape_env.create_symintnode(
+        shape_env.create_symbol(4, torch._dynamo.source.ConstantSource("s0")),
+        hint=4,
+    )
+
+    fake_mode = torch._subclasses.fake_tensor.FakeTensorMode(
+        shape_env=shape_env
+    )
+    with fake_mode:
+      fake_tensor = torch.empty((symint_s0, 4), dtype=torch.float32)
+
+    graph = Graph()
+    p_s0 = graph.placeholder("s0")
+    p_s0.meta["val"] = symint_s0
+    p_x = graph.placeholder("x")
+    p_x.meta["val"] = fake_tensor
+
+    # p_s0 is used in compute (slice) and also returned in output
+    slice_node = graph.call_function(
+        torch.ops.aten.slice.Tensor, (p_x, 0, 0, p_s0)
+    )
+    graph.output((slice_node, p_s0))
+    gm = GraphModule(torch.nn.Module(), graph)
+
+    clone_mutated_returned_placeholders.apply(gm)
+
+    clone_nodes = [
+        n
+        for n in gm.graph.nodes
+        if n.op == "call_function" and n.target == torch.ops.aten.clone.default
+    ]
+    self.assertEmpty(clone_nodes)
+
 
 if __name__ == "__main__":
   absltest.main()
