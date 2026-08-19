@@ -22,16 +22,10 @@
 
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/strings/str_cat.h"
-#include "torch_tpu/common/flags.h"
 #include "torch_tpu/ops/op_names.h"
-
-ABSL_FLAG(bool, torch_tpu_internal_ban_composite_ops, true,
-          "If set, crash when a composite TPU op (i.e. one that is implemented "
-          "by TorchTPU by delegating to other ops) is executed.");
 
 namespace torch_tpu {
 namespace internal {
@@ -236,11 +230,7 @@ void OpNameStack::Push(OpName op_name) {
           ". This is unusually not allowed - please implement the ",
           ToString(composite),
           " op by lowering it to SHLO instead. This is a TorchTPU bug.");
-      if (GetFlagOnce<bool, &FLAGS_torch_tpu_internal_ban_composite_ops>()) {
-        ABSL_LOG(FATAL) << msg;  // CRASH_OK
-      } else {
-        ABSL_LOG(ERROR) << msg;
-      }
+      ABSL_LOG(FATAL) << msg;  // CRASH_OK
     }
   }
   stack_.push(op_name);
