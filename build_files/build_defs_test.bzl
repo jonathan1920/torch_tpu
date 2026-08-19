@@ -16,7 +16,7 @@
 
 load("@rules_testing//lib:analysis_test.bzl", "analysis_test")
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
-load("//build_files:build_defs.bzl", "check_and_adjust_test_tags_for_testing", "is_backend_dep_for_testing", "is_oss", "torch_tpu_cc_test", "tpu_gen")
+load("//build_files:build_defs.bzl", "check_and_adjust_test_tags_for_testing", "is_backend_dep_for_testing", "is_oss", "torch_tpu_cc_test", "torch_tpu_py_test", "tpu_gen")
 
 _TagsInfo = provider(
     "Provider for extracting rule attributes during analysis tests.",
@@ -50,6 +50,31 @@ def _test_macro_tags(name):
     analysis_test(
         name = name,
         impl = _test_macro_tags_impl,
+        targets = {"subject": name + "_subject"},
+        attrs = {"subject": {"aspects": [tags_aspect]}},
+    )
+
+def _test_py_test_select_env_impl(env, targets):
+    """Verifies that torch_tpu_py_test produces a py_test rule when env uses select()."""
+    info = targets.subject[_TagsInfo]
+    env.expect.that_str(info.rule_kind).equals("py_test")
+
+def _test_py_test_select_env(name):
+    torch_tpu_py_test(
+        name = name + "_subject",
+        srcs = ["build_defs_test.py"],
+        main = "build_defs_test.py",
+        is_wheel_test = True,
+        env = select({
+            "//conditions:default": {"TEST_VAR": "value"},
+        }),
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_py_test_select_env_impl,
         targets = {"subject": name + "_subject"},
         attrs = {"subject": {"aspects": [tags_aspect]}},
     )
@@ -464,6 +489,7 @@ def build_defs_test_suite(name):
         name = name + "_rules_testing",
         tests = [
             _test_macro_tags,
+            _test_py_test_select_env,
             _test_requires_libtpu_inferred,
             _test_requires_libtpu_explicit_true,
             _test_requires_libtpu_explicit_false,

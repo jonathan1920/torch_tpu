@@ -822,6 +822,8 @@ def torch_tpu_py_test(
         args = None,
         shuffle_tests = True,
         autoload = True,
+        require_torch_tpu_dep = True,
+        is_wheel_test = False,
         extra_pywrap_deps = ["//torch_tpu/common:pywrap_torch_tpu"],
         strict = False,
         size = None,
@@ -848,6 +850,12 @@ def torch_tpu_py_test(
         deps: The dependencies to add to the test.
         args: The arguments to pass to the test.
         shuffle_tests: Whether to shuffle the test cases.
+        autoload: Enable autoload during the tests.
+        require_torch_tpu_dep: Whether to require //torch_tpu in deps.
+            Set to False for wheel tests that test wheel artifacts directly.
+        is_wheel_test: Whether this test tests built wheel artifacts directly.
+            If True, automatically sets require_torch_tpu_dep to False and adds
+            :torch_tpu_wheel to data.
         extra_pywrap_deps: Additional pywrap dependencies to add to the test.
         strict: Whether to use pytype.
         size: The size of the test.
@@ -881,7 +889,6 @@ def torch_tpu_py_test(
         oss_presubmit_tpu_generation: Optional integer specifying the TPU generation to run this
             test on in OSS presubmit.
         tags: The tags to add to the test.
-        autoload: Enable autoload during the tests.
         **kwargs: Any additional arguments.
     """
 
@@ -902,6 +909,10 @@ def torch_tpu_py_test(
         args = ["--suppress_failure_output"] + args
     tags = tags or []
     data = kwargs.pop("data", [])
+    if is_wheel_test:
+        require_torch_tpu_dep = False
+        if ":torch_tpu_wheel" not in data:
+            data.append(":torch_tpu_wheel")
     if is_oss():
         data.append("@bazel_tools//tools/bash/runfiles")
     kwargs["data"] = data
@@ -933,124 +944,130 @@ def torch_tpu_py_test(
         kwargs.pop("linking_mode", None)
     kwargs.pop("imports", None)
 
-    existing_env = kwargs.pop("env", {})
-    if "exclusive" in tags:
-        existing_env["TORCH_TPU_EXCLUSIVE_TEST"] = "1"
+    existing_env = kwargs.pop("env", None)
 
-    # Opt-in to autoloading on a per-test basis
-    if autoload:
-        existing_autoload = existing_env.get("TORCH_DEVICE_BACKEND_AUTOLOAD", None)
-        if existing_autoload != None:
-            fail("Autoload behavior is intended to be controlled by the" +
-                 "autoload parameter rather than setting " +
-                 "TORCH_DEVICE_BACKEND_AUTOLOAD directly")
+    deps_to_add = []
+
+    # For wheel-only tests (require_torch_tpu_dep = False), skip enforcing
+    # //torch_tpu dependency and automatic environment setup.
+    if not require_torch_tpu_dep:
+        test_env = existing_env or {}
     else:
-        existing_env["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
+        existing_env = existing_env or {}
+        if "exclusive" in tags:
+            existing_env["TORCH_TPU_EXCLUSIVE_TEST"] = "1"
 
-    # Add environment variants for wheel and local-torch testing.
-    # We define shared library (LD_LIBRARY_PATH) and Python paths (PYTHONPATH) here.
+        # Opt-in to autoloading on a per-test basis
+        if autoload:
+            existing_autoload = existing_env.get("TORCH_DEVICE_BACKEND_AUTOLOAD", None)
+            if existing_autoload != None:
+                fail("Autoload behavior is intended to be controlled by the" +
+                     "autoload parameter rather than setting " +
+                     "TORCH_DEVICE_BACKEND_AUTOLOAD directly")
+        else:
+            existing_env["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
 
-    # 1. Define sets of paths
-    # Standard paths for stable PyPI/wheel mode
-    std_ld = [
-        "../pypi_torch/site-packages/torch/lib",
-        "../rules_python++pip+torch_tpu_pypi_312_torch/site-packages/torch/lib",
-        "../pypi_libtpu/site-packages/libtpu",
-        "../rules_python++pip+torch_tpu_pypi_312_libtpu_nightly/site-packages/libtpu",
-        "../torch_tpu_py_import_unpacked_wheel/torch_tpu/_internal",
-        "../_solib_x86_64",
-    ]
+        # Add environment variants for wheel and local-torch testing.
+        # We define shared library (LD_LIBRARY_PATH) and Python paths (PYTHONPATH) here.
 
-    # Extra paths for local development mode
-    local_ld = [
-        "local_torch/site-packages/torch/lib",
-        "../local_torch/site-packages/torch/lib",
-        "torch_tpu_py_import_unpacked_wheel/torch/lib",
-        "__main__/torch_tpu_py_import_unpacked_wheel/torch/lib",
-        "../+_repo_rules+local_torch/site-packages/torch/lib",
-    ]
-
-    local_py = [
-        "torch_tpu_py_import_unpacked_wheel",
-        "../torch_tpu_py_import_unpacked_wheel",
-        "local_torch/site-packages",
-        "../local_torch/site-packages",
-    ]
-
-    # 2. Build environment variants starting from base environment
-    base_env = existing_env
-
-    # Apply LeakSanitizer suppressions (propagates to copies)
-    lsan_opts = [base_env.get("LSAN_OPTIONS", "")]
-    lsan_opts.append("suppressions=$(location %s)" % _LSAN_SUPPRESSIONS)
-    base_env["LSAN_OPTIONS"] = " ".join([opt for opt in lsan_opts if opt])
-
-    # Apply ThreadSanitizer suppressions (propagates to copies)
-    tsan_opts = [base_env.get("TSAN_OPTIONS", "")]
-    tsan_opts.append("suppressions=$(location %s)" % _TSAN_SUPPRESSIONS)
-    base_env["TSAN_OPTIONS"] = " ".join([opt for opt in tsan_opts if opt])
-
-    # Apply AddressSanitizer options.
-    # Suppress new_delete_type_mismatch caused by an upstream OpenXLA/TSL
-    # async_value.h deletion alignment mismatch (not caused by torch_tpu).
-    asan_opts = [base_env.get("ASAN_OPTIONS", "")]
-    asan_opts.append("new_delete_type_mismatch=0")
-    base_env["ASAN_OPTIONS"] = ":".join([opt for opt in asan_opts if opt])
-
-    # Prepend standard library paths to base env (required for mp.spawn support)
-    _prepend_to_env(base_env, "LD_LIBRARY_PATH", ":".join(std_ld))
-
-    env_wheel = dict(base_env)
-
-    env_wheel_versions = {}
-    for v in SUPPORTED_PYTHON_VERSIONS:
-        env_v = dict(env_wheel)
-        std_ld_v = [
-            "../pypi_torch_{}/site-packages/torch/lib".format(v.replace(".", "")),
-            "../rules_python++pip+torch_tpu_pypi_{}_torch/site-packages/torch/lib".format(v.replace(".", "")),
-            "../pypi_libtpu_{}/site-packages/libtpu".format(v.replace(".", "")),
-            "../rules_python++pip+torch_tpu_pypi_{}_libtpu_nightly/site-packages/libtpu".format(v.replace(".", "")),
+        # 1. Define sets of paths
+        # Standard paths for stable PyPI/wheel mode
+        std_ld = [
+            "../pypi_torch/site-packages/torch/lib",
+            "../rules_python++pip+torch_tpu_pypi_312_torch/site-packages/torch/lib",
+            "../pypi_libtpu/site-packages/libtpu",
+            "../rules_python++pip+torch_tpu_pypi_312_libtpu_nightly/site-packages/libtpu",
             "../torch_tpu_py_import_unpacked_wheel/torch_tpu/_internal",
             "../_solib_x86_64",
         ]
-        _prepend_to_env(env_v, "LD_LIBRARY_PATH", ":".join(std_ld_v))
-        env_wheel_versions[v.replace(".", "")] = env_v
 
-    env_local = dict(env_wheel)  # Build on top of wheel paths
-    _prepend_to_env(env_local, "LD_LIBRARY_PATH", ":".join(local_ld))
-    _prepend_to_env(env_local, "PYTHONPATH", ":".join(local_py))
+        # Extra paths for local development mode
+        local_ld = [
+            "local_torch/site-packages/torch/lib",
+            "../local_torch/site-packages/torch/lib",
+            "torch_tpu_py_import_unpacked_wheel/torch/lib",
+            "__main__/torch_tpu_py_import_unpacked_wheel/torch/lib",
+            "../+_repo_rules+local_torch/site-packages/torch/lib",
+        ]
 
-    # 3. Add LSan and TSan suppressions for known third-party leaks/races
-    # that are outside the project's control.
-    current_data = kwargs.pop("data", [])
-    if _LSAN_SUPPRESSIONS not in current_data:
-        current_data.append(_LSAN_SUPPRESSIONS)
-    if _TSAN_SUPPRESSIONS not in current_data:
-        current_data.append(_TSAN_SUPPRESSIONS)
-    kwargs["data"] = current_data
+        local_py = [
+            "torch_tpu_py_import_unpacked_wheel",
+            "../torch_tpu_py_import_unpacked_wheel",
+            "local_torch/site-packages",
+            "../local_torch/site-packages",
+        ]
 
-    # 4. Use select to swap between environments
-    select_dict = {
-        "//:wheel_test_with_local_torch": env_local,
-        "//shims/torch:use_local_torch": env_local,
-    }
-    for v in SUPPORTED_PYTHON_VERSIONS:
-        select_dict["//:wheel_test_with_local_torch_" + v.replace(".", "_")] = env_local
-        select_dict["//:wheel_test_" + v.replace(".", "_")] = env_wheel_versions[v.replace(".", "")]
+        # 2. Build environment variants starting from base environment
+        base_env = existing_env
 
-    # Fallback for 3.12 if --test_wheel=True is passed without --define PYTHON_VERSION
-    select_dict["//:wheel_test_enabled"] = env_wheel_versions["312"]
-    select_dict["//conditions:default"] = base_env
+        # Apply LeakSanitizer suppressions (propagates to copies)
+        lsan_opts = [base_env.get("LSAN_OPTIONS", "")]
+        lsan_opts.append("suppressions=$(location %s)" % _LSAN_SUPPRESSIONS)
+        base_env["LSAN_OPTIONS"] = " ".join([opt for opt in lsan_opts if opt])
 
-    test_env = if_oss(select(select_dict), base_env)
+        # Apply ThreadSanitizer suppressions (propagates to copies)
+        tsan_opts = [base_env.get("TSAN_OPTIONS", "")]
+        tsan_opts.append("suppressions=$(location %s)" % _TSAN_SUPPRESSIONS)
+        base_env["TSAN_OPTIONS"] = " ".join([opt for opt in tsan_opts if opt])
 
-    if "//torch_tpu" not in deps:
-        fail("torch_tpu_py_test must include \"//torch_tpu\" in its deps to " +
-             "ensure that torch_tpu is loaded.")
+        # Apply AddressSanitizer options.
+        # Suppress new_delete_type_mismatch caused by an upstream OpenXLA/TSL
+        # async_value.h deletion alignment mismatch (not caused by torch_tpu).
+        asan_opts = [base_env.get("ASAN_OPTIONS", "")]
+        asan_opts.append("new_delete_type_mismatch=0")
+        base_env["ASAN_OPTIONS"] = ":".join([opt for opt in asan_opts if opt])
 
-    deps_to_add = []
-    if use_pywrap_rules():
-        deps_to_add = extra_pywrap_deps
+        # Prepend standard library paths to base env (required for mp.spawn support)
+        _prepend_to_env(base_env, "LD_LIBRARY_PATH", ":".join(std_ld))
+
+        env_wheel = dict(base_env)
+
+        env_wheel_versions = {}
+        for v in SUPPORTED_PYTHON_VERSIONS:
+            env_v = dict(env_wheel)
+            std_ld_v = [
+                "../pypi_torch_{}/site-packages/torch/lib".format(v.replace(".", "")),
+                "../rules_python++pip+torch_tpu_pypi_{}_torch/site-packages/torch/lib".format(v.replace(".", "")),
+                "../pypi_libtpu_{}/site-packages/libtpu".format(v.replace(".", "")),
+                "../rules_python++pip+torch_tpu_pypi_{}_libtpu_nightly/site-packages/libtpu".format(v.replace(".", "")),
+                "../torch_tpu_py_import_unpacked_wheel/torch_tpu/_internal",
+                "../_solib_x86_64",
+            ]
+            _prepend_to_env(env_v, "LD_LIBRARY_PATH", ":".join(std_ld_v))
+            env_wheel_versions[v.replace(".", "")] = env_v
+
+        env_local = dict(env_wheel)  # Build on top of wheel paths
+        _prepend_to_env(env_local, "LD_LIBRARY_PATH", ":".join(local_ld))
+        _prepend_to_env(env_local, "PYTHONPATH", ":".join(local_py))
+
+        # 3. Add LSan and TSan suppressions for known third-party leaks/races.
+        if _LSAN_SUPPRESSIONS not in data:
+            data.append(_LSAN_SUPPRESSIONS)
+        if _TSAN_SUPPRESSIONS not in data:
+            data.append(_TSAN_SUPPRESSIONS)
+
+        # 4. Use select to swap between environments
+        select_dict = {
+            "//:wheel_test_with_local_torch": env_local,
+            "//shims/torch:use_local_torch": env_local,
+        }
+        for v in SUPPORTED_PYTHON_VERSIONS:
+            select_dict["//:wheel_test_with_local_torch_" + v.replace(".", "_")] = env_local
+            select_dict["//:wheel_test_" + v.replace(".", "_")] = env_wheel_versions[v.replace(".", "")]
+
+        # Fallback for 3.12 if --test_wheel=True is passed without --define PYTHON_VERSION
+        select_dict["//:wheel_test_enabled"] = env_wheel_versions["312"]
+        select_dict["//conditions:default"] = base_env
+
+        test_env = if_oss(select(select_dict), base_env)
+
+        if "//torch_tpu" not in deps:
+            fail("torch_tpu_py_test must include \"//torch_tpu\" in its deps to " +
+                 "ensure that torch_tpu is loaded.")
+
+        deps_to_add = []
+        if use_pywrap_rules():
+            deps_to_add = extra_pywrap_deps
 
     if not is_oss():
         if type(deps) == "list":
