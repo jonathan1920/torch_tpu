@@ -1,4 +1,4 @@
-# torch-tpu advice for Google Gemini
+# torch-tpu advice for AI Agents
 
 For BUILD or bzl files:
 
