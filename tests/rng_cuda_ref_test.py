@@ -242,6 +242,55 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
 
     self.assertTrue(torch.equal(t1, t2))
 
+  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
+  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
+  def test_backend_manual_seed_does_not_change_cpu_seed(self):
+    """Verifies backend_mod.manual_seed does not change CPU seed or state."""
+    torch.manual_seed(10)
+    cpu_seed_before = torch.initial_seed()
+    cpu_state_before = torch.get_rng_state()
+
+    self.backend_mod.manual_seed(42)
+
+    self.assertEqual(torch.initial_seed(), cpu_seed_before)
+    self.assertTrue(torch.equal(torch.get_rng_state(), cpu_state_before))
+
+  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
+  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
+  # TODO: Enable multi-device execution in OSS via the 'exclusive' tag and remove this skip.
+  @oss_utils.skip_in_oss("OSS CI runners isolate tests to a single TPU chip.")
+  def test_backend_manual_seed_does_not_change_other_devices(self):
+    """Verifies backend_mod.manual_seed does not modify other devices."""
+    num_devices = self.backend_mod.device_count()
+    self.assertGreater(
+        num_devices,
+        1,
+        "Test target must be configured with multiple devices to verify"
+        " seeding behavior across devices.",
+    )
+    torch.manual_seed(10)
+    other_devices_state_before = {
+        i: (self._get_device_rng_seed(i), self._get_device_rng_offset(i))
+        for i in range(num_devices)
+        if i != self.device_idx
+    }
+
+    self.backend_mod.manual_seed(42)
+
+    self.assertEqual(self._get_device_rng_seed(self.device_idx), 42)
+    self.assertEqual(self._get_device_rng_offset(self.device_idx), 0)
+    for i, (seed_before, offset_before) in other_devices_state_before.items():
+      self.assertEqual(
+          self._get_device_rng_seed(i),
+          seed_before,
+          msg=f"Device {i} seed mismatch",
+      )
+      self.assertEqual(
+          self._get_device_rng_offset(i),
+          offset_before,
+          msg=f"Device {i} offset mismatch",
+      )
+
   def test_rand_does_not_change_device_seed(self):
     """Verifies torch.rand on device does not change initial_seed."""
     torch.manual_seed(42)
