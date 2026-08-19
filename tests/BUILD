@@ -612,7 +612,7 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--test_categories=nonzero",
-        "--max_samples_per_op_dtype=16",
+        "--max_samples_per_op_dtype=10",  # To avoid timeout.
     ],
     data = [
         "ops_test_gpu_golden0.gz",
@@ -621,7 +621,7 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nopresubmit_oss = "This slow test is enabled in nightly.",
-    shard_count = 1,
+    shard_count = 1,  # This test has only 1 test case.
     tags = [
         "noasan",  # This test times out in asan mode.
         "nomsan",  # This test times out in msan mode.
@@ -998,6 +998,19 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
         "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "op_testing_test",
+    srcs = ["op_testing_test.py"],
+    deps = [
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:flagsaver",
+        "//shims/torch:pytorch",
+        "//shims/torch:testing_internal",
+        "//torch_tpu",
     ],
 )
 

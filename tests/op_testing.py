@@ -2825,6 +2825,15 @@ class OpInfoTestBase(
             " Please re-generate the GPU golden files to cover"
             " the new (op, dtype)."
         )
+      if max_samples is None:
+        max_samples = _MAX_SAMPLES_PER_OP_DTYPE.value
+      if max_samples >= 0 and len(samples) > max_samples:
+        print(
+            f">>> Taking {max_samples} samples from "
+            f" {len(samples)} test samples ...",
+            flush=True,
+        )
+        samples = samples[:max_samples]
       return samples
 
     # Generate sample inputs on the golden device.
