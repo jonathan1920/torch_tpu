@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+from unittest import mock
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -31,8 +32,9 @@ def _replicate_tensor(
     tensor_size: int,
     compiled: bool,
     ndims: int = 1,
-    pass_shape: bool = False,
+    pass_shape_stride: bool = False,
     trailing_dim_size: int = 4,
+    debug_eager: bool = False,
 ) -> None:
   """Redistributes a tensor from shard to replicate."""
   dist.init_process_group(backend="tpu_dist")
@@ -41,20 +43,23 @@ def _replicate_tensor(
   device_mesh = dt.init_device_mesh("tpu", (world_size,))
 
   trailing_dims = [trailing_dim_size] * (ndims - 1)
+  global_shape = (
+      torch.Size([tensor_size] + trailing_dims) if pass_shape_stride else None
+  )
+  global_stride = (
+      torch.empty(global_shape, device="meta").stride()
+      if pass_shape_stride
+      else None
+  )
 
   def shard_and_redistribute(x):
-    if pass_shape:
-      global_shape = torch.Size([tensor_size] + trailing_dims)
-      global_stride = torch.empty(global_shape, device="meta").stride()
-      dtensor = dt.DTensor.from_local(
-          x,
-          device_mesh=device_mesh,
-          placements=[dt.Shard(0)],
-          shape=global_shape,
-          stride=global_stride,
-      )
-    else:
-      dtensor = dt.DTensor.from_local(x, device_mesh, [dt.Shard(0)])
+    dtensor = dt.DTensor.from_local(
+        x,
+        device_mesh=device_mesh,
+        placements=[dt.Shard(0)],
+        shape=global_shape,
+        stride=global_stride,
+    )
     return dtensor.redistribute(device_mesh, [dt.Replicate()]).to_local()
 
   chunk_size = (tensor_size + world_size - 1) // world_size
@@ -70,10 +75,15 @@ def _replicate_tensor(
   else:
     func = shard_and_redistribute
 
-  output = func(local_tensor)
+  with mock.patch.dict(
+      os.environ,
+      {"TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1"} if debug_eager else {},
+  ):
+    output = func(local_tensor)
+
   out = output.cpu()
 
-  if pass_shape or rank == 0:
+  if pass_shape_stride or rank == 0:
     expected_shape = [tensor_size] + trailing_dims
     expected = torch.ones(*expected_shape, dtype=torch.float32)
     utils.assert_close(out, expected)
@@ -98,7 +108,7 @@ class UnevenShardingTest(parameterized.TestCase):
         tensor_size=tensor_size,
         compiled=compiled,
         ndims=ndims,
-        pass_shape=True,
+        pass_shape_stride=True,
     )
 
   @parameterized.named_parameters(
@@ -123,8 +133,40 @@ class UnevenShardingTest(parameterized.TestCase):
           tensor_size=tensor_size,
           compiled=compiled,
           ndims=ndims,
-          pass_shape=False,
+          pass_shape_stride=False,
       )
+
+  @parameterized.named_parameters(
+      ("1d_without_shape_stride_small", 1, 4, False),
+      ("1d_with_shape_stride_small", 1, 4, True),
+      ("1d_without_shape_stride_uneven", 1, 12, False),
+      ("1d_with_shape_stride_uneven", 1, 12, True),
+      ("2d_without_shape_stride_small", 2, 4, False),
+      ("2d_with_shape_stride_small", 2, 4, True),
+      ("2d_without_shape_stride_uneven", 2, 12, False),
+      ("2d_with_shape_stride_uneven", 2, 12, True),
+  )
+  def test_replicate_tensor_debug_eager(
+      self, ndims, tensor_size, pass_shape_stride
+  ):
+    def run_fn():
+      distributed_utils.dist_run(
+          nproc_per_node=8,
+          fn=singlehost_wrapper.tpu_env_wrapper(
+              _replicate_tensor, world_size=8
+          ),
+          tensor_size=tensor_size,
+          compiled=False,
+          ndims=ndims,
+          pass_shape_stride=pass_shape_stride,
+          debug_eager=True,
+      )
+
+    if pass_shape_stride:
+      run_fn()
+    else:
+      with self.assertRaisesRegex(Exception, "Inconsistent tensor metadata"):
+        run_fn()
 
 
 if __name__ == "__main__":

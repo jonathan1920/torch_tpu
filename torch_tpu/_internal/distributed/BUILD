@@ -67,6 +67,15 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_library(
+    name = "from_local",
+    srcs = ["from_local.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/execution_mode",
+    ],
+)
+
 # This library is not used directly, but is needed for go/cclean. Without
 # this rule, cclean complains that tpu_distributed.cc has no rule depending on it.
 torch_tpu_cc_library(

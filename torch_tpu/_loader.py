@@ -125,6 +125,13 @@ def _warn_if_unoptimized() -> None:
     )
 
 
+def _patch_dtensor() -> None:
+  """Overrides `from_local` to warn when shape/stride are omitted."""
+  from torch_tpu._internal.distributed import from_local  # pylint: disable=g-import-not-at-top
+
+  from_local.patch_from_local()
+
+
 def _init_device_impl(device: str) -> torch.device:
   """Initializes a lazy pytorch device.
 
@@ -224,6 +231,9 @@ def _init_device_impl(device: str) -> torch.device:
 
   # Warn if running with an unoptimized build.
   _warn_if_unoptimized()
+
+  # Override DTensor.from_local to warn when shape/stride are omitted.
+  _patch_dtensor()
 
   # Monkey patch torch.set_float32_matmul_precision and
   # torch.get_float32_matmul_precision to maintain global precision state.
