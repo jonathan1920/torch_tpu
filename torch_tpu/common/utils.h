@@ -40,6 +40,16 @@
 #define TT_IS_INTERNAL_TORCH_TPU 0
 #endif
 
+#if !defined(NDEBUG) && TT_IS_INTERNAL_TORCH_TPU
+// Enables error messages style check for internal debug builds.
+//
+// When this macro is set to 1, TorchTPU will hard crash if any error is raised
+// with an error message that doesn't conform to the TorchTPU error handling
+// guidelines. This should help us maintain the quality and consistency of error
+// messages in the project.
+#define TT_CHECKS_ERROR_FORMAT 1
+#endif
+
 namespace torch_tpu {
 
 // Returns a copy of the array of integers.

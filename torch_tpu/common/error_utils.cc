@@ -56,16 +56,6 @@
 #include "torch_tpu/eager/eager_mode.h"
 #include "xla/xla_data.pb.h"
 
-#if !defined(NDEBUG) && TT_IS_INTERNAL_TORCH_TPU
-// Enables error messages style check for internal debug builds.
-//
-// When this macro is set to 1, TorchTPU will hard crash if any error is raised
-// with an error message that doesn't conform to the TorchTPU error handling
-// guidelines. This should help us maintain the quality and consistency of error
-// messages in the project.
-#define TT_CHECK_ERROR_MESSAGE_FOLLOWS_GUIDELINES_ 1
-#endif
-
 namespace torch_tpu {
 namespace {
 
@@ -82,7 +72,7 @@ bool StartsWithAllowedWord(const std::string_view message) {
       [&](const std::string_view word) { return message.starts_with(word); });
 }
 
-#ifdef TT_CHECK_ERROR_MESSAGE_FOLLOWS_GUIDELINES_
+#if TT_CHECKS_ERROR_FORMAT
 
 // Pair of corresponding type names.
 struct TypeNamePair {
@@ -546,7 +536,7 @@ void CheckErrorMessageFollowsGuidelines(const TtError& error) {
       << GetLogMessage(error, result.failure_reasons);
 }
 
-#endif  // TT_CHECK_ERROR_MESSAGE_FOLLOWS_GUIDELINES_
+#endif  // TT_CHECKS_ERROR_FORMAT
 
 }  // namespace
 
@@ -744,7 +734,7 @@ TtError::TtError(absl::Status status, c10::SourceLocation thrown_from)
 }
 
 void TranslateToC10ErrorAndThrow(const TtError& e) {
-#ifdef TT_CHECK_ERROR_MESSAGE_FOLLOWS_GUIDELINES_
+#if TT_CHECKS_ERROR_FORMAT
   // Check that the error message format follows the TorchTPU guidelines
   // (go/tt-error-guide) only if we are in an internal debug build.
   CheckErrorMessageFollowsGuidelines(e);

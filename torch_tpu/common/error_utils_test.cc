@@ -1287,7 +1287,7 @@ TEST(SafeWrapDim, ReturnsZeroOnValidDimForZeroDimBound) {
   EXPECT_EQ(*result1, 0);
 }
 
-#if !defined(NDEBUG) && TT_IS_INTERNAL_TORCH_TPU
+#if TT_CHECKS_ERROR_FORMAT
 
 // Throws a c10::Error with `message` as its error message.
 //
@@ -1431,7 +1431,7 @@ TEST(ErrorMessageGuidelinesDeathTest, MultipleViolationsIncludingEnforced) {
                      HasSubstr("StableHLO type names")));
 }
 
-#endif
+#endif  // TT_CHECKS_ERROR_FORMAT
 
 }  // namespace
 }  // namespace torch_tpu
