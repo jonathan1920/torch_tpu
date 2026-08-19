@@ -94,6 +94,10 @@ _AUDIO_MODEL_TYPES = (
     "hubert",
     "musicgen",
     "omnitoken2wav",
+    "pe-a-frame",
+    "pe-audio",
+    "pe_audio",
+    "pe_audio_encoder",
     "qwen2-audio",
     "qwen2_audio",
     "scail",
@@ -237,6 +241,7 @@ _VISION_LANGUAGE_MODEL_TYPES = (
     "blip_2",
     "clip",
     "cosmos3",
+    "grounding-dino",
     "grounding_dino",
     "groundingdino",
     "holo",
@@ -244,6 +249,8 @@ _VISION_LANGUAGE_MODEL_TYPES = (
     "llav",
     "llava",
     "llmdet",
+    "llmdet-swin",
+    "llmdet_swin",
     "mllama",
     "oneformer",
     "paligemma",
@@ -663,6 +670,7 @@ def _get_max_seq_len(
 
   for cfg in configs_to_check:
     for attr in [
+        "max_text_len",
         "max_position_embeddings",
         "n_positions",
         "seq_length",
@@ -947,6 +955,9 @@ def _generate_transformers_inputs(
   """
   input_kwargs = {}
   model_type = getattr(config, "model_type", "unknown").lower()
+  archs = getattr(config, "architectures", []) or []
+  arch_name = archs[0].lower() if archs else ""
+  type_str = f"{model_type} {arch_name}"
 
   if modality == Modality.MULTIMODAL:
     safe_seq_len = min(_get_max_seq_len(config), 512)
@@ -1105,7 +1116,10 @@ def _generate_transformers_inputs(
       input_kwargs["attention_mask"] = torch.ones(
           actual_shape, device=device, dtype=torch.long
       )
-    elif "ast" in model_type or "audio-spectrogram-transformer" in model_type:
+    elif (
+        model_type in ["ast", "audio-spectrogram-transformer"]
+        or "audio-spectrogram-transformer" in model_type
+    ):
       max_length = getattr(config, "max_length", 1024)
       num_mel = getattr(config, "num_mel_bins", 128)
       input_kwargs["input_values"] = torch.randn(
@@ -1182,6 +1196,42 @@ def _generate_transformers_inputs(
       input_kwargs["attention_mask"] = torch.ones(
           (batch_size, num_audio_tokens), device=device, dtype=torch.long
       )
+    elif any(k in type_str for k in ["fastspeech", "fastspeech2"]):
+      safe_seq_len = min(_get_max_seq_len(config), 16)
+      actual_shape = (batch_size, safe_seq_len)
+      vocab_size = getattr(config, "vocab_size", None)
+      if vocab_size is None and hasattr(config, "model_config"):
+        vocab_size = getattr(config.model_config, "vocab_size", None)
+      vocab_size = vocab_size or 38
+      input_kwargs["input_ids"] = torch.randint(
+          0, vocab_size, actual_shape, device=device, dtype=torch.long
+      )
+      input_kwargs["attention_mask"] = torch.ones(
+          actual_shape, device=device, dtype=torch.long
+      )
+    elif any(k in type_str for k in ["pe_audio", "pe-audio", "pe-a-frame"]):
+      safe_seq_len = min(_get_max_seq_len(config), 16)
+      actual_shape = (batch_size, safe_seq_len)
+      vocab_size = getattr(config, "vocab_size", None)
+      if vocab_size is None and hasattr(config, "text_config"):
+        vocab_size = getattr(config.text_config, "vocab_size", None)
+      if vocab_size is None:
+        vocab_size = 32000
+      input_kwargs["input_ids"] = torch.randint(
+          0, vocab_size, actual_shape, device=device, dtype=torch.long
+      )
+      hop_length = 1920
+      audio_cfg = getattr(config, "audio_config", None)
+      if audio_cfg and hasattr(audio_cfg, "dac_config"):
+        dac_cfg = audio_cfg.dac_config
+        if isinstance(dac_cfg, dict):
+          hop_length = dac_cfg.get("hop_length", 1920)
+        else:
+          hop_length = getattr(dac_cfg, "hop_length", 1920)
+      audio_len = safe_seq_len * hop_length
+      input_kwargs["input_values"] = torch.randn(
+          batch_size, 1, audio_len, device=device
+      )
     else:
       seq_len = shape[1] if shape and len(shape) > 1 else 16000
       input_kwargs["input_values"] = torch.randn(
@@ -1209,17 +1259,21 @@ def _generate_transformers_inputs(
     )
 
     if model_type == "tapas":
-      type_vocab_sizes = getattr(
-          config, "type_vocab_sizes", [3, 256, 256, 2, 256, 256, 10]
+      config.reset_position_index_per_cell = False
+      config.init_cell_selection_weights_to_zero = False
+
+      seq_len = actual_shape[1]
+      token_type_ids_tensor = torch.zeros(
+          (*actual_shape, 7), device=device, dtype=torch.long
       )
-      token_type_ids = []
-      for size in type_vocab_sizes:
-        token_type_ids.append(
-            torch.randint(
-                0, size, actual_shape, device=device, dtype=torch.long
-            )
-        )
-      input_kwargs["token_type_ids"] = torch.stack(token_type_ids, dim=-1)
+
+      token_type_ids_tensor[:, :, 0] = 1  # segment
+      col_indices = torch.arange(seq_len, device=device) % 2
+      row_indices = (torch.arange(seq_len, device=device) // 2) % 2
+      token_type_ids_tensor[:, :, 1] = col_indices
+      token_type_ids_tensor[:, :, 2] = row_indices
+
+      input_kwargs["token_type_ids"] = token_type_ids_tensor
     elif "mobilebert" in model_type:
       input_kwargs["token_type_ids"] = torch.zeros(
           actual_shape, device=device, dtype=torch.long
@@ -1447,15 +1501,15 @@ class TransformersProvider(BaseProvider):
         )
         if target_dtype != torch.float32:
           m = m.to(dtype=target_dtype)
-        if getattr(config, "model_type", "") == "vits":
+        if getattr(config, "model_type", "") in ("vits", "tapas"):
           # Zero TPU float weights before forward pass to prevent uninitialized
-          # VITS duration_predictor arange overflow and flow layer negative discriminants.
-          def _vits_pre_hook(module, *_unused_args, **_unused_kwargs):
+          # parameters (from to_empty) causing NaNs/overflows.
+          def _zero_weights_pre_hook(module, *_unused_args, **_unused_kwargs):
             for p in module.parameters():
               if p.device.type != "meta" and p.dtype.is_floating_point:
                 p.data.zero_()
 
-          m.register_forward_pre_hook(_vits_pre_hook)
+          m.register_forward_pre_hook(_zero_weights_pre_hook)
         return m
 
       model_fn = _create_model
