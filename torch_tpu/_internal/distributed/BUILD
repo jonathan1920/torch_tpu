@@ -38,6 +38,11 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "handshake",
+    srcs = ["handshake.py"],
+)
+
+torch_tpu_py_library(
     name = "spmd_util",
     srcs = [
         "spmd_util.py",
