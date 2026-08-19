@@ -425,7 +425,7 @@ class TestPallasKernels(seed_test_utils.RepeatableTest):
     self.assertLen(executables, 1)
     self.assertIn(
         "jax.buffer_donor",
-        executables[0].mlir_text,
+        executables[0].mlir_texts[0],
     )
 
     # The pre-donation value of x can no longer be used if we are in deferred

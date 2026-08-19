@@ -22,7 +22,7 @@ from collections.abc import Callable, Sequence
 import copy
 import functools
 import operator
-from typing import Any
+from typing import Any, List
 
 from absl import logging
 import torch
@@ -35,6 +35,7 @@ from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.fx_passes import clone_mutated_returned_placeholders
 from torch_tpu._internal.compile.fx_passes import force_collectives_output
+from torch_tpu._internal.compile.fx_passes import mark_embedded_constants
 from torch_tpu._internal.compile.fx_passes import propagate_symints
 from torch_tpu._internal.compile.fx_passes import reorder_symints
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import CompiledArtifact
@@ -171,6 +172,27 @@ class _SubmodCompiler(torch.fx.interpreter.Interpreter):
     self.compiler_fn = compiler_fn
     self.fake_mode = fake_mode
 
+  # This logic is copied from torch/_functorch/_aot_autograd/frontend_utils.py
+  def _convert_to_fake_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
+    symbolic_context = None
+    source = None
+    if tracing_context := torch._guards.TracingContext.try_get():  # pytype: disable=protected-access
+      if tensor in tracing_context.tensor_to_context:
+        symbolic_context = tracing_context.tensor_to_context[tensor]
+        source = symbolic_context.tensor_source
+
+    # If there's no symbolic context from Dynamo, treat as static
+    # weight/buffer/constant
+    if not symbolic_context:
+      return self.fake_mode.from_tensor(tensor, static_shapes=True)
+
+    return self.fake_mode.from_tensor(
+        tensor,
+        static_shapes=False,
+        symbolic_context=symbolic_context,
+        source=source,
+    )
+
   def compile_submod(
       self,
       input_mod: torch.fx.GraphModule,
@@ -211,9 +233,7 @@ class _SubmodCompiler(torch.fx.interpreter.Interpreter):
       if isinstance(arg, torch.Tensor) and not isinstance(
           arg, torch._subclasses.FakeTensor  # pylint: disable=protected-access
       ):
-        new_args.append(
-            torch._dynamo.utils.to_fake_tensor(arg, self.fake_mode)  # pylint: disable=protected-access
-        )
+        new_args.append(self._convert_to_fake_tensor(arg))
       else:
         new_args.append(arg)
 
@@ -243,6 +263,11 @@ class _SplitCompiledExecutable(CompiledArtifact):
 
   def __init__(self, split_gm: torch.fx.GraphModule):
     self._split_gm = split_gm
+    self._updates_default_generator_state = any(
+        module.submod.updates_default_generator_state()  # pyrefly: ignore[missing-attribute]
+        for module in self._split_gm.modules()
+        if isinstance(module, _WrapperModule)
+    )
 
   def __call__(self, *args: Any) -> Any:
     if len(args) == 1 and isinstance(args[0], (list, tuple)):
@@ -266,6 +291,43 @@ class _SplitCompiledExecutable(CompiledArtifact):
         _unpickle_split_compiled_executable,
         (self._split_gm,),
     )
+
+  @property
+  def graph_module_debug_strs(self) -> List[str]:
+    """List of string representations of the FX graph module's code for each submodule."""
+    graph_module_debug_strs = []
+    for module in self._split_gm.modules():
+      if isinstance(module, _WrapperModule):
+        graph_module_debug_strs.append(
+            module.submod.graph_module_debug_str  # pyrefly: ignore[missing-attribute]
+        )
+    return graph_module_debug_strs
+
+  @property
+  def mlir_texts(self) -> List[str]:
+    """List of MLIR text representations of the compiled submodule's code."""
+
+    mlir_texts = []
+    for module in self._split_gm.modules():
+      if isinstance(module, _WrapperModule):
+        mlir_texts.append(
+            module.submod.mlir_text  # pyrefly: ignore[missing-attribute]
+        )
+    return mlir_texts
+
+  def post_compile(
+      self,
+      example_inputs: Sequence[Any],
+      constants: Any,
+      graph_kwargs: Any,
+  ) -> None:
+    pass
+
+  def prepare_for_serialization(self) -> None:
+    pass
+
+  def updates_default_generator_state(self) -> bool:
+    return self._updates_default_generator_state
 
 
 def _unpickle_split_compiled_executable(
@@ -306,11 +368,17 @@ class SplitCompiler(compiler.Compiler):
       example_inputs: Sequence[InputType],
       is_fwd: bool = True,
       **kwargs,
-  ) -> CompiledArtifact:
+  ) -> _SplitCompiledExecutable:
     """Splits the graph on collectives and compiles the submodules."""
+    graph_transform_observer.GraphTransformObserver(
+        graph_module, "mark_embedded_constants"
+    ).apply_graph_pass(mark_embedded_constants.apply)
+
     graph_transform_observer.GraphTransformObserver(
         graph_module, "clone_mutated_returned_placeholders"
     ).apply_graph_pass(clone_mutated_returned_placeholders.apply)
+    graph_module.graph.lint()
+    graph_module.recompile()
 
     materialize_collectives = (
         tpu_torch_compile.get_materialize_collective_tensors_env_value()
@@ -373,11 +441,6 @@ class SplitCompiler(compiler.Compiler):
         partition_map[node] = partition_id
 
     num_partitions = len(set(partition_map.values()))
-    if num_partitions <= 1:
-      logging.info(
-          "Skipping split because there is only %d partition", num_partitions
-      )
-      return self.base_compiler(graph_module, example_inputs, is_fwd)
 
     logging.info(
         "Split graph into %d partitions",
@@ -398,6 +461,8 @@ class SplitCompiler(compiler.Compiler):
     graph_transform_observer.GraphTransformObserver(
         split_gm, "reorder_symints"
     ).apply_gm_pass(reorder_symints.apply)
+
+    logging.debug("Split graph\n%s", split_gm.print_readable())
 
     fake_mode = detect_fake_mode(example_inputs)
     if fake_mode is None:

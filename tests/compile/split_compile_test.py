@@ -85,6 +85,26 @@ class SplitCompileTest(seed_test_utils.RepeatableTest):
     expected = torch.full((8, 1, 6, 1), 5.0, device="cpu")
     utils.assert_close(res.cpu(), expected)
 
+  def test_split_graph_with_embedded_constants(self):
+    backend = TpuBackend(debug=True)
+
+    def f(x):
+      y = x * 2
+      c = torch.tensor(5.0)
+      return y + c
+
+    orig_ops = collective_ops.COLLECTIVE_OPS
+    new_ops = orig_ops + (torch.ops.aten.mul,)
+
+    with unittest.mock.patch.object(collective_ops, "COLLECTIVE_OPS", new_ops):
+      compiled_f = torch.compile(f, backend=backend)
+
+      x = torch.ones((2, 2), device="tpu")
+      res = compiled_f(x)
+
+    expected = torch.full((2, 2), 7.0, device="cpu")
+    utils.assert_close(res.cpu(), expected)
+
   def test_split_graph_with_mutated_returned_placeholder(self):
     """Verifies that an FX graph returning in-place mutated input placeholders is correctly compiled by SplitCompiler and returns updated tensors."""
     graph = torch.fx.Graph()

@@ -518,6 +518,12 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
         "Serialization support for DynamicCompiler not yet implemented"
     )
 
+  def updates_default_generator_state(self) -> bool:
+    return any(
+        module.updates_default_generator_state()
+        for module in self.model_executables.values()
+    )
+
 
 class DynamicCompiler(compiler.Compiler):
   """Compiler for handling dynamic shapes in torch.compile()."""

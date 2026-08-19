@@ -33,12 +33,10 @@ def _compile_and_get_stablehlo(model, *args):
   backend = _backend.TpuBackend(debug=True)
   compiled = torch.compile(model, backend=backend, dynamic=False)
   compiled(*args)  # Trigger compilation + lowering
+  texts = []
+  for executable in backend._compiled_executables:
+    texts.extend(executable.mlir_texts)
 
-  texts = [
-      e.mlir_text
-      for e in backend._compiled_executables
-      if getattr(e, "mlir_text", None)
-  ]
   if not texts:
     raise AssertionError("no StableHLO captured")
 

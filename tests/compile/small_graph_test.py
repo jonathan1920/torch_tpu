@@ -415,12 +415,12 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     self.assertLen(v, 2)
 
     # debug mode enabled so expect graphs to be set and in plaintext
-    self.assertIn("torch.ops.aten.abs", v[0].graph_module_debug_str)
-    self.assertIn("stablehlo.abs", v[0].mlir_text)
+    self.assertIn("torch.ops.aten.abs", v[0].graph_module_debug_strs[0])
+    self.assertIn("stablehlo.abs", v[0].mlir_texts[0])
     self.assertNotEqual(
-        v[0].graph_module_debug_str, v[1].graph_module_debug_str
+        v[0].graph_module_debug_strs[0], v[1].graph_module_debug_strs[0]
     )
-    self.assertNotEqual(v[0].mlir_text, v[1].mlir_text)
+    self.assertNotEqual(v[0].mlir_texts[0], v[1].mlir_texts[0])
 
   def test_data_dependent_dynamic_op(self):
     """Test that a dynamo will break on data dependent ops.
@@ -624,8 +624,8 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     utils.assert_close(reexecuted_result.to("cpu"), cpu_eager_result)
     v = tpu_backend._compiled_executables
     self.assertLen(v, 1)
-    self.assertIn("torch.ops.aten.ones_like", v[0].graph_module_debug_str)
-    self.assertIn("stablehlo.multiply", v[0].mlir_text)
+    self.assertIn("torch.ops.aten.ones_like", v[0].graph_module_debug_strs[0])
+    self.assertIn("stablehlo.multiply", v[0].mlir_texts[0])
 
   def test_embedded_non_scalar_tensor(self):
     def simple(x):
@@ -946,8 +946,8 @@ class ModuleTest(seed_test_utils.RepeatableTest):
     )
     v = self._run_and_compare(SimpleModule, inputs)
     self.assertLen(v, 1)
-    self.assertIn("stablehlo.multiply", v[0].mlir_text)
-    self.assertIn("def forward(self,", v[0].graph_module_debug_str)
+    self.assertIn("stablehlo.multiply", v[0].mlir_texts[0])
+    self.assertIn("def forward(self,", v[0].graph_module_debug_strs[0])
 
   def test_module_with_constants(self):
     class ModuleWithConstants(torch.nn.Module):

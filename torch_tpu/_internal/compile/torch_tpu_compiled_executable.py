@@ -92,6 +92,12 @@ class CompiledArtifact(abc.ABC, OutputCode):
     return True
 
 
+@abc.abstractmethod
+def updates_default_generator_state(self) -> bool:
+  """Returns whether the executable updates the default generator state."""
+  pass
+
+
 def _unpickle_compiled_executable(
     serialized_bytes: bytes,
     reconstruct_fx_outputs_fn: _ReconstructFxOutputsFn | None,
@@ -194,6 +200,9 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
   @property
   def unique_output_indices(self) -> Sequence[int] | None:
     return self._unique_output_indices
+
+  def updates_default_generator_state(self) -> bool:
+    return self._updates_default_generator_state
 
   @property
   def graph_module_debug_str(self) -> str | None:

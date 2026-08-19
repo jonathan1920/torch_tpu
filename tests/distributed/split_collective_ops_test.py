@@ -31,6 +31,7 @@ from torch_tpu._internal.utils import test_utils as utils
 from torch_tpu._internal.distributed import multiprocessing
 from tests.distributed import distributed_utils
 
+CompiledArtifact = torch_tpu_compiled_executable.CompiledArtifact
 TpuBackend = _backend.TpuBackend
 _SplitCompiledExecutable = split_compiler._SplitCompiledExecutable
 _COLLECTIVE_OPS = collective_ops.COLLECTIVE_OPS
@@ -229,8 +230,13 @@ def run_compile_no_splits_when_env_zero_test():
 
   wrapper = backend._compiled_executables[0]
   assert isinstance(
-      wrapper, TorchTpuCompiledExecutable
-  ), f"Expected TorchTpuCompiledExecutable, got {type(wrapper)}"
+      wrapper, _SplitCompiledExecutable
+  ), f"Expected _SplitCompiledExecutable, got {type(wrapper)}"
+
+  num_submodules = len(list(wrapper._split_gm.named_children()))
+  assert (
+      num_submodules == 1
+  ), f"Expected exactly 1 submodule, got {num_submodules}"
 
 
 def run_compile_two_collectives_test():
@@ -347,9 +353,10 @@ def _check_split_submod(wrapper, op):
       len(children) == 3
   ), f"Expected exactly 3 submodules for {op}, got {len(children)}"
   collective_submod = children[1].submod
+  assert isinstance(collective_submod, _DummyCompiledExecutable)
   node_ops = [
       getattr(n.target, "overloadpacket", n.target)
-      for n in collective_submod.graph.nodes
+      for n in collective_submod.gm.graph.nodes
       if n.op == "call_function"
   ]
   assert (
@@ -526,6 +533,25 @@ def run_rank_variable_dead_collective_test():
   )
 
 
+class _DummyCompiledExecutable(CompiledArtifact):
+
+  def __init__(self, gm):
+    self.gm = gm
+    self._updates_default_generator_state = False
+
+  def updates_default_generator_state(self) -> bool:
+    return self._updates_default_generator_state
+
+  def __reduce__(self):
+    def _unpickle_dummy_compiled_executable(gm):
+      return _DummyCompiledExecutable(gm)
+
+    return (_unpickle_dummy_compiled_executable, (self.gm,))
+
+  def __call__(self, *args, **kwargs):
+    return self.gm(*args, **kwargs)
+
+
 class DummyBaseCompiler(compiler.Compiler):
 
   def __init__(self):
@@ -533,7 +559,7 @@ class DummyBaseCompiler(compiler.Compiler):
     self.compiler_fn = lambda gm, args: gm
 
   def __call__(self, gm, args, is_fwd=True):
-    return gm
+    return _DummyCompiledExecutable(gm)
 
 
 class SplitCollectiveOpsTest(parameterized.TestCase):

@@ -54,8 +54,8 @@ class ActivationCheckpointingTest(seed_test_utils.RepeatableTest):
     optimizer.step()
 
     self.assertLen(tpu_backend._compiled_executables, 2)
-    fwd_mlir = tpu_backend._compiled_executables[0].mlir_text
-    bwd_mlir = tpu_backend._compiled_executables[1].mlir_text
+    fwd_mlir = tpu_backend._compiled_executables[0].mlir_texts[0]
+    bwd_mlir = tpu_backend._compiled_executables[1].mlir_texts[0]
 
     self.assertNotIn(
         "stablehlo.optimization_barrier",
