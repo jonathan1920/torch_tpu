@@ -1003,6 +1003,38 @@ def _generate_transformers_inputs(
         )
         input_kwargs["pixel_values"] = dummy_img
 
+        num_image_tokens = getattr(config, "image_seq_length", None)
+        if num_image_tokens is None:
+          patch_size = 14
+          if vision_config:
+            if isinstance(vision_config, dict):
+              patch_size = vision_config.get("patch_size", 14)
+            else:
+              patch_size = getattr(vision_config, "patch_size", 14)
+          num_image_tokens = (image_size // patch_size) ** 2
+
+        image_token_id = (
+            getattr(config, "image_token_id", None)
+            or getattr(config, "image_token_index", None)
+            or 32000
+        )
+
+        seq_len = input_kwargs["input_ids"].shape[1]
+        if seq_len < num_image_tokens:
+          new_seq_len = num_image_tokens + 16
+          input_kwargs["input_ids"] = torch.randint(
+              0,
+              vocab_size,
+              (batch_size, new_seq_len),
+              device=device,
+              dtype=torch.long,
+          )
+          input_kwargs["attention_mask"] = torch.ones(
+              (batch_size, new_seq_len), device=device, dtype=torch.long
+          )
+
+        input_kwargs["input_ids"][:, :num_image_tokens] = image_token_id
+
   elif modality == Modality.VISION:
     image_size = _parse_image_size(config)
 
