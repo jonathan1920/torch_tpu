@@ -33,14 +33,19 @@ from collections.abc import Callable, Sequence
 import enum
 from importlib import resources
 from importlib.resources import abc as resources_abc
+import os
 import inspect
 import pathlib
+import tempfile
 from typing import Any, Iterator
+import uuid
 
 from absl import flags
 from absl import logging
 
 from etils import epath
+from google.api_core import exceptions as gcp_exceptions
+from google.cloud import storage
 import torch
 
 try:
@@ -268,6 +273,67 @@ _WEIGHTS_BASE_PATH = flags.DEFINE_string(
     "Default base location of model configs and weights.",
 )
 
+_GCS_WEIGHTS_BUCKET = flags.DEFINE_string(
+    "gcs_weights_bucket",
+    "torchtpu-test",
+    "GCS bucket name for fetching model configs and weights in OSS.",
+)
+
+_GCS_WEIGHTS_PREFIX = flags.DEFINE_string(
+    "gcs_weights_prefix",
+    "weights",
+    "Prefix within the GCS bucket where weights and configs are stored.",
+)
+
+
+def _download_gcs_blob(
+    bucket_name: str,
+    blob_name: str,
+    dest_path: pathlib.Path,
+) -> bool:
+  """Downloads a blob from Google Cloud Storage using google.cloud.storage.
+
+  Args:
+    bucket_name: Name of the GCS bucket (e.g. 'torchtpu-test').
+    blob_name: Path of the object in the bucket (e.g.
+      'weights/transformers/google/gemma-2-2b/config.json').
+    dest_path: Local pathlib.Path destination.
+
+  Returns:
+    True if download succeeded, False otherwise.
+  """
+  dest_path.parent.mkdir(parents=True, exist_ok=True)
+  temp_dest = dest_path.with_name(
+      f"{dest_path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+  )
+  try:
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    blob.download_to_filename(str(temp_dest))
+    temp_dest.replace(dest_path)
+    logging.info(
+        "Successfully downloaded gs://%s/%s to %s",
+        bucket_name,
+        blob_name,
+        dest_path,
+    )
+    return True
+  except gcp_exceptions.NotFound:
+    logging.info("GCS blob gs://%s/%s does not exist.", bucket_name, blob_name)
+    return False
+  except Exception as exc:  # pylint: disable=broad-except
+    logging.warning(
+        "Failed to download gs://%s/%s: %s", bucket_name, blob_name, exc
+    )
+    return False
+  finally:
+    try:
+      temp_dest.unlink(missing_ok=True)
+    except OSError:
+      pass
+
+
 _PROVIDER_ALIASES: dict[str, str] = {
     "sentence-transformers": "transformers",
 }
@@ -325,6 +391,8 @@ class BaseProvider(abc.ABC):
   """Abstract base class for model source providers."""
 
   def __init__(self, base_path: str | None = None, subdir: str | None = None):
+    self._subdir = subdir
+
     if base_path is None:
       base_path = _WEIGHTS_BASE_PATH.value
 
@@ -339,6 +407,59 @@ class BaseProvider(abc.ABC):
         raise FileNotFoundError(f"Base path does not exist: {self._base_path}")
     else:
       self._base_path = None
+
+  @property
+  def _cloud_bucket_path(self) -> str | None:
+    """Returns the GCS blob prefix for this provider, or None if GCS is not configured."""
+    bucket = _GCS_WEIGHTS_BUCKET.value
+    if not bucket:
+      return None
+    prefix = (
+        _GCS_WEIGHTS_PREFIX.value.strip("/")
+        if _GCS_WEIGHTS_PREFIX.value
+        else ""
+    )
+    parts = [p for p in (prefix, self._subdir) if p]
+    return "/".join(parts)
+
+  def fetch_gcs_file(
+      self, relative_path: str | pathlib.Path
+  ) -> pathlib.Path | None:
+    """Fetches a file from GCS, using the local temp cache if already downloaded.
+
+    Args:
+      relative_path: Path relative to this provider's `_cloud_bucket_path`. For
+        example, `"google/gemma-2-2b/config.json"`.
+
+    Returns:
+      The pathlib.Path to the cached/downloaded file, or None if GCS is not
+      configured or the download failed.
+    """
+    bucket = _GCS_WEIGHTS_BUCKET.value
+    cloud_path = self._cloud_bucket_path
+    if not bucket or cloud_path is None:
+      return None
+
+    relative_path = pathlib.Path(relative_path)
+
+    # Construct GCS blob name
+    blob_name = (
+        f"{cloud_path}/{relative_path}" if cloud_path else str(relative_path)
+    )
+
+    # Local destination in temp dir
+    cache_dir = pathlib.Path(tempfile.gettempdir()) / "torch_tpu_cache"
+    if self._subdir:
+      cache_dir = cache_dir / self._subdir
+    dest_path = cache_dir / relative_path
+
+    if dest_path.exists():
+      return dest_path
+
+    if _download_gcs_blob(bucket, blob_name, dest_path):
+      return dest_path
+
+    return None
 
   @abc.abstractmethod
   def list_modules(self) -> list[str]:
@@ -1166,6 +1287,7 @@ class TransformersProvider(BaseProvider):
     """
     # Load the config first
     config = None
+    model_dir_or_repo_id: epath.Path | None = None
 
     if self.has_cache_dir:
       model_dir_or_repo_id = self._base_path / name  # pyrefly: ignore[unsupported-operation]
@@ -1182,24 +1304,43 @@ class TransformersProvider(BaseProvider):
             exc,
         )
 
-    if config is None:  # Fallback to local resources
-      # Pretrained weights are not available in local resources.
+    if config is None:
       if load_weights:
         raise ValueError(
             f"load_weights cannot be set to True for {name} when falling back"
-            " to local configuration resources."
+            " to local configuration resources or GCS."
         )
+
+      # Fallback to local resources
       try:
         with resources.as_file(
             self._FILES.joinpath(str(pathlib.Path(name) / "config.json"))
         ) as f:
-          config = transformers.AutoConfig.from_pretrained(str(f))
-      except Exception as exc:  # pylint: disable=broad-except
-        raise ValueError(
-            f"Model config for '{name}' is missing in local resources"
-            f" ({self._FILES.joinpath(str(pathlib.Path(name) / 'config.json'))})"
-            " and could not be loaded from cache."
-        ) from exc
+          if f.exists():
+            config = transformers.AutoConfig.from_pretrained(str(f))
+      except Exception:  # pylint: disable=broad-except
+        config = None
+
+    if config is None:  # Fallback to downloading from GCS
+      dest_config = self.fetch_gcs_file(f"{name}/config.json")
+      if dest_config and dest_config.exists():
+        try:
+          config = transformers.AutoConfig.from_pretrained(
+              str(dest_config.parent)
+          )
+          model_dir_or_repo_id = epath.Path(dest_config.parent)
+        except Exception as exc:  # pylint: disable=broad-except
+          logging.warning(
+              "Failed to load GCS config from %s: %s", dest_config.parent, exc
+          )
+          config = None
+
+    if config is None:
+      raise ValueError(
+          f"Model config for '{name}' is missing in local resources"
+          f" ({self._FILES.joinpath(str(pathlib.Path(name) / 'config.json'))})"
+          " and could not be loaded from cache or GCS."
+      )
 
     if modify_config_hook is not None:
       if load_weights:
@@ -1293,7 +1434,7 @@ class TransformersProvider(BaseProvider):
     ) -> tuple[tuple[Any, ...], dict[str, Any]]:
       model_dir = (
           str(model_dir_or_repo_id)
-          if self.has_cache_dir and model_dir_or_repo_id.exists()
+          if model_dir_or_repo_id is not None and model_dir_or_repo_id.exists()
           else None
       )
       input_kwargs = _generate_transformers_inputs(

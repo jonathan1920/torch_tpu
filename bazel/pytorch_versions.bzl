@@ -62,7 +62,7 @@ WHEEL_TORCH_VERSIONS = [DEFAULT_TORCH_VERSION] + EXTRA_PYTORCH_VERSIONS
 # //:include_nightly_glue flag (on by default, off under --config
 # wheel_release) selects it out of artifacts published to an index, since a
 # transient dev snapshot must not ship to PyPI.
-NIGHTLY_TORCH_VERSION = "2.14.0"
+NIGHTLY_TORCH_VERSION = "2.15.0"
 
 # Every glue the build can produce: the released versions plus the nightly
 # channel's. This is what the per-glue build machinery (target fan-out, glue

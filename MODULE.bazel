@@ -201,7 +201,7 @@ EXTRA_PYTORCH_VERSIONS = [
 # re-running requirements/lock_environments.sh). Kept in sync with
 # NIGHTLY_TORCH_VERSION/GLUE_TORCH_VERSIONS in //bazel:pytorch_versions.bzl,
 # like the list above.
-NIGHTLY_TORCH_VERSION = "2.14.0"
+NIGHTLY_TORCH_VERSION = "2.15.0"
 
 EXTRA_GLUE_TORCH_VERSIONS = EXTRA_PYTORCH_VERSIONS + [NIGHTLY_TORCH_VERSION]
 

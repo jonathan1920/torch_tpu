@@ -49,6 +49,8 @@ test = [
     "pytest>=9",
     "six>=1.17",
     "hypothesis>=6.100",
+    "google-cloud-storage>=2.14.0",
+    "google-api-core>=2.18.0",
 ]
 
 benchmark = [
@@ -61,7 +63,9 @@ benchmark = [
     "timm>=1.0.26",
     "torchax>=0.0.11",
     "grpcio-tools>=1.80.0",
-    "dm-tree>=0.1.10"
+    "dm-tree>=0.1.10",
+    "google-cloud-storage>=2.14.0",
+    "google-api-core>=2.18.0",
 ]
 
 examples = [

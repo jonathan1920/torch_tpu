@@ -90,6 +90,8 @@ torch_tpu_py_library(
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
         "@pypi//diffusers",  # build_cleaner: keep
+        "@pypi//google_api_core",
+        "@pypi//google_cloud_storage",
         "@pypi//timm",  # build_cleaner: keep
         "@pypi//torchvision",  # build_cleaner: keep
         "@pypi//transformers",  # build_cleaner: keep
@@ -113,9 +115,12 @@ torch_tpu_py_test(
         ":module_registry",
         ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:flagsaver",
         "//shims/etils/epath",
         "//shims/torch:pytorch",
         "//torch_tpu",
+        "@pypi//google_api_core",
+        "@pypi//google_cloud_storage",
         "@pypi//pillow",
     ],
 )

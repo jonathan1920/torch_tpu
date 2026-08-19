@@ -22,9 +22,15 @@ underlying providers (Torchvision, TIMM, and Transformers). It ensures that:
     successfully with their generated sample inputs.
 """
 
+import pathlib
 import tempfile
+from unittest import mock
+
 from absl.testing import absltest
+from absl.testing import flagsaver
 from etils import epath
+from google.api_core import exceptions as gcp_exceptions
+from google.cloud import storage
 from PIL import Image
 import torch
 from torch_tpu._internal import testing as tt_testing
@@ -540,6 +546,204 @@ class ModuleRegistryTest(seed_test_utils.RepeatableTest):
     for _, v in kwargs.items():
       if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
         self.assertEqual(v.dtype, torch.bfloat16)
+
+  def test_base_provider_cloud_bucket_path(self):
+    provider = module_registry.TransformersProvider(base_path="")
+    self.assertEqual(provider._cloud_bucket_path, "weights/transformers")
+
+    with flagsaver.flagsaver(gcs_weights_prefix=""):
+      self.assertEqual(provider._cloud_bucket_path, "transformers")
+
+    with flagsaver.flagsaver(gcs_weights_bucket=""):
+      self.assertIsNone(provider._cloud_bucket_path)
+
+  def test_base_provider_fetch_gcs_file(self):
+    with tempfile.TemporaryDirectory() as temp_dir:
+      with mock.patch("tempfile.gettempdir", return_value=temp_dir):
+        provider = module_registry.TransformersProvider(base_path="")
+
+        def fake_download(bucket, blob, dest_path):
+          self.assertEqual(bucket, "torchtpu-test")
+          self.assertEqual(
+              blob, "weights/transformers/test-org/model/config.json"
+          )
+          dest_path.parent.mkdir(parents=True, exist_ok=True)
+          dest_path.write_bytes(b'{"key": "value"}')
+          return True
+
+        with mock.patch(
+            "torch_tpu.tests.module_registry._download_gcs_blob",
+            side_effect=fake_download,
+        ):
+          dest = provider.fetch_gcs_file("test-org/model/config.json")
+          self.assertIsNotNone(dest)
+          self.assertTrue(dest.exists())
+          self.assertEqual(dest.read_bytes(), b'{"key": "value"}')
+
+          # Second call should use cache and not trigger download
+          with mock.patch(
+              "torch_tpu.tests.module_registry._download_gcs_blob"
+          ) as mock_dl:
+            dest2 = provider.fetch_gcs_file("test-org/model/config.json")
+            self.assertEqual(dest, dest2)
+            mock_dl.assert_not_called()
+
+  def test_download_gcs_blob_success(self):
+    with tempfile.TemporaryDirectory() as temp_dir:
+      dest = pathlib.Path(temp_dir) / "sub" / "config.json"
+      mock_client = mock.MagicMock(spec=storage.Client)
+      mock_bucket = mock.MagicMock(spec=storage.Bucket)
+      mock_blob = mock.MagicMock(spec=storage.Blob)
+
+      mock_client.bucket.return_value = mock_bucket
+      mock_bucket.blob.return_value = mock_blob
+      mock_blob.exists.return_value = True
+
+      def fake_download(filename):
+        pathlib.Path(filename).write_bytes(b'{"model_type": "bert"}')
+
+      mock_blob.download_to_filename.side_effect = fake_download
+
+      with mock.patch("google.cloud.storage.Client", return_value=mock_client):
+        success = module_registry._download_gcs_blob(
+            "torchtpu-test",
+            "weights/transformers/test/config.json",
+            dest,
+        )
+      self.assertTrue(success)
+      self.assertTrue(dest.exists())
+      self.assertEqual(dest.read_bytes(), b'{"model_type": "bert"}')
+      mock_client.bucket.assert_called_once_with("torchtpu-test")
+      mock_bucket.blob.assert_called_once_with(
+          "weights/transformers/test/config.json"
+      )
+
+  def test_download_gcs_blob_not_found(self):
+    with tempfile.TemporaryDirectory() as temp_dir:
+      dest = pathlib.Path(temp_dir) / "config.json"
+      mock_client = mock.MagicMock(spec=storage.Client)
+      mock_bucket = mock.MagicMock(spec=storage.Bucket)
+      mock_blob = mock.MagicMock(spec=storage.Blob)
+
+      mock_client.bucket.return_value = mock_bucket
+      mock_bucket.blob.return_value = mock_blob
+      mock_blob.download_to_filename.side_effect = gcp_exceptions.NotFound(
+          "Object not found"
+      )
+
+      with mock.patch("google.cloud.storage.Client", return_value=mock_client):
+        success = module_registry._download_gcs_blob(
+            "torchtpu-test",
+            "weights/transformers/missing/config.json",
+            dest,
+        )
+      self.assertFalse(success)
+      self.assertFalse(dest.exists())
+
+  def test_download_gcs_blob_api_error(self):
+    with tempfile.TemporaryDirectory() as temp_dir:
+      dest = pathlib.Path(temp_dir) / "config.json"
+      mock_client = mock.MagicMock(spec=storage.Client)
+      mock_bucket = mock.MagicMock(spec=storage.Bucket)
+      mock_blob = mock.MagicMock(spec=storage.Blob)
+
+      mock_client.bucket.return_value = mock_bucket
+      mock_bucket.blob.return_value = mock_blob
+      mock_blob.exists.return_value = True
+      mock_blob.download_to_filename.side_effect = (
+          gcp_exceptions.GoogleAPICallError("Permission denied")
+      )
+
+      with mock.patch("google.cloud.storage.Client", return_value=mock_client):
+        success = module_registry._download_gcs_blob(
+            "torchtpu-test",
+            "weights/transformers/error/config.json",
+            dest,
+        )
+      self.assertFalse(success)
+      self.assertFalse(dest.exists())
+
+  def test_transformers_get_module_spec_fallback_to_gcs(self):
+    with tempfile.TemporaryDirectory() as temp_dir:
+      with mock.patch("tempfile.gettempdir", return_value=temp_dir):
+        provider = module_registry.TransformersProvider(base_path="")
+
+        # Choose a dummy model name not in local resources
+        model_name = "test-org/custom-test-bert"
+        minimal_config_json = b"""{
+          "model_type": "bert",
+          "architectures": ["BertModel"],
+          "hidden_size": 32,
+          "num_attention_heads": 2,
+          "num_hidden_layers": 1,
+          "vocab_size": 100
+        }"""
+
+        def fake_download(bucket, blob, dest_path):
+          del bucket, blob
+          dest_path.parent.mkdir(parents=True, exist_ok=True)
+          dest_path.write_bytes(minimal_config_json)
+          return True
+
+        with mock.patch(
+            "torch_tpu.tests.module_registry._download_gcs_blob",
+            side_effect=fake_download,
+        ) as mock_dl:
+          module_spec = provider.get_module_spec(model_name)
+          self.assertIsNotNone(module_spec)
+          self.assertEqual(module_spec.config.model_type, "bert")
+          model = module_spec.module_factory()
+          self.assertIsNotNone(model)
+          _, kwargs = module_spec.sample_inputs_factory()
+          self.assertIn("input_ids", kwargs)
+          self.assertIn("attention_mask", kwargs)
+          self.assertTrue(mock_dl.called)
+
+  def test_transformers_get_module_spec_uses_cached_gcs_config(self):
+    with tempfile.TemporaryDirectory() as temp_dir:
+      with mock.patch("tempfile.gettempdir", return_value=temp_dir):
+        provider = module_registry.TransformersProvider(base_path="")
+        model_name = "cached-org/cached-test-model"
+
+        # Pre-populate temp cache
+        gcs_temp_dir = (
+            pathlib.Path(temp_dir)
+            / "torch_tpu_cache"
+            / "transformers"
+            / model_name
+        )
+        gcs_temp_dir.mkdir(parents=True, exist_ok=True)
+        (gcs_temp_dir / "config.json").write_bytes(b"""{
+          "model_type": "gpt2",
+          "architectures": ["GPT2Model"],
+          "n_embd": 32,
+          "n_head": 2,
+          "n_layer": 1,
+          "vocab_size": 100
+        }""")
+
+        with mock.patch(
+            "torch_tpu.tests.module_registry._download_gcs_blob"
+        ) as mock_dl:
+          module_spec = provider.get_module_spec(model_name)
+          self.assertIsNotNone(module_spec)
+          self.assertEqual(module_spec.config.model_type, "gpt2")
+          self.assertFalse(mock_dl.called)
+
+  def test_transformers_get_module_spec_gcs_failure_raises(self):
+    with tempfile.TemporaryDirectory() as temp_dir:
+      with mock.patch("tempfile.gettempdir", return_value=temp_dir):
+        provider = module_registry.TransformersProvider(base_path="")
+        model_name = "nonexistent-org/missing-model"
+
+        with mock.patch(
+            "torch_tpu.tests.module_registry._download_gcs_blob",
+            return_value=False,
+        ):
+          with self.assertRaisesRegex(
+              ValueError, "could not be loaded from cache or GCS"
+          ):
+            provider.get_module_spec(model_name)
 
 
 if __name__ == "__main__":
