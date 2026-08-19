@@ -57,9 +57,12 @@ jobs:
     name: "Set up Matrix"
     runs-on: ubuntu-latest
     outputs:
+      # Keep cpu_versions and latest_python_version in sync with
+      # bazel/supported_python_versions.bzl.
       cpu_versions: '["3.11", "3.12", "3.13", "3.14"]'
       tpu_versions: ${{ steps.set.outputs.tpu_versions }}
       default_python_version: "3.12"
+      latest_python_version: "3.14"
     steps:
       - id: set
         env:
@@ -236,6 +239,39 @@ jobs:
         env:
           PYTHON_VERSION: ${{ needs.setup.outputs.default_python_version }}
         run: uvx nox --force-python "${PYTHON_VERSION}" -s intermediate_patch_abi
+
+  test_wheel_dep_upper_bounds:
+    name: "Test wheel on dep upper bounds (Python ${{ needs.setup.outputs.latest_python_version }})"
+    needs: [build_wheels, setup]
+    runs-on: linux-x86-n4-16
+    container:
+      image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996  # Tag infrastructure-public-image-2c74567ee8e0
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+      # Git security patch (CVE-2022-24765) blocks root from operating on runner-owned directories:
+      # https://github.blog/open-source/git/git-security-vulnerability-announced/#cve-2022-24765.
+      # Tell Git explicitly to trust the workspace `/__w/torch_tpu/torch_tpu` inside this ephemeral
+      # container.
+      - name: Fix Git Workspace Ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Download Wheel from GCS
+        env:
+          PYTHON_VERSION: ${{ needs.setup.outputs.latest_python_version }}
+          GCS_WHEEL_DIR: ${{ needs.build_wheels.outputs.gcs_wheel_dir }}
+        run: |
+          mkdir dist
+          PYTHON_VER_CLEAN=$(echo "${PYTHON_VERSION}" | tr -d '.')
+          gcloud storage cp "${GCS_WHEEL_DIR}*cp${PYTHON_VER_CLEAN}*.whl" dist/
+      - name: Wait For Connection
+        uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      - name: Run smoke tests against upper bounds via nox
+        env:
+          PYTHON_VERSION: ${{ needs.setup.outputs.latest_python_version }}
+        run: uvx nox --force-python "${PYTHON_VERSION}" -s dep_upper_bounds
 
   test_wheels_tpu:
     name: Test wheel on ${{ matrix.custom_name || 'TPU' }} (Python ${{ matrix.python_version }})

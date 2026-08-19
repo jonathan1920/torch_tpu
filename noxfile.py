@@ -23,6 +23,7 @@ Details on configuration can be found at: https://nox.thea.codes/
 """
 
 from collections.abc import Mapping, Sequence
+import os
 import pathlib
 from typing import Final
 
@@ -261,6 +262,36 @@ def intermediate_patch_abi(session: nox.Session, torch_version: str) -> None:
       f"torch=={torch_version}",
       "--extra-index-url",
       _TORCH_INDEXES["cpu"],
+  )
+
+
+@nox.session
+def dep_upper_bounds(session: nox.Session) -> None:
+  """Run smoke tests against dependency upper bounds from requirements_<ver>_latest.txt."""
+  # The default fallback version should match the latest version in
+  # bazel/supported_python_versions.bzl.
+  python_version = (
+      session.python
+      if isinstance(session.python, str)
+      else os.environ.get("PYTHON_VERSION", "3.14")
+  )
+  version_und = python_version.replace(".", "_")
+  req_file = (
+      pathlib.Path(__file__).parent
+      / "requirements"
+      / f"requirements_{version_und}_latest.txt"
+  )
+  if not req_file.exists():
+    session.error(f"Requirements file {req_file} does not exist")
+  _install_and_run_smoke_tests(
+      session,
+      "cpu",
+      "-r",
+      str(req_file),
+      "--extra-index-url",
+      _TORCH_INDEXES["cpu"],
+      "--index-strategy",
+      "unsafe-best-match",  # Use pypi for non torch dependencies
   )
 
 

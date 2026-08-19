@@ -14,6 +14,10 @@
 
 """Module for single-sourcing the supported Python versions."""
 
+# When updating SUPPORTED_PYTHON_VERSIONS (or the latest supported version), also update:
+# - .github/workflows/build_wheel.yml
+# - noxfile.py
+# - requirements/lock_environments.sh
 SUPPORTED_PYTHON_VERSIONS = [
     "3.11",
     "3.12",

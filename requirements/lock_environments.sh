@@ -72,6 +72,26 @@ for version in "3.11" "3.12" "3.13" "3.14"; do
     --output-file "$REQUIREMENTS_CUDA_FILE"
 done
 
+# Full-environment lock for the latest supported Python version pinning the upper
+# bound of all dependencies.
+# Keep in sync with the latest version in bazel/supported_python_versions.bzl.
+LATEST_PYTHON_VERSION="3.14"
+latest_version_und=$(echo "$LATEST_PYTHON_VERSION" | tr '.' '_')
+REQUIREMENTS_FILE="requirements/requirements_${latest_version_und}_latest.txt"
+
+echo "Generating latest lock file for Python $LATEST_PYTHON_VERSION -> $REQUIREMENTS_FILE"
+if [ -f "$REQUIREMENTS_FILE" ]; then
+  rm "$REQUIREMENTS_FILE"
+fi
+
+uv pip compile pyproject.toml \
+  --all-extras \
+  --python-version "$LATEST_PYTHON_VERSION" \
+  --python-platform "$PYTHON_PLATFORM" \
+  --resolution highest \
+  --generate-hashes \
+  --output-file "$REQUIREMENTS_FILE"
+
 # Torch-only locks for the extra PyTorch versions the multi-ABI wheel ships a
 # glue for. The default version's torch is already pinned by the full locks
 # above (it comes from pyproject.toml), so only the extras need a standalone
