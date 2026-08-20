@@ -89,6 +89,25 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "env_vars_test",
+    srcs = ["env_vars_test.py"],
+    notest_oss = "subprocess spawning to set env vars timeout in oss",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":seed_test_utils",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal:testing",
+        "//torch_tpu/_internal/distributed:multiprocessing",
+    ],
+)
+
 torch_tpu_py_library(
     name = "module_registry",
     srcs = ["module_registry.py"],
