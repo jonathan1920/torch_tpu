@@ -549,7 +549,6 @@ torch_tpu_py_test(
         "ops_test_gpu_golden2.gz",
     ],
     main = "ops_test.py",
-    nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 50,
     tags = [
         "noasan",  # This test times out in asan mode.
@@ -588,7 +587,6 @@ torch_tpu_py_test(
         "ops_test_gpu_golden2.gz",
     ],
     main = "ops_test.py",
-    nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 10,
     tags = [
         "noasan",  # This test times out in asan mode.
@@ -623,7 +621,6 @@ torch_tpu_py_test(
         "ops_test_gpu_golden2.gz",
     ],
     main = "ops_test.py",
-    nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 1,  # This test has only 1 test case.
     tags = [
         "noasan",  # This test times out in asan mode.
@@ -662,7 +659,6 @@ torch_tpu_py_test(
         "ops_test_gpu_golden2.gz",
     ],
     main = "ops_test.py",
-    nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 1,
     tags = [
         "noasan",  # This test times out in asan mode.
