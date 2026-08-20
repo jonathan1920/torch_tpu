@@ -60,6 +60,50 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "torchcomm_tpu_test",
+    srcs = ["torchcomm_tpu_test.py"],
+    notest_oss = "fix hang in OSS",  # TODO
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu:_loader",
+        "//torch_tpu/_internal/distributed:torchcomm_tpu",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "torchcomm_multi_tpu_test",
+    srcs = ["torchcomm_multi_tpu_test.py"],
+    autoload = True,
+    notest_oss = "fix hang in OSS",  # TODO
+    shard_count = 7,
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "requires-tpu-v5lite:8",
+    ],
+    deps = [
+        ":distributed_utils",
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/distributed:multiprocessing",
+        "//torch_tpu/_internal/distributed:torchcomm_tpu",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+    ],
+)
+
+torch_tpu_py_test(
     name = "multi_tpu_test",
     srcs = ["multi_tpu_test.py"],
     autoload = True,

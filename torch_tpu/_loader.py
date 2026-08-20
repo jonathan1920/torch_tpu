@@ -34,6 +34,7 @@ from torch._dynamo.device_interface import register_interface_for_device
 from torch_tpu._internal import tracing
 from torch_tpu._internal.device import _device_module
 from torch_tpu._internal.device import _tpu_backend_config
+from torch_tpu._internal.distributed import torchcomm_tpu
 from torch_tpu._internal.distributed import tpu_distributed
 from torch_tpu._internal.utils import hardware
 
@@ -220,6 +221,10 @@ def _init_device_impl(device: str) -> torch.device:
     torch.distributed.Backend.register_backend(
         "tpu_dist", tpu_distributed.create_process_group, devices=["tpu"]
     )
+    torch.distributed.Backend.register_backend(
+        "tpu", tpu_distributed.create_process_group, devices=["tpu"]
+    )
+    torchcomm_tpu.register_torchcomms_tpu()
 
   # Register the Kineto backend using the internal C++ lifecycle module.
   # Renamed to '_internal_profiler' to avoid collision with the public

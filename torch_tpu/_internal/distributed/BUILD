@@ -85,6 +85,16 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_library(
+    name = "torchcomm_tpu",
+    srcs = ["torchcomm_tpu.py"],
+    deps = [
+        ":tpu_distributed",
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+    ],
+)
+
 # This library is not used directly, but is needed for go/cclean. Without
 # this rule, cclean complains that tpu_distributed.cc has no rule depending on it.
 torch_tpu_cc_library(
