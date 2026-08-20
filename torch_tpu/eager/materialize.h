@@ -110,6 +110,15 @@ absl::StatusOr<std::shared_ptr<EventSnapshot>> MaterializeStream(
     MaterializationReason reason,
     MaterializationMode mode = MaterializationMode::kSplitGraph);
 
+// Materializes all live tensors on the current stream.
+// This is an async operation; after the live tensor state has been evaluated,
+// and all work on the stream has been enqueued for materialization, the
+// snapshot is returned and can be queried or awaited to determine when the
+// materialization is complete.
+absl::StatusOr<std::shared_ptr<EventSnapshot>> MaterializeCurrentStream(
+    MaterializationReason reason,
+    MaterializationMode mode = MaterializationMode::kSplitGraph);
+
 // Materializes all live tensors on the given device.
 // This is an async operation; after the live tensor state has been evaluated,
 // and all work on the device has been enqueued for materialization, one

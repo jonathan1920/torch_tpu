@@ -655,4 +655,10 @@ absl::StatusOr<std::vector<std::shared_ptr<EventSnapshot>>> MaterializeDevice(
   return future.Await();
 }
 
+absl::StatusOr<std::shared_ptr<EventSnapshot>> MaterializeCurrentStream(
+    MaterializationReason reason, MaterializationMode mode) {
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+  return MaterializeStream(device_index, stream_id, reason, mode);
+}
+
 }  // namespace torch_tpu
