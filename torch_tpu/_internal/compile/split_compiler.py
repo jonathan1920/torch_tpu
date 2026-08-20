@@ -263,11 +263,6 @@ class _SplitCompiledExecutable(CompiledArtifact):
 
   def __init__(self, split_gm: torch.fx.GraphModule):
     self._split_gm = split_gm
-    self._updates_default_generator_state = any(
-        module.submod.updates_default_generator_state()  # pyrefly: ignore[missing-attribute]
-        for module in self._split_gm.modules()
-        if isinstance(module, _WrapperModule)
-    )
 
   def __call__(self, *args: Any) -> Any:
     if len(args) == 1 and isinstance(args[0], (list, tuple)):
@@ -327,7 +322,33 @@ class _SplitCompiledExecutable(CompiledArtifact):
     pass
 
   def updates_default_generator_state(self) -> bool:
-    return self._updates_default_generator_state
+    return any(
+        module.submod.updates_default_generator_state()  # pyrefly: ignore[missing-attribute]
+        for module in self._split_gm.modules()
+        if isinstance(module, _WrapperModule)
+    )
+
+  def resolve(self) -> None:
+    """Waits for any pending background compilation in submodules to complete."""
+    for module in self._split_gm.modules():
+      if isinstance(module, _WrapperModule):
+        resolve_fn = getattr(module.submod, "resolve", None) or getattr(
+            module.submod, "_resolve", None
+        )
+        if callable(resolve_fn):
+          resolve_fn()
+
+  def _resolve(self) -> None:
+    self.resolve()
+
+  @property
+  def is_resolved(self) -> bool:
+    """Returns True if all submodule compilations are resolved."""
+    return all(
+        getattr(module.submod, "is_resolved", True)
+        for module in self._split_gm.modules()
+        if isinstance(module, _WrapperModule)
+    )
 
 
 def _unpickle_split_compiled_executable(

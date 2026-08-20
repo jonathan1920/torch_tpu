@@ -91,11 +91,9 @@ class CompiledArtifact(abc.ABC, OutputCode):
     """Returns True if the compilation is complete and resolved."""
     return True
 
-
-@abc.abstractmethod
-def updates_default_generator_state(self) -> bool:
-  """Returns whether the executable updates the default generator state."""
-  pass
+  def updates_default_generator_state(self) -> bool:
+    """Returns whether the executable updates the default generator state."""
+    return False
 
 
 def _unpickle_compiled_executable(

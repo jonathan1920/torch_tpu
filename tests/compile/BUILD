@@ -523,6 +523,50 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "async_compile_test",
+    srcs = ["async_compile_test.py"],
+    tags = [
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal:testing",
+        "//torch_tpu/_internal/compile",
+        "//torch_tpu/_internal/compile:compiler",
+        "//torch_tpu/_internal/utils:test_utils",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "async_compile_benchmark_test",
+    timeout = "eternal",
+    srcs = ["async_compile_benchmark_test.py"],
+    notap = "Slow benchmark test.",
+    tags = [
+        "cpu:8",
+        "nofastbuild",  # Measures performance.
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:module_registry",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal:testing",
+        "//torch_tpu/_internal/compile",
+        "//torch_tpu/_internal/profiler:xprof_adapter",
+    ],
+)
+
+torch_tpu_py_test(
     name = "async_compiled_artifact_test",
     srcs = ["async_compiled_artifact_test.py"],
     deps = [

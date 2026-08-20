@@ -45,6 +45,7 @@ from torch_tpu._internal.compile.torch_tpu_compiled_executable import AsyncCompi
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import CompiledArtifact
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import NoOpCompiledArtifact
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import TorchTpuCompiledExecutable
+from torch_tpu._internal.profiler import xprof_adapter
 
 
 @dataclasses.dataclass
@@ -210,109 +211,110 @@ class StaticCompiler(Compiler):
       dynamic_outputs: Sequence[bool] | None = None,
       donated_inputs: Sequence[int] | None = None,
   ) -> CompiledArtifact:
-    tracing_enabled = _is_tracing_enabled()
+    with xprof_adapter.TraceMe("StaticCompiler._compile"):
+      tracing_enabled = _is_tracing_enabled()
 
-    # AOT autograd will trace the model with FakeTensorMode enabled. This
-    # converts all tensors to FakeTensors which do not have valid storage to
-    # avoid computation.
+      # AOT autograd will trace the model with FakeTensorMode enabled. This
+      # converts all tensors to FakeTensors which do not have valid storage to
+      # avoid computation.
 
-    # TorchTPU tracing requires all tensors to have valid storage, so is not
-    # compatible with FakeTensorMode. This applies to placeholder tensors as
-    # well, fake-tensor will attempt to convert our placeholder tensors into
-    # FakeTensors before continuing eager tracing.
-    with unset_fake_temporarily():
-      # Convert example_inputs to placeholders. This is done to:
-      # (1) Prevent the unintentional compilation of deferred operations.
-      #     placeholders will error.
-      # (2) Act as TPU-compatible FakeTensors, so that tracing does not depend
-      #     on tensor data.
-      placeholder_args = []
-      for i, arg in enumerate(example_inputs):
-        if isinstance(arg, torch.Tensor):
-          arg_bounds = bounds[i] if bounds is not None else None
-          if arg_bounds is not None:
-            ph = tpu_torch_compile.dynamic_placeholder(
-                arg.shape,
-                arg.dtype,
-                arg_bounds,
-                arg.requires_grad,
-            )
+      # TorchTPU tracing requires all tensors to have valid storage, so is not
+      # compatible with FakeTensorMode. This applies to placeholder tensors as
+      # well, fake-tensor will attempt to convert our placeholder tensors into
+      # FakeTensors before continuing eager tracing.
+      with unset_fake_temporarily():
+        # Convert example_inputs to placeholders. This is done to:
+        # (1) Prevent the unintentional compilation of deferred operations.
+        #     placeholders will error.
+        # (2) Act as TPU-compatible FakeTensors, so that tracing does not depend
+        #     on tensor data.
+        placeholder_args = []
+        for i, arg in enumerate(example_inputs):
+          if isinstance(arg, torch.Tensor):
+            arg_bounds = bounds[i] if bounds is not None else None
+            if arg_bounds is not None:
+              ph = tpu_torch_compile.dynamic_placeholder(
+                  arg.shape,
+                  arg.dtype,
+                  arg_bounds,
+                  arg.requires_grad,
+              )
+            else:
+              ph = tpu_torch_compile.placeholder_like(arg)
+            placeholder_args.append(ph)
           else:
-            ph = tpu_torch_compile.placeholder_like(arg)
-          placeholder_args.append(ph)
-        else:
-          placeholder_args.append(arg)
+            placeholder_args.append(arg)
 
-      if argument_layouts is None:
-        extracted_layouts = []
-        for val in example_inputs:
-          if (
-              isinstance(val, torch.Tensor)
-              and val.device.type == "tpu"
-              and not isinstance(val, FakeTensor)
-          ):
-            layout = tpu_torch_compile.get_device_layout_if_materialized(val)
-            if layout is not None:
-              extracted_layouts.append(layout[0])
+        if argument_layouts is None:
+          extracted_layouts = []
+          for val in example_inputs:
+            if (
+                isinstance(val, torch.Tensor)
+                and val.device.type == "tpu"
+                and not isinstance(val, FakeTensor)
+            ):
+              layout = tpu_torch_compile.get_device_layout_if_materialized(val)
+              if layout is not None:
+                extracted_layouts.append(layout[0])
+              else:
+                extracted_layouts.append([])
             else:
               extracted_layouts.append([])
-          else:
-            extracted_layouts.append([])
-        if any(extracted_layouts):
-          argument_layouts = extracted_layouts
+          if any(extracted_layouts):
+            argument_layouts = extracted_layouts
 
-      with dynamo_timed("torchtpu_fx_to_mlir"):
-        exported_mlir = torch_tpu_export.fx_to_mlir(
-            graph_module,
-            placeholder_args,
-            build_mlir_module=(tracing_enabled or self._debug),
-            use_stablehlo_bounds=self._use_stablehlo_bounds,
-            argument_layouts=argument_layouts,  # pyrefly: ignore[bad-argument-type]
-            dynamic_outputs=dynamic_outputs,
-            donated_inputs=donated_inputs,
+        with dynamo_timed("torchtpu_fx_to_mlir"):
+          exported_mlir = torch_tpu_export.fx_to_mlir(
+              graph_module,
+              placeholder_args,
+              build_mlir_module=(tracing_enabled or self._debug),
+              use_stablehlo_bounds=self._use_stablehlo_bounds,
+              argument_layouts=argument_layouts,  # pyrefly: ignore[bad-argument-type]
+              dynamic_outputs=dynamic_outputs,
+              donated_inputs=donated_inputs,
+          )
+
+      if exported_mlir.is_noop:
+        # The FX graph produced no computed output tensors (e.g. a
+        # fullgraph=False seam between two graph breaks). There is nothing to
+        # compile; return a callable that reconstructs the graph's (all-None /
+        # passthrough) output and runs nothing on device, rather than compiling a
+        # trivial executable.
+        return NoOpCompiledArtifact(exported_mlir.reconstruct_fx_outputs_fn)
+
+      mlir_module = exported_mlir.module
+
+      # Emit StableHLO artifact for tlparse when TORCH_TRACE is set.
+      if tracing_enabled and mlir_module is not None:
+        mlir_text = tpu_torch_compile.serialize_mlir_text(
+            mlir_module, enable_debug_info=self._debug
+        )
+        trace_structured(
+            "artifact",
+            metadata_fn=lambda: {
+                "name": "torchtpu_stablehlo_graph",
+                "encoding": "string",
+            },
+            payload_fn=lambda: mlir_text,
+            expect_trace_id=True,
         )
 
-    if exported_mlir.is_noop:
-      # The FX graph produced no computed output tensors (e.g. a
-      # fullgraph=False seam between two graph breaks). There is nothing to
-      # compile; return a callable that reconstructs the graph's (all-None /
-      # passthrough) output and runs nothing on device, rather than compiling a
-      # trivial executable.
-      return NoOpCompiledArtifact(exported_mlir.reconstruct_fx_outputs_fn)
-
-    mlir_module = exported_mlir.module
-
-    # Emit StableHLO artifact for tlparse when TORCH_TRACE is set.
-    if tracing_enabled and mlir_module is not None:
-      mlir_text = tpu_torch_compile.serialize_mlir_text(
-          mlir_module, enable_debug_info=self._debug
-      )
-      trace_structured(
-          "artifact",
-          metadata_fn=lambda: {
-              "name": "torchtpu_stablehlo_graph",
-              "encoding": "string",
-          },
-          payload_fn=lambda: mlir_text,
-          expect_trace_id=True,
+      executable = TorchTpuCompiledExecutable(
+          executable=exported_mlir.executable,
+          reconstruct_fx_outputs_fn=exported_mlir.reconstruct_fx_outputs_fn,
+          updates_default_generator_state=exported_mlir.updates_default_generator_state,
+          dynamic_outputs=exported_mlir.dynamic_outputs,
+          unique_output_indices=exported_mlir.unique_output_indices,
       )
 
-    executable = TorchTpuCompiledExecutable(
-        executable=exported_mlir.executable,
-        reconstruct_fx_outputs_fn=exported_mlir.reconstruct_fx_outputs_fn,
-        updates_default_generator_state=exported_mlir.updates_default_generator_state,
-        dynamic_outputs=exported_mlir.dynamic_outputs,
-        unique_output_indices=exported_mlir.unique_output_indices,
-    )
+      if self._debug and mlir_module is not None:
+        # Avoid print_readable() as it includes verbose original code lines.
+        executable.graph_module_debug_str = str(graph_module.code)
+        executable.mlir_text = tpu_torch_compile.serialize_mlir_text(
+            mlir_module, enable_debug_info=True
+        )
 
-    if self._debug and mlir_module is not None:
-      # Avoid print_readable() as it includes verbose original code lines.
-      executable.graph_module_debug_str = str(graph_module.code)
-      executable.mlir_text = tpu_torch_compile.serialize_mlir_text(
-          mlir_module, enable_debug_info=True
-      )
-
-    return executable
+      return executable
 
   def __call__(
       self,

@@ -36,6 +36,7 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/compile/fx_passes:mark_activation_checkpoints",
         "//torch_tpu/_internal/compile/fx_passes:mark_embedded_constants",
         "//torch_tpu/_internal/export",
+        "//torch_tpu/_internal/profiler:xprof_adapter",
     ],
 )
 
@@ -107,6 +108,7 @@ torch_tpu_py_library(
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile/dynamic:compiler",
+        "//torch_tpu/_internal/profiler:xprof_adapter",
         "//torch_tpu/_internal/utils",
     ],
 )
@@ -130,6 +132,7 @@ torch_tpu_cc_library(
         "compiled_mode.h",
     ],
     deps = [
+        "//shims/pybind11",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
@@ -168,6 +171,7 @@ torch_tpu_cc_library(
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:stablehlo_serialization",
         "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/pjrt:maybe_owning_mlir_module",
         "@xla//xla/pjrt:pjrt_client",

@@ -31,9 +31,11 @@ The `torch.compile()` function has the following relevant arguments:
 """
 
 from collections.abc import Callable, Iterator, Sequence
+import concurrent.futures
 import contextlib
 import functools
 import hashlib
+import threading
 from typing import Any, TypeAlias
 
 from absl import logging
@@ -49,6 +51,7 @@ from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import split_compiler
 from torch_tpu._internal.compile.dynamic import compiler as dynamic_compiler
 from torch_tpu._internal.utils import utils
+from torch_tpu._internal.profiler import xprof_adapter
 
 _ExpectedTypes: TypeAlias = torch.Tensor | torch.nn.Module | torch.SymInt
 
@@ -256,12 +259,14 @@ def _log_gm_and_inputs(
 
 def make_backend_compiler(
     example_inputs: Sequence[Any],
+    async_compile: bool = False,
     debug: bool = False,
 ) -> split_compiler.SplitCompiler:
   """Creates a SplitCompiler configured for static or dynamic compilation.
 
   Args:
     example_inputs: Example inputs to inspect for dynamic SymInts.
+    async_compile: If True, executes XLA compilation asynchronously.
     debug: If True, enable debug mode on the base compiler.
 
   Returns:
@@ -271,9 +276,102 @@ def make_backend_compiler(
   if has_dynamic_symints:
     base_compiler = dynamic_compiler.DynamicCompiler(debug=debug)
   else:
-    base_compiler = compiler.StaticCompiler(debug=debug)
+    base_compiler = compiler.StaticCompiler(
+        async_compile=async_compile, debug=debug
+    )
 
   return split_compiler.SplitCompiler(base_compiler)
+
+
+class _CacheSavesManager:
+  """Manages asynchronously saving to the AOTAutograd cache in a thread-safe manner."""
+
+  def __init__(self):
+    self._cache_save_executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="aot_cache_saver"
+    )
+    self._cache_save_lock = threading.RLock()
+    self._pending_cache_saves: set[concurrent.futures.Future[Any]] = set()
+
+  def _get_futures(self) -> Sequence[concurrent.futures.Future]:
+    with self._cache_save_lock:
+      return list(self._pending_cache_saves)
+
+  def _add(self, f: concurrent.futures.Future) -> None:
+    with self._cache_save_lock:
+      self._pending_cache_saves.add(f)
+
+  def _discard(self, f: concurrent.futures.Future) -> None:
+    with self._cache_save_lock:
+      self._pending_cache_saves.discard(f)
+
+  def _difference_update(
+      self, futures: Sequence[concurrent.futures.Future]
+  ) -> None:
+    with self._cache_save_lock:
+      self._pending_cache_saves.difference_update(futures)
+
+  def flush(self) -> None:
+    """Waits for all pending asynchronous AOTAutograd cache saves to complete."""
+    futures = self._get_futures()
+    if futures:
+      concurrent.futures.wait(futures)
+      self._difference_update(futures)
+
+  @contextlib.contextmanager
+  def async_aot_cache_saves(self) -> Iterator[None]:
+    """Offloads AOTAutogradCache.save to a background thread during async compile."""
+    cache_type = _autograd_cache.AOTAutogradCache
+    with self._cache_save_lock:
+      original_save = cache_type.save
+
+      def async_save(*args: Any, **kwargs: Any) -> None:
+        def _safe_save() -> None:
+          try:
+            original_save(*args, **kwargs)
+          except Exception as e:  # pylint: disable=broad-exception-caught
+            logging.exception(
+                "Error saving AOTAutograd cache asynchronously: %s", e
+            )
+
+        fut = self._cache_save_executor.submit(_safe_save)
+        self._add(fut)
+        fut.add_done_callback(self._discard)
+
+      cache_type.save = staticmethod(async_save)
+      try:
+        yield
+      finally:
+        cache_type.save = staticmethod(original_save)
+
+
+_cache_saves_manager: _CacheSavesManager = _CacheSavesManager()
+
+
+# pylint: disable=g-bad-exception-name
+class AsyncCompilationSubmitted(Exception):
+  """Control-flow signal to force AOTAutograd to skip execution after compile.
+
+  This prevents blocking immediately following submission, which would negate
+  any benefits of asynchronous compilation.
+
+  Attributes:
+    artifact: The CompiledArtifact (or AsyncCompiledArtifact) produced by the
+      compilation that was just submitted.
+  """
+
+  def __init__(self, artifact: Any = None):
+    super().__init__()
+    self.artifact = artifact
+
+  def resolve(self) -> None:
+    """Waits for the pending background compilation to complete."""
+    if self.artifact is not None:
+      resolve_fn = getattr(self.artifact, "resolve", None) or getattr(
+          self.artifact, "_resolve", None
+      )
+      if callable(resolve_fn):
+        resolve_fn()
 
 
 class TpuBackend:
@@ -312,6 +410,9 @@ class TpuBackend:
   ) -> Callable[
       [torch.fx.GraphModule, Sequence[torch.Tensor]], Callable[..., Any]
   ]:
+    options = kwargs.get("options") or {}
+    async_compile = options.get("async_compile", False)
+
     # Dynamism support is currently experimental.
     if not self._dynamism:
       _raise_on_symint(example_inputs)
@@ -324,7 +425,9 @@ class TpuBackend:
 
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
 
-    compiler_instance = make_backend_compiler(example_inputs, debug=self._debug)
+    compiler_instance = make_backend_compiler(
+        example_inputs, async_compile=async_compile, debug=self._debug
+    )
     compiler_instance.execute_pre_grad_passes(graph_module)
 
     # DynamicCompiler artifacts are not pickleable yet, so only static
@@ -350,20 +453,44 @@ class TpuBackend:
         self._compile_graph_module, compiler_instance, False
     )
 
+    save_context = (
+        _cache_saves_manager.async_aot_cache_saves()
+        if async_compile
+        else contextlib.nullcontext()
+    )
     with _serialization_context(enable_serialization) as captured_entry:
-      result = aot_autograd(
-          fw_compiler=fw_compiler,
-          bw_compiler=bw_compiler,
-          keep_inference_input_mutations=False,
-      )(
-          graph_module, example_inputs
-      )  # pytype: disable=wrong-arg-types
+      with save_context:
+        result = aot_autograd(
+            fw_compiler=fw_compiler,
+            bw_compiler=bw_compiler,
+            keep_inference_input_mutations=False,
+        )(
+            graph_module, example_inputs
+        )  # pytype: disable=wrong-arg-types
+
+      # The following section allows us to avoid blocking within Dynamo on
+      # first execution following compilation when `async_compile=True`. This
+      # effectively makes the first execution turn into a compile warmup.
+      is_warmup_execution = True
+
+      def skip_execution_on_warmup_if_async(*args: Any, **kwargs: Any) -> Any:
+        nonlocal is_warmup_execution
+        if async_compile and is_warmup_execution:
+          is_warmup_execution = False
+          artifact = (
+              self._compiled_executables[-1]
+              if self._compiled_executables
+              else None
+          )
+          raise AsyncCompilationSubmitted(artifact)
+        return result(*args, **kwargs)
 
       if captured_entry is not None and captured_entry[0] is not None:
         entry = captured_entry[0]
         result.serialize = lambda: entry  # pyrefly: ignore[missing-attribute]
+        skip_execution_on_warmup_if_async.serialize = lambda: entry  # pyrefly: ignore[missing-attribute]
 
-      return result
+      return skip_execution_on_warmup_if_async
 
   def _compile_graph_module(
       self,
@@ -402,3 +529,102 @@ class TpuBackend:
     self._compiled_executables.append(executable)
 
     return executable
+
+
+def resolve_compilations(artifacts: Sequence[Any]) -> int:
+  """Waits for a sequence of pending compilation artifacts to finish compiling.
+
+  Args:
+    artifacts: A sequence of compilation artifacts or AsyncCompilationSubmitted
+      exceptions.
+
+  Returns:
+    The number of compilation artifacts that were resolved.
+  """
+  resolved_count = 0
+  for item in artifacts:
+    if isinstance(item, AsyncCompilationSubmitted):
+      item.resolve()
+      resolved_count += 1
+    else:
+      resolve_fn = getattr(item, "resolve", None) or getattr(
+          item, "_resolve", None
+      )
+      if callable(resolve_fn):
+        resolve_fn()
+        resolved_count += 1
+  _cache_saves_manager.flush()
+  return resolved_count
+
+
+def _unpack_warmup_args(
+    args: Any,
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+  """Unpacks warmup argument item into positional tuple and keyword dictionary."""
+  if isinstance(args, tuple):
+    if (
+        len(args) == 2
+        and isinstance(args[0], tuple)
+        and isinstance(args[1], dict)
+    ):
+      return args[0], args[1]
+    return args, {}
+  elif isinstance(args, dict):
+    return (), args
+  elif isinstance(args, list):
+    return (args,), {}
+  else:
+    return (args,), {}
+
+
+def async_compile(
+    fn: Callable[..., Any],
+    warmup_inputs: Sequence[Any],
+    *,
+    no_grad: bool = True,
+    **backend_kwargs: Any,
+) -> Callable[..., Any]:
+  """Compiles `fn` across multiple static shapes asynchronously, overlapping
+
+  Dynamo tracing with XLA compilation.
+
+  Args:
+    fn: The PyTorch callable or nn.Module to compile.
+    warmup_inputs: A sequence of argument tuples or keyword dictionaries
+      representing the different static shapes/buckets to compile. Note:
+      multiple positional arguments must be passed as tuples (e.g., `[(x, y),
+      (z, w)]`); passing a list (e.g., `[[t1, t2]]`) is treated as a single
+      positional list argument `fn([t1, t2])`.
+    no_grad: Whether to wrap execution with `torch.no_grad()`. Defaults to True
+      for inference workloads. Set to False when gradients are required.
+    **backend_kwargs: Additional keyword arguments passed to `TpuBackend`.
+
+  Returns:
+    The compiled callable ready for execution.
+  """
+  compiled = torch.compile(
+      fn,
+      backend="tpu",
+      fullgraph=True,
+      dynamic=False,
+      options={
+          "async_compile": True,
+          **backend_kwargs,
+      },
+  )
+  if no_grad:
+    compiled = torch.no_grad()(compiled)
+
+  artifacts = []
+  for args in warmup_inputs:
+    with xprof_adapter.TraceMe("_backend.async_compile_warmup"):
+      pos_args, kw_args = _unpack_warmup_args(args)
+      try:
+        compiled(*pos_args, **kw_args)
+      except AsyncCompilationSubmitted as e:
+        if e.artifact is not None:
+          artifacts.append(e.artifact)
+
+  # blocking
+  resolve_compilations(artifacts)
+  return compiled

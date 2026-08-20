@@ -288,7 +288,7 @@ class RandomOpsTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
 
     self.assertNotEmpty(backend._compiled_executables)
     for executable in backend._compiled_executables:
-      self.assertFalse(executable._updates_default_generator_state)
+      self.assertFalse(executable.updates_default_generator_state())
 
   def test_eager_vs_compile_numerics(self):
     device = torch.device("tpu")

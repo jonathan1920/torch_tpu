@@ -658,6 +658,7 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
     CompilationSpec spec, std::string* absl_nullable out_mlir_text,
     bool use_stablehlo_bounds, absl::Span<const Indices> argument_layouts,
     absl::Span<const int64_t> donated_inputs) const {
+  tsl::profiler::TraceMe trace_await("Traversal::Compile");
   if (HasSparseCoreOp()) {
     absl::StatusOr<int> status =
         PjrtBackend::GetInstance().GetGlobalDeviceCount();

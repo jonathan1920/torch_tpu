@@ -19,6 +19,7 @@ import contextlib
 import copy
 import dataclasses
 import functools
+import threading
 from typing import Any, TypeAlias
 
 from absl import logging
@@ -27,8 +28,10 @@ import torch.export
 import torch.utils._pytree as pytree
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.profiler import xprof_adapter
 
 EagerMode: TypeAlias = execution_mode.EagerMode
+_fx_to_mlir_lock = threading.RLock()
 
 __all__ = [
     "ExportedMlir",
@@ -505,95 +508,107 @@ def fx_to_mlir(
     An `ExportedMlir` object containing the MLIR representation of the graph and
     FX output reconstruction information.
   """
-  # Filter out non-tensor arguments.
-  argument_tensors = [a for a in args if isinstance(a, torch.Tensor)]
-  if argument_layouts is not None:
-    assert len(argument_layouts) == len(argument_tensors), (
-        f"argument_layouts size mismatch: expected {len(argument_tensors)}, got"
-        f" {len(argument_layouts)}"
-    )
-    internal_layouts = list(argument_layouts)
-  else:
-    internal_layouts = []
-
-  # Run the module through the EagerLikeFxInterpreter with MLIR location
-  # tracebacks enabled by default so that the MLIR we generate has file
-  # location info.
-  device = torch.accelerator.current_accelerator()
-  device_module = getattr(torch, device.type)
-
-  # Add the default RNG generator for the device to the args.
-  argument_generators = [
-      arg for arg in args if isinstance(arg, torch.Generator)
-  ] + [device_module.default_generators[device.index or 0]]
-
-  orig_generator_states = {}
-  for gen in argument_generators:
-    orig_generator_states[gen] = gen.graphsafe_get_state().clone_state()
-
-    # Plumb a placeholder tensor to trace the generator's device rng state.
-    # This intercepts the C++ backend's state so that random operations
-    # are correctly chained against this placeholder during graph capture.
-    device_state_tensor = tpu_torch_compile.get_device_state_tensor(gen)
-    begin_state_tensor = tpu_torch_compile.placeholder_like(device_state_tensor)
-    tpu_torch_compile.set_device_state_tensor(gen, begin_state_tensor)
-
-    # Add placeholder to the argument tensors for traversal.
-    argument_tensors.append(begin_state_tensor)
-    if internal_layouts:
-      internal_layouts.append([])
-
-  try:
-    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
-      # We clone the args so that inplace updates do not overwrite the
-      # placeholder args. These copies will be removed in the compiled code so
-      # there is no performance impact.
-      # Remove once b/491716758 is implemented.
-      cloned_args = (
-          x.clone() if isinstance(x, torch.Tensor) else x for x in args
+  with xprof_adapter.TraceMe("export.fx_to_mlir"):
+    # Filter out non-tensor arguments.
+    argument_tensors = [a for a in args if isinstance(a, torch.Tensor)]
+    if argument_layouts is not None:
+      assert len(argument_layouts) == len(argument_tensors), (
+          f"argument_layouts size mismatch: expected {len(argument_tensors)},"
+          f" got {len(argument_layouts)}"
       )
-      fx_outputs = EagerLikeFxInterpreter(module).run(*cloned_args)
+      internal_layouts = list(argument_layouts)
+    else:
+      internal_layouts = []
 
-    (
-        result_tensors,
-        reconstruct_fx_outputs_fn,
-        deduped_dynamic_outputs,
-        unique_output_indices,
-    ) = _process_fx_outputs(module, fx_outputs, dynamic_outputs=dynamic_outputs)
+    with _fx_to_mlir_lock:
+      # Run the module through the EagerLikeFxInterpreter with MLIR location
+      # tracebacks enabled by default so that the MLIR we generate has file
+      # location info.
+      device = torch.accelerator.current_accelerator()
+      device_module = getattr(torch, device.type)
 
-    # Plumb the final state tensor as the last output of the graph so that
-    # the updated RNG state can be returned from the executable and persisted.
-    for gen in argument_generators:
-      end_state_tensor = tpu_torch_compile.get_device_state_tensor(gen)
-      result_tensors.append(end_state_tensor)
+      # Add the default RNG generator for the device to the args.
+      argument_generators = [
+          arg for arg in args if isinstance(arg, torch.Generator)
+      ] + [device_module.default_generators[device.index or 0]]
 
-    # Check if the module updates the default generator state.
-    begin_default_state_tensor = argument_tensors[-1]
-    end_default_state_tensor = result_tensors[-1]
-    updates_default_generator_state = (
-        begin_default_state_tensor.data_ptr()
-        != end_default_state_tensor.data_ptr()
-    )
-    if not updates_default_generator_state:
-      if len(result_tensors) > 1:
-        # Remove the default generator state tensor from the arguments and
-        # outputs since it is not used.
-        argument_tensors.pop()
-        result_tensors.pop()
-        if internal_layouts:
-          internal_layouts.pop()
-      else:
-        # No RNG update and nothing to compute: this graph is a no-op.
-        return ExportedMlir(
-            module=None,
-            executable=None,
-            mlir_result_tensors=[],
-            reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
-            updates_default_generator_state=False,
-            is_noop=True,
-            dynamic_outputs=[],
-            unique_output_indices=[],
+      orig_generator_states = {}
+      for gen in argument_generators:
+        orig_generator_states[gen] = gen.graphsafe_get_state().clone_state()
+
+        # Plumb a placeholder tensor to trace the generator's device rng state.
+        # This intercepts the C++ backend's state so that random operations
+        # are correctly chained against this placeholder during graph capture.
+        device_state_tensor = tpu_torch_compile.get_device_state_tensor(gen)
+        begin_state_tensor = tpu_torch_compile.placeholder_like(
+            device_state_tensor
         )
+        tpu_torch_compile.set_device_state_tensor(gen, begin_state_tensor)
+
+        # Add placeholder to the argument tensors for traversal.
+        argument_tensors.append(begin_state_tensor)
+        if internal_layouts:
+          internal_layouts.append([])
+
+      try:
+        with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+          # We clone the args so that inplace updates do not overwrite the
+          # placeholder args. These copies will be removed in the compiled code so
+          # there is no performance impact.
+          # Remove once b/491716758 is implemented.
+          cloned_args = (
+              x.clone() if isinstance(x, torch.Tensor) else x for x in args
+          )
+          with xprof_adapter.TraceMe("EagerLikeFxInterpreter.run"):
+            fx_outputs = EagerLikeFxInterpreter(module).run(*cloned_args)
+
+        (
+            result_tensors,
+            reconstruct_fx_outputs_fn,
+            deduped_dynamic_outputs,
+            unique_output_indices,
+        ) = _process_fx_outputs(
+            module, fx_outputs, dynamic_outputs=dynamic_outputs
+        )
+
+        # Plumb the final state tensor as the last output of the graph so that
+        # the updated RNG state can be returned from the executable and persisted.
+        for gen in argument_generators:
+          end_state_tensor = tpu_torch_compile.get_device_state_tensor(gen)
+          result_tensors.append(end_state_tensor)
+
+        # Check if the module updates the default generator state.
+        begin_default_state_tensor = argument_tensors[-1]
+        end_default_state_tensor = result_tensors[-1]
+        updates_default_generator_state = (
+            begin_default_state_tensor.data_ptr()
+            != end_default_state_tensor.data_ptr()
+        )
+        if not updates_default_generator_state:
+          if len(result_tensors) > 1:
+            # Remove the default generator state tensor from the arguments and
+            # outputs since it is not used.
+            argument_tensors.pop()
+            result_tensors.pop()
+            if internal_layouts:
+              internal_layouts.pop()
+          else:
+            # No RNG update and nothing to compute: this graph is a no-op.
+            return ExportedMlir(
+                module=None,
+                executable=None,
+                mlir_result_tensors=[],
+                reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
+                updates_default_generator_state=False,
+                is_noop=True,
+                dynamic_outputs=[],
+                unique_output_indices=[],
+            )
+
+      finally:
+        # Restore original generator states.
+        for gen in argument_generators:
+          gen.graphsafe_set_state(orig_generator_states[gen])
 
     compile_result = tpu_torch_compile.traverse_and_compile(
         result_tensors=result_tensors,
@@ -605,17 +620,13 @@ def fx_to_mlir(
         if donated_inputs is not None
         else [],
     )
-  finally:
-    # Restore original generator states.
-    for gen in argument_generators:
-      gen.graphsafe_set_state(orig_generator_states[gen])
 
-  return ExportedMlir(
-      module=compile_result.module,
-      executable=compile_result.executable,
-      mlir_result_tensors=result_tensors,
-      reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
-      updates_default_generator_state=updates_default_generator_state,
-      dynamic_outputs=deduped_dynamic_outputs,
-      unique_output_indices=unique_output_indices,
-  )
+    return ExportedMlir(
+        module=compile_result.module,
+        executable=compile_result.executable,
+        mlir_result_tensors=result_tensors,
+        reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
+        updates_default_generator_state=updates_default_generator_state,
+        dynamic_outputs=deduped_dynamic_outputs,
+        unique_output_indices=unique_output_indices,
+    )
