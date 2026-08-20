@@ -21,6 +21,9 @@ import functools
 import json
 from typing import Any
 
+import portpicker
+import torch.distributed as dist
+
 
 class ProcessGroupCollectiveCount:
   """Holds collective counts for a process group.
@@ -401,6 +404,41 @@ class CollectiveHandshakeRequest:
         executable_fingerprint=obj["executable_fingerprint"],
         rank=obj["rank"],
     )
+
+
+def _select_handshake_port(current_rank: int, coordinator_rank: int) -> int:
+  """Selects the port for the Handshake server.
+
+  Port selection strategy:
+  1. If the default process group is initialized, the coordinator rank
+     dynamically finds a free local port using portpicker. The coordinator rank
+     broadcasts the chosen port.
+  2. Otherwise, we raise a `RuntimeError`.
+
+  Args:
+    current_rank: The rank of the current process.
+    coordinator_rank: The rank of the coordinator process.
+
+  Returns:
+    The selected port for the Handshake server.
+
+  Raises:
+    RuntimeError: If no port can be selected.
+  """
+  if not dist.is_initialized():
+    raise RuntimeError(
+        "the default process group is not initialized when a collective"
+        " operation was invoked, please initialize the distributed process"
+        " group by calling `torch.distributed.dist.init_process_group()`."
+    )
+
+  if current_rank == coordinator_rank:
+    port = portpicker.pick_unused_port()
+    port_list = [port]
+  else:
+    port_list = [0]
+  dist.broadcast_object_list(port_list, src=coordinator_rank)
+  return port_list[0]
 
 
 class _CollectiveHandshakeConsensus:

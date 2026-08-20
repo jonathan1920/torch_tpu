@@ -40,6 +40,10 @@ torch_tpu_py_library(
 torch_tpu_py_library(
     name = "handshake",
     srcs = ["handshake.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "@pypi//portpicker",
+    ],
 )
 
 torch_tpu_py_library(

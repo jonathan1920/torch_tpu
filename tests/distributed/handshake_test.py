@@ -16,8 +16,11 @@
 
 import asyncio
 import json
+from typing import Any
+from unittest import mock
 
 from absl.testing import absltest
+import torch.distributed as dist
 from torch_tpu._internal.distributed import handshake
 from tests import seed_test_utils
 
@@ -464,6 +467,46 @@ class CollectiveHandshakeConsensusTest(seed_test_utils.RepeatableTest):
       self.assertEqual(result, "delayed_req")
 
     asyncio.run(_test())
+
+
+class SelectHandshakePortTest(seed_test_utils.RepeatableTest):
+  """Unit tests for _select_handshake_port."""
+
+  def test_select_handshake_port_exception(self) -> None:
+    """Tests that RuntimeError is raised when process group is not initialized."""
+    with mock.patch.object(dist, "is_initialized", return_value=False):
+      with self.assertRaisesRegex(
+          RuntimeError, "the default process group is not initialized"
+      ):
+        handshake._select_handshake_port(current_rank=0, coordinator_rank=0)
+
+  @mock.patch("portpicker.pick_unused_port", return_value=12345)
+  @mock.patch.object(dist, "broadcast_object_list")
+  @mock.patch.object(dist, "is_initialized", return_value=True)
+  def test_select_handshake_port_coordinator(
+      self, mock_init: Any, mock_broadcast: Any, mock_pick: Any
+  ) -> None:
+    del mock_init  # Unused.
+    port = handshake._select_handshake_port(current_rank=0, coordinator_rank=0)
+    self.assertEqual(port, 12345)
+    mock_pick.assert_called_once()
+    mock_broadcast.assert_called_once_with([12345], src=0)
+
+  @mock.patch.object(dist, "is_initialized", return_value=True)
+  def test_select_handshake_port_worker(self, mock_init: Any) -> None:
+    del mock_init  # Unused.
+
+    def fake_broadcast(obj_list: list[Any], src: int = 0) -> None:
+      del src  # Unused.
+      obj_list[0] = 54321
+
+    with mock.patch.object(
+        dist, "broadcast_object_list", side_effect=fake_broadcast
+    ):
+      port = handshake._select_handshake_port(
+          current_rank=1, coordinator_rank=0
+      )
+      self.assertEqual(port, 54321)
 
 
 if __name__ == "__main__":

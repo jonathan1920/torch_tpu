@@ -704,6 +704,7 @@ torch_tpu_py_test(
     srcs = ["handshake_test.py"],
     deps = [
         "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
         "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/distributed:handshake",
