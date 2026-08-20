@@ -40,6 +40,20 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_test(
+    name = "api_registry_test",
+    srcs = ["api_registry_test.py"],
+    deps = [
+        ":seed_test_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu:_loader",
+        "//torch_tpu/_internal/profiler:profiler_config",
+        "//torch_tpu/_internal/utils:annotations",
+    ],
+)
+
+torch_tpu_py_test(
     name = "oss_utils_test",
     srcs = ["oss_utils_test.py"],
     deps = [

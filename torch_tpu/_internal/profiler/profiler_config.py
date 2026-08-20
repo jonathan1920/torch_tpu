@@ -21,6 +21,8 @@ import os
 from typing import TypeAlias
 
 import torch
+from torch_tpu._internal.utils import annotations
+
 
 _ExperimentalValue: TypeAlias = int | bool | str
 
@@ -80,6 +82,10 @@ def _format_experimental_value(value: _ExperimentalValue) -> str:
     return str(value)
 
 
+@annotations.experimental(
+    "torch.tpu.profiler.TpuProfilerConfig is experimental and subject to"
+    " change."
+)
 class TpuProfilerConfig(torch.profiler._ExperimentalConfig):  # pylint: disable=protected-access
   """Configuration for TPU-specific profiler options with standard XLA defaults."""
 
@@ -100,8 +106,7 @@ class TpuProfilerConfig(torch.profiler._ExperimentalConfig):  # pylint: disable=
     used in frameworks like JAX and TensorFlow. These defaults provide both host
     and TPU side tracing, where the level controls the verbosity of the data:
     - host_tracer_level=2: Captures user-instrumented TraceMe events and
-    standard
-      XLA annotations.
+      standard XLA annotations.
     - device_tracer_level=1: Enables hardware-level TPU activity tracing.
     - python_tracer_level=0: Disabled by default to minimize overhead.
 
@@ -149,7 +154,7 @@ class TpuProfilerConfig(torch.profiler._ExperimentalConfig):  # pylint: disable=
             f"Experimental option keys cannot contain ':' or ',': {key!r}"
         )
 
-    def get_parts() -> Iterator[str]:
+    def _get_parts() -> Iterator[str]:
       yield f"{_PK_HOST_TRACER_LEVEL}:{host_tracer_level}"
       yield f"{_PK_DEVICE_TRACER_LEVEL}:{device_tracer_level}"
       yield f"{_PK_PYTHON_TRACER_LEVEL}:{python_tracer_level}"
@@ -162,7 +167,7 @@ class TpuProfilerConfig(torch.profiler._ExperimentalConfig):  # pylint: disable=
           yield f"{key}:{_format_experimental_value(value)}"
         yield f"{_PK_CHECK_EXPERIMENTAL_OPTIONS}:{str(check_experimental_options).lower()}"
 
-    config_parts = list(get_parts())
+    config_parts = list(_get_parts())
 
     # We suppress 'wrong-keyword-args' because 'custom_profiler_config' is
     # explicitly supported by the C++ implementation of _ExperimentalConfig

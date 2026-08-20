@@ -221,10 +221,20 @@ def _init_device_impl(device: str) -> torch.device:
         "tpu_dist", tpu_distributed.create_process_group, devices=["tpu"]
     )
 
-  # Register the Kineto backend.
-  from torch_tpu._internal import profiler  # pylint: disable=g-import-not-at-top
+  # Register the Kineto backend using the internal C++ lifecycle module.
+  # Renamed to '_internal_profiler' to avoid collision with the public
+  # 'torch_tpu.profiler' module below, which only exports user symbols (e.g.
+  # 'TpuProfilerConfig') via PEP-562 lazy loading and not backend hooks.
+  from torch_tpu._internal import profiler as _internal_profiler  # pylint: disable=g-import-not-at-top
 
-  profiler.register_kineto_backend()
+  _internal_profiler.register_kineto_backend()
+
+  # Expose the public profiler module under 'torch.tpu.profiler' in sys.modules
+  # and attach it to the 'torch.tpu' device module for attribute access.
+  from torch_tpu import profiler  # pylint: disable=g-import-not-at-top
+
+  sys.modules["torch.tpu.profiler"] = profiler
+  setattr(device_module, "profiler", profiler)
 
   # Configure native scan gate for cumulative ops.
   _configure_native_scan_gate()

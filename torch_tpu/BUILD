@@ -49,12 +49,21 @@ py_dist_info(
 )
 
 torch_tpu_py_library(
+    name = "profiler",
+    srcs = ["profiler.py"],
+    deps = [
+        "//torch_tpu/_internal/profiler:profiler_config",
+    ],
+)
+
+torch_tpu_py_library(
     name = "_loader",
     srcs = ["_loader.py"],
     data = [
         ":torch_tpu_dist_info",
     ],
     deps = [
+        ":profiler",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal:native_scan",
