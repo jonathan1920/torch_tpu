@@ -31,7 +31,6 @@ from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e.harness import metrics as metrics_lib
-from examples.benchmarks.ops.op_capture import OpCaptureMode
 from examples.benchmarks.quality_utils import quality_benchmark_model
 from torch_tpu._internal.profiler import xprof_adapter
 
@@ -50,12 +49,10 @@ POST_WARMUP_STEPS = flags.DEFINE_integer(
 XPROF_STEPS = flags.DEFINE_integer(
     "xprof_steps", 2, "Number of steps to collect xprof for."
 )
-CAPTURE_OPS = flags.DEFINE_bool(
-    "capture_ops", False, "Whether to capture ATen operators and their inputs."
-)
 SMOKE_TEST = flags.DEFINE_bool(
     "smoke_test", False, "Whether to run in smoke test mode."
 )
+
 
 def _do_post_warmup() -> bool:
   return POST_WARMUP_STEPS.value > 0
@@ -490,7 +487,6 @@ def _smoke_test_run(
     model: torch.nn.Module,
     example_inputs: Any,
     device: torch.device,
-    op_capture_file_name: str | None,
     *,
     optimizer: torch.optim.Optimizer | None = None,
     sync_params: bool = False,
@@ -500,15 +496,11 @@ def _smoke_test_run(
   This function only checks if the model runs successfully and doesn't measure
   any metrics for model runs.
 
-  Optionally captures ops using OpCaptureMode and saves the captured ops to a
-  file when op_capture_file_name is not None.
-
   Args:
     benchmark_function: The benchmark function to run.
     model: The model to run.
     example_inputs: The example inputs to run the model with.
     device: The device the model and input data is on.
-    op_capture_file_name: The name of the file to save the captured ops to.
     optimizer: The optimizer to use for the model. Needed for training.
     sync_params: Whether to eagerly synchronize parameter gradients inside
       timing loops.
@@ -517,30 +509,16 @@ def _smoke_test_run(
   is_sequence = isinstance(example_inputs, list) and len(example_inputs) > 0
   num_steps = len(example_inputs) if is_sequence else 1
 
-  capture_mode = (
-      OpCaptureMode()
-      if op_capture_file_name is not None
-      else contextlib.nullcontext()
-  )
-  with capture_mode:
-    for step in range(num_steps):
-      step_input = example_inputs[step] if is_sequence else example_inputs
-      _run_step(
-          benchmark_function,
-          model,
-          step_input,
-          optimizer,
-          device_name,
-          sync_params,
-      )
-
-  if (
-      isinstance(capture_mode, OpCaptureMode)
-      and op_capture_file_name is not None
-  ):
-    output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", ".")
-    full_path = os.path.join(output_dir, op_capture_file_name)
-    capture_mode.save_to_json(full_path)
+  for step in range(num_steps):
+    step_input = example_inputs[step] if is_sequence else example_inputs
+    _run_step(
+        benchmark_function,
+        model,
+        step_input,
+        optimizer,
+        device_name,
+        sync_params,
+    )
 
 
 def _synchronize_all_tensors(tensor_pytree: Any, device: torch.device):
@@ -568,7 +546,6 @@ def run_performance_benchmark(
     xprof_client: xprof_adapter.XprofAnalysisClient | None = None,
     sync_params: bool = False,
     is_bounded_dynamic: bool = False,
-    capture_file_name: Optional[str] = None,
 ) -> metrics_lib.PerformanceMetrics:
   """Runs a performance benchmark for a given model.
 
@@ -585,8 +562,6 @@ def run_performance_benchmark(
       benchmarks.
     xprof_client: The xprof client to use for profiling.
     is_bounded_dynamic: Whether the example inputs are bounded dynamic.
-    capture_file_name: The name of the file to capture the op capture data to.
-      If None, no data related to ops will be captured.
 
   Returns:
     A PerformanceMetrics instance containing the results of the
@@ -601,13 +576,12 @@ def run_performance_benchmark(
   _synchronize_all_tensors(example_inputs, device)
   _synchronize_all_tensors(list(model.state_dict().values()), device)
 
-  if SMOKE_TEST.value or capture_file_name is not None:
+  if SMOKE_TEST.value:
     _smoke_test_run(
         benchmark_function,
         model,
         example_inputs,
         device,
-        capture_file_name,
         optimizer=optimizer,
         sync_params=sync_params,
     )

@@ -45,7 +45,6 @@ torch_tpu_py_library(
         ":common",
         ":device_utils",
         "//examples/benchmarks/e2e/harness:metrics",
-        "//examples/benchmarks/ops:op_capture",
         "//examples/benchmarks/quality_utils:quality_benchmark_model",
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",

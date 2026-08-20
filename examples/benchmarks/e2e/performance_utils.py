@@ -376,11 +376,6 @@ def run_single_process_benchmark(
   result = None
   benchmark_exception = None
   try:
-    capture_file_name = None
-    if benchmark_utils.CAPTURE_OPS.value:
-      mode_str = config.run_mode.value
-      capture_file_name = f"{benchmark_name}_{mode_str}_ops.json"
-
     with _run_mode_context(config.run_mode, device):
       result = benchmark_utils.run_performance_benchmark(
           func,
@@ -392,7 +387,6 @@ def run_single_process_benchmark(
           xprof_client=xprof_client,
           sync_params=config.sync_params,
           is_bounded_dynamic=BOUNDED_DYNAMIC.value,
-          capture_file_name=capture_file_name,
       )
       logging.info(
           "Performance Benchmark Results:\n"
@@ -437,9 +431,6 @@ def run_single_process_benchmark(
     logging.exception("Benchmark failed: %s", e)
     benchmark_succeeded = False
     benchmark_exception = e
-
-  if benchmark_utils.CAPTURE_OPS.value:
-    return
 
   # Only export results from the rank 0 process to avoid duplicate entries in
   # MLCompass.
