@@ -20,7 +20,6 @@ import unittest
 from absl import flags
 from absl.testing import absltest
 import torch
-from tests import oss_utils
 from tests import seed_test_utils
 
 _BACKEND = flags.DEFINE_string(
@@ -39,11 +38,11 @@ def _get_backend_module(backend_name: str) -> Any:
   )
 
 
-def _get_device(backend_name: str, device_idx: int) -> torch.device:
+def _get_device(backend_name: str) -> torch.device:
   if backend_name == "gpu":
-    return torch.device(f"cuda:{device_idx}")
+    return torch.device("cuda")
   elif backend_name == "tpu":
-    return torch.device(f"tpu:{device_idx}")
+    return torch.device("tpu")
   raise ValueError(
       f"Unsupported backend '{backend_name}'. Supported backends are: 'gpu',"
       " 'tpu'"
@@ -102,22 +101,24 @@ class CpuRngTest(seed_test_utils.RepeatableTest):
     self.assertFalse(torch.equal(torch.get_rng_state(), initial_cpu_state))
 
 
-class RngCudaRefTest(seed_test_utils.RepeatableTest):
+class _BaseRngTest(seed_test_utils.RepeatableTest):
+  """Base test class providing common fixtures and helpers for device RNG tests."""
 
   def setUp(self):
     super().setUp()
     self.backend = _BACKEND.value
     self.backend_mod = _get_backend_module(self.backend)
-    self.device_idx = self.backend_mod.current_device()
-    self.device = _get_device(self.backend, self.device_idx)
+    self.device = _get_device(self.backend)
 
   def _unpack_device_rng_uint64(
       self, start_byte: int, end_byte: int, device_idx: int | None = None
   ) -> int:
     """Unpacks a uint64 value from a byte slice of the device RNG state."""
-    if device_idx is None:
-      device_idx = self.device_idx
-    state = self.backend_mod.get_rng_state(device_idx)
+    state = (
+        self.backend_mod.get_rng_state()
+        if device_idx is None
+        else self.backend_mod.get_rng_state(device_idx)
+    )
     (val,) = struct.unpack("<Q", state[start_byte:end_byte].numpy().tobytes())
     return val
 
@@ -126,7 +127,7 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
 
     Args:
       device_idx: The index of the device to query. Defaults to the current
-        device index (self.device_idx) if not specified.
+        device if not specified.
     """
     return self._unpack_device_rng_uint64(0, 8, device_idx)
 
@@ -135,9 +136,13 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
 
     Args:
       device_idx: The index of the device to query. Defaults to the current
-        device index (self.device_idx) if not specified.
+        device if not specified.
     """
     return self._unpack_device_rng_uint64(8, 16, device_idx)
+
+
+class RngCudaRefTest(_BaseRngTest):
+  """Reference tests comparing default TPU and GPU RNG behaviors for current device."""
 
   def test_initial_seed_return_current_device_seed(self):
     """Verifies backend_mod.initial_seed returns current device seed."""
@@ -151,27 +156,6 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
 
     torch.manual_seed(42)
     self.assertEqual(self.backend_mod.initial_seed(), 42)
-
-  # TODO(b/547900660): Remove _fail_on_tpu once querying non-current device RNG state is supported.
-  @_fail_on_tpu(
-      "TPU backend does not support querying non-current device RNG state."
-  )
-  # TODO: Enable multi-device execution in OSS via the 'exclusive' tag and remove this skip.
-  @oss_utils.skip_in_oss("OSS CI runners isolate tests to a single TPU chip.")
-  def test_torch_manual_seed_sets_all_device_seeds(self):
-    """Verifies torch.manual_seed seeds all devices."""
-    num_devices = self.backend_mod.device_count()
-    self.assertGreater(
-        num_devices,
-        1,
-        "Test target must be configured with multiple devices to verify"
-        " seeding all devices.",
-    )
-    torch.manual_seed(42)
-
-    for i in range(num_devices):
-      self.assertEqual(self._get_device_rng_seed(i), 42)
-      self.assertEqual(self._get_device_rng_offset(i), 0)
 
   def test_torch_manual_seed_different_seeds_produce_different_tensors(self):
     """Verifies different seeds produce distinct random tensors."""
@@ -245,12 +229,62 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
     self.assertEqual(torch.initial_seed(), cpu_seed_before)
     self.assertTrue(torch.equal(torch.get_rng_state(), cpu_state_before))
 
-  # TODO(b/547900660): Remove _fail_on_tpu once querying non-current device RNG state is supported.
+  def test_rand_does_not_change_device_seed(self):
+    """Verifies torch.rand on device does not change initial_seed."""
+    torch.manual_seed(42)
+    _ = torch.rand(100, device=self.device)
+    self.assertEqual(self.backend_mod.initial_seed(), 42)
+
+  def test_rand_advances_offset(self):
+    """Verifies torch.rand on device advances the offset."""
+    torch.manual_seed(42)
+    _ = torch.rand(100, device=self.device)
+    self.assertGreater(self._get_device_rng_offset(), 0)
+
+  def test_manual_seed_resets_offset_after_rand(self):
+    """Verifies re-seeding resets device offset back to 0."""
+    torch.manual_seed(42)
+    _ = torch.rand(100, device=self.device)
+    torch.manual_seed(77)
+    self.assertEqual(self._get_device_rng_offset(), 0)
+
+
+class SingleProcessMultiDeviceTest(_BaseRngTest):
+  """Tests documenting single-process multi-device RNG differences.
+
+  Single-process multi-device execution is discouraged in PyTorch CUDA due
+  to Python GIL contention (PyTorch recommends 1 process per GPU via DDP;
+  see
+  https://pytorch.org/docs/stable/notes/cuda.html#use-nn-parallel-distributeddataparallel-instead-of-multiprocessing-or-nn-dataparallel)
+  and is not planned to be supported on TPU due to the PJRT 1-process-per-chip
+  runtime architecture.
+  """
+
+  def setUp(self):
+    super().setUp()
+    self.device_idx = self.backend_mod.current_device()
+
   @_fail_on_tpu(
       "TPU backend does not support querying non-current device RNG state."
   )
-  # TODO: Enable multi-device execution in OSS via the 'exclusive' tag and remove this skip.
-  @oss_utils.skip_in_oss("OSS CI runners isolate tests to a single TPU chip.")
+  def test_torch_manual_seed_sets_all_device_seeds(self):
+    """Verifies torch.manual_seed seeds all devices."""
+    num_devices = self.backend_mod.device_count()
+    self.assertGreater(
+        num_devices,
+        1,
+        "Test target must be configured with multiple devices to verify"
+        " seeding all devices.",
+    )
+    torch.manual_seed(42)
+
+    for i in range(num_devices):
+      self.assertEqual(self._get_device_rng_seed(i), 42)
+      self.assertEqual(self._get_device_rng_offset(i), 0)
+
+  @_fail_on_tpu(
+      "TPU backend does not support querying non-current device RNG state."
+  )
   def test_backend_manual_seed_does_not_change_other_devices(self):
     """Verifies backend_mod.manual_seed does not modify other devices."""
     num_devices = self.backend_mod.device_count()
@@ -282,25 +316,6 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
           offset_before,
           msg=f"Device {i} offset mismatch",
       )
-
-  def test_rand_does_not_change_device_seed(self):
-    """Verifies torch.rand on device does not change initial_seed."""
-    torch.manual_seed(42)
-    _ = torch.rand(100, device=self.device)
-    self.assertEqual(self.backend_mod.initial_seed(), 42)
-
-  def test_rand_advances_offset(self):
-    """Verifies torch.rand on device advances the offset."""
-    torch.manual_seed(42)
-    _ = torch.rand(100, device=self.device)
-    self.assertGreater(self._get_device_rng_offset(), 0)
-
-  def test_manual_seed_resets_offset_after_rand(self):
-    """Verifies re-seeding resets device offset back to 0."""
-    torch.manual_seed(42)
-    _ = torch.rand(100, device=self.device)
-    torch.manual_seed(77)
-    self.assertEqual(self._get_device_rng_offset(), 0)
 
 
 if __name__ == "__main__":

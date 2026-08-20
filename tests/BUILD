@@ -1667,7 +1667,6 @@ torch_tpu_py_test(
     main = "rng_cuda_ref_test.py",
     tags = ["requires-tpu-v5lite:8"],
     deps = [
-        ":oss_utils",
         ":seed_test_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
@@ -1686,7 +1685,6 @@ torch_tpu_py_test(
         "requires-gpu-nvidia:2",
     ],
     deps = [
-        ":oss_utils",
         ":seed_test_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
