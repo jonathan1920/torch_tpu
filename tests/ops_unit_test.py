@@ -10824,7 +10824,9 @@ class OpTestingFrameworkTest(op_testing.OpInfoTestBase, parameterized.TestCase):
     op = next(op for op in op_db if op.name == "add")
     with (
         flagsaver.flagsaver(test_mode=op_testing.TestMode.TORCH_TPU_VS_GPU),
-        mock.patch.dict(op_testing._GOLDEN_GPU_DATA, clear=True),
+        mock.patch.object(
+            op_testing, "_GOLDEN_GPU_DATA", op_testing.GoldenGpuData()
+        ),
     ):
       with self.assertRaisesRegex(
           AssertionError,
@@ -10840,13 +10842,16 @@ class OpTestingFrameworkTest(op_testing.OpInfoTestBase, parameterized.TestCase):
 
       # Ensure that if samples are present, no error is raised and samples are
       # returned.
-      fake_sample = (
-          op_testing.OpInput(FakeSample("s", torch.zeros(1), (), {})),
-          op_testing.OpOutput(torch.zeros(1)),
+      fake_input = op_testing.OpInput(FakeSample("s", torch.zeros(1), (), {}))
+      fake_output = op_testing.OpOutput(torch.zeros(1))
+      fake_sample = (fake_input, fake_output)
+      op_testing._GOLDEN_GPU_DATA.add(
+          self._testMethodName,
+          op_testing.OpVariant.BASE,
+          torch.float32,
+          fake_input,
+          fake_output,
       )
-      op_testing._GOLDEN_GPU_DATA[self._testMethodName] = {
-          op_testing.OpVariant.BASE.value: {torch.float32: [fake_sample]}
-      }
       res = self._get_golden_input_output_pairs(
           op=op,
           dtype=torch.float32,

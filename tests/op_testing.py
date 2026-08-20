@@ -1226,31 +1226,118 @@ for _op_info in _ADDITIONAL_TORCH_TPU_OPS:
   ):
     _op_info.use_ref_for_cpu_golden = True
 
-# Used in the gen_gpu_golden mode to collect the golden results for each op
-# test. The key is the test_case_name, and the value is a dictionary from op
-# variant (e.g. BASE, INPLACE, or OUT) to a dictionary from dtype to a list of
-# input-output pairs. Or, in short:
-#
-# test_case_name -> op_variant -> dtype -> [(input, output)].
-#
-# This means each test case can contain at most one `do_test_op()`, which is
-# enforced.
-#
-# In the torch_tpu_vs_gpu mode, we will populate this with results read from the
-# GPU golden file and then use it when comparing the TorchTPU results against
-# the GPU results.
-#
-# We cannot use a defaultdict here because it contains a function object, which
-# cannot be pickled.
-_GOLDEN_GPU_DATA: MutableMapping[
-    str,  # test_case_name
-    MutableMapping[
-        str,  # OpVariant name
-        MutableMapping[
-            torch.dtype, MutableSequence[tuple["OpInput", "OpOutput"]]
-        ],
-    ],
-] = {}
+
+class GoldenGpuData:
+  """Golden GPU input/output samples collected per op test.
+
+  The samples are organized in a three-level structure keyed by the test case
+  name, the op variant (e.g. BASE, INPLACE, or OUT), and the dtype:
+
+    test_case_name -> op variant -> dtype -> [(OpInput, OpOutput), ...]
+
+  Because each test case can contain at most one `do_test_op()` (which is
+  enforced), a `(test_case_name, variant, dtype)` triple uniquely identifies a
+  list of golden input/output samples.
+
+  Usage:
+    * In the gen_gpu_golden mode, `add()` collects the golden results as they
+      are computed, and `to_plistlib_pytree()` serializes them to a golden file.
+    * In the torch_tpu_vs_gpu mode, `merge_plistlib_pytree()` populates this
+    from
+      the GPU golden files and `get_samples()` reads the results back to compare
+      TorchTPU results against the GPU results.
+
+  This class stores only plain built-in containers (no function objects), so
+  instances remain picklable.
+  """
+
+  def __init__(self) -> None:
+    # Maps test_case_name -> OpVariant value -> dtype -> input/output pairs.
+    self._data: dict[
+        str,
+        dict[str, dict[torch.dtype, list[tuple["OpInput", "OpOutput"]]]],
+    ] = {}
+
+  def add(
+      self,
+      test_case_name: str,
+      variant: "OpVariant",
+      dtype: torch.dtype,
+      op_input: "OpInput",
+      op_output: "OpOutput",
+  ) -> None:
+    """Records a single golden (input, output) sample."""
+    self._samples_for(test_case_name, variant.value, dtype).append(
+        (op_input, op_output)
+    )
+
+  def get_samples(
+      self,
+      test_case_name: str,
+      variant: "OpVariant",
+      dtype: torch.dtype,
+  ) -> Sequence[tuple["OpInput", "OpOutput"]]:
+    """Returns the recorded samples for the key, or an empty list if absent."""
+    return (
+        self._data.get(test_case_name, {}).get(variant.value, {}).get(dtype, [])
+    )
+
+  def clear(self) -> None:
+    """Removes all recorded golden data."""
+    self._data.clear()
+
+  def _samples_for(
+      self, test_case_name: str, variant_name: str, dtype: torch.dtype
+  ) -> list[tuple["OpInput", "OpOutput"]]:
+    """Returns the mutable sample list for the key, creating it if needed."""
+    return (
+        self._data.setdefault(test_case_name, {})
+        .setdefault(variant_name, {})
+        .setdefault(dtype, [])
+    )
+
+  def to_plistlib_pytree(self) -> _pytree.PyTree:
+    """Encodes the golden data into a plistlib-compatible pytree.
+
+    dtypes (used as dict keys) are converted to their string names because
+    plistlib only supports string keys.
+    """
+
+    def leaf_func(x: "OpInput | OpOutput") -> _pytree.PyTree:
+      return x.to_plistlib_pytree()
+
+    def is_leaf(x: Any) -> bool:
+      return isinstance(x, (OpInput, OpOutput))
+
+    # tree_map() never translates dict keys (doing so may break the structure of
+    # the dict), so we translate the dtype keys separately first.
+    data_with_str_dtypes = {
+        test_case_name: {
+            variant_name: {
+                _dtype_str(dt): samples for dt, samples in dt_to_samples.items()
+            }
+            for variant_name, dt_to_samples in variant_to_dtype.items()
+        }
+        for test_case_name, variant_to_dtype in self._data.items()
+    }
+    return _pytree.tree_map(leaf_func, data_with_str_dtypes, is_leaf=is_leaf)
+
+  def merge_plistlib_pytree(self, encoded_data: _pytree.PyTree) -> None:
+    """Decodes a plistlib-compatible pytree and merges it into this data."""
+    for test_case_name, variant_to_dt in encoded_data.items():
+      for variant_name, dt_to_encoded_samples in variant_to_dt.items():
+        for dtype_name, encoded_samples in dt_to_encoded_samples.items():
+          dtype = getattr(torch, dtype_name)
+          samples = self._samples_for(test_case_name, variant_name, dtype)
+          for encoded_op_input, encoded_op_output in encoded_samples:
+            op_input = OpInput.from_plistlib_pytree(encoded_op_input)
+            op_output = OpOutput.from_plistlib_pytree(encoded_op_output)
+            samples.append((op_input, op_output))
+
+
+# Collects the golden GPU results for each op test. See GoldenGpuData for the
+# structure and the modes that read from / write to it.
+_GOLDEN_GPU_DATA: GoldenGpuData = GoldenGpuData()
 
 # Used in the dump_dtype_exclusions mode to collect GPU dtype exclusions of each
 # `do_test_op` call site. The key is op name, and the value is a mapping from
@@ -2386,29 +2473,6 @@ class OpOutput:
     return cls(decoded_ptree)
 
 
-def _add_golden_result(
-    test_case_name: str,
-    variant: OpVariant,
-    dtype: torch.dtype,
-    op_input: OpInput,
-    op_output: OpOutput,
-) -> None:
-  """Adds the golden result to _GOLDEN_GPU_DATA."""
-  if test_case_name not in _GOLDEN_GPU_DATA:
-    _GOLDEN_GPU_DATA[test_case_name] = {}
-
-  variant_to_dtype = _GOLDEN_GPU_DATA[test_case_name]
-  if variant.value not in variant_to_dtype:
-    variant_to_dtype[variant.value] = {}
-
-  dtype_to_pairs = variant_to_dtype[variant.value]
-  if dtype not in dtype_to_pairs:
-    dtype_to_pairs[dtype] = []
-
-  pairs = dtype_to_pairs[dtype]
-  pairs.append((op_input, op_output))
-
-
 def _dtype_str(dtype: torch.dtype) -> str:
   """Returns a string representation of the dtype without the "torch." prefix."""
   return str(dtype).removeprefix("torch.")
@@ -2969,10 +3033,8 @@ class OpInfoTestBase(
       )
 
     if _torch_tpu_vs_gpu_mode():
-      samples = (
-          _GOLDEN_GPU_DATA.get(self._testMethodName, {})
-          .get(variant.value, {})
-          .get(dtype, [])
+      samples = _GOLDEN_GPU_DATA.get_samples(
+          self._testMethodName, variant, dtype
       )
       # TODO(b/540887166): Enable this check for compiled mode too when the bug
       # is fixed.
@@ -3046,7 +3108,7 @@ class OpInfoTestBase(
       golden_output = OpOutput(golden_result)
       pairs.append((golden_input, golden_output))
       if _gen_gpu_golden_mode():
-        _add_golden_result(
+        _GOLDEN_GPU_DATA.add(
             self._testMethodName, variant, dtype, golden_input, golden_output
         )
     return pairs
@@ -3978,48 +4040,7 @@ def _save_golden_file() -> None:
       flush=True,
   )
 
-  def to_plistlib_pytree(
-      golden_data: Mapping[
-          str,  # test_case_name
-          Mapping[
-              str,  # OpVariant name
-              Mapping[torch.dtype, Sequence[tuple[OpInput, OpOutput]]],
-          ],
-      ],
-  ) -> Mapping[
-      str,  # test_case_name
-      Mapping[
-          str,  # OpVariant name
-          Mapping[str, Sequence[tuple[_pytree.PyTree, _pytree.PyTree]]],
-      ],
-  ]:
-    """Converts the golden data to a plistlib-compatible pytree."""
-
-    def leaf_func(x: OpInput | OpOutput) -> _pytree.PyTree:
-      return x.to_plistlib_pytree()
-
-    def is_leaf(x: Any) -> bool:
-      return isinstance(x, (OpInput, OpOutput))
-
-    # tree_map() never translates dict keys (doing so may break the structure of
-    # the dict), so we have to translate the dtypes in the dict keys separately.
-    data_with_str_dtypes = {
-        test_case_name: {
-            variant_name: {
-                str(dt).split(".")[-1]: samples
-                for dt, samples in dt_to_samples.items()
-            }
-            for variant_name, dt_to_samples in variant_to_dtype.items()
-        }
-        for test_case_name, variant_to_dtype in golden_data.items()
-    }
-    return _pytree.tree_map(
-        leaf_func,
-        data_with_str_dtypes,
-        is_leaf=is_leaf,
-    )
-
-  encoded_data = to_plistlib_pytree(_GOLDEN_GPU_DATA)
+  encoded_data = _GOLDEN_GPU_DATA.to_plistlib_pytree()
   try:
     # pytype thinks `plistlib.FMT_BINARY` is `int` for whatever reason
     bin_data = plistlib.dumps(
@@ -4082,20 +4103,7 @@ def _load_golden_files() -> None:
       plist_ptree = plistlib.load(
           f, fmt=typing.cast(plistlib.PlistFormat, plistlib.FMT_BINARY)
       )
-    for test_case_name, variant_to_dt in plist_ptree.items():
-      if test_case_name not in _GOLDEN_GPU_DATA:
-        _GOLDEN_GPU_DATA[test_case_name] = {}
-      for variant_name, dt_to_encoded_samples in variant_to_dt.items():
-        if variant_name not in _GOLDEN_GPU_DATA[test_case_name]:
-          _GOLDEN_GPU_DATA[test_case_name][variant_name] = {}
-        for dtype_name, encoded_samples in dt_to_encoded_samples.items():
-          dtype = getattr(torch, dtype_name)
-          samples = []
-          for encoded_op_input, encoded_op_output in encoded_samples:
-            op_input = OpInput.from_plistlib_pytree(encoded_op_input)
-            op_output = OpOutput.from_plistlib_pytree(encoded_op_output)
-            samples.append((op_input, op_output))
-          _GOLDEN_GPU_DATA[test_case_name][variant_name][dtype] = samples
+    _GOLDEN_GPU_DATA.merge_plistlib_pytree(plist_ptree)
 
 
 def _get_dtype_exclusions(

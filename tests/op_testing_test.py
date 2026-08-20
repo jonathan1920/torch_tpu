@@ -54,19 +54,18 @@ class OpTestingTest(op_testing.OpInfoTestBase):
         )
         for i in range(5)
     ]
+    golden_data = op_testing.GoldenGpuData()
+    for op_input, op_output in fake_samples:
+      golden_data.add(
+          self._testMethodName,
+          op_testing.OpVariant.BASE,
+          torch.float32,
+          op_input,
+          op_output,
+      )
     with (
         flagsaver.flagsaver(test_mode=op_testing.TestMode.TORCH_TPU_VS_GPU),
-        mock.patch.dict(
-            op_testing._GOLDEN_GPU_DATA,
-            {
-                self._testMethodName: {
-                    op_testing.OpVariant.BASE.value: {
-                        torch.float32: fake_samples
-                    }
-                }
-            },
-            clear=True,
-        ),
+        mock.patch.object(op_testing, "_GOLDEN_GPU_DATA", golden_data),
     ):
       # 1. max_samples argument limits returned samples.
       res = self._get_golden_input_output_pairs(
