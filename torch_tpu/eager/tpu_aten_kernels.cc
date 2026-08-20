@@ -312,11 +312,15 @@ void ImplDeprecated(torch::Library& m, KernelFn kernel_fn, int major_version,
 
 }  // namespace
 
+// Defines how aten ops are dispatched to C++ functions for TPU tensors.
+//
 // When the dispatch key set is {PrivateUse1} (i.e. for TPU tensors in the
 // eager mode), pytorch will try this dispatch table first. If the op is not
 // found here, pytorch will then try the (_, PrivateUse1, m) dispatch table
 // defined later in this file.
 TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
+  // All entries should be registered by ImplStable() as we don't want to
+  // generate any warning for standard aten ops.
   // go/keep-sorted start
   ImplStable<OpName::kAbsOut>(m, AtenAbsOut);
   ImplStable<OpName::kAcosOut>(m, AtenAcosOut);
@@ -1032,6 +1036,7 @@ void TpuMissingOpFallback(const c10::OperatorHandle& op,
   }
 }
 
+// Registers a CPU-fallback for ops not supported on TPU.
 TORCH_LIBRARY_IMPL(_, PrivateUse1, m) {
   m.fallback(
       torch::CppFunction::makeFromBoxedFunction<&TpuMissingOpFallback>());
@@ -1061,7 +1066,11 @@ TORCH_LIBRARY_IMPL(_, AutogradPrivateUse1, m) {
   m.fallback(torch::CppFunction::makeFallthrough());
 }
 
+// Registers custom autograd for TPU-supported aten ops.
 TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
+  // All entries should be registered via ImplStable as we don't want to
+  // generate a warning for standard aten ops.
+  // go/keep-sorted start
   // TODO(b/513607161): remove CtcLossPublic overrides once upstream PyTorch bug
   // is fixed.
   // Because we override the public ctc_loss in PrivateUse1, we bypass its
@@ -1084,11 +1093,15 @@ TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
   // SelectAndScatter does not support dilations however, so we fallback to the
   // indices variant and preserve the default composite behavior in this case.
   ImplStable<OpName::kMaxPool2d>(m, AtenMaxPool2d);
+  // go/keep-sorted end
 }
 
 // Signatures of custom ops in torch.ops.tpu. Their C++ bindings are registered
 // in TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) below.
 TORCH_LIBRARY(tpu, m) {
+  // We don't need to use ImplExperimental/ImplStable/ImplDeprecated here as
+  // these are just signatures. The actual stages of the ops are marked in
+  // TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m).
   m.def(
       "max_pool2d(Tensor self, int[] kernel_size, int[] stride, int[] padding, "
       "int[] dilation, bool ceil_mode) -> Tensor");
@@ -1225,7 +1238,11 @@ TORCH_LIBRARY(tpu, m) {
       "Tensor)");
 }
 
+// Registers meta implementations for torch.ops.tpu ops.
 TORCH_LIBRARY_IMPL(tpu, Meta, m) {
+  // We always use ImplStable here as these are just meta implementations.
+  // The actual stages of the ops are marked in TORCH_LIBRARY_IMPL(tpu,
+  // PrivateUse1, m).
   ImplStable<OpName::kMaxPool2d>(
       m,
       [](const at::Tensor& self, at::IntArrayRef kernel_size,
@@ -1265,7 +1282,7 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
          std::string_view computation_name) {
         return at::empty_like(embedding_table);
       });
-  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdagrad>(
+  ImplStable<OpName::kSparseDenseMatmulGradWithAdagrad>(
       m,
       +[](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
           const at::Tensor& sample_ids, const at::Tensor& gains,
@@ -1277,7 +1294,7 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
         return std::make_tuple(at::empty_like(embedding_table),
                                at::empty_like(accumulator));
       });
-  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdam>(
+  ImplStable<OpName::kSparseDenseMatmulGradWithAdam>(
       m,
       +[](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
           const at::Tensor& sample_ids, const at::Tensor& gains,
@@ -1332,7 +1349,10 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
       });
 }
 
+// Registers implementations for torch.ops.tpu ops for TPU tensors.
 TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
+  // All entries here should be registered via ImplStable, ImplExperimental, or
+  // ImplDeprecated to mark their API stages.
   ImplExperimental<OpName::kDistributedExperimentalSend>(
       m, TorchTpuExperimentalSend);
   ImplExperimental<OpName::kDistributedExperimentalRecv>(
@@ -1359,7 +1379,10 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
       m, AtenSparseDenseMatmulGradWithAdam);
 }
 
+// Registers implementations for torch.ops.tpu ops for CPU tensors.
 TORCH_LIBRARY_IMPL(tpu, CPU, m) {
+  // All entries here should be registered via ImplStable, ImplExperimental, or
+  // ImplDeprecated to mark their API stages.
   ImplExperimental<OpName::kRaggedDot>(m, AtenRaggedDot);
   ImplExperimental<OpName::kRaggedDotOut>(m, AtenRaggedDotOut);
   ImplExperimental<OpName::kRaggedAllToAll>(m, AtenRaggedAllToAll);
