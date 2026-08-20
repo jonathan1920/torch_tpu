@@ -10022,6 +10022,25 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(compute)
 
+  @parameterized.parameters([(True), (False)])
+  def test_pow_bool_tensor_scalar(self, exponent):
+    def compute(device):
+      return torch.pow(
+          torch.tensor([True, False], dtype=torch.bool, device=device), exponent
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_pow_bool_scalar_tensor(self):
+    def compute(device):
+      return torch.pow(
+          True, torch.tensor([True, False], dtype=torch.bool, device=device)
+      )
+
+    self.assert_close_tpu_vs_cpu(
+        compute, check_exception_type=False, allow_failure=True
+    )
+
   def test_nll_loss_backward(self):
     inp = torch.randn(2, 2)
     target = torch.ones(2, dtype=torch.uint8)

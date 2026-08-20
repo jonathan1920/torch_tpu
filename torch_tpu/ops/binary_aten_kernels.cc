@@ -526,8 +526,6 @@ absl::Status CheckInputsNotComplex(const at::Tensor& self, const T& other) {
 //   - at::Scalar
 template <typename T, typename U>
 absl::Status CheckPowInputs(const T& self, const U& exponent) {
-  // TODO: b/481396743 remove these checks once we start supporting bool dtype.
-
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch native devices supports boolean
                  // dtype.
       !IsBool(self), error::kInvalidArgument)
@@ -1569,12 +1567,11 @@ at::Tensor& AtenPowTensorScalarOut(const at::Tensor& self,
                                    at::Tensor& out) {
   auto promoted_exponent = PromoteScalar(exponent);
   TT_KERNEL(OpName::kPowTensorScalarOut, _, (self, promoted_exponent, out), {
-    TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
     // Cast to self dtype to be consistent with PyTorch.
-    TT_ASSIGN_OR_THROW(at::Tensor exponent_tensor,
+    TT_ASSIGN_OR_THROW(const at::Tensor exponent_tensor,
                        promoted_exponent.GetTensor(self.scalar_type()));
     TT_THROW_IF_ERROR(
-        BinaryOpOut(self, exponent, out, BuildPowShlo,
+        BinaryOpOut(self, exponent_tensor, out, BuildPowShlo,
                     // Use kPowOut for cache key as the builder logic is the
                     // same as for AtenPowTensorTensorOut.
                     {.op_name = OpName::kPowOut,

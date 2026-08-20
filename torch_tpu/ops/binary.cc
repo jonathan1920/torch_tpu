@@ -103,6 +103,24 @@ absl::StatusOr<mlir::MlirOp> BuildPolarShlo(mlir::MlirOp abs_op,
   return stablehlo::Complex(x_op, y_op);
 }
 
+absl::StatusOr<mlir::MlirOp> BuildPowShlo(mlir::MlirOp base_op,
+                                          mlir::MlirOp exp_op) {
+  const mlir::RankedTensorType base_type = GetTensorTypeOrDie(base_op);
+  const mlir::RankedTensorType exp_type = GetTensorTypeOrDie(exp_op);
+  TT_ASSIGN_OR_RETURN((auto [broadcasted_base_op, broadcasted_exp_op]),
+                      ApplyBroadcastIfNeeded(base_op, exp_op),
+                      _.SetPrepend() << "could not broadcast base and exp: ");
+
+  // Treat true as 1 and false as 0 for boolean inputs.
+  // Equivalent to base_op or not(exp_op).
+  if (IsBooleanType(base_type) && IsBooleanType(exp_type)) {
+    broadcasted_exp_op = stablehlo::Not(broadcasted_exp_op);
+    return stablehlo::Or(broadcasted_base_op, broadcasted_exp_op);
+  }
+
+  return stablehlo::Pow(broadcasted_base_op, broadcasted_exp_op);
+}
+
 absl::StatusOr<mlir::MlirOp> BuildBitwiseRightShiftShlo(mlir::MlirOp lhs_op,
                                                         mlir::MlirOp rhs_op) {
   TT_ASSIGN_OR_RETURN((auto [lhs, rhs]),
