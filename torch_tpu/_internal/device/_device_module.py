@@ -415,6 +415,19 @@ class _DeviceModule(abc.ABC, metaclass=_DeviceModuleMeta):
     return False
 
   @classmethod
+  @experimental(
+      "manual_seed() is experimental and may change or be removed without"
+      " notice."
+  )
+  def manual_seed(cls, seed: int) -> None:
+    """Sets the seed for generating random numbers on the current device.
+
+    .. warning::
+        This API is experimental and subject to change in future releases.
+    """
+    _device_ops_backend.manual_seed(seed)
+
+  @classmethod
   def manual_seed_all(cls, seed: int) -> None:
     """Sets the seed for generating random numbers on all devices."""
     _device_ops_backend.manual_seed_all(seed)

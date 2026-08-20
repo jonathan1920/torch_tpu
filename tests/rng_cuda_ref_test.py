@@ -193,8 +193,6 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
 
     self.assertTrue(torch.equal(t1, t2))
 
-  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
-  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
   def test_backend_manual_seed_sets_current_device_seed(self):
     """Verifies backend_mod.manual_seed sets initial seed on current device."""
     self.backend_mod.manual_seed(1)
@@ -207,8 +205,6 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
     self.assertEqual(self._get_device_rng_seed(), 42)
     self.assertEqual(self._get_device_rng_offset(), 0)
 
-  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
-  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
   def test_backend_manual_seed_resets_offset_after_rand(self):
     """Verifies re-seeding with backend_mod.manual_seed resets device offset back to 0."""
     self.backend_mod.manual_seed(42)
@@ -218,8 +214,6 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
     self.backend_mod.manual_seed(77)
     self.assertEqual(self._get_device_rng_offset(), 0)
 
-  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
-  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
   def test_backend_manual_seed_different_seeds_produce_different_tensors(self):
     """Verifies different seeds with backend_mod.manual_seed produce distinct tensors."""
     self.backend_mod.manual_seed(1)
@@ -230,8 +224,6 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
 
     self.assertFalse(torch.equal(t1, t2))
 
-  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
-  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
   def test_backend_manual_seed_reproducibility(self):
     """Verifies setting the same seed with backend_mod.manual_seed produces identical tensors."""
     self.backend_mod.manual_seed(42)
@@ -242,8 +234,6 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
 
     self.assertTrue(torch.equal(t1, t2))
 
-  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
-  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
   def test_backend_manual_seed_does_not_change_cpu_seed(self):
     """Verifies backend_mod.manual_seed does not change CPU seed or state."""
     torch.manual_seed(10)
@@ -255,8 +245,10 @@ class RngCudaRefTest(seed_test_utils.RepeatableTest):
     self.assertEqual(torch.initial_seed(), cpu_seed_before)
     self.assertTrue(torch.equal(torch.get_rng_state(), cpu_state_before))
 
-  # TODO(b/548110551): Remove _fail_on_tpu once `torch.tpu.manual_seed` is implemented.
-  @_fail_on_tpu("torch.tpu does not implement manual_seed().")
+  # TODO(b/547900660): Remove _fail_on_tpu once querying non-current device RNG state is supported.
+  @_fail_on_tpu(
+      "TPU backend does not support querying non-current device RNG state."
+  )
   # TODO: Enable multi-device execution in OSS via the 'exclusive' tag and remove this skip.
   @oss_utils.skip_in_oss("OSS CI runners isolate tests to a single TPU chip.")
   def test_backend_manual_seed_does_not_change_other_devices(self):
