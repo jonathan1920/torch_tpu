@@ -14,7 +14,9 @@
 
 """Distributed handshake protocol implementation using ZMQ and asyncio."""
 
+import asyncio
 import collections.abc
+from collections.abc import Collection
 import functools
 import json
 from typing import Any
@@ -399,3 +401,99 @@ class CollectiveHandshakeRequest:
         executable_fingerprint=obj["executable_fingerprint"],
         rank=obj["rank"],
     )
+
+
+class _CollectiveHandshakeConsensus:
+  """Stores and manages incoming handshake requests from participating ranks.
+
+  This does not have to include the coordinator rank if it isn't participating
+  in the handshake.
+
+  Attributes:
+    _request_queues: A list of asyncio queues, one per rank, storing incoming
+      handshake requests.
+    _request_available: An asyncio event set whenever a new request is put into
+      any queue.
+  """
+
+  def __init__(self, num_queues: int) -> None:
+    """Initializes _CollectiveHandshakeConsensus.
+
+    Args:
+      num_queues: Total number of rank queues to initialize. Must be strictly
+        positive.
+
+    Raises:
+      ValueError: If num_queues is not strictly positive.
+    """
+    if num_queues <= 0:
+      raise ValueError(
+          f"num_queues must be strictly positive, got {num_queues}."
+      )
+    self._request_queues: list[asyncio.Queue[Any]] = [
+        asyncio.Queue() for _ in range(num_queues)
+    ]
+    self._request_available = asyncio.Event()
+
+  async def put_request(self, rank: int, request: Any) -> None:
+    """Puts a request into the queue corresponding to the given rank.
+
+    Args:
+      rank: The rank index from which the request was received. Must be in range
+        [0, num_queues).
+      request: The request payload to enqueue.
+
+    Raises:
+      ValueError: If rank is out of range [0, num_queues).
+    """
+    if rank < 0 or rank >= len(self._request_queues):
+      raise ValueError(
+          f"rank ({rank}) must be in range [0, {len(self._request_queues)})."
+      )
+    await self._request_queues[rank].put(request)
+    self._request_available.set()
+
+  async def get_first_request(self) -> Any:
+    """Waits for and returns the first available request across all queues.
+
+    Returns:
+      The request payload from the first non-empty rank queue.
+    """
+    # We wait until there is a request available on any of the queues.
+    while not any(not q.empty() for q in self._request_queues):
+      self._request_available.clear()
+      await self._request_available.wait()
+
+    # We find which queue has the request available and get only that request.
+    first_rank = next(
+        r for r, q in enumerate(self._request_queues) if not q.empty()
+    )
+    return self._request_queues[first_rank].get_nowait()
+
+  async def get_from_ranks(self, ranks: Collection[int]) -> list[Any]:
+    """Concurrently awaits and returns requests from the specified ranks.
+
+    Args:
+      ranks: A collection of unique rank indices to await requests from. Each
+        rank must be in the range [0, num_queues).
+
+    Returns:
+      A list of request payloads corresponding to each rank in `ranks`, where
+      the i-th element in the returned list is the request received from the
+      i-th rank in `ranks`.
+
+    Raises:
+      ValueError: If any rank in `ranks` is out of range [0, num_queues) or if
+        `ranks` contains duplicate values.
+    """
+    if not ranks:
+      return []
+    if len(ranks) != len(set(ranks)):
+      raise ValueError(f"ranks must not contain duplicates, got {ranks}.")
+    for r in ranks:
+      if r < 0 or r >= len(self._request_queues):
+        raise ValueError(
+            f"rank ({r}) in ranks must be in range [0,"
+            f" {len(self._request_queues)})."
+        )
+    return await asyncio.gather(*[self._request_queues[r].get() for r in ranks])

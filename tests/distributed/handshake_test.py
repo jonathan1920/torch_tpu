@@ -14,12 +14,14 @@
 
 """Tests for distributed handshake protocol."""
 
+import asyncio
 import json
 
 from absl.testing import absltest
 from torch_tpu._internal.distributed import handshake
 from tests import seed_test_utils
 
+_CollectiveHandshakeConsensus = handshake._CollectiveHandshakeConsensus
 CollectiveHandshakeRequest = handshake.CollectiveHandshakeRequest
 ProcessGroupId = handshake.ProcessGroupId
 ProcessGroupCollectiveCount = handshake.ProcessGroupCollectiveCount
@@ -280,12 +282,12 @@ class CollectiveHandshakeRequestTest(seed_test_utils.RepeatableTest):
         ProcessGroupId([0, 1]): 3,
     })
 
-    msg = CollectiveHandshakeRequest(
+    request = CollectiveHandshakeRequest(
         pg_collective_counts=pg_counts,
         executable_fingerprint="fp_12345",
         rank=0,
     )
-    serialized = msg.to_bytes()
+    serialized = request.to_bytes()
     self.assertIsInstance(serialized, bytes)
 
     deserialized = CollectiveHandshakeRequest.from_bytes(serialized)
@@ -318,12 +320,12 @@ class CollectiveHandshakeRequestTest(seed_test_utils.RepeatableTest):
         ProcessGroupId([1, 2]): 2,
     })
 
-    msg = CollectiveHandshakeRequest(
+    request = CollectiveHandshakeRequest(
         pg_collective_counts=pg_counts,
         executable_fingerprint="fp",
         rank=1,
     )
-    self.assertEqual(msg.participating_ranks, [0, 1, 2])
+    self.assertEqual(request.participating_ranks, [0, 1, 2])
 
   def test_invalid_participating_ranks_empty(self) -> None:
     with self.assertRaisesRegex(
@@ -362,6 +364,106 @@ class CollectiveHandshakeRequestTest(seed_test_utils.RepeatableTest):
       CollectiveHandshakeRequest.from_bytes(b"\xff\xfe")
     with self.assertRaises(KeyError):
       CollectiveHandshakeRequest.from_bytes(b"{}")
+
+
+class CollectiveHandshakeConsensusTest(seed_test_utils.RepeatableTest):
+  """Unit tests for _CollectiveHandshakeConsensus request queuing and gathering."""
+
+  def test_invalid_num_queues(self) -> None:
+    with self.assertRaisesRegex(
+        ValueError, "num_queues must be strictly positive"
+    ):
+      _CollectiveHandshakeConsensus(num_queues=0)
+    with self.assertRaisesRegex(
+        ValueError, "num_queues must be strictly positive"
+    ):
+      _CollectiveHandshakeConsensus(num_queues=-1)
+
+  def test_invalid_put_request_rank(self) -> None:
+    async def _test() -> None:
+      consensus = _CollectiveHandshakeConsensus(num_queues=4)
+      with self.assertRaisesRegex(ValueError, r"rank \(-1\) must be in range"):
+        await consensus.put_request(-1, "req")
+      with self.assertRaisesRegex(ValueError, r"rank \(4\) must be in range"):
+        await consensus.put_request(4, "req")
+
+    asyncio.run(_test())
+
+  def test_invalid_get_from_ranks(self) -> None:
+    async def _test() -> None:
+      consensus = _CollectiveHandshakeConsensus(num_queues=4)
+      with self.assertRaisesRegex(
+          ValueError, "ranks must not contain duplicates"
+      ):
+        await consensus.get_from_ranks([0, 1, 0])
+      with self.assertRaisesRegex(
+          ValueError, r"rank \(-1\) in ranks must be in range"
+      ):
+        await consensus.get_from_ranks([-1, 0])
+      with self.assertRaisesRegex(
+          ValueError, r"rank \(4\) in ranks must be in range"
+      ):
+        await consensus.get_from_ranks([0, 4])
+
+    asyncio.run(_test())
+
+  def test_put_and_get_first_request(self) -> None:
+    async def _test() -> None:
+      consensus = _CollectiveHandshakeConsensus(num_queues=4)
+      await consensus.put_request(2, "req_rank_2")
+      result = await consensus.get_first_request()
+      self.assertEqual(result, "req_rank_2")
+
+    asyncio.run(_test())
+
+  def test_get_from_ranks(self) -> None:
+    async def _test() -> None:
+      consensus = _CollectiveHandshakeConsensus(num_queues=4)
+      await consensus.put_request(0, "req_0")
+      await consensus.put_request(1, "req_1")
+      await consensus.put_request(2, "req_2")
+      await consensus.put_request(3, "req_3")
+
+      results = await consensus.get_from_ranks([1, 3])
+      self.assertEqual(results, ["req_1", "req_3"])
+
+    asyncio.run(_test())
+
+  def test_get_from_ranks_order(self) -> None:
+    async def _test() -> None:
+      consensus = _CollectiveHandshakeConsensus(num_queues=4)
+      await consensus.put_request(0, "req_0")
+      await consensus.put_request(1, "req_1")
+      await consensus.put_request(2, "req_2")
+      await consensus.put_request(3, "req_3")
+
+      results = await consensus.get_from_ranks([3, 1, 0])
+      self.assertEqual(results, ["req_3", "req_1", "req_0"])
+
+    asyncio.run(_test())
+
+  def test_get_from_ranks_empty(self) -> None:
+    async def _test() -> None:
+      consensus = _CollectiveHandshakeConsensus(num_queues=4)
+      results = await consensus.get_from_ranks([])
+      self.assertEqual(results, [])
+
+    asyncio.run(_test())
+
+  def test_concurrent_put_and_get(self) -> None:
+    async def _test() -> None:
+      consensus = _CollectiveHandshakeConsensus(num_queues=4)
+
+      async def _delayed_put() -> None:
+        await asyncio.sleep(0.01)
+        await consensus.put_request(1, "delayed_req")
+
+      task = asyncio.create_task(_delayed_put())
+      result = await consensus.get_first_request()
+      await task
+      self.assertEqual(result, "delayed_req")
+
+    asyncio.run(_test())
 
 
 if __name__ == "__main__":
