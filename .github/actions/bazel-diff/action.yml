@@ -16,7 +16,11 @@ name: 'Run tests with bazel-diff'
 description: 'Calculates impacted Bazel targets using bazel-diff and runs them.'
 inputs:
   base_sha:
-    description: 'Base commit SHA for diff comparison'
+    description: >-
+      Base commit SHA for diff comparison.
+      On pull request events, pass the base branch tip the synthetic merge commit
+      is built on rather than the event's base SHA, which is a stale snapshot
+      upon PR creation. See https://github.com/orgs/community/discussions/59677.
     required: false
     default: ''
   current_sha:
