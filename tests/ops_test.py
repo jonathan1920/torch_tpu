@@ -28,7 +28,6 @@ from absl import flags
 from absl.testing import absltest
 import torch
 from torch.nn import attention
-from torch.testing._internal import common_methods_invocations  # pylint: disable=unused-import
 from torch_tpu._internal.utils import test_utils
 from tests import dynamism_test_utils
 from tests import op_testing
@@ -106,7 +105,7 @@ def _has_test_filter() -> bool:
 COMPLEX_DTYPES = op_testing.COMPLEX_DTYPES
 FLOAT_DTYPES = op_testing.FLOAT_DTYPES
 INTEGRAL_DTYPES = op_testing.INTEGRAL_DTYPES
-NUMERIC_DTYPES = op_testing.NUMERIC_DTYPES
+ALL_NUMERIC_DTYPES = op_testing.ALL_NUMERIC_DTYPES
 
 CheckValueMode = test_utils.CheckValueMode
 
@@ -1897,10 +1896,35 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("add")
 
   def test_addcdiv(self):
-    self.do_test_op("addcdiv")
+    self.do_test_op(
+        "addcdiv",
+        exclude_dtypes={
+            "gpu": (
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+            ),
+        },
+    )
 
   def test_addcmul(self):
-    self.do_test_op("addcmul")
+    self.do_test_op(
+        "addcmul",
+        exclude_dtypes={
+            "gpu": (
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+            ),
+        },
+        exclude_inplace_dtypes={
+            "gpu": (
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+            ),
+        },
+    )
 
   def test_addmm(self):
     self.do_test_op(
@@ -1962,10 +1986,26 @@ class TestOps(op_testing.OpInfoTestBase):
     )
 
   def test_all(self):
-    self.do_test_op("all")
+    self.do_test_op(
+        "all",
+        exclude_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_any(self):
-    self.do_test_op("any")
+    self.do_test_op(
+        "any",
+        exclude_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_amax(self):
     self.do_test_op("amax")
@@ -2087,7 +2127,14 @@ class TestOps(op_testing.OpInfoTestBase):
         # there's no point in checking the values.
         check_value=CheckValueMode.SKIP,
         # GPU (CUDA) does not support complex dtypes for bernoulli.
-        exclude_dtypes=COMPLEX_DTYPES,
+        exclude_dtypes={
+            "cpu": COMPLEX_DTYPES,
+            "gpu": (
+                *COMPLEX_DTYPES,
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
     )
 
   def test_binary_cross_entropy(self):
@@ -2293,7 +2340,16 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("digamma")
 
   def test_div(self):
-    self.do_test_op("div")
+    self.do_test_op(
+        "div",
+        exclude_dtypes={
+            "gpu": (
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+            ),
+        },
+    )
 
   def test_dot(self):
     self.do_test_op(
@@ -2335,7 +2391,15 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "nn.functional.embedding",
         # TODO: fix embedding() failing with complex dtypes.
-        exclude_dtypes=COMPLEX_DTYPES,
+        exclude_dtypes={
+            "cpu": COMPLEX_DTYPES,
+            "gpu": (
+                *COMPLEX_DTYPES,
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+            ),
+        },
         # TODO: add support for sparse embeddings.
         skip_if=lambda device, variant, op_input: op_input.kwargs.get(
             "sparse", False
@@ -2370,7 +2434,15 @@ class TestOps(op_testing.OpInfoTestBase):
     )
 
   def test_eq(self):
-    self.do_test_op("eq")
+    self.do_test_op(
+        "eq",
+        exclude_inplace_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_equal(self):
     self.do_test_op("equal")
@@ -2399,6 +2471,12 @@ class TestOps(op_testing.OpInfoTestBase):
         # By definition, exponential() returns a tensor with random values, so
         # there's no point in checking the values.
         check_value=CheckValueMode.SKIP,
+        exclude_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
     )
 
   def test_eye(self):
@@ -2412,7 +2490,12 @@ class TestOps(op_testing.OpInfoTestBase):
             # TODO: b/518595804 - PyTorch currently does not support half
             # precision FFTs for PrivateUse1 backends. See promote_type_fft
             # in SpectralOps.cpp.
-            "gpu": (torch.float64, torch.float16, torch.bfloat16),
+            "gpu": (
+                torch.float64,
+                torch.float16,
+                torch.bfloat16,
+                torch.int4,
+            ),
         },
     )
 
@@ -2424,7 +2507,12 @@ class TestOps(op_testing.OpInfoTestBase):
             # TODO: b/518595804 - PyTorch currently does not support half
             # precision FFTs for PrivateUse1 backends. See promote_type_fft
             # in SpectralOps.cpp.
-            "gpu": (torch.float64, torch.float16, torch.bfloat16),
+            "gpu": (
+                torch.float64,
+                torch.float16,
+                torch.bfloat16,
+                torch.int4,
+            ),
         },
     )
 
@@ -2436,7 +2524,12 @@ class TestOps(op_testing.OpInfoTestBase):
             # TODO: b/518595804 - PyTorch currently does not support half
             # precision FFTs for PrivateUse1 backends. See promote_type_fft
             # in SpectralOps.cpp.
-            "gpu": (torch.float64, torch.float16, torch.bfloat16),
+            "gpu": (
+                torch.float64,
+                torch.float16,
+                torch.bfloat16,
+                torch.int4,
+            ),
         },
     )
 
@@ -2448,7 +2541,12 @@ class TestOps(op_testing.OpInfoTestBase):
             # TODO: b/518595804 - PyTorch currently does not support half
             # precision FFTs for PrivateUse1 backends. See promote_type_fft
             # in SpectralOps.cpp.
-            "gpu": (torch.float64, torch.float16, torch.bfloat16),
+            "gpu": (
+                torch.float64,
+                torch.float16,
+                torch.bfloat16,
+                torch.int4,
+            ),
         },
     )
 
@@ -2469,8 +2567,26 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "floor_divide",
         # TODO: cpu does incorrect rounding for bfloat16 and float16.
-        exclude_dtypes=(torch.bfloat16, torch.float16),
-        exclude_inplace_dtypes=(torch.bfloat16, torch.float16),
+        exclude_dtypes={
+            "cpu": (torch.bfloat16, torch.float16),
+            "gpu": (
+                torch.bfloat16,
+                torch.float16,
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+            ),
+        },
+        exclude_inplace_dtypes={
+            "cpu": (torch.bfloat16, torch.float16),
+            "gpu": (
+                torch.bfloat16,
+                torch.float16,
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+            ),
+        },
     )
 
   def test_flip(self):
@@ -2483,7 +2599,16 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("fmin")
 
   def test_fmod(self):
-    self.do_test_op("fmod")
+    self.do_test_op(
+        "fmod",
+        exclude_dtypes={
+            "gpu": (
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+            ),
+        },
+    )
 
   @category("foreach")
   def test_foreach_abs(self):
@@ -2758,7 +2883,14 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "_foreach_norm",
         # TODO(b/485291373): fix _foreach_norm() failing with complex dtypes.
-        exclude_dtypes=COMPLEX_DTYPES,
+        exclude_dtypes={
+            "cpu": COMPLEX_DTYPES,
+            "gpu": (
+                *COMPLEX_DTYPES,
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
         skip_if=skip_if,
     )
 
@@ -2839,10 +2971,26 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("gather")
 
   def test_ge(self):
-    self.do_test_op("ge")
+    self.do_test_op(
+        "ge",
+        exclude_inplace_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_gt(self):
-    self.do_test_op("gt")
+    self.do_test_op(
+        "gt",
+        exclude_inplace_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_grid_sample(self):
     self.do_test_op(
@@ -2946,7 +3094,15 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("ldexp")
 
   def test_le(self):
-    self.do_test_op("le")
+    self.do_test_op(
+        "le",
+        exclude_inplace_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_leaky_relu(self):
     self.do_test_op("nn.functional.leaky_relu")
@@ -3108,10 +3264,26 @@ class TestOps(op_testing.OpInfoTestBase):
   # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
   @oss_utils.skip_in_oss()
   def test_norm(self):
-    self.do_test_op("norm")
+    self.do_test_op(
+        "norm",
+        exclude_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_linalg_vector_norm_other_dtypes(self):
-    self.do_test_op("linalg.vector_norm")
+    self.do_test_op(
+        "linalg.vector_norm",
+        exclude_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_linspace(self):
     self.do_test_op(
@@ -3124,7 +3296,15 @@ class TestOps(op_testing.OpInfoTestBase):
     )
 
   def test_lt(self):
-    self.do_test_op("lt")
+    self.do_test_op(
+        "lt",
+        exclude_inplace_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_log(self):
     self.do_test_op("log")
@@ -3224,7 +3404,14 @@ class TestOps(op_testing.OpInfoTestBase):
         # generator.
         check_value=CheckValueMode.SKIP,
         # TODO: float64 is not supported for rng on TPU.
-        exclude_dtypes=(torch.float64,),
+        exclude_dtypes={
+            "cpu": (torch.float64,),
+            "gpu": (
+                torch.float64,
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
     )
 
   def test_max(self):
@@ -3415,7 +3602,15 @@ class TestOps(op_testing.OpInfoTestBase):
     )
 
   def test_ne(self):
-    self.do_test_op("ne")
+    self.do_test_op(
+        "ne",
+        exclude_inplace_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_new_ones(self):
     self.do_test_op("new_ones")
@@ -3434,7 +3629,17 @@ class TestOps(op_testing.OpInfoTestBase):
 
   @category("nonzero")
   def test_nonzero(self):
-    self.do_test_op("nonzero")
+    self.do_test_op(
+        "nonzero",
+        exclude_dtypes={
+            "gpu": (
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_normal_(self):
     self.do_test_op(
@@ -3836,9 +4041,8 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_scaled_mm_v2(self):
     self.do_test_op(
         "torch._scaled_mm_v2",
-        extra_dtypes=common_methods_invocations.float8_types(),
         exclude_dtypes={
-            "cpu": NUMERIC_DTYPES,
+            "cpu": ALL_NUMERIC_DTYPES,
             "gpu": (
                 torch.complex64,
                 torch.float64,
@@ -3849,6 +4053,8 @@ class TestOps(op_testing.OpInfoTestBase):
                 torch.int8,
                 torch.int16,
                 torch.bool,
+                torch.int4,
+                torch.float4_e2m1fn_x2,
             ),
         },
     )
@@ -3869,7 +4075,16 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("select_scatter")
 
   def test_safe_softmax(self):
-    self.do_test_op("torch.ops.aten._safe_softmax.default")
+    self.do_test_op(
+        "torch.ops.aten._safe_softmax.default",
+        exclude_dtypes={
+            "gpu": (
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+            ),
+        },
+    )
 
   def test_scalar_tensor(self):
     self.do_test_op("scalar_tensor")
@@ -3878,7 +4093,16 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_searchsorted(self):
     self.do_test_op(
         "searchsorted",
-        exclude_dtypes=COMPLEX_DTYPES,
+        exclude_dtypes={
+            "cpu": COMPLEX_DTYPES,
+            "gpu": (
+                *COMPLEX_DTYPES,
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
         # Upstream generates 288 samples per dtype; cap to prevent test
         # shard timeouts (10 samples per op dtype results in ~15m test time).
         max_samples_per_op_dtype=6,
@@ -3998,7 +4222,15 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("nn.functional.threshold")
 
   def test_to(self):
-    self.do_test_op("to")
+    self.do_test_op(
+        "to",
+        exclude_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
+    )
 
   def test_topk(self):
     # Skip the indices output in topk as torch doesn't specify the order of the
@@ -4011,7 +4243,12 @@ class TestOps(op_testing.OpInfoTestBase):
     )
 
   def test_transpose(self):
-    self.do_test_op("transpose")
+    self.do_test_op(
+        "transpose",
+        exclude_dtypes=_if_tpu_vs_gpu_compiled(
+            INTEGRAL_DTYPES + (torch.int4,), ()
+        ),
+    )
 
   def test_tril(self):
     self.do_test_op("tril")
@@ -4064,6 +4301,12 @@ class TestOps(op_testing.OpInfoTestBase):
         # By definition, uniform() returns a tensor with random values, so
         # there's no point in checking the values.
         check_value=CheckValueMode.SKIP,
+        exclude_dtypes={
+            "gpu": (
+                torch.float4_e2m1fn_x2,
+                torch.int4,
+            ),
+        },
     )
 
   def test_unsafe_view(self):

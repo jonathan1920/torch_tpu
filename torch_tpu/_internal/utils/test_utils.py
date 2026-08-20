@@ -491,6 +491,50 @@ def _add_tolerance_suggestions(
   return msg + "".join(suggestion_lines)
 
 
+# The FP4 (E2M1) value denoted by each 4-bit encoding (bit 3 is the sign).
+# Stored as float32 so that decoded values can be numerically compared.
+_FP4_E2M1_VALUES: torch.Tensor = torch.tensor(
+    [
+        0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
+        -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0,
+    ],
+    dtype=torch.float32,
+)  # pyformat: disable
+
+
+def _decode_sub_byte_tensor(t: torch.Tensor) -> torch.Tensor:
+  """Decodes a sub-byte dtype tensor for value comparison.
+
+  CPU kernels for the sub-byte dtypes are mostly unimplemented (even casts),
+  so decode them manually:
+
+  - int4/uint4: one element per byte; the low nibble is sign/zero-extended to
+    int8/uint8 (tolerant of both sign-extended and nibble-only encodings).
+  - float4_e2m1fn_x2: each byte packs two FP4 (E2M1) values, low nibble first;
+    decoded to a float32 tensor whose trailing dimension is doubled.
+
+  Args:
+    t: The tensor to decode.
+
+  Returns:
+    The decoded tensor, or `t` unchanged if its dtype needs no decoding.
+  """
+  # A same-itemsize view() works on non-contiguous tensors, unlike contiguous(),
+  # which needs a copy kernel the sub-byte dtypes don't have.
+  if t.dtype == torch.int4:
+    return (t.view(torch.int8) << 4) >> 4
+  if t.dtype == torch.uint4:
+    return t.view(torch.uint8) & 0xF
+  if t.dtype == torch.float4_e2m1fn_x2:
+    data = t.view(torch.uint8)
+    codes = torch.stack((data & 0xF, data >> 4), dim=-1)
+    if t.dim() > 0:
+      # Not reshape(..., -1): -1 is ambiguous when a leading dim is 0.
+      codes = codes.reshape(*t.shape[:-1], 2 * t.shape[-1])
+    return _FP4_E2M1_VALUES.to(codes.device)[codes.long()]
+  return t
+
+
 def _assert_tensor_close(
     actual: torch.Tensor,
     expected: torch.Tensor,
@@ -548,6 +592,11 @@ def _assert_tensor_close(
         f"      Actual tensor:\n{actual}"
     )
     raise AssertionError(msg)
+
+  # Sub-byte dtypes have no CPU kernels for comparison math; decode them into
+  # standard dtypes first.
+  actual = _decode_sub_byte_tensor(actual)
+  expected = _decode_sub_byte_tensor(expected)
 
   if torch.accelerator.is_available():
     torch.accelerator.synchronize()

@@ -1299,10 +1299,29 @@ INTEGRAL_DTYPES: Final[Sequence[torch.dtype]] = (
     torch.bool,
 )
 
-NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
+UNQUANTIZED_NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
     *COMPLEX_DTYPES,
     *FLOAT_DTYPES,
     *INTEGRAL_DTYPES,
+)
+
+# Dtypes that use fewer than 8 bits (less than one full byte) to represent a
+# single value.
+_SUB_BYTE_DTYPES: Final[Sequence[torch.dtype]] = (
+    torch.int4,
+    torch.float4_e2m1fn_x2,
+)
+
+# Low-precision dtypes for quantization.
+QUANTIZED_NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
+    torch.float8_e4m3fn,
+    torch.float8_e5m2,
+    *_SUB_BYTE_DTYPES,
+)
+
+ALL_NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
+    *UNQUANTIZED_NUMERIC_DTYPES,
+    *QUANTIZED_NUMERIC_DTYPES,
 )
 
 # Maps a dtype to its tier (smaller is more important).
@@ -1337,7 +1356,7 @@ def _dtypes_to_test() -> Sequence[torch.dtype]:
   """Returns the dtypes to test."""
 
   if "all" in _DTYPES.value:
-    return NUMERIC_DTYPES
+    return ALL_NUMERIC_DTYPES
   else:
     return tuple(_parse_dtype(dtype_str) for dtype_str in _DTYPES.value)
 
@@ -1453,16 +1472,8 @@ def _format_dtype(dtype: torch.dtype) -> str:
   return str(dtype).removeprefix("torch.")
 
 
-EXTRA_NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
-    torch.float8_e4m3fn,
-    torch.float8_e5m2,
-    torch.float4_e2m1fn_x2,
-)
-
-
 _DTYPE_NAME_TO_DTYPE: Final[Mapping[str, torch.dtype]] = {
-    **{_format_dtype(dtype): dtype for dtype in NUMERIC_DTYPES},
-    **{_format_dtype(dtype): dtype for dtype in EXTRA_NUMERIC_DTYPES},
+    _format_dtype(dtype): dtype for dtype in ALL_NUMERIC_DTYPES
 }
 
 
@@ -1660,7 +1671,7 @@ P99: {sorted_durations_ms[99*num//100]:.2f}ms""",
           flush=True,
       )
 
-  for dtype in NUMERIC_DTYPES:
+  for dtype in ALL_NUMERIC_DTYPES:
     _analyze(dtype)
 
   _print_perf_debug_guide()
@@ -1722,18 +1733,87 @@ def _tensor_tree_map(
   return _pytree.tree_map(leaf_func, x, is_leaf=is_leaf)
 
 
+def _quantize_to_float4_e2m1fn_x2(t: torch.Tensor) -> torch.Tensor:
+  """Quantizes a float tensor to packed float4_e2m1fn_x2.
+
+  Neither CPU nor CUDA implements casts to float4_e2m1fn_x2, so the case
+  is emulated with bit manipulation. The result matches the TPU cast
+  semantics (see fp4_test.py): the shape is preserved, values are quantized
+  with round-to-nearest-even and saturation to +/-6, packed two per byte (low
+  nibble first) at the front of the buffer, and the rest is zero-padded.
+
+  Args:
+    t: The tensor to quantize. Must have a dtype convertible to float32.
+
+  Returns:
+    A float4_e2m1fn_x2 tensor with the same shape as `t`.
+  """
+  x = t.detach().to(torch.float32)
+  # E2M1 has no NaN/inf encoding; saturate them like out-of-range values.
+  x = torch.nan_to_num(x, nan=0.0, posinf=6.0, neginf=-6.0)
+  magnitude = x.abs().clamp(max=6.0).flatten()
+  # Midpoints between consecutive E2M1 magnitudes [0, .5, 1, 1.5, 2, 3, 4, 6].
+  midpoints = torch.tensor(
+      [0.25, 0.75, 1.25, 1.75, 2.5, 3.5, 5.0], device=x.device
+  )
+  codes = torch.searchsorted(midpoints, magnitude, right=True)
+  # right=True rounds all ties up; ties whose lower code is even must round
+  # down instead (round-to-nearest-even).
+  tie_down = (
+      (magnitude == 0.25)
+      | (magnitude == 1.25)
+      | (magnitude == 2.5)
+      | (magnitude == 5.0)
+  )
+  codes = torch.where(tie_down, codes - 1, codes).to(torch.uint8)
+  codes |= torch.signbit(x).flatten().to(torch.uint8) << 3
+  # Pack two values per byte, low nibble first, into a buffer with one byte
+  # per container element (i.e. twice the needed capacity), zero-padded.
+  nibbles = torch.zeros(2 * codes.numel(), dtype=torch.uint8, device=x.device)
+  nibbles[: codes.numel()] = codes
+  nibbles = nibbles.view(-1, 2)
+  packed = nibbles[:, 0] | (nibbles[:, 1] << 4)
+  return packed.view(t.shape).view(torch.float4_e2m1fn_x2)
+
+
+def _quantize_to_int4(t: torch.Tensor) -> torch.Tensor:
+  """Quantizes an integer tensor to int4.
+
+  Neither CPU nor CUDA implements casts to int4, so saturate it to the int4
+  value range and reinterpret the bytes. An int4 element occupies one byte,
+  sign-extended, thus the clamped int8 bit patterns are already correct.
+
+  Args:
+    t: The tensor to quantize. Must have an integer dtype.
+
+  Returns:
+    An int4 tensor with the same shape as `t`.
+  """
+  return t.detach().clamp(-8, 7).to(torch.int8).contiguous().view(torch.int4)
+
+
+# Maps the desired dtype to a conversion function from the fallback dtype to
+# the desired dtype. See also _DESIRED_DTYPE_TO_SAMPLE_DTYPE below.
+_SAMPLE_DTYPE_CONVERTERS: Final[
+    Mapping[torch.dtype, Callable[[torch.Tensor], torch.Tensor]]
+] = {
+    torch.float4_e2m1fn_x2: _quantize_to_float4_e2m1fn_x2,
+    torch.int4: _quantize_to_int4,
+}
+
 def _convert_sample_dtype(
     sample: SampleInput, from_dtype: torch.dtype, to_dtype: torch.dtype
 ) -> SampleInput:
   """Converts all tensors in sample with dtype == from_dtype to to_dtype."""
+  convert = _SAMPLE_DTYPE_CONVERTERS.get(to_dtype, lambda t: t.to(to_dtype))
 
   def transform_leaf(obj: Any) -> Any:
     if isinstance(obj, torch.Tensor) and obj.dtype == from_dtype:
-      if obj.device.type == "cpu":
-        # Bypass the issue that CPU doesn't support all conversion for all
-        # dtypes.
-        return obj.to("tpu").to(to_dtype).to("cpu")
-      return obj.to(to_dtype)
+      return convert(obj)
+    if isinstance(obj, torch.dtype) and obj == from_dtype:
+      # Also translate dtype-valued args, e.g. `dtype=` kwargs of factory ops,
+      # so the sample really exercises the desired dtype.
+      return to_dtype
     return obj
 
   sample.input = _tensor_tree_map(transform_leaf, sample.input)
@@ -1741,17 +1821,18 @@ def _convert_sample_dtype(
   sample.kwargs = _tensor_tree_map(transform_leaf, sample.kwargs)
   return sample
 
-
 # Maps the desired sample dtype to the dtype to sample with.
+# torch.testing framework doesn't support sampling with these dtypes, so we
+# sample with a supported dtype and then convert with the matching converter in
+# _SAMPLE_DTYPE_CONVERTERS above.
 _DESIRED_DTYPE_TO_SAMPLE_DTYPE: Final[Mapping[torch.dtype, torch.dtype]] = {
-    # torch.testing doesn't support sampling with float4_e2m1fn_x2, so we
-    # sample with float8_e4m3fn and then convert to float4_e2m1fn_x2.
     # Why torch.float8_e4m3fn:
     # - it matches the finite floating-point encoding semantics (fn) of
     #   torch.float4_e2m1fn_x2, and
     # - it provides 3 mantissa bits for fine-grained quantization resolution
     #   before casting down to FP4.
     torch.float4_e2m1fn_x2: torch.float8_e4m3fn,
+    torch.int4: torch.int8,
 }
 
 
@@ -1773,19 +1854,49 @@ def _sample_inputs(
   Returns:
     A list of sample inputs.
   """
-
   sample_dtype = _DESIRED_DTYPE_TO_SAMPLE_DTYPE.get(dtype, dtype)
-  samples = list(
-      op.sample_inputs(
-          device,
-          sample_dtype,
-          requires_grad=False,
+  try:
+    samples = list(
+        op.sample_inputs(
+            device,
+            sample_dtype,
+            requires_grad=False,
+            set_seed=set_seed,
+        )
+    )
+    if sample_dtype != dtype:
+      samples = [_convert_sample_dtype(s, sample_dtype, dtype) for s in samples]
+    return samples
+  except Exception as e:  # pylint: disable=broad-except
+    if device.type == "cpu" or not _gen_gpu_golden_mode():
+      raise
+
+    # CUDA kernels have gaps in supporting certain dtypes, especially the
+    # low-precision quantized dtypes. To avoid (op, dtype) being silently
+    # dropped, fall back to CPU and transfer back to the requested device.
+    try:
+      cpu_samples = _sample_inputs(
+          op,
+          torch.device("cpu"),
+          dtype,
           set_seed=set_seed,
       )
-  )
-  if sample_dtype != dtype:
-    samples = [_convert_sample_dtype(s, sample_dtype, dtype) for s in samples]
-  return samples
+      print(
+          f"WARNING: Generated samples for {op.name}() with dtype {dtype}"
+          f" on CPU because generation failed on {device}: {e}",
+          flush=True,
+      )
+      return [_sample_to_device(s, device) for s in cpu_samples]
+    except Exception as ce:  # pylint: disable=broad-except
+      print(
+          f"WARNING: Skipping golden generation for {op.name}() with dtype"
+          f" {dtype} because sample generation failed on both"
+          f" {device} and CPU fallback with\n"
+          f"  Exception on {device}: {e}\n"
+          f"  Exception on CPU: {ce}",
+          flush=True,
+      )
+      return []
 
 
 def to(
@@ -1818,6 +1929,14 @@ def to(
 
   def transform_leaf(obj: Any) -> Any:
     if isinstance(obj, torch.Tensor) and convert_tensors:
+      if (
+          obj.dtype in _SUB_BYTE_DTYPES
+          and obj.device.type != "tpu"
+          and device.type != "tpu"
+      ):
+        # Copies between CPU and GPU are not supported for sub-byte dtypes, thus
+        # move the raw bytes instead. TPU transfers support them natively.
+        return obj.view(torch.uint8).contiguous().to(device).view(obj.dtype)
       return obj.to(device)
     if isinstance(obj, torch.device):
       return device
@@ -1845,6 +1964,14 @@ def to(
     return obj
 
   return _tensor_tree_map(transform_leaf, x)
+
+
+def _sample_to_device(sample: SampleInput, device: torch.device) -> SampleInput:
+  """Moves all tensors and devices in the sample to the given device."""
+  sample.input = to(sample.input, device)
+  sample.args = to(sample.args, device)
+  sample.kwargs = to(sample.kwargs, device)
+  return sample
 
 
 def _make_tensors_zero_element(x: _pytree.PyTree) -> _pytree.PyTree:
@@ -1935,6 +2062,15 @@ def _to_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
       # lossless and compact. Since st.save() takes a dict from str to tensor,
       # we need to provide a dummy str key.
       #
+      # st.save() doesn't handle sub-byte dtypes, so serialize the raw bytes
+      # as uint8 and record the original dtype in the key after a "b:" prefix.
+      if x.dtype in _SUB_BYTE_DTYPES:
+        return st.save({
+            f"b:{_format_dtype(x.dtype)}":
+            # Densify the uint8 view rather than the tensor itself because
+            # contiguous() needs a copy kernel the sub-byte dtypes don't have.
+            x.view(torch.uint8).contiguous()
+        })
       # st.save() doesn't handle non-contiguous tensors.
       x = x.contiguous()
       # st.save() doesn't handle complex tensors, so encode them as real + imag.
@@ -2080,6 +2216,10 @@ def _from_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
       if "c" in d:
         # The tensor is complex-typed.
         return torch.view_as_complex(d["c"])
+      key, tensor = next(iter(d.items()))
+      if key.startswith("b:"):
+        # The tensor has a sub-byte dtype, serialized as raw uint8 bytes.
+        return tensor.view(getattr(torch, key.removeprefix("b:")))
       # The tensor is not complex-typed.
       return d[""]
     if isinstance(x, dict):
@@ -2137,6 +2277,21 @@ def _from_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
   return _pytree.tree_map(leaf_func, ptree, is_leaf=is_leaf)
 
 
+def _safe_tensor_repr(obj: Any) -> Any:
+  """Returns a representation of obj safe against sub-byte tensor repr crashes."""
+
+  def transform_leaf(x: Any) -> Any:
+    if isinstance(x, torch.Tensor):
+      if x.dtype in _SUB_BYTE_DTYPES:
+        return f"tensor({x.view(torch.uint8).tolist()}, dtype={x.dtype})"
+      return repr(x)
+    return x
+
+  if isinstance(obj, torch.Tensor):
+    return transform_leaf(obj)
+  return _tensor_tree_map(transform_leaf, obj)
+
+
 class OpInput:
   """Holds the input to an op."""
 
@@ -2152,8 +2307,10 @@ class OpInput:
 
   def __repr__(self) -> str:
     return (
-        f"Name: {self.name}\nInput: {self.input_value}\nArgs:"
-        f" {self.args}\nKwargs: {self.kwargs}"
+        f"Name: {self.name}\nInput:"
+        f" {_safe_tensor_repr(self.input_value)}\nArgs:"
+        f" {_safe_tensor_repr(self.args)}\nKwargs:"
+        f" {_safe_tensor_repr(self.kwargs)}"
     )
 
   def summary(self) -> str:
@@ -2216,7 +2373,7 @@ class OpOutput:
     return self.__repr__()
 
   def __repr__(self) -> str:
-    return f"Output: {self.output_value}"
+    return f"Output: {_safe_tensor_repr(self.output_value)}"
 
   def to_plistlib_pytree(self) -> _pytree.PyTree:
     """Converts this object to a PyTree that plistlib can handle."""
@@ -2837,20 +2994,12 @@ class OpInfoTestBase(
       return samples
 
     # Generate sample inputs on the golden device.
-    try:
-      golden_samples = _sample_inputs(
-          op, self.golden_device, dtype, set_seed=set_seed
-      )
-    except Exception as e:  # pylint: disable=broad-except
-      if _gen_gpu_golden_mode():
-        print(
-            f"WARNING: Skipping golden generation for {op_name}() with dtype"
-            f" {dtype} because sample generation failed on"
-            f" {self.golden_device}: {e}",
-            flush=True,
-        )
-        return []
-      raise
+    golden_samples = _sample_inputs(
+        op,
+        self.golden_device,
+        dtype,
+        set_seed=set_seed,
+    )
     if max_samples is None:
       max_samples = _MAX_SAMPLES_PER_OP_DTYPE.value
     if max_samples >= 0 and len(golden_samples) > max_samples:
@@ -2958,6 +3107,17 @@ class OpInfoTestBase(
       ), f"out must be None when testing the {variant} variant of an op."
 
     op_name = _op_name_for_logging(op, variant)
+    target_device = device
+    if (
+        _gen_gpu_golden_mode()
+        and dtype in _SUB_BYTE_DTYPES
+        and device.type == "cuda"
+    ):
+      # Sub-byte dtypes do not have CUDA copy or cast kernels. Invoking an
+      # operator or .to("cuda") on a sub-byte tensor causes a CUDA assertion
+      # failure, putting CUDA context into an unrecoverable error state.
+      target_device = torch.device("cpu")
+
     if variant == OpVariant.OUT and out is None:
       # We need to create the out tensor ourselves.
       #
@@ -2983,14 +3143,14 @@ class OpInfoTestBase(
         return base_result
       # Next, create the out argument. We always use a zero-element tensor
       # (shape (0,)) to force and verify out-variant shape resizing compliance.
-      out = to(_make_tensors_zero_element(base_result), device)
+      out = to(_make_tensors_zero_element(base_result), target_device)
 
     op_func = op.inplace_variant if variant == OpVariant.INPLACE else op
     # For operators that lack a native PyTorch CPU kernel (e.g. internal CUDA
     # ops like _thnn_fused_lstm_cell / _thnn_fused_gru_cell), invoke the custom
     # analytical reference function `.ref` when computing CPU golden results.
     if (
-        device.type == "cpu"
+        target_device.type == "cpu"
         and getattr(op, "ref", None) is not None
         and (
             op.name.startswith("_thnn_fused_")
@@ -3002,7 +3162,7 @@ class OpInfoTestBase(
     # Clone the sample to prevent the op from mutating it.
     # We must deepcopy op_input *before* setting its device to the given device,
     # because deepcopying a TPU tensor is not implemented yet.
-    device_op_input = to(copy.deepcopy(op_input), device)
+    device_op_input = to(copy.deepcopy(op_input), target_device)
 
     if variant == OpVariant.OUT:
       device_op_input.kwargs["out"] = out
@@ -3121,12 +3281,14 @@ class OpInfoTestBase(
         # tensors in the result are indeed on the expected device.
         def assert_on_device(obj: Any) -> None:
           if isinstance(obj, torch.Tensor):
-            self.assert_devices_equivalent(obj.device, device)
+            self.assert_devices_equivalent(obj.device, target_device)
 
         try:
           _tensor_tree_map(assert_on_device, result)
         except AssertionError as e:
-          self.fail(f"Expected result to be on {device}, but got {result}: {e}")
+          self.fail(
+              f"Expected result to be on {target_device}, but got {result}: {e}"
+          )
 
       # In the eager mode of pytorch CPU/GPU, ops are run synchronously: if
       # an op encounters an error, the op() call itself will raise an
@@ -3586,7 +3748,6 @@ class OpInfoTestBase(
       self,
       op_name: str,
       *,
-      extra_dtypes: Iterable[torch.dtype] | None = None,
       exclude_dtypes: (
           Iterable[torch.dtype] | Mapping[str, Iterable[torch.dtype]] | None
       ) = None,
@@ -3610,9 +3771,6 @@ class OpInfoTestBase(
 
     Args:
       op_name: The name of the op to test.
-      extra_dtypes: A list of additional input dtypes to include in testing, in
-        addition to the default NUMERIC_DTYPES. If None, only NUMERIC_DTYPES
-        will be tested.
       exclude_dtypes: A list of input dtypes to exclude from testing, or a
         dictionary mapping device type ("cpu" or "gpu") to such a list (useful
         when different dtypes should be excluded for different golden devices).
@@ -3697,9 +3855,12 @@ class OpInfoTestBase(
 
       Currently only the out variant can be disabled (via check_out_variant).
       """
-      dtypes_to_test = list(
-          dict.fromkeys(list(NUMERIC_DTYPES) + list(extra_dtypes or []))
-      )
+      dtypes_to_test = list(UNQUANTIZED_NUMERIC_DTYPES)
+      if self.golden_device_type == "gpu" and _gen_gpu_golden_mode():
+        # Include quantized numeric dtypes during GPU golden data generation.
+        # CPU kernel coverage for them is too sparse to serve as a golden device.
+        dtypes_to_test.extend(QUANTIZED_NUMERIC_DTYPES)
+      dtypes_to_test = list(dict.fromkeys(dtypes_to_test))
 
       op = _get_op(op_name, variant_test_name=variant_test_name)
 
