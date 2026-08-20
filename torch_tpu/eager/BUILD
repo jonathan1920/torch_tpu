@@ -766,7 +766,7 @@ torch_tpu_cc_library(
         "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/client:executable_build_options",
-        "@xla//xla/service:computation_placer_hdr",
+        "@xla//xla/service:device_assignment",
     ],
 )
 

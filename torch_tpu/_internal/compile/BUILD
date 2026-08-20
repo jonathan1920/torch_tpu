@@ -233,7 +233,7 @@ torch_tpu_cc_library(
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt:pjrt_layout",
-        "@xla//xla/service:computation_placer_hdr",
+        "@xla//xla/service:device_assignment",
     ],
 )
 
@@ -303,7 +303,7 @@ pybind_extension(
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt:pjrt_layout",
-        "@xla//xla/service:computation_placer_hdr",
+        "@xla//xla/service:device_assignment",
     ],
 )
 

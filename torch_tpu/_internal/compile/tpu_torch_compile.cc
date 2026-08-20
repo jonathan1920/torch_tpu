@@ -87,7 +87,7 @@
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 
 namespace torch_tpu {
 namespace py = pybind11;

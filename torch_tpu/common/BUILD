@@ -285,7 +285,7 @@ torch_tpu_cc_library(
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/pjrt:pjrt_executable",
-        "@xla//xla/service:computation_placer_hdr",
+        "@xla//xla/service:device_assignment",
     ],
 )
 
