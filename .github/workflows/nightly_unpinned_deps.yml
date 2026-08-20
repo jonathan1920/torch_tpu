@@ -1,0 +1,146 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: CI - Nightly Unpinned Dependencies
+
+on:
+  # Enable remote connections. Add a workflow dispatch to enable halting.
+  # See go/ml-github-actions:connect#enable-workflow-dispatch.
+  workflow_dispatch:
+    inputs:
+      halt-for-connection:
+        description: 'Should this workflow run wait for a remote connection?'
+        type: choice
+        default: 'no'
+        options:
+          - 'yes'
+          - 'no'
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    # Run automatically every day at 2:00 AM PDT (9:00 AM UTC)
+    - cron: "0 9 * * *"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# Cancel old jobs when they are replaced by new runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  # Don't cancel in-progress jobs for main branch
+  cancel-in-progress: ${{ github.ref != 'main' }}
+
+jobs:
+  run_tests:
+    name: "Nightly with Unpinned Dependencies on ${{ matrix.job_info.name || matrix.job_info.runner }} (Python ${{ matrix.python_version }})"
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'ci:unpinned-deps')
+    strategy:
+      fail-fast: false
+      matrix:
+        # When updating SUPPORTED_PYTHON_VERSIONS (or the latest supported version), also update:
+        # - bazel/supported_python_versions.bzl
+        python_version: [
+          "3.11",
+          "3.12",
+          "3.13",
+          "3.14",
+        ]
+        job_info: [
+          {
+            name: "CPU",
+            runner: "linux-x86-n4-16",
+            config: "ci_cpu",
+          }
+        ]
+    # Use self-hosted runners. For a Linux runner, a corresponding container image used for the
+    # workflow is required.
+    # See go/ml-github-actions/getting_started/using_runners.md#supported-runner-scale-set.
+    runs-on: ${{ matrix.job_info.runner }}
+    container:
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:480f397c57207671315a27173ccec790ea9c66ef030af96cbe6ac9b4a6613996"  # Tag infrastructure-public-image-2c74567ee8e0
+      # Disable ipc isolation to prevent shm limit issues.
+      options: --ipc=host
+
+    steps:
+      # Clone the GitHub repository to runner's environment $GITHUB_WORKSPACE, making its files
+      # accessible for workflow to use.
+      - name: Checkout TorchTPU
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+
+      # Git security patch (CVE-2022-24765) blocks root from operating on runner-owned directories.
+      - name: Fix Git Workspace Ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # Enable remote connections. Add a waiting step.
+      # See go/ml-github-actions:connect#add-waiting-step.
+      - name: Wait For Connection
+        uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+
+      # Resolve unpinned/highest upper bounds dependencies. Update the existing
+      # requirements.txt with the newly resolved dependencies.
+      - name: Resolve Unpinned Dependencies
+        env:
+          PYTHON_VERSION: ${{ matrix.python_version }}
+        run: |
+          PYTHON_VERSION_UND=$(echo "${PYTHON_VERSION}" | tr '.' '_')
+          uv pip compile pyproject.toml \
+            --all-extras \
+            --python-version "${PYTHON_VERSION}" \
+            --python-platform x86_64-manylinux_2_31 \
+            --resolution highest \
+            --generate-hashes \
+            --output-file "requirements/requirements_${PYTHON_VERSION_UND}.txt"
+
+      # Run the full test suite on CPU with Bazel using unpinned dependencies.
+      - name: Run Bazel Tests
+        run: |
+          bazel test //... \
+            --config=${{ matrix.job_info.config }} \
+            --repo_env=HERMETIC_PYTHON_VERSION=${{ matrix.python_version }}
+
+      # Upload test logs on failure for triage.
+      - name: Upload Test Logs on Failure
+        uses: actions/upload-artifact@c7d193f32edcb7bfad88892161225aeda64e9392  # v4.0.0
+        if: failure()
+        with:
+          name: bazel-testlogs-${{ matrix.job_info.runner }}-${{ matrix.python_version }}
+          path: bazel-testlogs/
+          retention-days: 7
+
+  notify_failure:
+    name: Notify Failed Runs
+    needs: [run_tests]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Get current date
+        id: date
+        if: contains(needs.run_tests.result, 'failure') && github.event_name != 'pull_request'
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+      - name: Check whether one of the jobs failed
+        if: contains(needs.run_tests.result, 'failure') && github.event_name != 'pull_request'
+        uses: jayqi/failed-build-issue-action@1a893bbf43ef1c2a8705e2b115cd4f0fe3c5649b  # v1.2.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          label-name: "ci:unpinned-deps-failed"
+          title-template: "Failed Nightly with Unpinned Dependencies (${{ steps.date.outputs.date }})"

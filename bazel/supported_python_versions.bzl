@@ -16,6 +16,7 @@
 
 # When updating SUPPORTED_PYTHON_VERSIONS (or the latest supported version), also update:
 # - .github/workflows/build_wheel.yml
+# - .github/workflows/nightly_unpinned_deps.yml
 # - noxfile.py
 # - requirements/lock_environments.sh
 SUPPORTED_PYTHON_VERSIONS = [
