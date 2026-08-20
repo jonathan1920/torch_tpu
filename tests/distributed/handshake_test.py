@@ -274,6 +274,80 @@ class RankCollectiveCountsTest(seed_test_utils.RepeatableTest):
     with self.assertRaises(KeyError):
       _ = counts[pg]
 
+  def test_eq(self) -> None:
+    counts1 = RankCollectiveCounts({
+        ProcessGroupId([0, 1]): ProcessGroupCollectiveCount(
+            collective_count_before=0, num_collectives_in_graph=2
+        ),
+    })
+    counts2 = RankCollectiveCounts({
+        ProcessGroupId([0, 1]): ProcessGroupCollectiveCount(
+            collective_count_before=0, num_collectives_in_graph=2
+        ),
+    })
+    self.assertEqual(counts1, counts2)
+
+    # Different before count
+    counts3 = RankCollectiveCounts({
+        ProcessGroupId([0, 1]): ProcessGroupCollectiveCount(
+            collective_count_before=1, num_collectives_in_graph=2
+        ),
+    })
+    self.assertNotEqual(counts1, counts3)
+
+    # Different in graph count
+    counts4 = RankCollectiveCounts({
+        ProcessGroupId([0, 1]): ProcessGroupCollectiveCount(
+            collective_count_before=0, num_collectives_in_graph=3
+        ),
+    })
+    self.assertNotEqual(counts1, counts4)
+
+    # Different process group key
+    counts5 = RankCollectiveCounts({
+        ProcessGroupId([0, 2]): ProcessGroupCollectiveCount(
+            collective_count_before=0, num_collectives_in_graph=2
+        ),
+    })
+    self.assertNotEqual(counts1, counts5)
+
+  def test_collective_count_valid(self) -> None:
+    pg = ProcessGroupId([0, 1, 2, 3])
+    counts = RankCollectiveCounts({
+        pg: ProcessGroupCollectiveCount(
+            collective_count_before=3, num_collectives_in_graph=2
+        ),
+    })
+    self.assertEqual(counts.collective_count(pg), 5)
+
+  def test_collective_count_multiple_and_non_global_pgs(self) -> None:
+    pg1 = ProcessGroupId([0, 1])
+    pg2 = ProcessGroupId([0, 1, 2, 3])
+    counts = RankCollectiveCounts({
+        pg1: ProcessGroupCollectiveCount(
+            collective_count_before=1, num_collectives_in_graph=4
+        ),
+        pg2: ProcessGroupCollectiveCount(
+            collective_count_before=2, num_collectives_in_graph=1
+        ),
+    })
+    self.assertEqual(counts.collective_count(pg1), 5)
+    self.assertEqual(counts.collective_count(pg2), 3)
+
+  def test_collective_count_empty_raises(self) -> None:
+    counts = RankCollectiveCounts()
+    with self.assertRaises(KeyError):
+      counts.collective_count(ProcessGroupId([0, 1]))
+
+  def test_collective_count_missing_key_raises(self) -> None:
+    counts = RankCollectiveCounts({
+        ProcessGroupId([0, 1]): ProcessGroupCollectiveCount(
+            collective_count_before=0, num_collectives_in_graph=1
+        ),
+    })
+    with self.assertRaises(KeyError):
+      counts.collective_count(ProcessGroupId([0, 1, 2, 3]))
+
 
 class CollectiveHandshakeRequestTest(seed_test_utils.RepeatableTest):
   """Unit tests for CollectiveHandshakeRequest class and serialization."""

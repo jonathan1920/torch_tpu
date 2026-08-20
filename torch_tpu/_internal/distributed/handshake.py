@@ -78,6 +78,14 @@ class ProcessGroupCollectiveCount:
     self.collective_count_before += self.num_collectives_in_graph
     self.num_collectives_in_graph = number_of_collectives
 
+  def __eq__(self, other: object) -> bool:
+    if not isinstance(other, ProcessGroupCollectiveCount):
+      return False
+    return (
+        self.collective_count_before == other.collective_count_before
+        and self.num_collectives_in_graph == other.num_collectives_in_graph
+    )
+
 
 class ProcessGroupId:
   """Identifier for a process group consisting of sorted, unique ranks.
@@ -309,6 +317,28 @@ class RankCollectiveCounts:
 
   def __iter__(self) -> collections.abc.Iterator[ProcessGroupId]:
     return iter(self._pg_to_count)
+
+  def __eq__(self, other: object) -> bool:
+    """Checks whether two RankCollectiveCounts instances match."""
+    if not isinstance(other, RankCollectiveCounts):
+      return False
+    return self._pg_to_count == other._pg_to_count
+
+  def collective_count(self, key: ProcessGroupId) -> int:
+    """Returns total collective count for the given process group.
+
+    Args:
+      key: ProcessGroupId identifying the process group.
+
+    Returns:
+      The sum of collective_count_before and num_collectives_in_graph for the
+      given process group.
+
+    Raises:
+      KeyError: If key is not present in _pg_to_count.
+    """
+    count = self._pg_to_count[key]
+    return count.collective_count_before + count.num_collectives_in_graph
 
 
 class CollectiveHandshakeRequest:
