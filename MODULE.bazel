@@ -158,9 +158,16 @@ _TORCH_HUB_ALIASES = {
     ],
 }
 
-_TORCH_EXTRA_PIP_ARGS = [
+_TORCH_BASE_PIP_ARGS = [
     "--index-url",
     "https://pypi.org/simple",
+    "--timeout",
+    "120",  # seconds
+    "--retries",
+    "5",
+]
+
+_TORCH_EXTRA_PIP_ARGS = _TORCH_BASE_PIP_ARGS + [
     "--extra-index-url",
     "https://download.pytorch.org/whl/cpu",
 ]
@@ -205,9 +212,7 @@ NIGHTLY_TORCH_VERSION = "2.15.0"
 
 EXTRA_GLUE_TORCH_VERSIONS = EXTRA_PYTORCH_VERSIONS + [NIGHTLY_TORCH_VERSION]
 
-_TORCH_NIGHTLY_EXTRA_PIP_ARGS = [
-    "--index-url",
-    "https://pypi.org/simple",
+_TORCH_NIGHTLY_EXTRA_PIP_ARGS = _TORCH_BASE_PIP_ARGS + [
     "--extra-index-url",
     "https://download.pytorch.org/whl/nightly/cpu",
 ]
@@ -227,10 +232,7 @@ _TORCH_NIGHTLY_EXTRA_PIP_ARGS = [
     whl_modifications = _TORCH_WHL_MODIFICATIONS,
 ) for torch_version in EXTRA_GLUE_TORCH_VERSIONS for python_version in SUPPORTED_PYTHON_VERSIONS]
 
-_TORCH_CUDA_EXTRA_PIP_ARGS = [
-    "--index-url",
-    "https://pypi.org/simple",
-]
+_TORCH_CUDA_EXTRA_PIP_ARGS = _TORCH_BASE_PIP_ARGS
 
 [pip.parse(
     extra_hub_aliases = _TORCH_HUB_ALIASES,
