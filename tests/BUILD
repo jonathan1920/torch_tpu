@@ -98,8 +98,8 @@ torch_tpu_py_test(
     ],
     deps = [
         ":seed_test_utils",
+        ":subprocess_test_utils",
         "//shims/absl_py/flags",
-        "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -167,6 +167,18 @@ torch_tpu_py_library(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/device:_device_ops_backend",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "subprocess_test_utils",
+    testonly = True,
+    srcs = ["subprocess_test_utils.py"],
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//torch_tpu/_internal/distributed:multiprocessing",
     ],
 )
 

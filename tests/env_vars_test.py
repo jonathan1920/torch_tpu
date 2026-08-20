@@ -17,11 +17,11 @@
 This test file uses a two-stage execution model to test environment variable
 warnings in isolated subprocesses:
 
-1. Master Stage (`MasterEnvVarsTest`):
+1. Parent Stage (`ParentEnvVarsTest`):
    - When executed by standard test runners (without `--test_mode`), the flag
      `_TEST_MODE.value` is None.
    - `EnvVarsTest` skips all of its tests because `_TEST_MODE` is unset.
-   - `MasterEnvVarsTest` runs its test methods, each of which spawns a child
+   - `ParentEnvVarsTest` runs its test methods, each of which spawns a child
    worker
      subprocess using `multiprocessing` to execute `sub_test_worker_entry`.
 
@@ -29,7 +29,7 @@ warnings in isolated subprocesses:
    - In each worker subprocess, `sub_test_worker_entry` sets the `--test_mode`
      flag, configures environment variables, and rewrites `sys.argv` so that
      `absltest.main()` runs only the target `EnvVarsTest` method.
-   - When `absltest` runs in the worker subprocess, `MasterEnvVarsTest` skips
+   - When `absltest` runs in the worker subprocess, `ParentEnvVarsTest` skips
      itself because `_TEST_MODE` is now set, while `EnvVarsTest` executes the
      requested test method.
 
@@ -42,20 +42,15 @@ Why subprocesses are needed:
 """
 
 import enum
-import io
-import os
-import queue
-import sys
-from typing import Mapping, Sequence
 import warnings
 
 from absl import flags
-from absl import logging
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.distributed import multiprocessing
 from tests import seed_test_utils
+from tests import subprocess_test_utils
 
 
 class TestMode(enum.Enum):
@@ -226,103 +221,37 @@ class EnvVarsTest(seed_test_utils.RepeatableTest):
       )
 
 
-def sub_test_worker_entry(
-    q: queue.Queue[str],
-    mode: TestMode,
-    env_updates: Mapping[str, str] | None = None,
-    env_removals: Sequence[str] | None = None,
-) -> None:
-  """Worker entrypoint executing in child subprocess."""
-  if env_removals:
-    for key in env_removals:
-      os.environ.pop(key, None)
-  if env_updates:
-    os.environ.update(env_updates)
+class ParentEnvVarsTest(
+    subprocess_test_utils.SubprocessTestMixin,
+    seed_test_utils.RepeatableTest,
+):
+  """Parent test running isolated worker subprocesses for each test case."""
 
-  class QueueWriter:
-    """Helper to forward stdout/stderr to a multiprocessing queue."""
-
-    def __init__(self, q: queue.Queue[str]):
-      self.q = q
-
-    def write(self, s: str | None) -> None:
-      if s:
-        self.q.put(s)
-
-    def flush(self) -> None:
-      del self
-
-    def fileno(self) -> None:
-      del self
-      raise io.UnsupportedOperation("QueueWriter does not have a fileno")
-
-  qw = QueueWriter(q)
-  sys.stdout = qw
-  sys.stderr = qw
-
-  sys.argv = [
-      sys.argv[0],
-      f"--test_mode={mode.name}",
-      f"EnvVarsTest.test_{mode.value}",
-  ]
-
-  absltest.main()
-
-
-class MasterEnvVarsTest(seed_test_utils.RepeatableTest):
-  """Master test running isolated worker subprocesses for each test case."""
+  WORKER_TEST_METHOD_TEMPLATE = "EnvVarsTest.test_{mode.value}"
 
   def setUp(self) -> None:
     super().setUp()
     tt_testing.reset_eager_state()
     if _TEST_MODE.value is not None:
-      self.skipTest("Skipping master test in sub-test mode.")
-
-  def _run_sub_test(
-      self,
-      mode: TestMode,
-      env_updates: Mapping[str, str] | None = None,
-      env_removals: Sequence[str] | None = None,
-  ) -> None:
-    """Runs a sub-test in an isolated subprocess."""
-    logging.info("Running subtest %s in subprocess for isolation.", mode.name)
-    ctx = multiprocessing.get_context("spawn")
-    q = ctx.Queue()
-    p = ctx.Process(
-        target=sub_test_worker_entry,
-        args=(q, mode, env_updates, env_removals),
-    )
-    p.start()
-
-    while p.is_alive() or not q.empty():
-      try:
-        output = q.get(timeout=0.1)
-        sys.stderr.write(output)
-        sys.stderr.flush()
-      except queue.Empty:
-        continue
-
-    p.join()
-    if p.exitcode != 0:
-      self.fail(f"Subtest {mode.name} failed with exit code {p.exitcode}")
+      self.skipTest("Skipping parent test in sub-test mode.")
 
   def test_tier2_compilation_cache_warns_once_on_read(self) -> None:
     """Tests TORCH_TPU_TIER2_COMPILATION_CACHE warning in isolated subprocess."""
-    self._run_sub_test(
+    self.run_sub_test(
         TestMode.TIER2_WARN_ONCE,
         env_updates={"TORCH_TPU_TIER2_COMPILATION_CACHE": "my_tier2_cache"},
     )
 
   def test_tier2_compilation_cache_disabled_warns_on_read(self) -> None:
     """Tests TORCH_TPU_TIER2_COMPILATION_CACHE='disabled' warning in isolated subprocess."""
-    self._run_sub_test(
+    self.run_sub_test(
         TestMode.TIER2_DISABLED,
         env_updates={"TORCH_TPU_TIER2_COMPILATION_CACHE": "disabled"},
     )
 
   def test_tier2_compilation_cache_unset_no_warning(self) -> None:
     """Tests that unset TORCH_TPU_TIER2_COMPILATION_CACHE does not warn in isolated subprocess."""
-    self._run_sub_test(
+    self.run_sub_test(
         TestMode.TIER2_UNSET,
         env_removals=["TORCH_TPU_TIER2_COMPILATION_CACHE"],
     )
@@ -330,7 +259,7 @@ class MasterEnvVarsTest(seed_test_utils.RepeatableTest):
   def test_tier3_compilation_cache_root_warns_once_on_read(self) -> None:
     """Tests TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT warning in isolated subprocess."""
     temp_dir = self.create_tempdir().full_path
-    self._run_sub_test(
+    self.run_sub_test(
         TestMode.TIER3_WARN_ONCE,
         env_updates={
             "TORCH_TPU_TIER2_COMPILATION_CACHE": "default",
@@ -340,7 +269,7 @@ class MasterEnvVarsTest(seed_test_utils.RepeatableTest):
 
   def test_non_experimental_env_var_no_warning(self) -> None:
     """Tests that non-experimental env vars do not warn in isolated subprocess."""
-    self._run_sub_test(
+    self.run_sub_test(
         TestMode.NON_EXPERIMENTAL,
         env_updates={"TORCH_SHOW_CPP_STACKTRACES": "1"},
         env_removals=[
