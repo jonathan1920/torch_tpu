@@ -159,6 +159,14 @@ inline void SetEnv(const char* name, const std::string& value) {
   setenv(name, value.c_str(), /*overwrite=*/1);
 }
 
+// Returns the set of environment variables that are considered stable.
+//
+// Note: for efficiency, we use raw pointers as keys in the set and the lookup
+// is done via pointer equality; therefore, when the caller looks up an
+// environment variable from the set, they must provide a kFooEnvVar variable
+// defined in this file.
+const absl::flat_hash_set<const char*>& GetStableEnvVars();
+
 // Returns the set of environment variables that are considered experimental.
 //
 // Note: for efficiency, we use raw pointers as keys in the set and the lookup

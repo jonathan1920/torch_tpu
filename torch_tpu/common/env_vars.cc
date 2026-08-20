@@ -25,6 +25,12 @@
 
 namespace torch_tpu {
 
+const absl::flat_hash_set<const char*>& GetStableEnvVars() {
+  static const absl::NoDestructor<absl::flat_hash_set<const char*>>
+      stable_env_vars({kWorldSizeEnvVar});
+  return *stable_env_vars;
+}
+
 const absl::flat_hash_set<const char*>& GetExperimentalEnvVars() {
   static const absl::NoDestructor<absl::flat_hash_set<const char*>>
       experimental_env_vars({kTorchTpuTier2CompilationCacheEnvVar,      //
