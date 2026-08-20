@@ -246,7 +246,7 @@ ExtractArgumentLayoutsIfDifferentFromDefault(const Traversal& traversal) {
 absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
     absl_nonnull std::unique_ptr<Traversal> traversal,
     mlir::MLIRContext& mlir_context, CompilationSpec compilation_spec,
-    MaterializationReason reason, std::string* absl_nullable out_mlir_text) {
+    std::string* absl_nullable out_mlir_text) {
   // Propagate bounded dynamism annotations if needed.
   if (traversal->IsBoundedDynamic()) {
     TT_RETURN_IF_ERROR(PropagateBoundedDynamism(*traversal, mlir_context));
@@ -315,14 +315,13 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
   Traversal::Parts traversal_parts = traversal->IntoParts();
   return ExecutionTask(
       std::move(task_name), std::move(traversal_parts.arguments),
-      std::move(traversal_parts.outputs), std::move(*compiled_kernel), reason);
+      std::move(traversal_parts.outputs), std::move(*compiled_kernel));
 }
 
 absl::StatusOr<ExecutionTask> ExecutionTask::FromExecutable(
     SharedLoadedExecutableWithMetadata executable,
     std::vector<DeviceBufferRef> arguments,
-    std::vector<DeviceBufferRef> outputs, MaterializationReason reason,
-    std::string_view task_name) {
+    std::vector<DeviceBufferRef> outputs, std::string_view task_name) {
   for (const auto& argument : arguments) {
     if (!argument.is_materializing()) {
       if (argument.is_placeholder()) {
@@ -354,7 +353,7 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromExecutable(
   promise.set_value(std::move(executable));
 
   return ExecutionTask(std::string(task_name), std::move(arguments),
-                       std::move(outputs), std::move(compiled_kernel), reason);
+                       std::move(outputs), std::move(compiled_kernel));
 }
 
 absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversalWithLogging(
@@ -364,7 +363,7 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversalWithLogging(
   auto event = MaybeStartTraceEvent(reason, *traversal);
   if (!event) {
     return ExecutionTask::FromTraversal(std::move(traversal), mlir_context,
-                                        std::move(compilation_spec), reason,
+                                        std::move(compilation_spec),
                                         /*out_mlir_text=*/nullptr);
   }
 
@@ -373,9 +372,9 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversalWithLogging(
 
   // Try to build the execution task and capture the MLIR if possible.
   std::string captured_mlir;
-  auto execution_task_or = ExecutionTask::FromTraversal(
-      std::move(traversal), mlir_context, std::move(compilation_spec), reason,
-      &captured_mlir);
+  auto execution_task_or =
+      ExecutionTask::FromTraversal(std::move(traversal), mlir_context,
+                                   std::move(compilation_spec), &captured_mlir);
 
   // Whether or not the execution task was created successfully, finish the
   // trace event and return.

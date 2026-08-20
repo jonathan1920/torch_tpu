@@ -69,7 +69,6 @@ class ExecutionTask {
   static absl::StatusOr<ExecutionTask> FromTraversal(
       absl_nonnull std::unique_ptr<Traversal> traversal,
       mlir::MLIRContext& mlir_context, CompilationSpec compilation_spec,
-      MaterializationReason reason = MaterializationReason::kUnknown,
       std::string* absl_nullable out_mlir_text = nullptr);
 
   // Creates an execution task from a pre-compiled executable.
@@ -77,9 +76,7 @@ class ExecutionTask {
   static absl::StatusOr<ExecutionTask> FromExecutable(
       SharedLoadedExecutableWithMetadata executable,
       std::vector<DeviceBufferRef> arguments,
-      std::vector<DeviceBufferRef> outputs,
-      MaterializationReason reason = MaterializationReason::kUnknown,
-      std::string_view task_name = "");
+      std::vector<DeviceBufferRef> outputs, std::string_view task_name = "");
 
   // Runs the execution task. This will:
   //   * Wait for all arguments to be materialized
@@ -96,13 +93,11 @@ class ExecutionTask {
   explicit ExecutionTask(std::string name,
                          std::vector<DeviceBufferRef> arguments,
                          std::vector<DeviceBufferRef> outputs,
-                         CompiledKernel compiled_kernel,
-                         MaterializationReason reason)
+                         CompiledKernel compiled_kernel)
       : name_(std::move(name)),
         arguments_(std::move(arguments)),
         outputs_(std::move(outputs)),
-        compiled_kernel_(std::move(compiled_kernel)),
-        reason_(reason) {}
+        compiled_kernel_(std::move(compiled_kernel)) {}
 
   // Runs the execution task and early-returns if there is any failure.
   absl::Status RunInternal();
@@ -130,9 +125,6 @@ class ExecutionTask {
   // The compiled kernel; or, more precisely, the futures for the compiled
   // kernel and any dynamic adapters.
   CompiledKernel compiled_kernel_;
-  // The reason that this task is being executed. Used for TORCH_TRACE logging.
-  // TODO(tcombes): Make use of this field or remove it.
-  [[maybe_unused]] MaterializationReason reason_;
 };
 
 CompilationMode GetCompilationMode(EagerMode eager_mode);

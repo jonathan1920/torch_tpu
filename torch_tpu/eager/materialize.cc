@@ -379,9 +379,7 @@ class MaterializationWorker {
     TT_ASSIGN_OR_RETURN(
         ExecutionTask task,
         ExecutionTask::FromExecutable(
-            std::move(executable), std::move(arguments), outputs,
-            /*reason=*/MaterializationReason::kCompileModeExecution,
-            task_name));
+            std::move(executable), std::move(arguments), outputs, task_name));
 
     absl::MutexLock lock(execute_mu_);
     execute_tasks_.push(std::move(task));
