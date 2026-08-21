@@ -59,6 +59,7 @@ from torch_tpu._internal import compiler_options as compiler
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
+from tests import quantize_utils
 from tests import seed_test_utils
 import yaml
 
@@ -1392,23 +1393,9 @@ UNQUANTIZED_NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
     *INTEGRAL_DTYPES,
 )
 
-# Dtypes that use fewer than 8 bits (less than one full byte) to represent a
-# single value.
-_SUB_BYTE_DTYPES: Final[Sequence[torch.dtype]] = (
-    torch.int4,
-    torch.float4_e2m1fn_x2,
-)
-
-# Low-precision dtypes for quantization.
-QUANTIZED_NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
-    torch.float8_e4m3fn,
-    torch.float8_e5m2,
-    *_SUB_BYTE_DTYPES,
-)
-
 ALL_NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
     *UNQUANTIZED_NUMERIC_DTYPES,
-    *QUANTIZED_NUMERIC_DTYPES,
+    *quantize_utils.QUANTIZED_NUMERIC_DTYPES,
 )
 
 # Maps a dtype to its tier (smaller is more important).
@@ -1820,79 +1807,13 @@ def _tensor_tree_map(
   return _pytree.tree_map(leaf_func, x, is_leaf=is_leaf)
 
 
-def _quantize_to_float4_e2m1fn_x2(t: torch.Tensor) -> torch.Tensor:
-  """Quantizes a float tensor to packed float4_e2m1fn_x2.
-
-  Neither CPU nor CUDA implements casts to float4_e2m1fn_x2, so the case
-  is emulated with bit manipulation. The result matches the TPU cast
-  semantics (see fp4_test.py): the shape is preserved, values are quantized
-  with round-to-nearest-even and saturation to +/-6, packed two per byte (low
-  nibble first) at the front of the buffer, and the rest is zero-padded.
-
-  Args:
-    t: The tensor to quantize. Must have a dtype convertible to float32.
-
-  Returns:
-    A float4_e2m1fn_x2 tensor with the same shape as `t`.
-  """
-  x = t.detach().to(torch.float32)
-  # E2M1 has no NaN/inf encoding; saturate them like out-of-range values.
-  x = torch.nan_to_num(x, nan=0.0, posinf=6.0, neginf=-6.0)
-  magnitude = x.abs().clamp(max=6.0).flatten()
-  # Midpoints between consecutive E2M1 magnitudes [0, .5, 1, 1.5, 2, 3, 4, 6].
-  midpoints = torch.tensor(
-      [0.25, 0.75, 1.25, 1.75, 2.5, 3.5, 5.0], device=x.device
-  )
-  codes = torch.searchsorted(midpoints, magnitude, right=True)
-  # right=True rounds all ties up; ties whose lower code is even must round
-  # down instead (round-to-nearest-even).
-  tie_down = (
-      (magnitude == 0.25)
-      | (magnitude == 1.25)
-      | (magnitude == 2.5)
-      | (magnitude == 5.0)
-  )
-  codes = torch.where(tie_down, codes - 1, codes).to(torch.uint8)
-  codes |= torch.signbit(x).flatten().to(torch.uint8) << 3
-  # Pack two values per byte, low nibble first, into a buffer with one byte
-  # per container element (i.e. twice the needed capacity), zero-padded.
-  nibbles = torch.zeros(2 * codes.numel(), dtype=torch.uint8, device=x.device)
-  nibbles[: codes.numel()] = codes
-  nibbles = nibbles.view(-1, 2)
-  packed = nibbles[:, 0] | (nibbles[:, 1] << 4)
-  return packed.view(t.shape).view(torch.float4_e2m1fn_x2)
-
-
-def _quantize_to_int4(t: torch.Tensor) -> torch.Tensor:
-  """Quantizes an integer tensor to int4.
-
-  Neither CPU nor CUDA implements casts to int4, so saturate it to the int4
-  value range and reinterpret the bytes. An int4 element occupies one byte,
-  sign-extended, thus the clamped int8 bit patterns are already correct.
-
-  Args:
-    t: The tensor to quantize. Must have an integer dtype.
-
-  Returns:
-    An int4 tensor with the same shape as `t`.
-  """
-  return t.detach().clamp(-8, 7).to(torch.int8).contiguous().view(torch.int4)
-
-
-# Maps the desired dtype to a conversion function from the fallback dtype to
-# the desired dtype. See also _DESIRED_DTYPE_TO_SAMPLE_DTYPE below.
-_SAMPLE_DTYPE_CONVERTERS: Final[
-    Mapping[torch.dtype, Callable[[torch.Tensor], torch.Tensor]]
-] = {
-    torch.float4_e2m1fn_x2: _quantize_to_float4_e2m1fn_x2,
-    torch.int4: _quantize_to_int4,
-}
-
 def _convert_sample_dtype(
     sample: SampleInput, from_dtype: torch.dtype, to_dtype: torch.dtype
 ) -> SampleInput:
   """Converts all tensors in sample with dtype == from_dtype to to_dtype."""
-  convert = _SAMPLE_DTYPE_CONVERTERS.get(to_dtype, lambda t: t.to(to_dtype))
+  convert = quantize_utils.SAMPLE_DTYPE_CONVERTERS.get(
+      to_dtype, lambda t: t.to(to_dtype)
+  )
 
   def transform_leaf(obj: Any) -> Any:
     if isinstance(obj, torch.Tensor) and obj.dtype == from_dtype:
@@ -1907,20 +1828,6 @@ def _convert_sample_dtype(
   sample.args = _tensor_tree_map(transform_leaf, sample.args)
   sample.kwargs = _tensor_tree_map(transform_leaf, sample.kwargs)
   return sample
-
-# Maps the desired sample dtype to the dtype to sample with.
-# torch.testing framework doesn't support sampling with these dtypes, so we
-# sample with a supported dtype and then convert with the matching converter in
-# _SAMPLE_DTYPE_CONVERTERS above.
-_DESIRED_DTYPE_TO_SAMPLE_DTYPE: Final[Mapping[torch.dtype, torch.dtype]] = {
-    # Why torch.float8_e4m3fn:
-    # - it matches the finite floating-point encoding semantics (fn) of
-    #   torch.float4_e2m1fn_x2, and
-    # - it provides 3 mantissa bits for fine-grained quantization resolution
-    #   before casting down to FP4.
-    torch.float4_e2m1fn_x2: torch.float8_e4m3fn,
-    torch.int4: torch.int8,
-}
 
 
 def _sample_inputs(
@@ -1941,7 +1848,7 @@ def _sample_inputs(
   Returns:
     A list of sample inputs.
   """
-  sample_dtype = _DESIRED_DTYPE_TO_SAMPLE_DTYPE.get(dtype, dtype)
+  sample_dtype = quantize_utils.DESIRED_DTYPE_TO_SAMPLE_DTYPE.get(dtype, dtype)
   try:
     samples = list(
         op.sample_inputs(
@@ -2017,7 +1924,7 @@ def to(
   def transform_leaf(obj: Any) -> Any:
     if isinstance(obj, torch.Tensor) and convert_tensors:
       if (
-          obj.dtype in _SUB_BYTE_DTYPES
+          obj.dtype in quantize_utils.SUB_BYTE_DTYPES
           and obj.device.type != "tpu"
           and device.type != "tpu"
       ):
@@ -2151,7 +2058,7 @@ def _to_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
       #
       # st.save() doesn't handle sub-byte dtypes, so serialize the raw bytes
       # as uint8 and record the original dtype in the key after a "b:" prefix.
-      if x.dtype in _SUB_BYTE_DTYPES:
+      if x.dtype in quantize_utils.SUB_BYTE_DTYPES:
         return st.save({
             f"b:{_format_dtype(x.dtype)}":
             # Densify the uint8 view rather than the tensor itself because
@@ -2369,7 +2276,7 @@ def _safe_tensor_repr(obj: Any) -> Any:
 
   def transform_leaf(x: Any) -> Any:
     if isinstance(x, torch.Tensor):
-      if x.dtype in _SUB_BYTE_DTYPES:
+      if x.dtype in quantize_utils.SUB_BYTE_DTYPES:
         return f"tensor({x.view(torch.uint8).tolist()}, dtype={x.dtype})"
       return repr(x)
     return x
@@ -3172,7 +3079,7 @@ class OpInfoTestBase(
     target_device = device
     if (
         _gen_gpu_golden_mode()
-        and dtype in _SUB_BYTE_DTYPES
+        and dtype in quantize_utils.SUB_BYTE_DTYPES
         and device.type == "cuda"
     ):
       # Sub-byte dtypes do not have CUDA copy or cast kernels. Invoking an
@@ -3921,7 +3828,7 @@ class OpInfoTestBase(
       if self.golden_device_type == "gpu" and _gen_gpu_golden_mode():
         # Include quantized numeric dtypes during GPU golden data generation.
         # CPU kernel coverage for them is too sparse to serve as a golden device.
-        dtypes_to_test.extend(QUANTIZED_NUMERIC_DTYPES)
+        dtypes_to_test.extend(quantize_utils.QUANTIZED_NUMERIC_DTYPES)
       dtypes_to_test = list(dict.fromkeys(dtypes_to_test))
 
       op = _get_op(op_name, variant_test_name=variant_test_name)

@@ -44,6 +44,7 @@ from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import test_utils as utils
 from tests import op_testing
 from tests import ops_test_data
+from tests import quantize_utils
 from tests import seed_test_utils
 
 # In this file, we use the following naming convention for variables:
@@ -11014,41 +11015,8 @@ class OpTestingFrameworkTest(op_testing.OpInfoTestBase, parameterized.TestCase):
     for golden_input, _ in pairs:
       self.assertEqual(golden_input.input_value.dtype, dtype)
 
-  def test_quantize_to_float4_e2m1fn_x2(self):
-    # Boundary values from fp4_test.py, exercising RTNE rounding and
-    # saturation. The software quantizer must match the TPU cast semantics:
-    # values packed two per byte (low nibble first), zero-padded at the end.
-    x = torch.tensor(
-        [[
-            0.24, 0.25, 0.26, 0.74, 0.75, 0.76, 1.24, 1.25, 1.26, 1.74, 1.75,
-            1.76, 2.49, 2.5, 2.51, 3.49, 3.5, 3.51, 4.99, 5.0, 5.01, 7.0,
-            -7.0, 0.0,
-        ]],
-        dtype=torch.float32,
-    )  # pyformat: disable
-    fp4 = op_testing._quantize_to_float4_e2m1fn_x2(x)
-    self.assertEqual(fp4.dtype, torch.float4_e2m1fn_x2)
-    self.assertEqual(fp4.shape, x.shape)
-    expected_bytes = torch.tensor(
-        [
-            [0x00, 0x11, 0x22, 0x22, 0x33, 0x44, 0x44, 0x55, 0x66, 0x66, 0x77,
-             0x0F] + [0x00] * 12
-        ],
-        dtype=torch.uint8,
-    )  # pyformat: disable
-    utils.assert_close(fp4.view(torch.uint8), expected_bytes)
-
-  def test_quantize_to_int4(self):
-    x = torch.tensor([-100, -9, -8, -1, 0, 7, 8, 100], dtype=torch.int8)
-    i4 = op_testing._quantize_to_int4(x)
-    self.assertEqual(i4.dtype, torch.int4)
-    self.assertEqual(i4.shape, x.shape)
-    # int4 elements are stored sign-extended, one per byte.
-    expected = torch.tensor([-8, -8, -8, -1, 0, 7, 7, 7], dtype=torch.int8)
-    utils.assert_close(i4.view(torch.int8), expected)
-
   def test_plistlib_sub_byte_tensor_serialization(self):
-    for dtype in op_testing._SUB_BYTE_DTYPES:
+    for dtype in quantize_utils.SUB_BYTE_DTYPES:
       with self.subTest(dtype=dtype):
         raw = torch.arange(16, dtype=torch.uint8).reshape(2, 8)
         tensor = raw.view(dtype)

@@ -184,11 +184,34 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "quantize_utils",
+    testonly = True,
+    srcs = ["quantize_utils.py"],
+    deps = [
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "quantize_utils_test",
+    srcs = ["quantize_utils_test.py"],
+    deps = [
+        ":quantize_utils",
+        ":seed_test_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils:test_utils",
+    ],
+)
+
+torch_tpu_py_library(
     name = "op_testing",
     testonly = True,
     srcs = ["op_testing.py"],
     visibility = ["//:__subpackages__"],
     deps = [
+        ":quantize_utils",
         ":seed_test_utils",
         "//shims/absl_py/flags",
         "//shims/etils/epath",
@@ -1049,6 +1072,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":quantize_utils",
         ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
@@ -1084,6 +1108,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":quantize_utils",
         ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
@@ -1169,6 +1194,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":quantize_utils",
         ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
@@ -1205,6 +1231,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":quantize_utils",
         ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
