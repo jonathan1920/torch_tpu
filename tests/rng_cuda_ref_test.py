@@ -268,6 +268,28 @@ class RngCudaRefTest(_BaseRngTest):
     self.backend_mod.manual_seed_all(77)
     self.assertEqual(self._get_device_rng_offset(), 0)
 
+  def test_backend_manual_seed_all_different_seeds_produce_different_tensors(
+      self,
+  ):
+    """Verifies different seeds with backend_mod.manual_seed_all produce distinct tensors."""
+    self.backend_mod.manual_seed_all(1)
+    t1 = torch.rand(100, device=self.device)
+
+    self.backend_mod.manual_seed_all(2)
+    t2 = torch.rand(100, device=self.device)
+
+    self.assertFalse(torch.equal(t1, t2))
+
+  def test_backend_manual_seed_all_reproducibility(self):
+    """Verifies setting the same seed with backend_mod.manual_seed_all produces identical tensors."""
+    self.backend_mod.manual_seed_all(42)
+    t1 = torch.rand(100, device=self.device)
+
+    self.backend_mod.manual_seed_all(42)
+    t2 = torch.rand(100, device=self.device)
+
+    self.assertTrue(torch.equal(t1, t2))
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
