@@ -273,6 +273,137 @@ class SparseDenseMatmulTest(
         torch_tpu_result=table_0_outputs["required_buffer_sizes"],
     )
 
+  def test_compute_stats_basic(self):
+    """Verifies stats computation for a single batch."""
+    indices = torch.tensor([0, 2, 0, 2, 1, 3, 1, 5], dtype=torch.int32)
+    offsets = torch.tensor([0, 2, 4, 6, 8], dtype=torch.int32)
+
+    max_ids, max_unique_ids = torch.ops.tpu.compute_sparse_dense_matmul_stats(
+        indices,
+        offsets,
+        1,  # global_device_count
+        2,  # num_sc_per_device
+    )
+
+    self.assertEqual(max_ids, 4)
+    self.assertEqual(max_unique_ids, 3)
+
+  def test_compute_stats_dedup_within_sample(self):
+    """Verifies duplicate IDs in the same sample are counted once per sample."""
+    indices = torch.tensor([0, 0, 0, 1, 1], dtype=torch.int32)
+    offsets = torch.tensor([0, 3, 5], dtype=torch.int32)
+
+    max_ids, max_unique_ids = torch.ops.tpu.compute_sparse_dense_matmul_stats(
+        indices,
+        offsets,
+        1,
+        2,
+    )
+
+    self.assertEqual(max_ids, 1)
+    self.assertEqual(max_unique_ids, 1)
+
+  @parameterized.named_parameters(
+      (
+          "sequential_basic",
+          torch.arange(20, dtype=torch.int32),
+          torch.tensor([0, 10, 20], dtype=torch.int32),
+          1,
+          2,
+      ),
+      (
+          "uneven_lengths_and_duplicates",
+          torch.tensor(
+              [0, 1, 0, 4, 5, 2, 3, 3, 6, 7, 8, 9, 10, 11, 12, 13],
+              dtype=torch.int32,
+          ),
+          torch.tensor([0, 4, 8, 12, 16], dtype=torch.int32),
+          1,
+          2,
+      ),
+      (
+          "four_sparsecores",
+          torch.tensor(
+              [0, 4, 8, 1, 5, 9, 2, 6, 10, 3, 7, 11],
+              dtype=torch.int32,
+          ),
+          torch.tensor([0, 3, 6, 9, 12], dtype=torch.int32),
+          1,
+          4,
+      ),
+      (
+          "two_devices_two_sc",
+          torch.arange(32, dtype=torch.int32),
+          torch.tensor([0, 8, 16, 24, 32], dtype=torch.int32),
+          2,
+          2,
+      ),
+  )
+  def test_compute_stats_parity_with_input_preprocessing(
+      self,
+      indices: torch.Tensor,
+      offsets: torch.Tensor,
+      global_device_count: int,
+      num_sc_per_device: int,
+  ):
+    """Verifies that compute_sparse_dense_matmul_stats produces identical max stats to preprocess_sparse_dense_matmul_input."""
+    batch_size = offsets.numel() - 1
+
+    actual_max_ids, actual_max_unique_ids = (
+        torch.ops.tpu.compute_sparse_dense_matmul_stats(
+            indices,
+            offsets,
+            global_device_count,
+            num_sc_per_device,
+        )
+    )
+
+    dummy_limit = 1048576
+    table_outputs = torch.ops.tpu.preprocess_sparse_dense_matmul_input(
+        indices,
+        offsets,
+        dummy_limit,  # max_ids_per_partition
+        dummy_limit,  # max_unique_ids_per_partition
+        dummy_limit,  # suggested_coo_buffer_size
+        batch_size,
+        "sum",  # combiner
+        1,  # local_device_count
+        global_device_count,
+        num_sc_per_device,
+        True,  # allow_id_dropping
+        "table_parity",
+    )
+
+    expected_max_ids = int(table_outputs["max_ids_per_partition"].max().item())
+    expected_max_unique_ids = int(
+        table_outputs["max_unique_ids_per_partition"].max().item()
+    )
+
+    self.assertEqual(
+        actual_max_ids,
+        expected_max_ids,
+        msg=(
+            f"max_ids mismatch: actual={actual_max_ids}, "
+            f"expected={expected_max_ids}"
+        ),
+    )
+    self.assertEqual(
+        actual_max_unique_ids,
+        expected_max_unique_ids,
+        msg=(
+            f"max_unique_ids mismatch: actual={actual_max_unique_ids}, "
+            f"expected={expected_max_unique_ids}"
+        ),
+    )
+
+  def test_compute_stats_invalid_inputs(self):
+    """Verifies error handling for invalid input arguments."""
+    val_float = torch.tensor([0.0, 1.0], dtype=torch.float32)
+    off = torch.tensor([0, 2], dtype=torch.int32)
+
+    with self.assertRaises(RuntimeError):
+      torch.ops.tpu.compute_sparse_dense_matmul_stats(val_float, off, 1, 2)
+
   def _get_inputs(self, device):
     row_pointers = torch.tensor(
         [

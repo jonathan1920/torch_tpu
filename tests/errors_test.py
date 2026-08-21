@@ -10264,6 +10264,75 @@ class InputPreprocessingErrorTest(et.ErrorTestBase, parameterized.TestCase):
       )
 
 
+class ComputeStatsErrorTest(et.ErrorTestBase):
+
+  def test_compute_stats_indices_invalid_dtype(self):
+    if et.is_on_gpu():
+      self.skipTest("TPU only op")
+    indices = torch.tensor([0.0, 1.0], dtype=torch.float32)
+    offsets = torch.tensor([0, 2], dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""indices must be int32""",
+    ):
+      torch.ops.tpu.compute_sparse_dense_matmul_stats(indices, offsets, 1, 4)
+
+  def test_compute_stats_offsets_invalid_dtype(self):
+    if et.is_on_gpu():
+      self.skipTest("TPU only op")
+    indices = torch.tensor([0, 1], dtype=torch.int32)
+    offsets = torch.tensor([0.0, 2.0], dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""offsets must be int32""",
+    ):
+      torch.ops.tpu.compute_sparse_dense_matmul_stats(indices, offsets, 1, 4)
+
+  def test_compute_stats_global_device_count_non_positive(self):
+    if et.is_on_gpu():
+      self.skipTest("TPU only op")
+    indices = torch.tensor([0, 1], dtype=torch.int32)
+    offsets = torch.tensor([0, 2], dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""global_device_count must be positive""",
+    ):
+      torch.ops.tpu.compute_sparse_dense_matmul_stats(indices, offsets, 0, 4)
+
+  def test_compute_stats_num_sc_per_device_non_positive(self):
+    if et.is_on_gpu():
+      self.skipTest("TPU only op")
+    indices = torch.tensor([0, 1], dtype=torch.int32)
+    offsets = torch.tensor([0, 2], dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""num_sc_per_device must be positive""",
+    ):
+      torch.ops.tpu.compute_sparse_dense_matmul_stats(indices, offsets, 1, 0)
+
+  def test_compute_stats_offsets_empty(self):
+    if et.is_on_gpu():
+      self.skipTest("TPU only op")
+    indices = torch.tensor([], dtype=torch.int32)
+    offsets = torch.tensor([], dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""offsets cannot be empty""",
+    ):
+      torch.ops.tpu.compute_sparse_dense_matmul_stats(indices, offsets, 1, 4)
+
+  def test_compute_stats_offsets_range_invalid(self):
+    if et.is_on_gpu():
+      self.skipTest("TPU only op")
+    indices = torch.tensor([1, 2, 3], dtype=torch.int32)
+    offsets = torch.tensor([0, 10], dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""Invalid offsets range [0, 10) for indices size 3""",
+    ):
+      torch.ops.tpu.compute_sparse_dense_matmul_stats(indices, offsets, 1, 4)
+
+
 class MaskedSoftmaxErrorTest(et.ErrorTestBase):
 
   def test_masked_softmax_non_float_input(self):

@@ -151,4 +151,17 @@ torch_tpu_cc_library(
     alwayslink = 1,
 )
 
+torch_tpu_cc_library(
+    name = "compute_stats_aten_kernels",
+    srcs = ["compute_stats_aten_kernels.cc"],
+    deps = [
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+    alwayslink = 1,
+)
+
 torch_tpu_package_end()
