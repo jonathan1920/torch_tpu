@@ -22,8 +22,8 @@ warnings in isolated subprocesses:
      `_TEST_MODE.value` is None.
    - `EnvVarsTest` skips all of its tests because `_TEST_MODE` is unset.
    - `ParentEnvVarsTest` runs its test methods, each of which spawns a child
-   worker
-     subprocess using `multiprocessing` to execute `sub_test_worker_entry`.
+     worker subprocess using `multiprocessing` to execute
+     `sub_test_worker_entry`.
 
 2. Worker Stage (`EnvVarsTest` in subprocess):
    - In each worker subprocess, `sub_test_worker_entry` sets the `--test_mode`
@@ -39,6 +39,10 @@ Why subprocesses are needed:
    Running each test scenario in a clean, isolated subprocess ensures that
    environment variables and memoized C++ static states do not leak between
    different test cases.
+
+See `torch_tpu.tests.subprocess_test_utils` for shared execution scaffolding,
+as well as instructions and examples for running the full test suite or
+debugging individual test modes directly.
 """
 
 import enum

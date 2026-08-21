@@ -32,6 +32,60 @@ This module extracts the common scaffolding shared by those test files:
 
 * `SubprocessTestMixin` — a mixin providing `run_sub_test()`, which spawns an
   isolated child process, drains its output queue, and asserts a zero exit code.
+
+Execution Model:
+----------------
+1. Parent Stage (Default / Full Test Run):
+   When running without `--test_mode`, `_TEST_MODE.value` is `None`. The worker
+   test class skips its test methods because `--test_mode` is unset. The parent
+   test class executes its test methods, each calling `run_sub_test()` to spawn
+   a fresh child process running `sub_test_worker_entry` for a specific mode.
+
+2. Worker Stage (Isolated Child Subprocess or Direct Debugging):
+   In the worker subprocess (or when manually specifying `--test_mode`), the
+   parent test class skips itself because `_TEST_MODE.value` is set, and only
+   the target worker test method runs.
+
+Examples:
+---------
+1. Running the entire test target (Parent Stage):
+   Runs the full suite where the parent test spawns an isolated subprocess for
+   each subtest:
+
+   ```bash
+   bazel test torch_tpu/tests/compile:cache_test
+   # or
+   bazel test torch_tpu/tests:env_vars_test
+   ```
+
+2. Debugging an individual test mode directly:
+   To debug a specific test case in the current process (e.g., with breakpoints,
+   `pdb`, or faster iteration without subprocess isolation), supply
+   `--test_mode=<MODE>` and filter to the worker test method. Remember to set
+   any environment variables expected by that test mode:
+
+   * Using `bazel test`:
+     ```bash
+     bazel test torch_tpu/tests/compile:cache_test \\
+         --test_sharding_strategy=disabled \\
+         --test_filter="CacheTest.test_persistent_cache_tier2" \\
+         --test_arg="--test_mode=TIER2" \\
+         --test_env=TORCH_TPU_TIER2_COMPILATION_CACHE=compile_cache_test_tier2
+     ```
+
+   * Running the compiled test binary directly (e.g., under a debugger):
+     ```bash
+     TORCH_TPU_TIER2_COMPILATION_CACHE=compile_cache_test_tier2 \\
+         bazel-bin/third_party/py/torch_tpu/tests/compile/cache_test \\
+         --test_mode=TIER2 CacheTest.test_persistent_cache_tier2
+     ```
+
+   * Using `pytest` (OSS environment):
+     ```bash
+     TORCH_TPU_TIER2_COMPILATION_CACHE=compile_cache_test_tier2 \\
+         pytest third_party/py/torch_tpu/tests/compile/cache_test.py \\
+         -k "test_persistent_cache_tier2" -o addopts="--test_mode=TIER2"
+     ```
 """
 
 import enum

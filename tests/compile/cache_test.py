@@ -39,6 +39,10 @@ Why subprocesses are needed:
    state. Running each test mode in a clean, isolated subprocess ensures that
    environment variables and in-memory/on-disk cache states do not leak between
    different test cases.
+
+See `torch_tpu.tests.subprocess_test_utils` for shared execution scaffolding,
+as well as instructions and examples for running the full test suite or
+debugging individual test modes directly.
 """
 
 import enum
