@@ -229,6 +229,17 @@ class RngCudaRefTest(_BaseRngTest):
     self.assertEqual(torch.initial_seed(), cpu_seed_before)
     self.assertTrue(torch.equal(torch.get_rng_state(), cpu_state_before))
 
+  def test_backend_manual_seed_all_does_not_change_cpu_seed(self):
+    """Verifies backend_mod.manual_seed_all does not change CPU seed or state."""
+    torch.manual_seed(10)
+    cpu_seed_before = torch.initial_seed()
+    cpu_state_before = torch.get_rng_state()
+
+    self.backend_mod.manual_seed_all(42)
+
+    self.assertEqual(torch.initial_seed(), cpu_seed_before)
+    self.assertTrue(torch.equal(torch.get_rng_state(), cpu_state_before))
+
   def test_rand_does_not_change_device_seed(self):
     """Verifies torch.rand on device does not change initial_seed."""
     torch.manual_seed(42)
@@ -314,6 +325,32 @@ class SingleProcessMultiDeviceTest(_BaseRngTest):
       self.assertEqual(
           self._get_device_rng_offset(i),
           offset_before,
+          msg=f"Device {i} offset mismatch",
+      )
+
+  @_fail_on_tpu(
+      "TPU backend does not support querying non-current device RNG state."
+  )
+  def test_backend_manual_seed_all_sets_all_device_seeds(self):
+    """Verifies backend_mod.manual_seed_all seeds all devices."""
+    num_devices = self.backend_mod.device_count()
+    self.assertGreater(
+        num_devices,
+        1,
+        "Test target must be configured with multiple devices to verify"
+        " seeding all devices.",
+    )
+    self.backend_mod.manual_seed_all(42)
+
+    for i in range(num_devices):
+      self.assertEqual(
+          self._get_device_rng_seed(i),
+          42,
+          msg=f"Device {i} seed mismatch",
+      )
+      self.assertEqual(
+          self._get_device_rng_offset(i),
+          0,
           msg=f"Device {i} offset mismatch",
       )
 
