@@ -22,6 +22,7 @@ from torch.testing._internal import common_device_type
 from torch.testing._internal import common_utils as torch_test_utils
 from torch_tpu._internal.utils import test_utils
 from torch_tpu._internal.utils import utils
+from tests import seed_test_utils
 
 
 CheckValueMode = test_utils.CheckValueMode
@@ -350,7 +351,7 @@ def print_avg_duration(
   return avg_duration_ms
 
 
-class TensorTest(torch_test_utils.TestCase):
+class TensorTest(seed_test_utils.RepeatableTest, torch_test_utils.TestCase):
   """Test methods in torch.Tensor."""
 
   num_runs_per_test = 10

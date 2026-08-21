@@ -1124,6 +1124,7 @@ torch_tpu_py_test(
     srcs = ["eager_device_assignment_test.py"],
     main = "eager_device_assignment_test.py",
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1281,6 +1282,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
@@ -1303,6 +1305,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",

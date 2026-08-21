@@ -23,6 +23,7 @@ from torch.testing._internal.common_device_type import (
 )
 from torch.testing._internal.common_utils import TestCase, run_tests
 from torch_tpu._internal.utils import test_utils as utils
+from tests import seed_test_utils
 
 
 CheckValueMode = utils.CheckValueMode
@@ -210,7 +211,7 @@ ops_db = [
 ]
 
 
-class TestNn(TestCase):
+class TestNn(seed_test_utils.RepeatableTest, TestCase):
   """Test methods in torch.nn."""
 
   num_runs_per_test = 10
