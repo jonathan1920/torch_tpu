@@ -446,6 +446,36 @@ class RngCudaRefTest(_BaseRngTest):
     self.backend_mod.set_rng_state(saved_state)
     self.assertEqual(self._get_device_rng_offset(), saved_offset)
 
+  def test_generator_manual_seed_isolates_from_device_rng(self):
+    """Verifies g.manual_seed isolates from default device RNG."""
+    torch.manual_seed(10)
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+
+    self.assertEqual(g.initial_seed(), 42)
+    self.assertEqual(g.get_offset(), 0)
+    self.assertEqual(self._get_device_rng_seed(), 10)
+
+  def test_generator_manual_seed_reproducibility(self):
+    """Verifies re-seeding g.manual_seed produces identical random outputs."""
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+    t1 = torch.rand(10, generator=g, device=self.device)
+
+    g.manual_seed(42)
+    t2 = torch.rand(10, generator=g, device=self.device)
+    self.assertTrue(torch.equal(t1, t2))
+
+  def test_generator_seed_sets_fresh_seed_and_resets_offset(self):
+    """Verifies g.seed sets fresh random seed for custom generator."""
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+
+    new_seed = g.seed()
+    self.assertIsInstance(new_seed, int)
+    self.assertNotEqual(new_seed, 42)
+    self.assertEqual(g.get_offset(), 0)
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
