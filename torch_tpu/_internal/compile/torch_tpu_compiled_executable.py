@@ -569,6 +569,17 @@ class NoOpCompiledArtifact(CompiledArtifact):
         (self._reconstruct_fx_outputs_fn,),
     )
 
+  def updates_default_generator_state(self) -> bool:
+    return False
+
+  @property
+  def graph_module_debug_str(self) -> str | None:
+    return None
+
+  @property
+  def mlir_text(self) -> str | None:
+    return None
+
   def prepare_for_serialization(self) -> None:
     pass
 
