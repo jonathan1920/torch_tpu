@@ -29,8 +29,8 @@ torch_tpu_py_test(
         "--xla_jf_conv_full_precision",  # Use highest precision for matmuls for tests only.
     ],
     main = "mingpt_example.py",
+    nonightly_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "cpu:8",
         "requires-net:external",
@@ -64,7 +64,6 @@ torch_tpu_py_test(
     },
     main = "mingpt_example.py",
     notap = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
     ],
@@ -95,7 +94,6 @@ torch_tpu_py_test(
     },
     main = "mingpt_example.py",
     notap = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-gpu-sm60-only",
         "requires-net:external",
@@ -121,8 +119,8 @@ torch_tpu_py_test(
     name = "mingpt_training_example",
     timeout = "long",  # Normally takes ~5 minutes.
     srcs = ["mingpt_training_example.py"],
+    nonightly_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "cpu:8",
         "requires-net:external",

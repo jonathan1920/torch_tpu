@@ -355,8 +355,8 @@ torch_tpu_py_test(
     name = "model_coverage_hf_test",
     timeout = "long",
     srcs = ["model_coverage_hf_test.py"],
+    nonightly_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 6,
     tags = [
         "cpu:4",

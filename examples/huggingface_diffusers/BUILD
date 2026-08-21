@@ -33,7 +33,6 @@ torch_tpu_py_test(
     data = glob(["model_configs/**"]),
     main = "sdxl_test.py",
     notap = "Fails - missing op upsample_nearest2d.out.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-accel-hbm",
         "requires-gpu-sm80",
@@ -60,7 +59,6 @@ torch_tpu_py_test(
     data = glob(["model_configs/**"]),
     main = "sdxl_test.py",
     notap = "slow test",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-gpu-sm80",
         "requires-net:external",
@@ -86,7 +84,6 @@ torch_tpu_py_test(
     data = glob(["model_configs/**"]),
     main = "sdxl_test.py",
     notap = "Fails - missing op upsample_nearest2d.out.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-accel-hbm",
         "requires-net:external",
@@ -113,7 +110,6 @@ torch_tpu_py_test(
     data = glob(["model_configs/**"]),
     main = "flux_1_schnell_test.py",
     notap = "slow test",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-accel-hbm",
         "requires-gpu-sm80",
@@ -140,7 +136,6 @@ torch_tpu_py_test(
     data = glob(["model_configs/**"]),
     main = "flux_1_schnell_test.py",
     notap = "OOMs.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-accel-hbm",
         "requires-net:external",
@@ -167,7 +162,6 @@ torch_tpu_py_test(
     args = ["--device=tpu"],
     main = "wan2_2_ti2v_5b_diffusers_test.py",
     notap = "OOMs.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-accel-hbm",
         "requires-net:external",

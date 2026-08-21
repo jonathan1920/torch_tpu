@@ -155,7 +155,6 @@ torch_tpu_py_test(
     linking_mode = "static",
     main = "model_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 50,
     strict = True,
     tags = if_oss(
@@ -208,7 +207,6 @@ torch_tpu_py_test(
     linking_mode = "static",
     main = "model_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 4,
     strict = True,
     tags = [
@@ -232,7 +230,6 @@ torch_tpu_py_test(
     linking_mode = "static",
     main = "model_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 4,
     strict = True,
     tags = [
@@ -286,7 +283,6 @@ torch_tpu_py_test(
     linking_mode = "static",
     main = "model_quality_benchmarks.py",
     notap = "Tested on guitar workflow.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 4,
     strict = True,
     tags = [
@@ -354,7 +350,6 @@ torch_tpu_py_test(
     srcs = ["layer_performance_benchmarks.py"],
     main = "layer_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 8,
     strict = True,
     tags = [
@@ -407,7 +402,6 @@ torch_tpu_py_test(
     },
     main = "layer_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     platform = "//buildenv/platforms/forge/gpu/b200_full",
     shard_count = 2,
     strict = True,
@@ -444,7 +438,6 @@ torch_tpu_py_test(
     autoload = False,
     main = "layer_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 9,
     strict = True,
     tags = [
@@ -480,7 +473,6 @@ torch_tpu_py_test(
     linking_mode = "static",
     main = "model_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "cpu:4",
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
@@ -506,7 +498,6 @@ torch_tpu_py_test(
     },
     main = "model_performance_benchmarks.py",
     notap = "Frequently causes Forge OOM.",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     platform = "//buildenv/platforms/forge/gpu/b200_full",
     shard_count = 2,
     tags = [

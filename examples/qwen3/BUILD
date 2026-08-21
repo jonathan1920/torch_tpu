@@ -29,8 +29,8 @@ package(
 torch_tpu_py_test(
     name = "qwen3_example",
     srcs = ["qwen3_example.py"],
+    nonightly_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -49,8 +49,8 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "qwen_kv_cache",
     srcs = ["qwen_kv_cache.py"],
+    nonightly_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "cpu:8",
         "requires-net:external",
@@ -76,7 +76,6 @@ torch_tpu_py_test(
         "//examples/huggingface_transformers:model_configs_data",
     ],
     notap = "this is a manual test",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     strict = True,
     tags = [
         "cpu:8",
@@ -108,7 +107,6 @@ torch_tpu_py_test(
     ],
     main = "qwen3_kv_cache_bd.py",
     notap = "manual test",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     platform = if_oss(None, "//buildenv/platforms/forge/gpu/gb200"),
     tags = [
         "cpu:1",
@@ -318,8 +316,8 @@ torch_tpu_py_test(
     name = "qwen3_hf_pipe_example",
     timeout = "long",  # 15 minutes
     srcs = ["qwen3_hf_pipe_example.py"],
+    nonightly_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "nomsan",  # 3p 'rust/tempfile' error: use-of-uninitialized-value in tempfile::file::imp::platform::reopen
         "requires-net:external",  # Needed to access remote files.
@@ -341,8 +339,8 @@ torch_tpu_py_test(
     srcs = ["qwen3_0_6b_forward_test.py"],
     args = ["--device=tpu"],
     main = "qwen3_0_6b_forward_test.py",
+    nonightly_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-mem:28g",  # For the msan build
         "requires-tpu-v5lite",
@@ -365,7 +363,6 @@ torch_tpu_py_test(
     args = ["--device=cuda"],
     main = "qwen3_0_6b_forward_test.py",
     notap = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-gpu-sm70-only",  # v100 has 16 or 32 GB HBM.
     ],
@@ -387,7 +384,6 @@ torch_tpu_py_test(
     args = ["--device=xla_cuda"],
     main = "qwen3_0_6b_forward_test.py",
     notap = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-gpu-sm80-only",
     ],
@@ -411,8 +407,8 @@ torch_tpu_py_test(
     srcs = ["qwen3_0_6b_custom_sampling_test.py"],
     args = ["--device=tpu"],
     main = "qwen3_0_6b_custom_sampling_test.py",
+    nonightly_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "nomsan",  # 3p 'rust/tempfile' error: use-of-uninitialized-value in tempfile::file::imp::platform::reopen
         "requires-net:external",
@@ -438,7 +434,6 @@ torch_tpu_py_test(
     args = ["--device=cuda"],
     main = "qwen3_0_6b_custom_sampling_test.py",
     notap = "slow example",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "local",
         "requires-gpu-sm80",  # A100 or above
