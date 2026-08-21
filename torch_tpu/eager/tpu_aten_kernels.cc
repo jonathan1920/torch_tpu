@@ -1269,13 +1269,13 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
             at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode) {
         return at::empty(self.sizes(), self.options());
       });
-  ImplStable<OpName::kSparseDenseMatmul>(
+  ImplExperimental<OpName::kSparseDenseMatmul>(
       m,
-      [](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
-         const at::Tensor& sample_ids, const at::Tensor& gains,
-         const at::Tensor& embedding_table, int64_t device_batch_size,
-         int64_t max_ids_per_partition,
-         int64_t max_unique_ids_per_partition) -> at::Tensor {
+      +[](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
+          const at::Tensor& sample_ids, const at::Tensor& gains,
+          const at::Tensor& embedding_table, int64_t device_batch_size,
+          int64_t max_ids_per_partition,
+          int64_t max_unique_ids_per_partition) -> at::Tensor {
         TT_CHECK_THROW(embedding_table.dim() == 2, error::kInvalidArgument)
             << "embedding_table must be 2D";
         return at::empty({device_batch_size, embedding_table.size(1)},
@@ -1301,14 +1301,14 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
             << ") * max_non_zeroes_per_row (" << max_non_zeroes_per_row << ")";
         return at::empty({indices.size(0), operand.size(1)}, operand.options());
       });
-  ImplStable<OpName::kSparseDenseMatmulGradWithSgd>(
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
       m,
-      [](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
-         const at::Tensor& sample_ids, const at::Tensor& gains,
-         const at::Tensor& embedding_table, const at::Tensor& activations_grad,
-         const at::Tensor& learning_rate, int64_t device_batch_size,
-         int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
-         std::string_view computation_name) {
+      +[](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
+          const at::Tensor& sample_ids, const at::Tensor& gains,
+          const at::Tensor& embedding_table, const at::Tensor& activations_grad,
+          const at::Tensor& learning_rate, int64_t device_batch_size,
+          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+          std::string_view computation_name) {
         return at::empty_like(embedding_table);
       });
   ImplStable<OpName::kSparseDenseMatmulGradWithAdagrad>(
@@ -1337,37 +1337,37 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
                                at::empty_like(momentum),
                                at::empty_like(velocity));
       });
-  ImplStable<OpName::kRaggedDot>(
-      m, [](const at::Tensor& lhs, const at::Tensor& rhs,
-            const at::Tensor& group_sizes) {
+  ImplExperimental<OpName::kRaggedDot>(
+      m, +[](const at::Tensor& lhs, const at::Tensor& rhs,
+             const at::Tensor& group_sizes) {
         return at::empty({lhs.size(0), rhs.size(2)},
                          lhs.options().dtype(at::result_type(lhs, rhs)));
       });
-  ImplStable<OpName::kRaggedDotOut>(
+  ImplExperimental<OpName::kRaggedDotOut>(
       m,
-      [](const at::Tensor& lhs, const at::Tensor& rhs,
-         const at::Tensor& group_sizes, at::Tensor& out) -> at::Tensor& {
+      +[](const at::Tensor& lhs, const at::Tensor& rhs,
+          const at::Tensor& group_sizes, at::Tensor& out) -> at::Tensor& {
         at::native::resize_output(out, {lhs.size(0), rhs.size(2)});
         return out;
       });
-  ImplStable<OpName::kRaggedAllToAll>(
-      m, [](const at::Tensor& operand, const at::Tensor& output,
-            const at::Tensor& input_offsets, const at::Tensor& send_sizes,
-            const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-            std::string_view process_group_name) {
+  ImplExperimental<OpName::kRaggedAllToAll>(
+      m, +[](const at::Tensor& operand, const at::Tensor& output,
+             const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+             const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+             std::string_view process_group_name) {
         return at::empty_like(output);
       });
-  ImplStable<OpName::kRaggedAllToAllOut>(
+  ImplExperimental<OpName::kRaggedAllToAllOut>(
       m,
-      [](const at::Tensor& operand, const at::Tensor& output,
-         const at::Tensor& input_offsets, const at::Tensor& send_sizes,
-         const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
-         std::string_view process_group_name, at::Tensor& out) -> at::Tensor& {
+      +[](const at::Tensor& operand, const at::Tensor& output,
+          const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+          const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+          std::string_view process_group_name, at::Tensor& out) -> at::Tensor& {
         at::native::resize_output(out, output.sizes());
         return out;
       });
-  ImplStable<OpName::kTorchTpuOptimizationBarrier>(
-      m, [](at::TensorList self) -> std::vector<at::Tensor> {
+  ImplExperimental<OpName::kTorchTpuOptimizationBarrier>(
+      m, +[](at::TensorList self) -> std::vector<at::Tensor> {
         std::vector<at::Tensor> outs;
         outs.reserve(self.size());
         for (const at::Tensor& t : self) {
