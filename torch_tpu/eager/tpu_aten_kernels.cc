@@ -89,6 +89,7 @@
 #include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_adagrad_aten_kernels.h"
 #include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_adam_aten_kernels.h"
 #include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_sgd_aten_kernels.h"
+#include "torch_tpu/ops/experimental/sparse_gather/sparse_gather_aten_kernels.h"
 #include "torch_tpu/ops/exponential/exponential_aten_kernels.h"
 #include "torch_tpu/ops/eye/eye_aten_kernels.h"
 #include "torch_tpu/ops/fake_quantize/fake_quantize_aten_kernels.h"
@@ -1241,6 +1242,9 @@ TORCH_LIBRARY(tpu, m) {
       "device_batch_size, int max_ids_per_partition, int "
       "max_unique_ids_per_partition, str computation_name) -> (Tensor, Tensor, "
       "Tensor)");
+  m.def(
+      "sparse_gather(Tensor row_pointers, Tensor indices, Tensor operand, int "
+      "max_non_zeroes_per_row) -> Tensor");
 }
 
 // Registers meta implementations for torch.ops.tpu ops.
@@ -1276,6 +1280,26 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
             << "embedding_table must be 2D";
         return at::empty({device_batch_size, embedding_table.size(1)},
                          embedding_table.options());
+      });
+  ImplExperimental<OpName::kSparseGather>(
+      m,
+      +[](const at::Tensor& row_pointers, const at::Tensor& indices,
+          const at::Tensor& operand,
+          int64_t max_non_zeroes_per_row) -> at::Tensor {
+        TT_CHECK_THROW(row_pointers.dim() == 1, error::kInvalidArgument)
+            << "row_pointers must be 1D tensor, got rank "
+            << row_pointers.dim();
+        TT_CHECK_THROW(indices.dim() == 1, error::kInvalidArgument)
+            << "indices must be 1D tensor, got rank " << indices.dim();
+        TT_CHECK_THROW(operand.dim() == 2, error::kInvalidArgument)
+            << "operand must be 2D tensor, got rank " << operand.dim();
+        TT_CHECK_THROW(
+            indices.size(0) == row_pointers.size(0) * max_non_zeroes_per_row,
+            error::kInvalidArgument)
+            << "indices length (" << indices.size(0)
+            << ") must equal row_pointers size (" << row_pointers.size(0)
+            << ") * max_non_zeroes_per_row (" << max_non_zeroes_per_row << ")";
+        return at::empty({indices.size(0), operand.size(1)}, operand.options());
       });
   ImplStable<OpName::kSparseDenseMatmulGradWithSgd>(
       m,
@@ -1382,6 +1406,7 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
       m, AtenSparseDenseMatmulGradWithAdagrad);
   ImplExperimental<OpName::kSparseDenseMatmulGradWithAdam>(
       m, AtenSparseDenseMatmulGradWithAdam);
+  ImplExperimental<OpName::kSparseGather>(m, AtenSparseGather);
 }
 
 // Registers implementations for torch.ops.tpu ops for CPU tensors.

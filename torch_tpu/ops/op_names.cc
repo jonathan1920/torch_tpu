@@ -1335,6 +1335,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "sparse_dense_matmul_grad_with_adam";
     case OpName::kSparseDenseMatmulGradWithSgd:
       return "sparse_dense_matmul_grad_with_sgd";
+    case OpName::kSparseGather:
+      return "sparse_gather";
     case OpName::kSplitWithSizesCopyOut:
       return "split_with_sizes_copy.out";
     case OpName::kSqrtOut:

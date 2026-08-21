@@ -3292,6 +3292,58 @@ module {
           computation_name,
       )
 
+  @et.why_tpu_only("Custom op sparse_gather is TPU only.")
+  def test_sparse_gather_invalid_row_pointers_dim(self):
+    device = et.device()
+    row_pointers_2d = torch.tensor([[0, 8]], dtype=torch.int32, device=device)
+    indices = torch.tensor([0] * 8, dtype=torch.int32, device=device)
+    operand = torch.ones(10, 8, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_gather(): row_pointers must be 1D tensor, got rank 2""",
+    ):
+      torch.ops.tpu.sparse_gather(row_pointers_2d, indices, operand, 8)
+
+  @et.why_tpu_only("Custom op sparse_gather is TPU only.")
+  def test_sparse_gather_invalid_indices_dim(self):
+    device = et.device()
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device=device)
+    indices_2d = torch.tensor([[0] * 8], dtype=torch.int32, device=device)
+    operand = torch.ones(10, 8, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_gather(): indices must be 1D tensor, got rank 2""",
+    ):
+      torch.ops.tpu.sparse_gather(row_pointers, indices_2d, operand, 8)
+
+  @et.why_tpu_only("Custom op sparse_gather is TPU only.")
+  def test_sparse_gather_invalid_operand_dim(self):
+    device = et.device()
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device=device)
+    indices = torch.tensor([0] * 8, dtype=torch.int32, device=device)
+    operand_1d = torch.ones(10, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_gather(): operand must be 2D tensor, got rank 1""",
+    ):
+      torch.ops.tpu.sparse_gather(row_pointers, indices, operand_1d, 8)
+
+  @et.why_tpu_only("Custom op sparse_gather is TPU only.")
+  def test_sparse_gather_invalid_indices_length(self):
+    device = et.device()
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device=device)
+    indices_wrong_len = torch.tensor([0] * 7, dtype=torch.int32, device=device)
+    operand = torch.ones(10, 8, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_gather(): indices length (7) must equal row_pointers size (2) * max_non_zeroes_per_row (8)""",
+    ):
+      torch.ops.tpu.sparse_gather(row_pointers, indices_wrong_len, operand, 8)
+
   @et.why_tpu_only("TPU-specific C++ kernel argument validation")
   def test_scaled_mm_v2_invalid_contraction_dim_size(self):
     (

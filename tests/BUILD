@@ -1121,6 +1121,24 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "sparse_gather_test",
+    srcs = ["sparse_gather_test.py"],
+    main = "sparse_gather_test.py",
+    notap = "Requires SparseCore accelerator",
+    tags = [
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "@pypi//numpy",
+    ],
+)
+
+torch_tpu_py_test(
     name = "eager_device_assignment_test",
     srcs = ["eager_device_assignment_test.py"],
     main = "eager_device_assignment_test.py",

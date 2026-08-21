@@ -555,6 +555,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/experimental/sparse_dense_matmul:sparse_dense_matmul_grad_with_adagrad",
         "//torch_tpu/ops/experimental/sparse_dense_matmul:sparse_dense_matmul_grad_with_adam",
         "//torch_tpu/ops/experimental/sparse_dense_matmul:sparse_dense_matmul_grad_with_sgd",
+        "//torch_tpu/ops/experimental/sparse_gather",
         "//torch_tpu/ops/exponential:exponential_aten_kernels",
         "//torch_tpu/ops/eye:eye_aten_kernels",
         "//torch_tpu/ops/fake_quantize:fake_quantize_aten_kernels",

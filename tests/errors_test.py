@@ -10480,6 +10480,50 @@ class MaskedSoftmaxErrorTest(et.ErrorTestBase):
           dim=1,
       )
 
+  def test_sparse_gather_meta_invalid_row_pointers_dim(self):
+    row_pointers_2d = torch.tensor([[0, 8]], dtype=torch.int32, device="meta")
+    indices = torch.tensor([0] * 8, dtype=torch.int32, device="meta")
+    operand = torch.ones(10, 8, dtype=torch.float32, device="meta")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""row_pointers must be 1D tensor, got rank 2""",
+    ):
+      torch.ops.tpu.sparse_gather(row_pointers_2d, indices, operand, 8)
+
+  def test_sparse_gather_meta_invalid_indices_dim(self):
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device="meta")
+    indices_2d = torch.tensor([[0] * 8], dtype=torch.int32, device="meta")
+    operand = torch.ones(10, 8, dtype=torch.float32, device="meta")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""indices must be 1D tensor, got rank 2""",
+    ):
+      torch.ops.tpu.sparse_gather(row_pointers, indices_2d, operand, 8)
+
+  def test_sparse_gather_meta_invalid_operand_dim(self):
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device="meta")
+    indices = torch.tensor([0] * 8, dtype=torch.int32, device="meta")
+    operand_1d = torch.ones(10, dtype=torch.float32, device="meta")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""operand must be 2D tensor, got rank 1""",
+    ):
+      torch.ops.tpu.sparse_gather(row_pointers, indices, operand_1d, 8)
+
+  def test_sparse_gather_meta_invalid_indices_length(self):
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device="meta")
+    indices_wrong_len = torch.tensor([0] * 7, dtype=torch.int32, device="meta")
+    operand = torch.ones(10, 8, dtype=torch.float32, device="meta")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""indices length (7) must equal row_pointers size (2) * max_non_zeroes_per_row (8)""",
+    ):
+      torch.ops.tpu.sparse_gather(row_pointers, indices_wrong_len, operand, 8)
+
 
 if __name__ == "__main__":
   multiprocessing.handle_test_main(absltest.main)
