@@ -127,6 +127,19 @@ class CpuRngTest(seed_test_utils.RepeatableTest):
     self.assertNotEqual(new_seed, old_cpu_seed)
     self.assertEqual(torch.initial_seed(), new_seed)
 
+  def test_cpu_get_set_rng_state_restores_stream(self):
+    """Verifies get_rng_state and set_rng_state restore CPU stream."""
+    torch.manual_seed(42)
+    saved_state = torch.get_rng_state()
+
+    expected_out = torch.rand(10, device="cpu")
+    _ = torch.rand(50, device="cpu")
+
+    torch.set_rng_state(saved_state)
+    actual_out = torch.rand(10, device="cpu")
+
+    self.assertTrue(torch.equal(actual_out, expected_out))
+
 
 class _BaseRngTest(seed_test_utils.RepeatableTest):
   """Base test class providing common fixtures and helpers for device RNG tests."""
