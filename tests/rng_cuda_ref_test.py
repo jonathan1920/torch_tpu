@@ -140,6 +140,48 @@ class CpuRngTest(seed_test_utils.RepeatableTest):
 
     self.assertTrue(torch.equal(actual_out, expected_out))
 
+  def test_cpu_generator_manual_seed_isolates_from_global_cpu_rng(self):
+    """Verifies g.manual_seed sets initial_seed and isolates from global CPU."""
+    torch.manual_seed(10)
+    g = torch.Generator(device="cpu")
+    g.manual_seed(42)
+
+    self.assertEqual(g.initial_seed(), 42)
+    self.assertEqual(torch.initial_seed(), 10)
+
+  def test_cpu_generator_manual_seed_reproducibility(self):
+    """Verifies re-seeding g.manual_seed produces identical random outputs."""
+    g = torch.Generator(device="cpu")
+    g.manual_seed(42)
+    t1 = torch.rand(10, generator=g, device="cpu")
+
+    g.manual_seed(42)
+    t2 = torch.rand(10, generator=g, device="cpu")
+    self.assertTrue(torch.equal(t1, t2))
+
+  def test_cpu_generator_seed_sets_fresh_seed(self):
+    """Verifies g.seed generates a non-deterministic seed for CPU generator."""
+    g = torch.Generator(device="cpu")
+    g.manual_seed(42)
+
+    new_seed = g.seed()
+    self.assertIsInstance(new_seed, int)
+    self.assertNotEqual(new_seed, 42)
+    self.assertEqual(g.initial_seed(), new_seed)
+
+  def test_cpu_generator_get_set_state_restores_stream(self):
+    """Verifies g.get_state and g.set_state restore CPU generator stream."""
+    g = torch.Generator(device="cpu")
+    g.manual_seed(42)
+    saved_state = g.get_state()
+
+    expected_out = torch.rand(10, generator=g, device="cpu")
+    _ = torch.rand(50, generator=g, device="cpu")
+
+    g.set_state(saved_state)
+    actual_out = torch.rand(10, generator=g, device="cpu")
+    self.assertTrue(torch.equal(actual_out, expected_out))
+
 
 class _BaseRngTest(seed_test_utils.RepeatableTest):
   """Base test class providing common fixtures and helpers for device RNG tests."""
