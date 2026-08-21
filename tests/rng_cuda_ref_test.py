@@ -528,6 +528,41 @@ class SingleProcessMultiDeviceTest(_BaseRngTest):
           msg=f"Device {i} offset mismatch",
       )
 
+  @_fail_on_tpu(
+      "TPU backend does not support get_rng_state_all / set_rng_state_all."
+  )
+  def test_backend_get_set_rng_state_all(self):
+    """Verifies get/set_rng_state_all restore all device states."""
+    num_devices = self.backend_mod.device_count()
+    self.assertGreater(
+        num_devices,
+        1,
+        "Test target must be configured with multiple devices to verify"
+        " multi-device state snapshot.",
+    )
+    for i in range(num_devices):
+      self.backend_mod.manual_seed(42 + i)
+
+    saved_states = self.backend_mod.get_rng_state_all()
+    self.assertLen(saved_states, num_devices)
+
+    expected_outs = [
+        torch.rand(10, device=_get_device(self.backend, i))
+        for i in range(num_devices)
+    ]
+
+    for i in range(num_devices):
+      _ = torch.rand(50, device=_get_device(self.backend, i))
+
+    self.backend_mod.set_rng_state_all(saved_states)
+
+    actual_outs = [
+        torch.rand(10, device=_get_device(self.backend, i))
+        for i in range(num_devices)
+    ]
+    for exp, act in zip(expected_outs, actual_outs):
+      self.assertTrue(torch.equal(exp, act))
+
 
 if __name__ == "__main__":
   absltest.main()
