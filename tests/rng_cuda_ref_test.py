@@ -379,6 +379,31 @@ class RngCudaRefTest(_BaseRngTest):
     self.assertTrue(torch.equal(out_inside, out_outside))
     self.assertEqual(inside_offset, outside_offset)
 
+  def test_backend_get_set_rng_state_restores_stream(self):
+    """Verifies get_rng_state and set_rng_state save and restore RNG stream."""
+    self.backend_mod.manual_seed(42)
+    saved_state = self.backend_mod.get_rng_state()
+
+    expected_out = torch.rand(10, device=self.device)
+    _ = torch.rand(50, device=self.device)
+
+    self.backend_mod.set_rng_state(saved_state)
+    actual_out = torch.rand(10, device=self.device)
+
+    self.assertTrue(torch.equal(actual_out, expected_out))
+
+  def test_backend_get_set_rng_state_preserves_offset(self):
+    """Verifies get_rng_state captures offset and set_rng_state restores it."""
+    self.backend_mod.manual_seed(42)
+    _ = torch.rand(20, device=self.device)
+    saved_offset = self._get_device_rng_offset()
+    saved_state = self.backend_mod.get_rng_state()
+
+    _ = torch.rand(100, device=self.device)
+
+    self.backend_mod.set_rng_state(saved_state)
+    self.assertEqual(self._get_device_rng_offset(), saved_offset)
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
