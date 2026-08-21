@@ -16,21 +16,55 @@
 
 import asyncio
 import json
+import os
 from typing import Any
 from unittest import mock
 
 from absl.testing import absltest
+import portpicker
 import torch.distributed as dist
 from torch_tpu._internal.distributed import handshake
 from tests import seed_test_utils
+import zmq
 
 _CollectiveHandshakeConsensus = handshake._CollectiveHandshakeConsensus
+
+_CollectiveHandshakeRequestZMQEnvelope = (
+    handshake._CollectiveHandshakeRequestZMQEnvelope
+)
+
+_ZMQClient = handshake._ZMQClient
+_ZMQServer = handshake._ZMQServer
 CollectiveHandshakeRequest = handshake.CollectiveHandshakeRequest
+CollectiveHandshakeResponse = handshake.CollectiveHandshakeResponse
 ProcessGroupId = handshake.ProcessGroupId
 ProcessGroupCollectiveCount = handshake.ProcessGroupCollectiveCount
+_get_handshake_timeout_ms = handshake._get_handshake_timeout_ms
 RankCollectiveCounts = handshake.RankCollectiveCounts
 
 # TODO(b/542976786): Distributed tests will be added in a follow up CL.
+
+
+def _make_request(
+    rank: int,
+    participating_ranks: list[int] | None = None,
+    fingerprint: str = "fp",
+    num_collectives_in_graph: int = 2,
+    collective_count_before: int = 0,
+) -> CollectiveHandshakeRequest:
+  if participating_ranks is None:
+    participating_ranks = [rank]
+  pg_counts = RankCollectiveCounts({
+      ProcessGroupId(participating_ranks): ProcessGroupCollectiveCount(
+          collective_count_before=collective_count_before,
+          num_collectives_in_graph=num_collectives_in_graph,
+      )
+  })
+  return CollectiveHandshakeRequest(
+      pg_collective_counts=pg_counts,
+      executable_fingerprint=fingerprint,
+      rank=rank,
+  )
 
 
 class ProcessGroupCollectiveCountTest(seed_test_utils.RepeatableTest):
@@ -443,6 +477,67 @@ class CollectiveHandshakeRequestTest(seed_test_utils.RepeatableTest):
       CollectiveHandshakeRequest.from_bytes(b"{}")
 
 
+class CollectiveHandshakeResponseTest(seed_test_utils.RepeatableTest):
+  """Unit tests for CollectiveHandshakeResponse class and serialization."""
+
+  def test_valid_response(self) -> None:
+    resp_true = CollectiveHandshakeResponse(success=True)
+    self.assertTrue(resp_true.success)
+    resp_false = CollectiveHandshakeResponse(success=False)
+    self.assertFalse(resp_false.success)
+
+  def test_to_bytes_and_from_bytes(self) -> None:
+    resp = CollectiveHandshakeResponse(success=True)
+    serialized = resp.to_bytes()
+    self.assertEqual(serialized, b"\x01")
+    deserialized = CollectiveHandshakeResponse.from_bytes(serialized)
+    self.assertTrue(deserialized.success)
+
+    resp_f = CollectiveHandshakeResponse(success=False)
+    serialized_f = resp_f.to_bytes()
+    self.assertEqual(serialized_f, b"\x00")
+    deserialized_f = CollectiveHandshakeResponse.from_bytes(serialized_f)
+    self.assertFalse(deserialized_f.success)
+
+  def test_from_bytes_invalid_payloads(self) -> None:
+    with self.assertRaises(ValueError):
+      CollectiveHandshakeResponse.from_bytes(b"invalid")
+
+
+class GetHandshakeTimeoutMsTest(seed_test_utils.RepeatableTest):
+  """Unit tests for _get_handshake_timeout_ms environment variable parser."""
+
+  def test_default_timeout(self) -> None:
+    with mock.patch.dict(os.environ, {}, clear=True):
+      self.assertEqual(_get_handshake_timeout_ms(), 60000)
+
+  def test_custom_valid_timeout(self) -> None:
+    with mock.patch.dict(
+        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS": "5000"}
+    ):
+      self.assertEqual(_get_handshake_timeout_ms(), 5000)
+
+  def test_invalid_string_timeout(self) -> None:
+    with mock.patch.dict(
+        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS": "invalid"}
+    ):
+      with self.assertRaisesRegex(
+          ValueError,
+          "TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS must be an integer",
+      ):
+        _get_handshake_timeout_ms()
+
+  def test_negative_timeout(self) -> None:
+    with mock.patch.dict(
+        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS": "-100"}
+    ):
+      with self.assertRaisesRegex(
+          ValueError,
+          "TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS must be non-negative",
+      ):
+        _get_handshake_timeout_ms()
+
+
 class CollectiveHandshakeConsensusTest(seed_test_utils.RepeatableTest):
   """Unit tests for _CollectiveHandshakeConsensus request queuing and gathering."""
 
@@ -459,10 +554,12 @@ class CollectiveHandshakeConsensusTest(seed_test_utils.RepeatableTest):
   def test_invalid_put_request_rank(self) -> None:
     async def _test() -> None:
       consensus = _CollectiveHandshakeConsensus(num_queues=4)
+      msg = _make_request(rank=0)
+      env = _CollectiveHandshakeRequestZMQEnvelope(client_id=b"c", request=msg)
       with self.assertRaisesRegex(ValueError, r"rank \(-1\) must be in range"):
-        await consensus.put_request(-1, "req")
+        await consensus.put_request(-1, env)
       with self.assertRaisesRegex(ValueError, r"rank \(4\) must be in range"):
-        await consensus.put_request(4, "req")
+        await consensus.put_request(4, env)
 
     asyncio.run(_test())
 
@@ -487,35 +584,58 @@ class CollectiveHandshakeConsensusTest(seed_test_utils.RepeatableTest):
   def test_put_and_get_first_request(self) -> None:
     async def _test() -> None:
       consensus = _CollectiveHandshakeConsensus(num_queues=4)
-      await consensus.put_request(2, "req_rank_2")
+      msg = _make_request(rank=2)
+      envelope = _CollectiveHandshakeRequestZMQEnvelope(
+          client_id=b"client_2", request=msg
+      )
+      await consensus.put_request(2, envelope)
       result = await consensus.get_first_request()
-      self.assertEqual(result, "req_rank_2")
+      self.assertEqual(result, envelope)
 
     asyncio.run(_test())
 
   def test_get_from_ranks(self) -> None:
     async def _test() -> None:
       consensus = _CollectiveHandshakeConsensus(num_queues=4)
-      await consensus.put_request(0, "req_0")
-      await consensus.put_request(1, "req_1")
-      await consensus.put_request(2, "req_2")
-      await consensus.put_request(3, "req_3")
+      msg1 = _make_request(rank=1, fingerprint="fp1")
+      msg3 = _make_request(rank=3, fingerprint="fp3")
+      env1 = _CollectiveHandshakeRequestZMQEnvelope(
+          client_id=b"c1", request=msg1
+      )
+      env3 = _CollectiveHandshakeRequestZMQEnvelope(
+          client_id=b"c3", request=msg3
+      )
+
+      await consensus.put_request(1, env1)
+      await consensus.put_request(3, env3)
 
       results = await consensus.get_from_ranks([1, 3])
-      self.assertEqual(results, ["req_1", "req_3"])
+      self.assertEqual(results, [env1, env3])
 
     asyncio.run(_test())
 
   def test_get_from_ranks_order(self) -> None:
     async def _test() -> None:
       consensus = _CollectiveHandshakeConsensus(num_queues=4)
-      await consensus.put_request(0, "req_0")
-      await consensus.put_request(1, "req_1")
-      await consensus.put_request(2, "req_2")
-      await consensus.put_request(3, "req_3")
+      env0 = _CollectiveHandshakeRequestZMQEnvelope(
+          client_id=b"c0", request=_make_request(rank=0)
+      )
+      env1 = _CollectiveHandshakeRequestZMQEnvelope(
+          client_id=b"c1", request=_make_request(rank=1)
+      )
+      env2 = _CollectiveHandshakeRequestZMQEnvelope(
+          client_id=b"c2", request=_make_request(rank=2)
+      )
+      env3 = _CollectiveHandshakeRequestZMQEnvelope(
+          client_id=b"c3", request=_make_request(rank=3)
+      )
+      await consensus.put_request(0, env0)
+      await consensus.put_request(1, env1)
+      await consensus.put_request(2, env2)
+      await consensus.put_request(3, env3)
 
       results = await consensus.get_from_ranks([3, 1, 0])
-      self.assertEqual(results, ["req_3", "req_1", "req_0"])
+      self.assertEqual(results, [env3, env1, env0])
 
     asyncio.run(_test())
 
@@ -530,15 +650,19 @@ class CollectiveHandshakeConsensusTest(seed_test_utils.RepeatableTest):
   def test_concurrent_put_and_get(self) -> None:
     async def _test() -> None:
       consensus = _CollectiveHandshakeConsensus(num_queues=4)
+      msg = _make_request(rank=1, fingerprint="fp_delayed")
+      env = _CollectiveHandshakeRequestZMQEnvelope(
+          client_id=b"c_delayed", request=msg
+      )
 
       async def _delayed_put() -> None:
         await asyncio.sleep(0.01)
-        await consensus.put_request(1, "delayed_req")
+        await consensus.put_request(1, env)
 
       task = asyncio.create_task(_delayed_put())
       result = await consensus.get_first_request()
+      self.assertEqual(result, env)
       await task
-      self.assertEqual(result, "delayed_req")
 
     asyncio.run(_test())
 
@@ -581,6 +705,104 @@ class SelectHandshakePortTest(seed_test_utils.RepeatableTest):
           current_rank=1, coordinator_rank=0
       )
       self.assertEqual(port, 54321)
+
+
+def _msg_eq(
+    msg1: CollectiveHandshakeRequest, msg2: CollectiveHandshakeRequest
+) -> bool:
+  return (
+      msg1.executable_fingerprint == msg2.executable_fingerprint
+      and msg1.participating_ranks == msg2.participating_ranks
+      and msg1.rank == msg2.rank
+      and list(msg1.pg_collective_counts.keys())
+      == list(msg2.pg_collective_counts.keys())
+  )
+
+
+class ZMQServerClientTest(seed_test_utils.RepeatableTest):
+  """Unit tests for _ZMQServer and _ZMQClient communication."""
+
+  def test_zmq_server_invalid_port_number(self) -> None:
+    with self.assertRaises(ValueError):
+      _ZMQServer(port=-1)
+
+    with self.assertRaises(ValueError):
+      _ZMQClient(port=65536)
+
+  def test_zmq_client_invalid_port_number(self) -> None:
+    with self.assertRaises(ValueError):
+      _ZMQClient(port=-1)
+    with self.assertRaises(ValueError):
+      _ZMQClient(port=65536)
+
+  def test_zmq_envelope(self) -> None:
+    msg = _make_request(rank=0)
+    env = _CollectiveHandshakeRequestZMQEnvelope(client_id=b"c0", request=msg)
+    self.assertEqual(env.client_id, b"c0")
+    self.assertEqual(env.request, msg)
+
+  def test_zmq_server_client_send_recv(self) -> None:
+    port = portpicker.pick_unused_port()
+    server = _ZMQServer(port=port)
+    client = _ZMQClient(port=port)
+
+    msg = _make_request(
+        rank=1, participating_ranks=[0, 1], fingerprint="fp_comm"
+    )
+
+    async def _server_flow() -> None:
+      envelope = await server.recv_request()
+      self.assertIsNotNone(envelope)
+      assert envelope is not None
+      self.assertTrue(_msg_eq(envelope.request, msg))
+      await server.send_reply(
+          envelope.client_id, CollectiveHandshakeResponse(success=True)
+      )
+
+    async def _run() -> None:
+      server_task = asyncio.create_task(_server_flow())
+      # Send message from client
+      client.send(msg)
+      await server_task
+      # Recv reply on client
+      reply = client.recv()
+      self.assertTrue(reply.success)
+
+    try:
+      asyncio.run(_run())
+    finally:
+      client.close()
+      server.close()
+
+  def test_zmq_server_close_idempotent_and_closed_operations(self) -> None:
+    port = portpicker.pick_unused_port()
+    server = _ZMQServer(port=port)
+    server.close()
+    # Multiple close calls must be safe and idempotent
+    server.close()
+
+    async def _test() -> None:
+      with self.assertRaises(zmq.ZMQError):
+        await server.recv_request()
+      with self.assertRaises(zmq.ZMQError):
+        await server.send_reply(
+            b"c0", CollectiveHandshakeResponse(success=True)
+        )
+
+    asyncio.run(_test())
+
+  def test_zmq_client_close_idempotent_and_closed_operations(self) -> None:
+    port = portpicker.pick_unused_port()
+    client = _ZMQClient(port=port)
+    client.close()
+    # Multiple close calls must be safe and idempotent
+    client.close()
+
+    msg = _make_request(rank=0)
+    with self.assertRaises(zmq.ZMQError):
+      client.send(msg)
+    with self.assertRaises(zmq.ZMQError):
+      client.recv()
 
 
 if __name__ == "__main__":

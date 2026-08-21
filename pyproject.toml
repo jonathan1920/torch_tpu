@@ -28,6 +28,7 @@ dependencies = [
     "tensorboard>=2.20",
     "frozendict>=2",
     "immutabledict>=4",
+    "pyzmq>=27",
 ]
 
 [project.optional-dependencies]

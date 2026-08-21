@@ -750,6 +750,8 @@ torch_tpu_py_test(
         "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/distributed:handshake",
+        "@pypi//portpicker",
+        "@pypi//pyzmq",
     ],
 )
 
