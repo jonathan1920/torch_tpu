@@ -476,6 +476,37 @@ class RngCudaRefTest(_BaseRngTest):
     self.assertNotEqual(new_seed, 42)
     self.assertEqual(g.get_offset(), 0)
 
+  def test_generator_get_set_offset_restores_stream(self):
+    """Verifies g.get_offset and g.set_offset query and modify offset."""
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+    self.assertEqual(g.get_offset(), 0)
+
+    _ = torch.rand(20, generator=g, device=self.device)
+    saved_offset = g.get_offset()
+    self.assertGreater(saved_offset, 0)
+
+    expected_out = torch.rand(10, generator=g, device=self.device)
+    g.set_offset(saved_offset)
+    actual_out = torch.rand(10, generator=g, device=self.device)
+
+    self.assertTrue(torch.equal(actual_out, expected_out))
+
+  def test_generator_get_set_state_restores_stream(self):
+    """Verifies g.get_state and g.set_state snapshot and restore state."""
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+    saved_state = g.get_state()
+
+    expected_out = torch.rand(10, generator=g, device=self.device)
+    _ = torch.rand(50, generator=g, device=self.device)
+
+    g.set_state(saved_state)
+    self.assertEqual(g.get_offset(), 0)
+
+    actual_out = torch.rand(10, generator=g, device=self.device)
+    self.assertTrue(torch.equal(actual_out, expected_out))
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
