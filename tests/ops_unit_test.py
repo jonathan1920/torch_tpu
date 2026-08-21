@@ -11010,7 +11010,7 @@ class OpTestingFrameworkTest(op_testing.OpInfoTestBase, parameterized.TestCase):
         max_samples=2,
         verbose=False,
     )
-    self.assertGreater(len(pairs), 0)
+    self.assertNotEmpty(pairs)
     for golden_input, _ in pairs:
       self.assertEqual(golden_input.input_value.dtype, dtype)
 
@@ -11068,7 +11068,7 @@ class OpTestingFrameworkTest(op_testing.OpInfoTestBase, parameterized.TestCase):
           max_samples=2,
           verbose=False,
       )
-      self.assertGreater(len(pairs), 0)
+      self.assertNotEmpty(pairs)
       for _, golden_output in pairs:
         self.assertIsNone(golden_output.output_value)
 
