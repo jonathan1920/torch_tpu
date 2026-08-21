@@ -849,6 +849,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "isneginf.out";
     case OpName::kIsPosInfOut:
       return "isposinf.out";
+    case OpName::kJaggedToPaddedDenseForward:
+      return "_jagged_to_padded_dense_forward";
     case OpName::kLayerNorm:
       return "layer_norm";
     case OpName::kLdexpOut:
@@ -1105,6 +1107,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "normal_";
     case OpName::kPadUninitialized_:
       return "pad_uninitialized_";
+    case OpName::kPaddedDenseToJaggedForward:
+      return "_padded_dense_to_jagged_forward";
     case OpName::kPdistBackward:
       return "_pdist_backward";
     case OpName::kPdistForward:

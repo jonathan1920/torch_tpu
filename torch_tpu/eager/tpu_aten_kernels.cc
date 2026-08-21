@@ -123,6 +123,7 @@
 #include "torch_tpu/ops/index_select/index_select_aten_kernels.h"
 #include "torch_tpu/ops/is/is_aten_kernels.h"
 #include "torch_tpu/ops/isin/isin_aten_kernels.h"
+#include "torch_tpu/ops/jagged/jagged_aten_kernels.h"
 #include "torch_tpu/ops/layer_norm/layer_norm_aten_kernels.h"
 #include "torch_tpu/ops/leaky_relu/leaky_relu_aten_kernels.h"
 #include "torch_tpu/ops/lerp/lerp_aten_kernels.h"
@@ -712,6 +713,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kIsNan>(m, AtenIsNan);
   ImplStable<OpName::kIsNegInfOut>(m, AtenIsNegInfOut);
   ImplStable<OpName::kIsPosInfOut>(m, AtenIsPosInfOut);
+  ImplStable<OpName::kJaggedToPaddedDenseForward>(
+      m, AtenJaggedToPaddedDenseForward);
   ImplStable<OpName::kLdexpOut>(m, AtenLdexpOut);
   ImplStable<OpName::kLdexpTensor>(m, AtenLdexpTensor);
   ImplStable<OpName::kLdexp_>(m, AtenLdexp_);
@@ -837,6 +840,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kNormalTensorTensor>(m, AtenNormalTensorTensor);
   ImplStable<OpName::kNormalTensorTensorOut>(m, AtenNormalTensorTensorOut);
   ImplStable<OpName::kNormal_>(m, AtenNormal_);
+  ImplStable<OpName::kPaddedDenseToJaggedForward>(
+      m, AtenPaddedDenseToJaggedForward);
   ImplStable<OpName::kPdistBackward>(m, AtenPdistBackward);
   ImplStable<OpName::kPdistForward>(m, AtenPdistForward);
   ImplStable<OpName::kPolarOut>(m, AtenPolarOut);

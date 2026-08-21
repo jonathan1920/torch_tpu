@@ -588,6 +588,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/index_select:index_select_aten_kernels",
         "//torch_tpu/ops/is:is_aten_kernels",
         "//torch_tpu/ops/isin:isin_aten_kernels",
+        "//torch_tpu/ops/jagged:jagged_aten_kernels",
         "//torch_tpu/ops/layer_norm:layer_norm_aten_kernels",
         "//torch_tpu/ops/leaky_relu:leaky_relu_aten_kernels",
         "//torch_tpu/ops/lerp:lerp_aten_kernels",

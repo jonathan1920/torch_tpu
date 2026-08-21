@@ -3652,6 +3652,165 @@ module {
           ffn_b2,
       )
 
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_jagged_offsets_multiple_lists(self):
+    values = torch.randn(5, 4, device=et.device())
+    o1 = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
+    o2 = torch.tensor([0, 3, 5], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""jagged_to_padded_dense_forward(): only a single jagged dim is supported for now, but got offsets.size() == 2""",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(values, [o1, o2], [3], 0.0)
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_jagged_offsets_2d(self):
+    values = torch.randn(5, 4, device=et.device())
+    offsets = torch.tensor([[0, 2, 5]], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): expected 1D offsets, but got offsets.dim() == 2""",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [3], 0.0
+      )
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_jagged_offsets_empty(self):
+    values = torch.randn(5, 4, device=et.device())
+    offsets = torch.tensor([], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): offsets must have size >= 1, but got 0""",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [3], 0.0
+      )
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_jagged_offsets_not_int64(self):
+    values = torch.randn(5, 4, device=et.device())
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): expected offsets to be of dtype int64, but got Int""",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [3], 0.0
+      )
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_jagged_offsets_non_zero_start(self):
+    values = torch.randn(5, 4, device=et.device())
+    offsets = torch.tensor([1, 3, 5], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): offsets must start with 0, but got 1""",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [3], 0.0
+      )
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_jagged_offsets_decreasing(self):
+    values = torch.randn(5, 4, device=et.device())
+    offsets = torch.tensor([0, 3, 2], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): offsets must be non-decreasing, but found offsets[1] (3) > offsets[2] (2)""",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [3], 0.0
+      )
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_jagged_to_padded_values_0d(self):
+    values = torch.tensor(1.0, device=et.device())
+    offsets = torch.tensor([0], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): expected values dim >= 1, got 0""",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [3], 0.0
+      )
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_jagged_to_padded_multiple_max_lengths(self):
+    values = torch.randn(5, 4, device=et.device())
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): expected max_lengths.size() == 1, but got 2""",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [3, 4], 0.0
+      )
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_jagged_to_padded_negative_max_length(self):
+    values = torch.randn(5, 4, device=et.device())
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): max_length must be non-negative, got -1""",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [-1], 0.0
+      )
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_jagged_to_padded_offsets_out_of_bounds(self):
+    values = torch.randn(3, 4, device=et.device())
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): offsets specifies more elements (5) than available in values (3)""",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [3], 0.0
+      )
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_padded_to_jagged_dense_1d(self):
+    dense = torch.randn(10, device=et.device())
+    offsets = torch.tensor([0, 5, 10], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""padded_dense_to_jagged_forward(): expected dense dim >= 2, but dense.dim() == 1""",
+    ):
+      torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 10)
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_padded_to_jagged_total_l_mismatch(self):
+    dense = torch.randn(2, 5, 4, device=et.device())
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""padded_dense_to_jagged_forward(): final offset (5) should match total_L value (6)""",
+    ):
+      torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 6)
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_padded_to_jagged_batch_size_mismatch(self):
+    dense = torch.randn(2, 5, 4, device=et.device())
+    offsets = torch.tensor([0, 2, 3, 5], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""padded_dense_to_jagged_forward(): offsets batch size (3) must match dense batch size (2)""",
+    ):
+      torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 5)
+
+  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
+  def test_padded_to_jagged_segment_exceeds_max_length(self):
+    dense = torch.randn(2, 4, 4, device=et.device())
+    offsets = torch.tensor([0, 5, 7], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""padded_dense_to_jagged_forward(): found batch item of length 5 when max length specified by padded input is 4""",
+    ):
+      torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 7)
+
 
 if __name__ == "__main__":
   absltest.main()
