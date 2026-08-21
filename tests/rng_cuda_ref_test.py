@@ -259,6 +259,15 @@ class RngCudaRefTest(_BaseRngTest):
     torch.manual_seed(77)
     self.assertEqual(self._get_device_rng_offset(), 0)
 
+  def test_backend_manual_seed_all_resets_offset_after_rand(self):
+    """Verifies re-seeding with backend_mod.manual_seed_all resets device offset back to 0."""
+    self.backend_mod.manual_seed_all(42)
+    _ = torch.rand(100, device=self.device)
+    self.assertGreater(self._get_device_rng_offset(), 0)
+
+    self.backend_mod.manual_seed_all(77)
+    self.assertEqual(self._get_device_rng_offset(), 0)
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
