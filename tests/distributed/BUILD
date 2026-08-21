@@ -79,7 +79,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "torchcomm_multi_tpu_test",
     srcs = ["torchcomm_multi_tpu_test.py"],
-    autoload = True,
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 7,
     tags = if_oss(
@@ -106,7 +105,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "multi_tpu_test",
     srcs = ["multi_tpu_test.py"],
-    autoload = True,
     notest_oss = "fix hang in OSS",  # TODO
     tags = if_oss(
         ["exclusive"],
