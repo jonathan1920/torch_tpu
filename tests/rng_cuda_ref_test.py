@@ -38,15 +38,31 @@ def _get_backend_module(backend_name: str) -> Any:
   )
 
 
-def _get_device(backend_name: str) -> torch.device:
+def _get_device(
+    backend_name: str, device_idx: int | None = None
+) -> torch.device:
+  """Returns a torch.device for the given backend name and optional device index.
+
+  Maps the CLI flag backend names ('gpu', 'tpu') to their corresponding PyTorch
+  device types ('cuda', 'tpu').
+
+  Args:
+    backend_name: Name of the backend ('gpu' or 'tpu').
+    device_idx: Optional integer index of the device (e.g. 0 for 'cuda:0'). If
+      None, returns a device without an index (e.g. 'cuda').
+  """
   if backend_name == "gpu":
-    return torch.device("cuda")
+    device_type = "cuda"
   elif backend_name == "tpu":
-    return torch.device("tpu")
-  raise ValueError(
-      f"Unsupported backend '{backend_name}'. Supported backends are: 'gpu',"
-      " 'tpu'"
-  )
+    device_type = "tpu"
+  else:
+    raise ValueError(
+        f"Unsupported backend '{backend_name}'. Supported backends are: 'gpu',"
+        " 'tpu'"
+    )
+  if device_idx is None:
+    return torch.device(device_type)
+  return torch.device(f"{device_type}:{device_idx}")
 
 
 def _fail_on_tpu(reason: str):
@@ -99,6 +115,17 @@ class CpuRngTest(seed_test_utils.RepeatableTest):
 
     _ = torch.rand(100, device="cpu")
     self.assertFalse(torch.equal(torch.get_rng_state(), initial_cpu_state))
+
+  def test_torch_seed_sets_cpu_seed(self):
+    """Verifies torch.seed generates a new random seed for CPU."""
+    torch.manual_seed(42)
+    old_cpu_seed = torch.initial_seed()
+
+    new_seed = torch.seed()
+
+    self.assertIsInstance(new_seed, int)
+    self.assertNotEqual(new_seed, old_cpu_seed)
+    self.assertEqual(torch.initial_seed(), new_seed)
 
 
 class _BaseRngTest(seed_test_utils.RepeatableTest):
@@ -290,6 +317,17 @@ class RngCudaRefTest(_BaseRngTest):
 
     self.assertTrue(torch.equal(t1, t2))
 
+  def test_torch_seed_sets_device_seed_and_resets_offset(self):
+    """Verifies torch.seed updates device seed and resets offset to 0."""
+    torch.manual_seed(42)
+    _ = torch.rand(100, device=self.device)
+    self.assertGreater(self._get_device_rng_offset(), 0)
+
+    new_seed = torch.seed()
+
+    self.assertEqual(self._get_device_rng_seed(), new_seed)
+    self.assertEqual(self._get_device_rng_offset(), 0)
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
@@ -377,6 +415,35 @@ class SingleProcessMultiDeviceTest(_BaseRngTest):
       self.assertEqual(
           self._get_device_rng_seed(i),
           42,
+          msg=f"Device {i} seed mismatch",
+      )
+      self.assertEqual(
+          self._get_device_rng_offset(i),
+          0,
+          msg=f"Device {i} offset mismatch",
+      )
+
+  @_fail_on_tpu(
+      "TPU backend does not support querying non-current device RNG state."
+  )
+  def test_torch_seed_sets_all_device_seeds(self):
+    """Verifies torch.seed seeds all devices."""
+    num_devices = self.backend_mod.device_count()
+    self.assertGreater(
+        num_devices,
+        1,
+        "Test target must be configured with multiple devices to verify"
+        " seeding all devices.",
+    )
+    for i in range(num_devices):
+      _ = torch.rand(100, device=_get_device(self.backend, i))
+
+    new_seed = torch.seed()
+
+    for i in range(num_devices):
+      self.assertEqual(
+          self._get_device_rng_seed(i),
+          new_seed,
           msg=f"Device {i} seed mismatch",
       )
       self.assertEqual(
