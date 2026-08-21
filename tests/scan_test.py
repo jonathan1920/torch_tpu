@@ -43,7 +43,7 @@ def _compile_and_get_stablehlo(model, *args):
   return texts[0]
 
 
-class ScanOpTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
+class ScanOpTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -295,7 +295,7 @@ class ScanOpTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
     utils.assert_close(out_ys.cpu(), expected_ys)
 
 
-class ScanLoweringTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
+class ScanLoweringTest(seed_test_utils.RepeatableTest):
 
   def test_scan_is_not_unrolled(self):
 

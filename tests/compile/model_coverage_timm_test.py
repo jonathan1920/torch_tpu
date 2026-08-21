@@ -103,9 +103,7 @@ def _train_step(
   return loss
 
 
-class ModelCoverageTimmTest(
-    seed_test_utils.RepeatableTest, parameterized.TestCase
-):
+class ModelCoverageTimmTest(seed_test_utils.RepeatableTest):
 
   @classmethod
   def setUpClass(cls) -> None:

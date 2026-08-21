@@ -95,9 +95,7 @@ def _get_profiler_options_bytes(xspace: xplane_pb2.XSpace) -> bytes:
   return b""
 
 
-class ProfilerIntegrationTest(
-    seed_test_utils.RepeatableTest, parameterized.TestCase
-):
+class ProfilerIntegrationTest(seed_test_utils.RepeatableTest):
 
   def _get_and_copy_xplane(self, destination_path: pathlib.Path) -> None:
     profile_dir = _get_profile_dir()

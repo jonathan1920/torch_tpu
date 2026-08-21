@@ -129,9 +129,7 @@ def execute_training_step(config: RunConfig) -> torch.Tensor:
   return loss_val
 
 
-class TraceAutogradOpsTest(
-    seed_test_utils.RepeatableTest, parameterized.TestCase
-):
+class TraceAutogradOpsTest(seed_test_utils.RepeatableTest):
 
   @classmethod
   def setUpClass(cls):

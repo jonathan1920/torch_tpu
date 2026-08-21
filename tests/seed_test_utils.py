@@ -19,6 +19,7 @@ import time
 from typing import Final
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import torch
 from torch_tpu._internal.device import _device_ops_backend
 
@@ -32,11 +33,14 @@ def seed_rngs(seed: int) -> None:
   torch.manual_seed(seed)
 
 
-class SeededTest(absltest.TestCase):
+class SeededTest(parameterized.TestCase):
   """Abstract base class that fixes RNG seeds to make tests reproducible.
 
   This class picks a random seed in setUpClass() and sets it in setUp().
   A subclass must define choose_seed() to determine the seed.
+
+  Since this inherits from parameterized.TestCase, subclasses may use
+  parameterized test methods but don't have to.
   """
 
   test_random_seed: int = DEFAULT_RANDOM_SEED
@@ -64,13 +68,13 @@ class RepeatableTest(SeededTest):
   reproducibility.
 
   When combining RepeatableTest with another TestCase class:
-  e.g., class MyTest(RepeatableTest, parameterized.TestCase):
+  e.g., class MyTest(RepeatableTest, foo.TestCase):
   where:
-    class RepeatableTest(absltest.TestCase)
-    class parameterized.TestCase(absltest.TestCase)
+    class RepeatableTest(absltest.TestCase)  # ABSLTEST_OK=example
+    class foo.TestCase(absltest.TestCase)  # ABSLTEST_OK=example
 
   Through Python MRO, super().setUp() propagates through all base classes:
-  MyTest -> RepeatableTest -> parameterized.TestCase -> absltest.TestCase
+  MyTest->RepeatableTest->foo.TestCase->absltest.TestCase  # ABSLTEST_OK=example
   """
 
   @classmethod

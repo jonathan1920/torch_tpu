@@ -31,7 +31,7 @@ def _get_cpu_tensors(tree: Any):
   return [o.cpu() for o in outs]
 
 
-class RandomOpsTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
+class RandomOpsTest(seed_test_utils.RepeatableTest):
 
   def assert_random_outputs_close_with_same_seed(
       self,

@@ -19,7 +19,7 @@ from torch._subclasses import fake_tensor
 from tests import seed_test_utils
 
 
-class RngTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
+class RngTest(seed_test_utils.RepeatableTest):
 
   def test_get_rng_state_metadata(self):
     device = torch.device("tpu")

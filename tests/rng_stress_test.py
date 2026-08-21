@@ -75,7 +75,7 @@ def get_current_generator_offset() -> int:
   return torch.tpu.get_rng_state().view(torch.int64).cpu().tolist()[-1]
 
 
-class RngStressTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
+class RngStressTest(seed_test_utils.RepeatableTest):
   """Stress test for RNG state and random operations.
 
   This test verifies that concurrent calls to random operations from multiple

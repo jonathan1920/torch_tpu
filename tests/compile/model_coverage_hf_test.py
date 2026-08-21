@@ -95,9 +95,7 @@ def _train_step(
   return loss.detach()
 
 
-class ModelCoverageHFTest(
-    seed_test_utils.RepeatableTest, parameterized.TestCase
-):
+class ModelCoverageHFTest(seed_test_utils.RepeatableTest):
 
   @classmethod
   def setUpClass(cls) -> None:

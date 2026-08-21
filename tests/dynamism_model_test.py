@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from absl.testing import absltest
-from absl.testing import parameterized
 import torch
 from torch_tpu._internal import dynamism
 from torch_tpu._internal import testing as tt_testing
@@ -21,7 +20,7 @@ from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
 
 
-class DynamismModelTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
+class DynamismModelTest(seed_test_utils.RepeatableTest):
   """Unit tests for bounded dynamism support on nn.Modules."""
 
   def setUp(self):
@@ -84,9 +83,7 @@ class DynamismModelTest(seed_test_utils.RepeatableTest, parameterized.TestCase):
     utils.assert_close(act.to("cpu"), expected, rtol=1e-2, atol=1e-2)
 
 
-class KVCacheDynamismTest(
-    seed_test_utils.RepeatableTest, parameterized.TestCase
-):
+class KVCacheDynamismTest(seed_test_utils.RepeatableTest):
   """Unit tests for bounded dynamism on KV cache like operations."""
 
   def setUp(self):

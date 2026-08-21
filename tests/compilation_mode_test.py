@@ -37,9 +37,7 @@ class WarningExpectation(enum.Enum):
   EXPECT_NO_WARNING = 2
 
 
-class CompilationModeTest(
-    seed_test_utils.RepeatableTest, parameterized.TestCase
-):
+class CompilationModeTest(seed_test_utils.RepeatableTest):
 
   def test_env_exports_compilation_mode_attributes(self):
     self.assertTrue(hasattr(env, "TORCH_TPU_IS_OPTIMIZED_BUILD"))
