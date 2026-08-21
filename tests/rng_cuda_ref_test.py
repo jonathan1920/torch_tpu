@@ -328,6 +328,44 @@ class RngCudaRefTest(_BaseRngTest):
     self.assertEqual(self._get_device_rng_seed(), new_seed)
     self.assertEqual(self._get_device_rng_offset(), 0)
 
+  def test_torch_random_fork_rng_isolates_and_restores_device_rng_state(self):
+    """Verifies torch.random.fork_rng isolates and restores device RNG state."""
+    torch.manual_seed(42)
+    expected_out1 = torch.rand(5, device=self.device)
+    expected_out2 = torch.rand(5, device=self.device)
+
+    torch.manual_seed(42)
+    out1 = torch.rand(5, device=self.device)
+    self.assertTrue(torch.equal(out1, expected_out1))
+
+    with torch.random.fork_rng(
+        devices=[self.device], device_type=self.device.type
+    ):
+      _ = torch.rand(10, device=self.device)
+
+    out2 = torch.rand(5, device=self.device)
+    self.assertTrue(torch.equal(out2, expected_out2))
+
+  def test_torch_random_fork_rng_produces_identical_tensors_inside_and_outside(
+      self,
+  ):
+    """Verifies RNG stream in fork_rng reproduces identically outside."""
+    torch.manual_seed(42)
+    pre_offset = self._get_device_rng_offset()
+
+    with torch.random.fork_rng(
+        devices=[self.device], device_type=self.device.type
+    ):
+      out_inside = torch.rand(10, device=self.device)
+      inside_offset = self._get_device_rng_offset()
+      self.assertGreater(inside_offset, pre_offset)
+
+    out_outside = torch.rand(10, device=self.device)
+    outside_offset = self._get_device_rng_offset()
+
+    self.assertTrue(torch.equal(out_inside, out_outside))
+    self.assertEqual(inside_offset, outside_offset)
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
