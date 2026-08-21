@@ -32,7 +32,7 @@ _DEVICE_LOCK: Final[threading.Lock] = threading.Lock()
 
 
 # pylint: disable=protected-access
-class DeviceModuleBase(seed_test_utils.RepeatableTest, metaclass=abc.ABCMeta):
+class DeviceModuleBase(seed_test_utils.RepeatableTest):
   """Abstract base class containing tests for the device module."""
 
   @property
