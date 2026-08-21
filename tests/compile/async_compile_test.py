@@ -30,6 +30,7 @@ from torch._inductor.codecache import FxGraphCache
 from torch._inductor.codecache import PyCodeCache
 from torch._inductor.utils import clear_caches
 from torch.compiler._cache import CacheArtifactManager
+from torch.fx.experimental.proxy_tensor import make_fx
 from torch_tpu._internal import compile as tpu_compile
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import compiler as tpu_compiler_mod
@@ -200,7 +201,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
     super().tearDown()
 
   def test_async_compile_basic(self):
-    _reset()
     model = SimpleModel().to("tpu")
     bucket_sizes = [4, 8, 16]
     warmup_inputs = [(torch.randn(b, 10, device="tpu"),) for b in bucket_sizes]
@@ -218,7 +218,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
 
   def test_async_compile_deterministic_overlap(self):
     """Deterministically proves Shape 2 tracing overlaps with Shape 1 compilation."""
-    _reset()
     barrier = CompileBarrier()
     model = SimpleModel().to("tpu")
 
@@ -271,7 +270,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
 
   def test_async_compile_zero_premature_resolution_canary(self):
     """Ensures no PyTorch or backend wrapper triggers premature artifact resolution."""
-    _reset()
     canary = ResolutionCanary()
     barrier = CompileBarrier()
     model = AnotherModel().to("tpu")
@@ -310,7 +308,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
 
   def test_async_compile_training_autograd_overlap(self):
     """Tests async compilation with autograd (forward + backward graph)."""
-    _reset()
     model = TrainableModel()
     warmup_inputs = [
         (torch.randn(2, 8, device="tpu", requires_grad=True),),
@@ -335,7 +332,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
 
   def test_async_compile_complex_pytree_outputs(self):
     """Tests async compilation with multi-tensor and dictionary pytree outputs."""
-    _reset()
     model = MultiOutputModel().to("tpu")
     warmup_inputs = [
         (torch.randn(2, 4, device="tpu"),),
@@ -353,7 +349,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
 
   def test_async_compile_rng_generator_state(self):
     """Tests that async compile correctly handles RNG generator state updates."""
-    _reset()
     model = StochasticModel().to("tpu")
     warmup_inputs = [
         (torch.ones(4, 16, device="tpu"),),
@@ -372,7 +367,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
 
   def test_async_compile_error_propagation(self):
     """Verifies that background compilation failures surface cleanly during resolution."""
-    _reset()
     model = SimpleModel().to("tpu")
 
     def failing_compile(*args, **kwargs):
@@ -402,7 +396,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
 
   def test_async_compile_cache_hit_no_recompile(self):
     """Verifies that repeated invocations on warmed-up shapes do not trigger recompilation."""
-    _reset()
     model = SimpleModel().to("tpu")
     warmup_inputs = [(torch.randn(4, 8, device="tpu"),)]
 
@@ -419,7 +412,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
       self.assertEqual(res2.shape, (4, 8))
 
   def test_async_compile_no_grad_option(self):
-    _reset()
     model = SimpleModel().to("tpu")
     warmup_inputs = [(torch.randn(2, 5, device="tpu", requires_grad=True),)]
 
@@ -434,7 +426,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
     self.assertTrue(res.requires_grad)
 
   def test_async_compile_keyword_args(self):
-    _reset()
     model = KwargModel().to("tpu")
     warmup_inputs = [
         ((torch.ones(2, 2, device="tpu"),), {"scale": 3.0}),
@@ -450,7 +441,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
     test_utils.assert_close(res1.cpu(), torch.ones(2, 2) * 3.0)
 
   def test_async_compilation_submitted_signal(self):
-    _reset()
     model = AnotherModel().to("tpu")
     compiled_model = torch.compile(
         torch.no_grad()(model),
@@ -472,7 +462,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
     test_utils.assert_close(res.cpu(), (x * 2.0).cpu())
 
   def test_resolve_compilations_helper(self):
-    _reset()
     model = AnotherModel().to("tpu")
     compiled_model = torch.compile(
         torch.no_grad()(model),
@@ -492,7 +481,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
     self.assertGreaterEqual(resolved_count, 1)
 
   def test_concurrent_fx_to_mlir_thread_safety(self):
-    _reset()
     artifacts = []
     inputs = [
         torch.randn(32 * (i + 1), dtype=torch.bfloat16, device="tpu")
@@ -508,6 +496,42 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
     for artifact, x in zip(artifacts, inputs, strict=True):
       res = artifact([x])
       self.assertEqual(res.shape, x.shape)
+
+  @absltest.skip("Async compile + concurrent eager work corrupts traversal.")
+  def test_concurrent_tpu_work_corrupting_traversal(self):
+    def fn(value):
+      return torch.sin(value + 1)
+
+    # Build the FX graph before starting asynchronous compilation.
+    graph = make_fx(fn)(torch.ones(1024))
+    value = torch.ones(1024, device="tpu")
+
+    original = tpu_compiler_mod.tpu_torch_compile.traverse_and_compile
+    worker_ready = threading.Event()
+    start_traversal = threading.Event()
+
+    def delayed_traversal(*args, **kwargs):
+      worker_ready.set()
+      start_traversal.wait()
+      return original(*args, **kwargs)
+
+    with mock.patch.object(
+        tpu_compiler_mod.tpu_torch_compile,
+        "traverse_and_compile",
+        side_effect=delayed_traversal,
+    ):
+      artifact = tpu_compiler_mod.StaticCompiler(async_compile=True)(
+          graph, [value]
+      )
+
+      # Run TPU work after the worker captures its graph but before it
+      # traverses it.
+      worker_ready.wait()
+      torch.arange(128, dtype=torch.int32, device="tpu").cpu()
+      start_traversal.set()
+
+      res = artifact([value])
+      test_utils.assert_close(res.cpu(), torch.sin(value.cpu() + 1))
 
 
 if __name__ == "__main__":
