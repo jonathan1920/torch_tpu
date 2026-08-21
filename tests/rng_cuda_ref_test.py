@@ -507,6 +507,25 @@ class RngCudaRefTest(_BaseRngTest):
     actual_out = torch.rand(10, generator=g, device=self.device)
     self.assertTrue(torch.equal(actual_out, expected_out))
 
+  def test_generator_clone_state_creates_isolated_copy(self):
+    """Verifies g.clone_state creates an isolated generator copy."""
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+    cloned_g = g.clone_state()
+
+    self.assertEqual(cloned_g.initial_seed(), 42)
+    self.assertEqual(cloned_g.get_offset(), 0)
+
+    expected_out = torch.rand(10, generator=g, device=self.device)
+    actual_out = torch.rand(10, generator=cloned_g, device=self.device)
+
+    self.assertTrue(torch.equal(actual_out, expected_out))
+
+  def test_generator_device_property_returns_bound_device(self):
+    """Verifies g.device queries bound device context."""
+    g = torch.Generator(device=self.device)
+    self.assertEqual(g.device.type, self.device.type)
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
