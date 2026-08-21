@@ -70,6 +70,9 @@ torch_tpu_py_test(
         "--max_warmup_steps=1",
         "--post_warmup_steps=0",
     ],
+    # TODO: remove this. It's needed now to avoid `import torch_xla2 as torchax`
+    # triggering "RuntimeError: torch.register_privateuse1_backend() has already been set!
+    # Current backend: tpu".
     autoload = False,
     env = {
         "BENCHMARK_PLATFORM": "v5e_1x1",

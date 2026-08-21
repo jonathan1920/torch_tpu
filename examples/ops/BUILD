@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_package_end", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_package_end",
+    "torch_tpu_py_test",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -21,7 +25,9 @@ package(
 torch_tpu_py_test(
     name = "layernorm",
     srcs = ["layernorm.py"],
-    autoload = if_oss(True, False),
+    # TODO: remove this. It's needed now to avoid a C++ crash "InitGoogle() has not finished yet"
+    # while torch_tpu::PjrtBackend::GetClient() is called.
+    autoload = False,
     notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
