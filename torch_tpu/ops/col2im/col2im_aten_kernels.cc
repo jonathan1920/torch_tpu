@@ -23,7 +23,6 @@
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
@@ -78,6 +77,11 @@ absl::StatusOr<Dimensions> GetOutputDimensions(const at::Tensor& input,
                                                at::IntArrayRef dilation,
                                                at::IntArrayRef padding,
                                                at::IntArrayRef stride) {
+  TT_ASSIGN_OR_RETURN(const auto elem_dtype,
+                      ConvertTo<mlir::ElementType>(input.scalar_type()));
+  TT_RET_CHECK(!IsInteger(elem_dtype, /*includeBool=*/false),
+               error::kInvalidArgument)
+      << "expected non-integer dtype, got " << ToString(input.scalar_type());
   TT_RET_CHECK(output_size.size() == 2, error::kInvalidArgument)
       << "expected output_size to have 2 dimensions, got "
       << output_size.size();

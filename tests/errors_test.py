@@ -315,6 +315,16 @@ class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.triu(t, 1)
 
+  def test_col2im_unsupported_integer_dtype(self):
+    """Tests that col2im with integer dtype fails with expected error."""
+    t = torch.ones((1, 4, 1), device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""col2im(): expected non-integer dtype, got int32""",
+        gpu=""""col2im_out_cuda" not implemented for 'Int'""",
+    ):
+      torch.ops.aten.col2im(t, (2, 2), (2, 2), (1, 1), (0, 0), (1, 1))
+
   def test_segment_reduce_indices_not_supported(self):
     """Tests that segment_reduce with indices raises expected error."""
     t = torch.ones(5, device=et.device(), dtype=torch.float32)

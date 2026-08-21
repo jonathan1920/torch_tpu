@@ -14,6 +14,7 @@
 
 #include "torch_tpu/ops/col2im/col2im.h"
 
+#include <algorithm>
 #include <cstdint>
 
 #include "absl/status/statusor.h"
@@ -127,10 +128,14 @@ absl::StatusOr<mlir::MlirOp> BuildCol2ImShlo(
   auto weight_squeezed =
       mlir::stablehlo::Reshape(identity, {kH, kW, kernel_prod});
 
-  const int64_t pad_h = (kH - 1) * dilation[0];
-  const int64_t pad_w = (kW - 1) * dilation[1];
-  const int64_t conv_out_h = col_h + 2 * pad_h - (kH - 1) * dilation[0];
-  const int64_t conv_out_w = col_w + 2 * pad_w - (kW - 1) * dilation[1];
+  const int64_t pad_h_low = (kH - 1) * dilation[0];
+  const int64_t pad_w_low = (kW - 1) * dilation[1];
+  const int64_t conv_out_h =
+      std::max((col_h - 1) * stride[0] + 1 + pad_h_low, padding[0] + output_h);
+  const int64_t conv_out_w =
+      std::max((col_w - 1) * stride[1] + 1 + pad_w_low, padding[1] + output_w);
+  const int64_t pad_h_high = conv_out_h - (col_h - 1) * stride[0] - 1;
+  const int64_t pad_w_high = conv_out_w - (col_w - 1) * stride[1] - 1;
 
   // shape: (N, C, conv_out_h, conv_out_w)
   const auto conv_output_type = mlir::RankedTensorType::get(
@@ -150,7 +155,7 @@ absl::StatusOr<mlir::MlirOp> BuildCol2ImShlo(
   const auto padding_type =
       mlir::RankedTensorType::get({2, 2}, op_builder.getI64Type());
   const auto padding_attr = mlir::DenseIntElementsAttr::get(
-      padding_type, {pad_h, pad_h, pad_w, pad_w});
+      padding_type, {pad_h_low, pad_h_high, pad_w_low, pad_w_high});
 
   // Convolution output shape: (N, C, conv_out_h, conv_out_w)
   auto conv = mlir::stablehlo::Convolution(

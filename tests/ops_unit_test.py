@@ -2636,10 +2636,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   @parameterized.parameters(
       (torch.float32,),
+      (torch.float64,),
       (torch.float16,),
       (torch.bfloat16,),
-      (torch.int32,),
-      (torch.int64,),
       (torch.complex64,),
   )
   def test_col2im_dtypes(self, dtype):
@@ -2663,12 +2662,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     def test_fn(device):
       col_dev = col.to(dtype=dtype, device=device)
-      return torch.nn.functional.col2im(
+      return torch.ops.aten.col2im(
           col_dev, output_size, kernel_size, dilation, padding, stride
       )
 
-    # TODO(b/489136147): Fix test case & disable allow_failure
-    self.assert_close_tpu_vs_cpu(test_fn, allow_failure=True)
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=7.2e-03, atol=5.9e-03)
 
   @parameterized.parameters(
       # (kernel_size, dilation, padding, stride, output_size)
@@ -2677,6 +2675,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       ((2, 2), (2, 2), (0, 0), (1, 1), (8, 8)),  # dilation
       ((2, 2), (1, 1), (1, 1), (1, 1), (4, 4)),  # padding
       ((2, 2), (1, 1), (0, 0), (2, 2), (4, 4)),  # stride
+      ((3, 3), (1, 1), (1, 1), (2, 2), (28, 28)),  # volo outlooker
       ((3, 3), (2, 1), (1, 0), (2, 1), (10, 10)),  # asymmetric everything
   )
   def test_col2im_geometries(
@@ -2697,12 +2696,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     def test_fn(device):
       col_dev = col.to(device)
-      return torch.nn.functional.col2im(
+      return torch.ops.aten.col2im(
           col_dev, output_size, kernel_size, dilation, padding, stride
       )
 
-    # TODO(b/489136147): Fix test case & disable allow_failure
-    self.assert_close_tpu_vs_cpu(test_fn, allow_failure=True)
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=5e-2, atol=5e-2)
 
   @parameterized.parameters(
       (torch.float32,),

@@ -27,7 +27,6 @@ torch_tpu_cc_library(
         ":col2im",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
-        "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
