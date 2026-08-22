@@ -1848,6 +1848,52 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(run_op)
 
+  @parameterized.product(
+      training=[True, False],
+      has_weight=[True, False],
+      has_bias=[True, False],
+      has_running_stats=[True, False],
+  )
+  def test_native_batch_norm_optional_args(
+      self, training, has_weight, has_bias, has_running_stats
+  ):
+    input_dtype = torch.float32
+    stats_dtype = torch.float32
+    n, c, h, w = 2, 4, 4, 4
+    input_val = torch.randn(n, c, h, w, dtype=input_dtype)
+    weight = torch.randn(c, dtype=stats_dtype) if has_weight else None
+    bias = torch.randn(c, dtype=stats_dtype) if has_bias else None
+    running_mean = (
+        torch.randn(c, dtype=stats_dtype) if has_running_stats else None
+    )
+    running_var = (
+        torch.rand(c, dtype=stats_dtype).abs() + 1e-5
+        if has_running_stats
+        else None
+    )
+
+    def run_op(device):
+      return torch.ops.aten.native_batch_norm(
+          input_val.to(device),
+          weight.to(device) if weight is not None else None,
+          bias.to(device) if bias is not None else None,
+          running_mean.to(device) if running_mean is not None else None,
+          running_var.to(device) if running_var is not None else None,
+          training,
+          0.1,  # momentum
+          1e-5,  # eps
+      )
+
+    if not training and not has_running_stats:
+      # PyTorch CPU's native_batch_norm kernel requires running stats when
+      # training=False, so we cannot compare against CPU. Verify TPU directly.
+      output, mean, invstd = run_op(torch.device("tpu"))
+      self.assertEqual(output.shape, input_val.shape)
+      self.assertEqual(mean.shape, torch.Size([0]))
+      self.assertEqual(invstd.shape, torch.Size([0]))
+      return
+    self.assert_close_tpu_vs_cpu(run_op)
+
   def test_bernoulli_distribution(self):
     """Tests bernoulli to produce the correct distribution."""
     n = 1000

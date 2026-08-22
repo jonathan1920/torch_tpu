@@ -61,6 +61,14 @@ absl::Status CheckIsFloating(const at::Tensor& tensor,
   return absl::OkStatus();
 }
 
+inline std::optional<mlir::MlirOp> GetOptionalMlirOp(
+    absl::Span<mlir::MlirOp> mlir_inputs, int index) {
+  if (index != -1) {
+    return mlir_inputs[index];
+  }
+  return std::nullopt;
+}
+
 absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     const at::Tensor& input, std::optional<at::Tensor> weight,
     std::optional<at::Tensor> bias, std::optional<at::Tensor> running_mean,
@@ -87,115 +95,63 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
   TT_ASSIGN_OR_RETURN(const auto acc_dtype,
                       ConvertTo<mlir::ElementType>(acc_type));
 
-  std::optional<DeviceBufferRefArray<3>> results;
   const std::array<absl::Span<const int64_t>, 3> output_dims = {
       input_dims, output_mean_dims, output_variance_inverted_dims};
   const std::array<mlir::ElementType, 3> output_dtypes = {input_dtype,
                                                           acc_dtype, acc_dtype};
 
-  if (weight && bias && running_mean && running_variance) {
-    auto op_builder = [training, momentum, eps,
-                       acc_dtype](FixedSizeSpan<mlir::MlirOp, 5> inputs) {
-      auto& [input, weight, bias, running_mean, running_variance] = inputs;
-      return BuildBatchNorm(input, weight, bias, running_mean, running_variance,
-                            training, momentum, eps, acc_dtype);
-    };
-    TT_ASSIGN_OR_RETURN(
-        results, (DispatchOp<5, 3>(
-                     std::move(op_builder),
-                     /*inputs=*/
-                     {input, *weight, *bias, *running_mean, *running_variance},
-                     {.out_dtypes = output_dtypes,
-                      .out_dims_list = output_dims,
-                      .op_param_cache_keys = std::move(param_keys)})));
-  } else if (!weight && bias && running_mean && running_variance) {
-    auto op_builder = [training, momentum, eps,
-                       acc_dtype](FixedSizeSpan<mlir::MlirOp, 4> inputs) {
-      auto& [input, bias, running_mean, running_variance] = inputs;
-      return BuildBatchNorm(input, /*weight_opt=*/{}, bias, running_mean,
-                            running_variance, training, momentum, eps,
-                            acc_dtype);
-    };
-    TT_ASSIGN_OR_RETURN(
-        results,
-        (DispatchOp<4, 3>(
-            std::move(op_builder),
-            /*inputs=*/{input, *bias, *running_mean, *running_variance},
-            {.out_dtypes = output_dtypes,
-             .out_dims_list = output_dims,
-             .op_param_cache_keys = std::move(param_keys)})));
-  } else if (weight && !bias && running_mean && running_variance) {
-    auto op_builder = [training, momentum, eps,
-                       acc_dtype](FixedSizeSpan<mlir::MlirOp, 4> inputs) {
-      auto& [input, weight, running_mean, running_variance] = inputs;
-      return BuildBatchNorm(input, weight, /*bias_opt=*/{}, running_mean,
-                            running_variance, training, momentum, eps,
-                            acc_dtype);
-    };
-    TT_ASSIGN_OR_RETURN(
-        results,
-        (DispatchOp<4, 3>(std::move(op_builder),
-                          {input, *weight, *running_mean, *running_variance},
-                          {.out_dtypes = output_dtypes,
-                           .out_dims_list = output_dims,
-                           .op_param_cache_keys = std::move(param_keys)})));
-  } else if (!weight && !bias && running_mean && running_variance) {
-    auto op_builder = [training, momentum, eps,
-                       acc_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
-      auto& [input, running_mean, running_variance] = inputs;
-      return BuildBatchNorm(input, /*weight_opt=*/{}, /*bias_opt=*/{},
-                            running_mean, running_variance, training, momentum,
-                            eps, acc_dtype);
-    };
-    TT_ASSIGN_OR_RETURN(
-        results,
-        (DispatchOp<3, 3>(std::move(op_builder),
-                          /*inputs=*/{input, *running_mean, *running_variance},
-                          {.out_dtypes = output_dtypes,
-                           .out_dims_list = output_dims,
-                           .op_param_cache_keys = std::move(param_keys)})));
-  } else if (!weight && !bias && !running_mean && !running_variance) {
-    auto op_builder = [training, momentum, eps, acc_dtype](mlir::MlirOp input) {
-      return BuildBatchNorm(input, /*weight_opt=*/{}, /*bias_opt=*/{},
-                            /*running_mean_opt=*/{},
-                            /*running_variance_opt=*/{}, training, momentum,
-                            eps, acc_dtype);
-    };
-    TT_ASSIGN_OR_RETURN(
-        results,
-        (DispatchOp<1, 3>(std::move(op_builder), input,
-                          {.out_dtypes = output_dtypes,
-                           .out_dims_list = output_dims,
-                           .op_param_cache_keys = std::move(param_keys)})));
-  } else if (weight && bias && !running_mean && !running_variance) {
-    auto op_builder = [training, momentum, eps,
-                       acc_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
-      auto& [input, weight, bias] = inputs;
-      return BuildBatchNorm(input, weight, bias, /*running_mean_opt=*/{},
-                            /*running_variance_opt=*/{}, training, momentum,
-                            eps, acc_dtype);
-    };
-    TT_ASSIGN_OR_RETURN(
-        results,
-        (DispatchOp<3, 3>(std::move(op_builder), {input, *weight, *bias},
-                          {.out_dtypes = output_dtypes,
-                           .out_dims_list = output_dims,
-                           .op_param_cache_keys = std::move(param_keys)})));
-  } else {
-    return TT_ERROR(error::kInternal)
-           << "Not implemented yet (weight: " << !!weight
-           << ", bias: " << !!bias << ", running_mean: " << !!running_mean
-           << ", running_variance: " << !!running_variance << ")";
-  }
-  return std::move(*results);
-}
+  std::vector<at::Tensor> inputs;
+  inputs.reserve(5);
+  inputs.push_back(input);
 
-inline std::optional<mlir::MlirOp> GetOptionalMlirOp(
-    absl::Span<mlir::MlirOp> mlir_inputs, int index) {
-  if (index != -1) {
-    return mlir_inputs[index];
+  const int weight_idx = weight ? inputs.size() : -1;
+  if (weight) {
+    inputs.push_back(*weight);
   }
-  return std::nullopt;
+
+  const int bias_idx = bias ? inputs.size() : -1;
+  if (bias) {
+    inputs.push_back(*bias);
+  }
+
+  const int running_mean_idx = running_mean ? inputs.size() : -1;
+  if (running_mean) {
+    inputs.push_back(*running_mean);
+  }
+
+  const int running_var_idx = running_variance ? inputs.size() : -1;
+  if (running_variance) {
+    inputs.push_back(*running_variance);
+  }
+
+  auto op_builder =
+      [weight_idx, bias_idx, running_mean_idx, running_var_idx, training,
+       momentum, eps, acc_dtype](
+          absl::Span<mlir::MlirOp> mlir_inputs,
+          mlir::MlirBuilder& builder) -> absl::StatusOr<MlirOpResults<3>> {
+    mlir::MlirOp input_op = mlir_inputs[0];
+    std::optional<mlir::MlirOp> weight_op =
+        GetOptionalMlirOp(mlir_inputs, weight_idx);
+    std::optional<mlir::MlirOp> bias_op =
+        GetOptionalMlirOp(mlir_inputs, bias_idx);
+    std::optional<mlir::MlirOp> running_mean_op =
+        GetOptionalMlirOp(mlir_inputs, running_mean_idx);
+    std::optional<mlir::MlirOp> running_var_op =
+        GetOptionalMlirOp(mlir_inputs, running_var_idx);
+
+    return BuildBatchNorm(input_op, weight_op, bias_op, running_mean_op,
+                          running_var_op, training, momentum, eps, acc_dtype);
+  };
+
+  std::optional<DeviceBufferRefArray<3>> results;
+  TT_ASSIGN_OR_RETURN(results,
+                      (DispatchOp<kDynamicSize, 3>(
+                          std::move(op_builder), inputs,
+                          {.out_dtypes = output_dtypes,
+                           .out_dims_list = output_dims,
+                           .op_param_cache_keys = std::move(param_keys)})));
+
+  return std::move(*results);
 }
 
 absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNormBackward(
@@ -213,33 +169,28 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNormBackward(
   inputs.push_back(grad_out);
   inputs.push_back(input);
 
-  int weight_idx = -1;
+  const int weight_idx = weight ? inputs.size() : -1;
   if (weight) {
-    weight_idx = inputs.size();
     inputs.push_back(*weight);
   }
 
-  int running_mean_idx = -1;
+  const int running_mean_idx = running_mean ? inputs.size() : -1;
   if (running_mean) {
-    running_mean_idx = inputs.size();
     inputs.push_back(*running_mean);
   }
 
-  int running_var_idx = -1;
+  const int running_var_idx = running_variance ? inputs.size() : -1;
   if (running_variance) {
-    running_var_idx = inputs.size();
     inputs.push_back(*running_variance);
   }
 
-  int save_mean_idx = -1;
+  const int save_mean_idx = save_mean ? inputs.size() : -1;
   if (save_mean) {
-    save_mean_idx = inputs.size();
     inputs.push_back(*save_mean);
   }
 
-  int save_invstd_idx = -1;
+  const int save_invstd_idx = save_invstd ? inputs.size() : -1;
   if (save_invstd) {
-    save_invstd_idx = inputs.size();
     inputs.push_back(*save_invstd);
   }
 
