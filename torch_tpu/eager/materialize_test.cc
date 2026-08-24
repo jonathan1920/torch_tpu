@@ -231,6 +231,8 @@ TEST(MaterializeCommonTest, GetCompilationMode) {
             CompilationMode::kFastRuntime);
   EXPECT_EQ(GetCompilationMode(EagerMode::kDeferAndFuse),
             CompilationMode::kFastRuntime);
+  EXPECT_EQ(GetCompilationMode(EagerMode::kInternalCompileFxGraph),
+            CompilationMode::kFastRuntime);
   EXPECT_EQ(GetCompilationMode(EagerMode::kDeferNever),
             CompilationMode::kFastCompile);
   EXPECT_EQ(GetCompilationMode(EagerMode::kDeferNeverAndLaunchBlocking),

@@ -50,8 +50,10 @@
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/Layout.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
@@ -194,19 +196,38 @@ class DeviceGenerators {
 
 absl::Status DeviceGeneratorState::MaybeMaterializeDeviceStateTensor(
     bool force_materialization) {
-  if (!force_materialization &&
-      ++materialize_state_counter_ < kMaterializationThreshold) {
+  const auto eager_mode = GetEagerMode();
+  if (eager_mode == EagerMode::kInternalCompileFxGraph) {
+    // In FX graph compilation mode, fully bypass materialization, including
+    // updating the state counter, and ignore force_materialization as no
+    // materialization is possible.
     return absl::OkStatus();
   }
 
+  // Materialize if:
+  // - force_materialization is true, or
+  // - the materialization threshold is reached and we're not in
+  //   kInternalDeferAll mode.
+  // TODO(b/551978063): this should also materialize in kDeferNever or
+  // kDeferNeverAndLaunchBlocking modes, but this breaks excess precision
+  // functionality currently.
+  const bool should_materialize =
+      force_materialization ||
+      (++materialize_state_counter_ >= kMaterializationThreshold &&
+       eager_mode != EagerMode::kInternalDeferAll);
+
+  if (!should_materialize) {
+    return absl::OkStatus();
+  }
+
+  // Do a materialization, and block on it if we're in launch blocking mode.
   materialize_state_counter_ = 0;
   TT_ASSIGN_OR_RETURN(DeviceBufferRef buf, GetBuffer(device_state_tensor_));
-
-  if (buf.is_placeholder() || buf.depends_on_placeholder()) {
-    return absl::OkStatus();
+  TT_RETURN_IF_ERROR(Materialize(buf, MaterializationReason::kExplicitSync));
+  if (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking) {
+    TT_RETURN_IF_ERROR(buf.Synchronize());
   }
-
-  return Materialize(buf, MaterializationReason::kExplicitSync);
+  return absl::OkStatus();
 }
 
 absl::Status DeviceGeneratorState::SetDeviceStateTensor(

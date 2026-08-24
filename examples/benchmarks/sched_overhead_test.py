@@ -167,7 +167,7 @@ class SchedOverheadTest(parameterized.TestCase):
   @parameterized.parameters((1), (16), (1024))
   def test_execute_queueing_overhead_benchmark(self, num_outputs):
     device = get_torch_device()
-    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_COMPILE_FX_GRAPH):
       x = torch.ones(10, device="cpu").to(device=device)
       y = torch.ones(10, device="cpu").to(device=device)
       z = x + y

@@ -667,35 +667,6 @@ TEST_F(EventsQueueTest, MaterializationAppendsExplicitEmptyOps) {
               testing::ElementsAre(non_empty_ref, empty_ref));
 }
 
-TEST_F(EventsQueueTest, SideEffectsUsingPlaceholdersSkipped) {
-  ClearAllStreams();
-  ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
-
-  // Create a placeholder tensor.
-  auto placeholder_or =
-      DeviceBufferList::CreatePlaceholder(shape.dimensions(), shape.dtype());
-  ASSERT_TRUE(placeholder_or.ok());
-  RecordNewDataPtrCreated(placeholder_or.value());
-
-  // Create a side-effect op that uses the placeholder.
-  auto side_effect_or = DeviceBufferList::CreateDeferred(
-      OpName::kDistributedAllReduce, DummyBuilder, {placeholder_or.value()},
-      OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(side_effect_or.ok());
-  RecordDeferredOpCreated(side_effect_or.value()[0].device_buffer_list());
-  RecordNewDataPtrCreated(side_effect_or.value()[0]);
-
-  // Try to synchronize the side-effect op.
-  auto traversals_or = PrepareMaterializationTraversals(
-      {side_effect_or.value()[0].device_buffer_list()});
-  ASSERT_TRUE(traversals_or.ok());
-
-  // We should get nothing. The side-effect op was identified as part of a
-  // compiled mode trace and therefore should not be materialized.
-  ASSERT_EQ(traversals_or.value().size(), 0);
-}
-
 TEST_F(EventsQueueTest, PrepareDeviceTraversals) {
   ClearAllStreams();
   ScopedPythonContextCapturer capturer(OpName::kEmpty);

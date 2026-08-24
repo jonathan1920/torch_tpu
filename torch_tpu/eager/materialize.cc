@@ -547,8 +547,7 @@ absl::Status MaterializeImpl(
   }
   if (std::any_of(nodes_to_materialize.begin(), nodes_to_materialize.end(),
                   [](const SharedDeviceBufferList& node) {
-                    return node->is_placeholder() ||
-                           node->depends_on_placeholder();
+                    return node->is_placeholder();
                   })) {
     return TT_ERROR(error::kInternal)
            << "cannot Materialize() a placeholder tensor or a tensor that "

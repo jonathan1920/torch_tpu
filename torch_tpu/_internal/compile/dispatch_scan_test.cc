@@ -182,9 +182,9 @@ class DispatchScanTest : public testing::Test {
  protected:
   DispatchScanTest() {
     prev_mode_ = GetEagerMode();
-    // Use `kInternalDeferAll` to allow us to lower to MLIR and verify the
+    // Use `kInternalCompileFxGraph` to allow us to lower to MLIR and verify the
     // correctness of the lowering phase.
-    SetEagerMode(EagerMode::kInternalDeferAll);
+    SetEagerMode(EagerMode::kInternalCompileFxGraph);
   }
 
   ~DispatchScanTest() override { SetEagerMode(prev_mode_); }

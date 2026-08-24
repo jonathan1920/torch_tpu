@@ -45,8 +45,8 @@ def get_mock_lookup_backend():
   )
 
 
-def eager_mode_defer_all():
-  """Enable EagerMode.INTERNAL_DEFER_ALL.
+def eager_mode_compile_fx_graph():
+  """Enable EagerMode.INTERNAL_COMPILE_FX_GRAPH.
 
   This prevents tensor materialization during Python execution and enables
   `build_mlir` to trace the deferred ops and generate MLIR.
@@ -54,7 +54,7 @@ def eager_mode_defer_all():
   Returns:
     A context manager for setting the execution mode.
   """
-  return execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL)
+  return execution_mode.set_eager_mode(EagerMode.INTERNAL_COMPILE_FX_GRAPH)
 
 
 # TODO: add more test coverage for the direct compile API.
@@ -68,7 +68,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
   def test_traverse_and_compile_with_argument_layouts(self):
     x = torch.randn(2, 1, 8, 16, device=self.device, dtype=torch.bfloat16)
     y = torch.randn(2, 1, 9, 16, device=self.device, dtype=torch.bfloat16)
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       z = torch.cat([x, y], dim=-2)
 
     compile_result = tpu_torch_compile.traverse_and_compile(
@@ -82,7 +82,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
 
   def test_traverse_and_compile_with_forced_layout(self):
     # Case 1: Force default layout [1, 0]. Execution should PASS.
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x1 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
       z1 = x1 + x1
 
@@ -108,7 +108,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
 
     # Case 2: Force non-default layout [0, 1]. Execution should FAIL with
     # default input.
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x2 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
       z2 = x2 + x2
 
@@ -136,7 +136,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     initial_misses = torch.tpu._get_cache_misses()
 
     # Compile Model 1 with forced layout [1, 0]
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x1 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
       z1 = x1 + x1
 
@@ -150,7 +150,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertEqual(torch.tpu._get_cache_misses(), initial_misses + 1)
 
     # Compile Model 2 with same forced layout [1, 0] (same graph structure)
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x2 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
       z2 = x2 + x2
 
@@ -164,7 +164,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertEqual(torch.tpu._get_cache_misses(), initial_misses + 1)
 
     # Compile Model 3 with DIFFERENT forced layout [0, 1]
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x3 = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
       z3 = x3 + x3
 
@@ -178,7 +178,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertEqual(torch.tpu._get_cache_misses(), initial_misses + 2)
 
   def test_traverse_and_compile_skip_middle_layout(self):
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
       y = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
       z = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
@@ -224,7 +224,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertEqual(minor_to_major, [0, 1])
 
   def test_build_mlir(self):
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
       y = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
       z = x + y
@@ -239,7 +239,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertIn('stablehlo.add', mlir_text)
 
   def test_extra_input_to_build_mlir(self):
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
       y = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
       extra = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
@@ -291,7 +291,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertEqual(num_calls, 1)
 
   def test_execute_with_output_shapes(self):
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
       y = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
       z = x + y
@@ -306,7 +306,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertEqual(results[0].shape, (10,))
 
   def test_execute_with_smaller_output_shapes(self):
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
       y = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
       z = x + y
@@ -571,7 +571,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     utils.assert_close(actual=actual, expected=cpu_src)
 
   def test_dynamic_view_writeback(self):
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       base = torch.empty(21, device='tpu')
       out_view = base[0:20]
       x = tpu_torch_compile.dynamic_placeholder(
@@ -584,7 +584,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertIsNotNone(executable)
 
   def test_optimization_barrier(self):
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       inputs = [
           torch.ones(10, device='cpu').to(device=torch.device('tpu')),
           torch.ones(10, device='cpu').to(device=torch.device('tpu')),
@@ -806,7 +806,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     static_dim_2 = 64
     logical_dynamic_dim = 4
 
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       sizes = [max_dynamic_dim, static_dim_1]
       dtype = torch.bfloat16
       bounds = ([0], [max_dynamic_dim])
@@ -893,7 +893,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     static_dim_2 = 64
     logical_dynamic_dim = 4
 
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       sizes = [max_dynamic_dim, static_dim_1]
       dtype = torch.bfloat16
       bounds = ([0], [max_dynamic_dim])
@@ -968,7 +968,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     static_dim_2 = 64
     logical_dynamic_dim = 4
 
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       sizes = [batch_dim, max_dynamic_dim, static_dim_2]
       dtype = torch.bfloat16
       bounds = ([1], [max_dynamic_dim])
@@ -1026,7 +1026,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     static_dim = 128
     logical_dynamic_dim = 4
 
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       sizes = [static_dim, max_dynamic_dim]
       dtype = torch.bfloat16
       bounds = ([1], [max_dynamic_dim])
@@ -1195,7 +1195,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     y.cpu()
 
   def test_executable_layouts(self):
-    with eager_mode_defer_all():
+    with eager_mode_compile_fx_graph():
       x = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
       y = torch.ones(2, 3, device='cpu').to(device=torch.device('tpu'))
       z = x + y

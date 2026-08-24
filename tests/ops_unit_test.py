@@ -6520,7 +6520,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     ids = (torch.arange(t * k) % t).to("tpu")
     src = torch.ones(t * k, feat, device="tpu")
     with execution_mode.set_eager_mode(
-        execution_mode.EagerMode.INTERNAL_DEFER_ALL
+        execution_mode.EagerMode.INTERNAL_COMPILE_FX_GRAPH
     ):
       out = torch.zeros(t, feat, device="tpu")
       result = out.scatter_add(0, ids.unsqueeze(-1).expand_as(src), src)

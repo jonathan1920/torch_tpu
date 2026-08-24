@@ -85,12 +85,7 @@ namespace {
 // Records that a DeviceBufferRef has one more c10::DataPtr using it.
 void AddDataPtrAlias(const DeviceBufferRef& buffer_ref) {
   buffer_ref.device_buffer_list()->IncrementLiveDataPtrs();
-  // Tensors created during the torch.compile trace process don't need to be
-  // tracked for the purposes of synchronization, as they can't be
-  // materialized anyway.
-  if (GetEagerMode() != EagerMode::kInternalDeferAll) {
-    RecordNewDataPtrCreated(buffer_ref);
-  }
+  RecordNewDataPtrCreated(buffer_ref);
 }
 
 // Records that a ref_ptr has one fewer DataPtr using it.
@@ -98,12 +93,6 @@ void RemoveDataPtrAlias(const DeviceBufferRef& ref) {
   ABSL_VLOG(3) << "[RemoveDataPtrAlias] Cleaning up DataPtr usage for "
                << ref.DebugString();
   ref.device_buffer_list()->DecrementLiveDataPtrs();
-  // Don't check eager mode here.
-  // Compiled mode trace tensors are never registered with
-  // RecordNewDataPtrCreated, so recording their deletion is harmless.
-  // Failing to record the deletion of an eager mode tensor (if it
-  // happens during a torch.compile trace) would be a bug as the refcount
-  // would never go to zero.
   RecordDataPtrDestroyed(ref);
 }
 

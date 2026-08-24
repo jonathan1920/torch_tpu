@@ -191,21 +191,27 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
           std::move(params.output_shapes), params.split_mode,
           std::move(params.donated_indices)));
 
-  RecordDeferredOpCreated(results[0].device_buffer_list());
-
   switch (GetEagerMode()) {
     case EagerMode::kDeferNever:
+      RecordDeferredOpCreated(results[0].device_buffer_list());
       TT_RETURN_IF_ERROR(DeferNeverDispatch(results, params.op_name,
                                             /*block=*/false));
       break;
     case EagerMode::kDeferNeverAndLaunchBlocking:
+      RecordDeferredOpCreated(results[0].device_buffer_list());
       TT_RETURN_IF_ERROR(DeferNeverDispatch(results, params.op_name,
                                             /*block=*/true));
       break;
     case EagerMode::kDeferAndFuse:
+      RecordDeferredOpCreated(results[0].device_buffer_list());
       TT_RETURN_IF_ERROR(DeferAndFuseDispatch(results, params.op_name));
       break;
     case EagerMode::kInternalDeferAll:
+      // Record the deferred op, but leave it deferred.
+      RecordDeferredOpCreated(results[0].device_buffer_list());
+      break;
+    case EagerMode::kInternalCompileFxGraph:
+      // Do not record the deferred op.
       break;
   }
   return results;

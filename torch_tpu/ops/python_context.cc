@@ -74,7 +74,7 @@ TracebackMode GetTracebackMode() {
   }
 
   // The flag is unset, check if we are in compiled mode.
-  return GetEagerMode() == EagerMode::kInternalDeferAll
+  return GetEagerMode() == EagerMode::kInternalCompileFxGraph
              ? TracebackMode::kEnabled
              : TracebackMode::kDisabled;
 }

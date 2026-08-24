@@ -66,7 +66,7 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
     // TPU does not support complex128. Use complex64 instead.
     scalar_type = at::ScalarType::ComplexFloat;
   }
-  if (GetEagerMode() != EagerMode::kInternalDeferAll) {
+  if (GetEagerMode() != EagerMode::kInternalCompileFxGraph) {
     // Variable execution mode: materialize the scalar to a DeviceBufferRef.
     // This treats the scalar as an argument rather than a constant, which
     // decreases compiler specialization and improves code reuse.

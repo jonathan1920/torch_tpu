@@ -47,9 +47,14 @@ enum class EagerMode {
   // performance.
   kDeferNeverAndLaunchBlocking,
   // kInternalDeferAll attempts to defer all ops. If an op cannot be deferred,
-  // it will raise a runtime exception. This should be used only in
-  // `torch.compile` mode.
+  // it will raise a runtime exception. This can be used to enforce a "manual
+  // sync" mode of execution, where explicit synchronization is required before
+  // any execution will occur. This is primarily used for debugging and testing
+  // and is not intended for most users.
   kInternalDeferAll,
+  // kInternalCompileFxGraph fully prevents all eager mode operations from
+  // from being executed on-device. This is only used in `torch.compile` mode.
+  kInternalCompileFxGraph,
 };
 
 // The state of the `eager_mode` context manager.

@@ -484,13 +484,12 @@ def fx_to_mlir(
     dynamic_outputs: Sequence[bool] | None = None,
     donated_inputs: Sequence[int] | None = None,
 ) -> ExportedMlir:
-  """Converts an FX graph module to MLIR using TorchTPU's defer mode.
+  """Converts an FX graph module to MLIR using TorchTPU's FX-tracing mode.
 
   This function traces the given FX graph module by running it with an
-  EagerLikeFxInterpreter in full defer mode
-  (`EagerMode.DEFER_ALL`).
-  The
-  resulting deferred graph is then converted to MLIR bytes.
+  EagerLikeFxInterpreter in compilation mode.
+  (`EagerMode.INTERNAL_COMPILE_FX_GRAPH`).
+  The resulting deferred graph is then converted to MLIR bytes.
 
   Args:
     module: The `torch.fx.GraphModule` to be converted to MLIR.
@@ -543,7 +542,8 @@ def fx_to_mlir(
         begin_state_tensor = tpu_torch_compile.placeholder_like(
             device_state_tensor
         )
-        tpu_torch_compile.set_device_state_tensor(gen, begin_state_tensor)
+        with execution_mode.set_eager_mode(EagerMode.INTERNAL_COMPILE_FX_GRAPH):
+          tpu_torch_compile.set_device_state_tensor(gen, begin_state_tensor)
 
         # Add placeholder to the argument tensors for traversal.
         argument_tensors.append(begin_state_tensor)
@@ -551,7 +551,7 @@ def fx_to_mlir(
           internal_layouts.append([])
 
       try:
-        with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+        with execution_mode.set_eager_mode(EagerMode.INTERNAL_COMPILE_FX_GRAPH):
           # We clone the args so that inplace updates do not overwrite the
           # placeholder args. These copies will be removed in the compiled code so
           # there is no performance impact.

@@ -1639,7 +1639,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_execute_output_shapes_too_many(self):
-    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_COMPILE_FX_GRAPH):
       x = torch.ones(10, device="cpu").to(device=et.device())
       y = torch.ones(10, device="cpu").to(device=et.device())
       z = x + y
@@ -1662,7 +1662,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_execute_output_shapes_rank_mismatch(self):
-    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_COMPILE_FX_GRAPH):
       x = torch.ones(10, device="cpu").to(device=et.device())
       y = torch.ones(10, device="cpu").to(device=et.device())
       z = x + y

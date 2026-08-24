@@ -44,10 +44,12 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/current_stream.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -171,8 +173,7 @@ class EventsQueue {
       }
 
       const auto deferred_op = device_buffer_list->deferred_op();
-      if (!deferred_op || deferred_op->depends_on_placeholder()) {
-        // TODO: better identify compiled mode tracing.
+      if (!deferred_op) {
         return std::nullopt;
       }
       DeferredOpEvent event;
@@ -712,16 +713,31 @@ StreamState* absl_nonnull GetStreamFor(
 }  // namespace
 
 void RecordNewDataPtrCreated(const DeviceBufferRef& device_buffer_ref) {
+  if (GetEagerMode() == EagerMode::kInternalCompileFxGraph) {
+    // In FX trace mode, nothing happens on device, so we don't add anything to
+    // any stream.
+    return;
+  }
   GetStreamFor(device_buffer_ref)
       ->events_queue.RecordNewDataPtrCreated(device_buffer_ref);
 }
 
 void RecordDataPtrDestroyed(const DeviceBufferRef& device_buffer_ref) {
+  if (GetEagerMode() == EagerMode::kInternalCompileFxGraph) {
+    // In FX trace mode, nothing happens on device, so we don't add anything to
+    // any stream.
+    return;
+  }
   GetStreamFor(device_buffer_ref)
       ->events_queue.RecordDataPtrDestroyed(device_buffer_ref);
 }
 
 void RecordDeferredOpCreated(const SharedDeviceBufferList& device_buffer_list) {
+  if (GetEagerMode() == EagerMode::kInternalCompileFxGraph) {
+    // In FX trace mode, nothing happens on device, so we don't add anything to
+    // any stream.
+    return;
+  }
   GetStreamFor(device_buffer_list)
       ->events_queue.RecordDeferredOpCreated(device_buffer_list);
 }
@@ -778,6 +794,7 @@ void RecordBackgroundMaterialization(
                      std::move(stream.futures));
   }
 }
+
 absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
 PrepareMaterializationTraversals(
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize) {
@@ -892,12 +909,16 @@ PrepareDeviceTraversals(c10::DeviceIndex device_index) {
 }
 
 void RecordAsyncHostToDevice(const DeviceBufferRef& device_buffer_ref) {
+  ABSL_CHECK_NE(  // CRASH_OK=no device transfers during FX trace
+      GetEagerMode(), EagerMode::kInternalCompileFxGraph);
   MarkStreamActive(device_buffer_ref.device_index(),
                    device_buffer_ref.stream_id(),
                    device_buffer_ref.GetReadyFuture());
 }
 
 void RecordAsyncDeviceToHost(xla::Future<void> to_literal_future) {
+  ABSL_CHECK_NE(  // CRASH_OK=no device transfers during FX trace
+      GetEagerMode(), EagerMode::kInternalCompileFxGraph);
   // TODO: should this be moved into the function signature?
   // Is there ever a case where we would want to record an async d2h on a
   // different stream than the current stream?

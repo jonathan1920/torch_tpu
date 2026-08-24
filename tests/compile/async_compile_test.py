@@ -497,7 +497,6 @@ class AsyncCompileTest(seed_test_utils.RepeatableTest):
       res = artifact([x])
       self.assertEqual(res.shape, x.shape)
 
-  @absltest.skip("Async compile + concurrent eager work corrupts traversal.")
   def test_concurrent_tpu_work_corrupting_traversal(self):
     def fn(value):
       return torch.sin(value + 1)

@@ -240,6 +240,7 @@ torch_tpu_cc_library(
     hdrs = ["device_gen_impl.h"],
     deps = [
         ":device_buffer",
+        ":eager_mode",
         ":materialize",
         ":op_dispatcher",
         ":structured_log_buffer",
@@ -250,6 +251,7 @@ torch_tpu_cc_library(
         "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:context_states",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
@@ -871,9 +873,11 @@ torch_tpu_cc_library(
     deps = [
         ":current_stream",
         ":device_buffer",
+        ":eager_mode",
         ":traversal",
         "//shims/torch/c10/core:base_headers",
         "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:context_states",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
         "//torch_tpu/ops:op_builder_utils",

@@ -43,6 +43,7 @@ def _is_deferred_mode():
   return execution_mode.eager_mode in (
       EagerMode.DEFER_AND_FUSE,
       EagerMode.INTERNAL_DEFER_ALL,
+      EagerMode.INTERNAL_COMPILE_FX_GRAPH,
   )
 
 

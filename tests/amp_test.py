@@ -74,8 +74,8 @@ class AmpTest(seed_test_utils.RepeatableTest):
     actual_dtypes = {}
 
     # Run the forward pass to get the loss.
-    # Use DeferAll mode so that we can inspect the MLIR as well.
-    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
+    # Use FX compile mode so that we can inspect the MLIR as well.
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_COMPILE_FX_GRAPH):
       loss = model(x, y, actual_dtypes)
 
     # Check that the dtypes are as expected for AMP.

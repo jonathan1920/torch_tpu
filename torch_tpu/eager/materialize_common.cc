@@ -608,6 +608,7 @@ CompilationMode GetCompilationMode(EagerMode eager_mode) {
   switch (eager_mode) {
     case EagerMode::kInternalDeferAll:
     case EagerMode::kDeferAndFuse:
+    case EagerMode::kInternalCompileFxGraph:
       return CompilationMode::kFastRuntime;
     case EagerMode::kDeferNever:
     case EagerMode::kDeferNeverAndLaunchBlocking:

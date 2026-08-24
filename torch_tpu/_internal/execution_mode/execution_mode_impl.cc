@@ -31,6 +31,7 @@ PYBIND11_MODULE(execution_mode_impl, m) {
       .value("DEFER_NEVER_AND_LAUNCH_BLOCKING",
              EagerMode::kDeferNeverAndLaunchBlocking)
       .value("INTERNAL_DEFER_ALL", EagerMode::kInternalDeferAll)
+      .value("INTERNAL_COMPILE_FX_GRAPH", EagerMode::kInternalCompileFxGraph)
       .export_values();
 
   m.def("_get_eager_mode", GetEagerMode);
