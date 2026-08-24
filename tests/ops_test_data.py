@@ -209,3 +209,10 @@ SDPA_CONFIGS = SDPA_CONFIGS + tuple(
     for config in SDPA_CONFIGS
     if config.backend is not torch.nn.attention.SDPBackend.OVERRIDEABLE
 )
+
+# Also test with float32 dtype.
+SDPA_CONFIGS += tuple(
+    dataclasses.replace(config, dtype=torch.float32)
+    for config in SDPA_CONFIGS
+    if config.dtype is not torch.float32
+)
