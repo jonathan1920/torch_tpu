@@ -618,11 +618,10 @@ def main(argv):
 
   if _USE_RANDOM_WEIGHTS.value:
     config = transformers.AutoConfig.from_pretrained(model_path)
-    config._attn_implementation = "eager"
     model_cpu = None
   else:
     model_cpu = transformers.AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype=torch.bfloat16, attn_implementation="eager"
+        model_path, torch_dtype=torch.bfloat16
     )
 
   if prefill_seq_len is not None:
