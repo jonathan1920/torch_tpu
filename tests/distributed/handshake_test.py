@@ -17,6 +17,7 @@
 import asyncio
 import json
 import os
+import threading
 from typing import Any
 from unittest import mock
 
@@ -27,6 +28,7 @@ from torch_tpu._internal.distributed import handshake
 from tests import seed_test_utils
 import zmq
 
+_LoopRunner = handshake._LoopRunner
 _CollectiveHandshakeConsensus = handshake._CollectiveHandshakeConsensus
 
 _CollectiveHandshakeRequestZMQEnvelope = (
@@ -35,11 +37,14 @@ _CollectiveHandshakeRequestZMQEnvelope = (
 
 _ZMQClient = handshake._ZMQClient
 _ZMQServer = handshake._ZMQServer
+_HandshakeClient = handshake._HandshakeClient
+_HandshakeServer = handshake._HandshakeServer
+
 CollectiveHandshakeRequest = handshake.CollectiveHandshakeRequest
 CollectiveHandshakeResponse = handshake.CollectiveHandshakeResponse
 ProcessGroupId = handshake.ProcessGroupId
 ProcessGroupCollectiveCount = handshake.ProcessGroupCollectiveCount
-_get_handshake_timeout_ms = handshake._get_handshake_timeout_ms
+_get_handshake_timeout_s = handshake._get_handshake_timeout_s
 RankCollectiveCounts = handshake.RankCollectiveCounts
 
 # TODO(b/542976786): Distributed tests will be added in a follow up CL.
@@ -505,37 +510,37 @@ class CollectiveHandshakeResponseTest(seed_test_utils.RepeatableTest):
 
 
 class GetHandshakeTimeoutMsTest(seed_test_utils.RepeatableTest):
-  """Unit tests for _get_handshake_timeout_ms environment variable parser."""
+  """Unit tests for _get_handshake_timeout_s environment variable parser."""
 
   def test_default_timeout(self) -> None:
     with mock.patch.dict(os.environ, {}, clear=True):
-      self.assertEqual(_get_handshake_timeout_ms(), 60000)
+      self.assertEqual(_get_handshake_timeout_s(), 60)
 
   def test_custom_valid_timeout(self) -> None:
     with mock.patch.dict(
-        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS": "5000"}
+        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_S": "5"}
     ):
-      self.assertEqual(_get_handshake_timeout_ms(), 5000)
+      self.assertEqual(_get_handshake_timeout_s(), 5)
 
   def test_invalid_string_timeout(self) -> None:
     with mock.patch.dict(
-        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS": "invalid"}
+        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_S": "invalid"}
     ):
       with self.assertRaisesRegex(
           ValueError,
-          "TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS must be an integer",
+          "TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_S must be an integer",
       ):
-        _get_handshake_timeout_ms()
+        _get_handshake_timeout_s()
 
   def test_negative_timeout(self) -> None:
     with mock.patch.dict(
-        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS": "-100"}
+        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_S": "-100"}
     ):
       with self.assertRaisesRegex(
           ValueError,
-          "TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS must be non-negative",
+          "TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_S must be non-negative",
       ):
-        _get_handshake_timeout_ms()
+        _get_handshake_timeout_s()
 
 
 class CollectiveHandshakeConsensusTest(seed_test_utils.RepeatableTest):
@@ -727,13 +732,46 @@ class ZMQServerClientTest(seed_test_utils.RepeatableTest):
       _ZMQServer(port=-1)
 
     with self.assertRaises(ValueError):
-      _ZMQClient(port=65536)
+      _ZMQServer(port=65536)
 
   def test_zmq_client_invalid_port_number(self) -> None:
     with self.assertRaises(ValueError):
       _ZMQClient(port=-1)
     with self.assertRaises(ValueError):
       _ZMQClient(port=65536)
+
+  def test_zmq_server_invalid_timeout(self) -> None:
+    with self.assertRaisesRegex(
+        ValueError, "send_timeout_s must be non-negative"
+    ):
+      _ZMQServer(port=12345, send_timeout_s=-1)
+    with self.assertRaisesRegex(
+        ValueError, "recv_timeout_s must be non-negative"
+    ):
+      _ZMQServer(port=12345, recv_timeout_s=-1)
+
+  def test_zmq_client_invalid_timeout(self) -> None:
+    with self.assertRaisesRegex(
+        ValueError, "send_timeout_s must be non-negative"
+    ):
+      _ZMQClient(port=12345, send_timeout_s=-1)
+    with self.assertRaisesRegex(
+        ValueError, "recv_timeout_s must be non-negative"
+    ):
+      _ZMQClient(port=12345, recv_timeout_s=-1)
+
+  def test_zmq_server_client_custom_timeouts(self) -> None:
+    port = portpicker.pick_unused_port()
+    server = _ZMQServer(port=port, send_timeout_s=5, recv_timeout_s=10)
+    client = _ZMQClient(port=port, send_timeout_s=2, recv_timeout_s=3)
+    try:
+      self.assertEqual(server._socket.getsockopt(zmq.SNDTIMEO), 5000)
+      self.assertEqual(server._socket.getsockopt(zmq.RCVTIMEO), 10000)
+      self.assertEqual(client._socket.getsockopt(zmq.SNDTIMEO), 2000)
+      self.assertEqual(client._socket.getsockopt(zmq.RCVTIMEO), 3000)
+    finally:
+      client.close()
+      server.close()
 
   def test_zmq_envelope(self) -> None:
     msg = _make_request(rank=0)
@@ -803,6 +841,101 @@ class ZMQServerClientTest(seed_test_utils.RepeatableTest):
       client.send(msg)
     with self.assertRaises(zmq.ZMQError):
       client.recv()
+
+
+class LoopRunnerTest(seed_test_utils.RepeatableTest):
+  """Unit tests for _LoopRunner."""
+
+  def test_loop_runner_shutdown_cancels_pending_tasks_and_closes_loop(
+      self,
+  ) -> None:
+    """Tests that _LoopRunner.close cancels pending tasks, joins the thread, and closes the loop."""
+    runner = _LoopRunner(thread_name="TestLoopRunnerShutdown")
+    task_started = threading.Event()
+    task_cancelled = False
+
+    async def long_running_task() -> None:
+      nonlocal task_cancelled
+      task_started.set()
+      try:
+        await asyncio.sleep(60)
+      except asyncio.CancelledError:
+        task_cancelled = True
+        raise
+
+    runner.run_coroutine_async(long_running_task())
+    self.assertTrue(task_started.wait(timeout=2.0))
+
+    runner.close()
+    self.assertTrue(task_cancelled)
+    self.assertTrue(runner._loop.is_closed())
+    self.assertFalse(runner._thread.is_alive())
+
+
+class HandshakeServerClientBackendTest(seed_test_utils.RepeatableTest):
+  """Unit tests for _HandshakeServer and _HandshakeClient."""
+
+  def setUp(self) -> None:
+    super().setUp()
+    _HandshakeServer._reset_instance()
+    _HandshakeClient._reset_instance()
+
+  def tearDown(self) -> None:
+    super().tearDown()
+    _HandshakeServer._reset_instance()
+    _HandshakeClient._reset_instance()
+
+  def test_handshake_server_singleton(self) -> None:
+    """Tests that _HandshakeServer acts as a singleton per process."""
+    server1 = _HandshakeServer(current_rank=0, port=31234, world_size=1)
+    server2 = _HandshakeServer(current_rank=0, port=31234, world_size=1)
+    self.assertIs(server1, server2)
+
+  def test_handshake_server_client_echo_false(self) -> None:
+    """Tests that _HandshakeServer echoes False to client and coordinator."""
+    port = portpicker.pick_unused_port()
+    server = _HandshakeServer(current_rank=0, port=port, world_size=2)
+    client = _HandshakeClient(port=port)
+    try:
+      client_req = _make_request(rank=1, participating_ranks=[0, 1])
+      client.send(client_req)
+      resp = client.recv()
+      self.assertFalse(resp.success)
+
+      coord_req = _make_request(rank=0, participating_ranks=[0, 1])
+      server.send(coord_req)
+      server_resp = server.recv()
+      self.assertFalse(server_resp.success)
+    finally:
+      client.close()
+      server.close()
+
+  def test_handshake_server_close_cancels_loop_tasks_and_shuts_down_loop(
+      self,
+  ) -> None:
+    """Tests that _HandshakeServer.close cleanly cancels loop tasks and shuts down loop."""
+    port = portpicker.pick_unused_port()
+    server = _HandshakeServer(current_rank=0, port=port, world_size=1)
+    loop_tasks = server._get_loop_tasks()
+    loop_runner = server._loop_runner
+
+    self.assertNotEmpty(loop_tasks)
+    for task in loop_tasks:
+      self.assertFalse(task.done())
+    self.assertTrue(loop_runner._thread.is_alive())
+    self.assertFalse(loop_runner._loop.is_closed())
+
+    server.close()
+
+    for task in loop_tasks:
+      self.assertTrue(task.done())
+      self.assertTrue(task.cancelled())
+    self.assertTrue(loop_runner._loop.is_closed())
+    self.assertFalse(loop_runner._thread.is_alive())
+    self.assertTrue(server._zmq_server._socket.closed)
+    self.assertTrue(server._zmq_server._context.closed)
+    self.assertTrue(server._closed)
+    self.assertFalse(server._initialized)
 
 
 if __name__ == "__main__":

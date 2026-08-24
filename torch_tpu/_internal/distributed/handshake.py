@@ -14,54 +14,63 @@
 
 """Distributed handshake protocol implementation using ZMQ and asyncio."""
 
+import abc
 import asyncio
 import collections.abc
 from collections.abc import Collection
+import concurrent.futures
 import dataclasses
 import functools
 import json
 import os
 import struct
-from typing import Any
+import threading
+from typing import Any, Coroutine, TypeVar, cast
 
 from absl import logging
 import portpicker
 import torch.distributed as dist
 import zmq
+from zmq import error
 import zmq.asyncio
 
+ZMQError = error.ZMQError
+Again = error.Again
 
-def _get_handshake_timeout_ms() -> int:
-  """Returns the handshake socket timeout in milliseconds.
+_T = TypeVar("_T")
 
-  The timeout specifies the maximum duration (in milliseconds) for send and
+
+def _get_handshake_timeout_s() -> int:
+  """Returns the handshake socket timeout in seconds.
+
+  The timeout specifies the maximum duration (in seconds) for send and
   receive operations on the handshake sockets.
 
   The timeout can be overridden using the
-  `TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS` environment variable. Defaults to
-  60000 ms (60 seconds).
+  `TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_S` environment variable. Defaults to 60
+  seconds.
 
   Returns:
-    The timeout in milliseconds.
+    The timeout in seconds.
 
   Raises:
-    ValueError: If `TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS` cannot be parsed as
+    ValueError: If `TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_S` cannot be parsed as
       an integer or is negative.
   """
-  env_val = os.environ.get("TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS", "60000")
+  env_val = os.environ.get("TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_S", "60")
   try:
-    timeout_ms = int(env_val)
+    timeout_s = int(env_val)
   except ValueError as e:
     raise ValueError(
-        "TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS must be an integer, got"
+        "TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_S must be an integer, got"
         f" {env_val!r}."
     ) from e
-  if timeout_ms < 0:
+  if timeout_s < 0:
     raise ValueError(
-        "TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_MS must be non-negative, got"
-        f" {timeout_ms}."
+        "TORCH_TPU_INTERNAL_HANDSHAKE_TIMEOUT_S must be non-negative, got"
+        f" {timeout_s}."
     )
-  return timeout_ms
+  return timeout_s
 
 
 class ProcessGroupCollectiveCount:
@@ -679,6 +688,153 @@ class _CollectiveHandshakeConsensus:
     return await asyncio.gather(*[self._request_queues[r].get() for r in ranks])
 
 
+class _LoopRunner:
+  """Manages a dedicated asyncio event loop running on a background thread.
+
+  Attributes:
+    _loop: The asyncio event loop running on the background thread.
+    _thread: The background daemon thread executing the event loop.
+  """
+
+  def __init__(self, thread_name: str) -> None:
+    """Initializes _LoopRunner and starts the background event loop thread.
+
+    Args:
+      thread_name: Name assigned to the background thread.
+    """
+    self._loop_started = threading.Event()
+    self._loop = asyncio.new_event_loop()
+    self._thread = threading.Thread(
+        target=self._run_loop,
+        name=thread_name,
+        daemon=True,
+    )
+    self._thread.start()
+    # We block on event loop start to ensure that the event loop is ready to
+    # accept tasks before returning.
+    self._loop_started.wait()
+
+  def _run_loop(self) -> None:
+    """Runs the asyncio event loop until stopped and cleans up pending tasks."""
+    asyncio.set_event_loop(self._loop)
+    self._loop.call_soon(self._loop_started.set)
+    try:
+      self._loop.run_forever()
+    finally:
+      # Properly shutdown the event loop.
+      try:
+        pending = [t for t in asyncio.all_tasks(self._loop) if not t.done()]
+        for task in pending:
+          task.cancel()
+        if pending:
+          self._loop.run_until_complete(
+              asyncio.gather(*pending, return_exceptions=True)
+          )
+        self._loop.run_until_complete(self._loop.shutdown_asyncgens())
+      except Exception as e:  # pylint: disable=broad-except
+        logging.warning("Error cleaning up asyncio event loop: %s", e)
+      finally:
+        asyncio.set_event_loop(None)
+        self._loop.close()
+
+  def run_coroutine_async(
+      self, coro: Coroutine[Any, Any, _T]
+  ) -> asyncio.Task[_T]:
+    """Asynchronously schedules a coroutine to run on the background event loop thread.
+
+    Args:
+      coro: The coroutine to schedule on the event loop.
+
+    Returns:
+      An asyncio.Task representing the result of the coroutine.
+    """
+    fut = asyncio.run_coroutine_threadsafe(self._create_task(coro), self._loop)
+    return fut.result()
+
+  async def _create_task(
+      self, coro: Coroutine[Any, Any, _T]
+  ) -> asyncio.Task[_T]:
+    """Helper coroutine that creates and returns an asyncio.Task on the running event loop."""
+    return self._loop.create_task(coro)
+
+  def run_coroutine(self, coro: Any, timeout_s: float | None = None) -> Any:
+    """Executes a coroutine synchronously on the background event loop thread and waits for its result.
+
+    Args:
+      coro: The coroutine to execute.
+      timeout_s: Optional maximum duration in seconds to wait for the coroutine
+        to complete.
+
+    Returns:
+      The return value of the completed coroutine.
+
+    Raises:
+      concurrent.futures.TimeoutError: If the coroutine does not complete within
+        the specified timeout.
+      Exception: Any exception raised by the executed coroutine.
+    """
+    fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
+    return fut.result(timeout=timeout_s)
+
+  def close(self, cleanup_coro: Any | None = None) -> None:
+    """Stops the event loop, runs optional cleanup, and joins the background thread.
+
+    Calling `close` multiple times is idempotent and safe (subsequent calls are
+    no-ops if the loop is already stopped).
+
+    Args:
+      cleanup_coro: Optional coroutine to execute on the event loop before
+        stopping it (e.g., to cancel and await background tasks).
+    """
+    if self._loop.is_running():
+      if cleanup_coro is not None:
+        try:
+          self.run_coroutine(cleanup_coro, timeout_s=1.0)
+        except Exception as e:  # pylint: disable=broad-except
+          logging.warning(
+              "Error executing cleanup_coro during _LoopRunner shutdown: %s", e
+          )
+      self._loop.call_soon_threadsafe(self._loop.stop)
+    elif cleanup_coro is not None:
+      cleanup_coro.close()
+    if self._thread.is_alive() and threading.current_thread() != self._thread:
+      self._thread.join(timeout=5.0)
+
+
+class _HandshakeBackend(abc.ABC):
+  """Abstract base class for Handshake communication backends.
+
+  Example usage:
+    # Coordinator rank:
+    server = _HandshakeServer(current_rank=0, port=12345, world_size=2)
+    server.send(request)
+    response = server.recv()
+    server.close()
+
+    # Worker rank:
+    client = _HandshakeClient(port=12345)
+    client.send(request)
+    response = client.recv()
+    client.close()
+  """
+
+  @abc.abstractmethod
+  def send(self, request: CollectiveHandshakeRequest) -> None:
+    """Sends request to the backend.
+
+    Args:
+      request: The CollectiveHandshakeRequest to send to the backend.
+    """
+
+  @abc.abstractmethod
+  def recv(self) -> CollectiveHandshakeResponse:
+    """Receives consensus result from the backend.
+
+    Returns:
+      The consensus CollectiveHandshakeResponse.
+    """
+
+
 def _validate_port_number(port: int) -> None:
   """Validates that the port number is in the valid 16 bit range.
 
@@ -722,19 +878,43 @@ class _ZMQServer:
       sending replies.
   """
 
-  def __init__(self, port: int) -> None:
+  def __init__(
+      self,
+      port: int,
+      send_timeout_s: int | None = None,
+      recv_timeout_s: int | None = None,
+  ) -> None:
     """Initializes _ZMQServer and binds the ROUTER socket.
 
     Args:
       port: TCP port number to bind to.
+      send_timeout_s: Optional maximum duration in seconds for send operations.
+        If None, the send timeout is not set on the socket (PyZMQ default is no
+        timeout).
+      recv_timeout_s: Optional maximum duration in seconds for receive
+        operations. If None, the receive timeout is not set on the socket (PyZMQ
+        default is no timeout).
+
+    Raises:
+      ValueError: If `port` is invalid or if `send_timeout_s` /
+        `recv_timeout_s` is negative.
     """
     _validate_port_number(port)
     self._port = port
     self._context = zmq.asyncio.Context()
     self._socket = self._context.socket(zmq.ROUTER)
-    # Server should not timeout on recv as we might want it to be idle
-    # sometimes.
-    self._socket.setsockopt(zmq.SNDTIMEO, _get_handshake_timeout_ms())
+    if send_timeout_s is not None:
+      if send_timeout_s < 0:
+        raise ValueError(
+            f"send_timeout_s must be non-negative, got {send_timeout_s}."
+        )
+      self._socket.setsockopt(zmq.SNDTIMEO, send_timeout_s * 1000)
+    if recv_timeout_s is not None:
+      if recv_timeout_s < 0:
+        raise ValueError(
+            f"recv_timeout_s must be non-negative, got {recv_timeout_s}."
+        )
+      self._socket.setsockopt(zmq.RCVTIMEO, recv_timeout_s * 1000)
     self._socket.bind(f"tcp://*:{self._port}")
 
   async def recv_request(self) -> _CollectiveHandshakeRequestZMQEnvelope | None:
@@ -774,6 +954,206 @@ class _ZMQServer:
       self._context.term()
 
 
+class _HandshakeServer(_HandshakeBackend):
+  """Singleton server backend for Handshake coordinator rank using _ZMQServer socket handler.
+
+  Attributes:
+    _instance: The singleton instance of _HandshakeServer per process, or None
+      if not instantiated.
+    _instance_lock: A threading lock ensuring thread-safe singleton
+      initialization and reset.
+    _zmq_server: The _ZMQServer instance handling PyZMQ socket communication
+      with worker clients.
+    _world_size: Total number of ranks participating in the distributed job.
+    _current_rank: The current rank of the process running this server.
+    _response_queue: An asyncio.Queue holding consensus responses for the
+      coordinator rank.
+    _loop_runner: The _LoopRunner managing the server background event loop.
+    _listen_task: The background task running _listen_loop to process client
+      requests.
+    _closed: Whether the server has been closed.
+    _initialized: Whether the server instance has been initialized.
+  """
+
+  _instance: "_HandshakeServer | None" = None
+  _instance_lock = threading.Lock()
+
+  _zmq_server: _ZMQServer
+  _world_size: int
+  _current_rank: int
+  _response_queue: asyncio.Queue[CollectiveHandshakeResponse]
+  _loop_runner: _LoopRunner
+  _listen_task: asyncio.Task[None]
+  _closed: bool
+  _initialized: bool
+
+  def __new__(
+      cls,
+      current_rank: int,
+      port: int,
+      world_size: int,
+  ) -> "_HandshakeServer":
+    """Creates or returns the process-wide singleton _HandshakeServer instance.
+
+    We use __new__ instead of __init__ to implement the singleton pattern.
+    __new__ intercepts instance allocation under _instance_lock to ensure only
+    a single instance is allocated and initialized per process across multiple
+    calls.
+
+    Timeouts:
+    The server will not timeout on recv so that we allow idle waiting for
+    incoming requests.
+    The server will timeout on send after _get_handshake_timeout_s() to ensure
+    that send operations do not block indefinitely if a client drops.
+
+    Args:
+      current_rank: The rank of the current process (must be the coordinator
+        rank).
+      port: TCP port number to bind the ZMQ server socket to.
+      world_size: Total number of ranks participating in the distributed job.
+
+    Returns:
+      The singleton _HandshakeServer instance.
+    """
+    with cls._instance_lock:
+      if cls._instance is None:
+        inst = super().__new__(cls)
+        inst._zmq_server = _ZMQServer(
+            port=port,
+            send_timeout_s=_get_handshake_timeout_s(),
+        )
+        inst._world_size = world_size
+        inst._current_rank = current_rank
+        inst._response_queue = asyncio.Queue()
+        inst._loop_runner = _LoopRunner(thread_name="HandshakeServerLoop")
+        # LINT.IfChange(server_loop_tasks)
+        inst._listen_task = inst._loop_runner.run_coroutine_async(
+            inst._listen_loop()
+        )
+        # LINT.ThenChange(handshake.py:get_loop_tasks)
+        inst._closed = False
+        inst._initialized = True
+        cls._instance = inst
+      return cast("_HandshakeServer", cls._instance)
+
+  # LINT.IfChange(get_loop_tasks)
+  def _get_loop_tasks(self) -> list[asyncio.Task[Any]]:
+    """Returns all background loop tasks managed by the server."""
+    return [self._listen_task]
+
+  # LINT.ThenChange(handshake.py:server_loop_tasks)
+
+  async def _listen_loop(self) -> None:
+    """Continuously receives requests and echoes back a False response.
+
+    Raises:
+      Again: If socket receive times out while server is active.
+      ZMQError: If socket encounters an error while server is active.
+    """
+    false_response = CollectiveHandshakeResponse(success=False)
+    while True:
+      try:
+        envelope = await self._zmq_server.recv_request()
+        if envelope is None:
+          continue
+        await self._zmq_server.send_reply(envelope.client_id, false_response)
+      except asyncio.CancelledError:
+        logging.info("_HandshakeServer _listen_loop cancelled.")
+        raise
+      except Again as e:
+        logging.exception(
+            "Socket error in _HandshakeServer _listen_loop: %s", e
+        )
+        raise e
+
+  def _check_loop_task_errors(self) -> None:
+    """Checks if any background loop task failed and raises the exception.
+
+    Raises:
+      RuntimeError: If any background loop task failed with an exception.
+    """
+    for task in self._get_loop_tasks():
+      if task.done() and not task.cancelled():
+        exc = task.exception()
+        if exc is not None:
+          raise RuntimeError("Handshake server loop task failed.") from exc
+
+  def send(self, request: CollectiveHandshakeRequest) -> None:
+    """Sends coordinator message to local queue echoing False.
+
+    Args:
+      request: Ignored request payload for the echo server.
+    """
+    del request
+    self._check_loop_task_errors()
+    false_response = CollectiveHandshakeResponse(success=False)
+    self._loop_runner.run_coroutine(self._response_queue.put(false_response))
+
+  def recv(self) -> CollectiveHandshakeResponse:
+    """Awaits result from local queue.
+
+    Blocks until a response is available or timeout expires.
+
+    Returns:
+      The CollectiveHandshakeResponse from the local response queue.
+
+    Raises:
+      RuntimeError: If a background loop task failed.
+      asyncio.TimeoutError: If no response is received within the timeout.
+    """
+    self._check_loop_task_errors()
+    try:
+      return self._loop_runner.run_coroutine(
+          asyncio.wait_for(
+              self._response_queue.get(),
+              timeout=_get_handshake_timeout_s(),
+          )
+      )
+    except Exception:  # pylint: disable=broad-except
+      self._check_loop_task_errors()
+      raise
+
+  async def _cleanup_coro(self) -> None:
+    """Cancels and awaits all background loop tasks."""
+    for task in self._get_loop_tasks():
+      if not task.done():
+        task.cancel()
+        try:
+          await task
+        except (asyncio.CancelledError, concurrent.futures.CancelledError) as e:
+          logging.debug("Loop task cancelled during cleanup: %s", e)
+
+  def close(self) -> None:
+    """Closes server sockets, background tasks, and event loop thread.
+
+    Calling `close` multiple times is idempotent and safe (subsequent calls are
+    no-ops).
+    """
+    if getattr(self, "_closed", False):
+      return
+    self._closed = True
+
+    if hasattr(self, "_loop_runner"):
+      self._loop_runner.close(cleanup_coro=self._cleanup_coro())
+
+    if hasattr(self, "_zmq_server"):
+      self._zmq_server.close()
+
+    self._initialized = False
+
+  @classmethod
+  def _reset_instance(cls) -> None:
+    """Resets singleton instance for testing purposes."""
+    with cls._instance_lock:
+      inst = cls._instance
+      if inst is not None:
+        try:
+          inst.close()
+        except Exception as e:  # pylint: disable=broad-except
+          logging.debug("Error resetting _HandshakeServer instance: %s", e)
+        cls._instance = None
+
+
 class _ZMQClient:
   """Handles PyZMQ DEALER socket network communication for _HandshakeClient.
 
@@ -785,11 +1165,26 @@ class _ZMQClient:
     _socket: The PyZMQ DEALER socket connected to the coordinator server.
   """
 
-  def __init__(self, port: int) -> None:
+  def __init__(
+      self,
+      port: int,
+      send_timeout_s: int | None = None,
+      recv_timeout_s: int | None = None,
+  ) -> None:
     """Initializes _ZMQClient and connects the DEALER socket.
 
     Args:
       port: TCP port number of the coordinator server.
+      send_timeout_s: Optional maximum duration in seconds for send operations.
+        If None, the send timeout is not set on the socket (PyZMQ default is no
+        timeout).
+      recv_timeout_s: Optional maximum duration in seconds for receive
+        operations. If None, the receive timeout is not set on the socket (PyZMQ
+        default is no timeout).
+
+    Raises:
+      ValueError: If `port` is invalid or if `send_timeout_s` /
+        `recv_timeout_s` is negative.
     """
     _validate_port_number(port)
     self._port = port
@@ -797,9 +1192,18 @@ class _ZMQClient:
 
     self._context = zmq.Context()  # pyrefly: ignore[missing-attribute]
     self._socket = self._context.socket(zmq.DEALER)
-    timeout_ms = _get_handshake_timeout_ms()
-    self._socket.setsockopt(zmq.RCVTIMEO, timeout_ms)
-    self._socket.setsockopt(zmq.SNDTIMEO, timeout_ms)
+    if send_timeout_s is not None:
+      if send_timeout_s < 0:
+        raise ValueError(
+            f"send_timeout_s must be non-negative, got {send_timeout_s}."
+        )
+      self._socket.setsockopt(zmq.SNDTIMEO, send_timeout_s * 1000)
+    if recv_timeout_s is not None:
+      if recv_timeout_s < 0:
+        raise ValueError(
+            f"recv_timeout_s must be non-negative, got {recv_timeout_s}."
+        )
+      self._socket.setsockopt(zmq.RCVTIMEO, recv_timeout_s * 1000)
     self._socket.connect(f"tcp://{self._master_addr}:{self._port}")
 
   def send(self, request: CollectiveHandshakeRequest) -> None:
@@ -822,3 +1226,97 @@ class _ZMQClient:
       self._socket.close(linger=0)
     if not self._context.closed:
       self._context.term()
+
+
+class _HandshakeClient(_HandshakeBackend):
+  """Singleton client backend for Handshake worker ranks using _ZMQClient socket handler.
+
+  Attributes:
+    _instance: _HandshakeClient instance.
+    _instance_lock: A threading lock ensuring thread-safe access and
+      initialization of the singleton instance.
+    _zmq_client: The _ZMQClient handling PyZMQ socket communication with the
+      coordinator server on that port.
+    _closed: Whether this client instance has been closed.
+    _initialized: Whether this client instance has been initialized.
+  """
+
+  _instance: "_HandshakeClient | None" = None
+  _instance_lock = threading.Lock()
+
+  _zmq_client: _ZMQClient
+  _closed: bool
+  _initialized: bool
+
+  def __new__(
+      cls,
+      port: int,
+  ) -> "_HandshakeClient":
+    """Creates or returns the singleton _HandshakeClient instance.
+
+    Timeouts:
+    The client will timeout on send and recv after
+    _get_handshake_timeout_s() to ensure that synchronous network calls to the
+    coordinator server will time out and raise ZMQError (Again) instead of
+    blocking indefinitely if the coordinator is unreachable.
+
+    Args:
+      port: TCP port number of the coordinator handshake server.
+
+    Returns:
+      The singleton _HandshakeClient instance for the specified port.
+    """
+    with cls._instance_lock:
+      if cls._instance is None:
+        inst = super().__new__(cls)
+        timeout_s = _get_handshake_timeout_s()
+        inst._zmq_client = _ZMQClient(
+            port=port,
+            send_timeout_s=timeout_s,
+            recv_timeout_s=timeout_s,
+        )
+        inst._closed = False
+        inst._initialized = True
+        cls._instance = inst
+      return cls._instance
+
+  def send(self, request: CollectiveHandshakeRequest) -> None:
+    """Sends request synchronously to the server.
+
+    Args:
+      request: The CollectiveHandshakeRequest to send to the coordinator server.
+    """
+    self._zmq_client.send(request)
+
+  def recv(self) -> CollectiveHandshakeResponse:
+    """Receives response synchronously from the server via PyZMQ socket.
+
+    Returns:
+      The CollectiveHandshakeResponse from the coordinator server.
+    """
+    return self._zmq_client.recv()
+
+  def close(self) -> None:
+    """Closes client sockets and marks instance uninitialized.
+
+    Calling `close` multiple times is idempotent and safe (subsequent calls are
+    no-ops).
+    """
+    if getattr(self, "_closed", False):
+      return
+    self._closed = True
+    if hasattr(self, "_zmq_client"):
+      self._zmq_client.close()
+    self._initialized = False
+
+  @classmethod
+  def _reset_instance(cls) -> None:
+    """Resets singleton instance for testing purposes."""
+    with cls._instance_lock:
+      inst = cls._instance
+      if inst is not None:
+        try:
+          inst.close()
+        except Exception as e:  # pylint: disable=broad-except
+          logging.debug("Error resetting _HandshakeClient instance: %s", e)
+        cls._instance = None
