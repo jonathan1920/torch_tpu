@@ -599,6 +599,42 @@ class CompiledRngTest(_BaseRngTest):
     out2 = compiled_fn(x)
     self.assertFalse(torch.equal(out1, out2))
 
+  def test_compiled_generator_arg_triggers_graph_break(self):
+    """Verifies passing custom generator triggers graph break."""
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+    x = torch.zeros(10, device=self.device)
+
+    def fn_pass_gen(x, gen):
+      return torch.rand_like(x, generator=gen)
+
+    with self.assertRaises(torch._dynamo.exc.Unsupported):
+      torch.compile(fn_pass_gen, fullgraph=True)(x, g)
+
+  def test_compiled_manual_seed_inside_fn_triggers_graph_break(self):
+    """Verifies seeding inside compiled function triggers graph break."""
+    x = torch.zeros(10, device=self.device)
+
+    def fn_manual_seed(x):
+      torch.manual_seed(42)
+      return torch.rand_like(x)
+
+    with self.assertRaises(torch._dynamo.exc.Unsupported):
+      torch.compile(fn_manual_seed, fullgraph=True)(x)
+
+  def test_compiled_generator_instantiation_inside_fn_triggers_graph_break(
+      self,
+  ):
+    """Verifies using generator in compiled function triggers graph break."""
+    x = torch.zeros(10, device=self.device)
+
+    def fn_create_gen(x):
+      g = torch.Generator(device=self.device)
+      return torch.rand_like(x, generator=g)
+
+    with self.assertRaises(torch._dynamo.exc.Unsupported):
+      torch.compile(fn_create_gen, fullgraph=True)(x)
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
