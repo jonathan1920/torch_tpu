@@ -774,4 +774,30 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "window_tpu_test",
+    srcs = ["window_tpu_test.py"],
+    autoload = True,
+    notest_oss = "fix hang in OSS",  # TODO
+    shard_count = 6,
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "requires-tpu-v5lite:8",
+    ],
+    deps = [
+        ":distributed_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/distributed:multiprocessing",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/utils:test_utils",
+    ],
+)
+
 torch_tpu_package_end()

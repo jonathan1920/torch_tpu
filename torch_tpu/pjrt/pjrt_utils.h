@@ -31,6 +31,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/xla_data.pb.h"
 
@@ -62,6 +63,29 @@ using PjRtBufferPointers =
 absl::StatusOr<PjRtBufferPointers> Execute(
     const SharedLoadedExecutableWithMetadata& executable,
     std::vector<xla::PjRtBuffer* absl_nullable> argument_buffers);
+
+// Holds the completion future and RAII buffer hold for an asynchronous DMA
+// copy.
+struct AsyncDmaResult {
+  xla::Future<> future;
+  std::shared_ptr<void> buffer_hold;
+};
+
+// Performs asynchronous non-blocking Device-to-Host (D2H) DMA transfer
+// from a TPU device buffer to a host memory pointer using the PjRt RawBuffer C
+// API. Returns an AsyncDmaResult indicating copy completion along with an
+// opaque hold object preserving device buffer lifetime until completion.
+absl::StatusOr<AsyncDmaResult> TpuAsyncDmaCopyDtoH(
+    const DeviceBufferRef& src_buffer, void* dst_host_ptr, int64_t copy_bytes);
+
+// Performs asynchronous non-blocking Host-to-Device (H2D) DMA transfer
+// from a host memory pointer into a TPU device buffer at a byte offset using
+// the PjRt RawBuffer C API. Returns an AsyncDmaResult indicating copy
+// completion along with an opaque hold object preserving device buffer lifetime
+// until completion.
+absl::StatusOr<AsyncDmaResult> TpuAsyncDmaCopyHtoD(
+    const void* src_host_ptr, const DeviceBufferRef& dst_buffer,
+    int64_t dst_byte_offset, int64_t copy_bytes);
 
 std::string ToString(const xla::PjRtBuffer& buffer);
 

@@ -20,6 +20,26 @@ package(
 )
 
 torch_tpu_cc_library(
+    name = "window_tpu",
+    srcs = ["window_tpu.cc"],
+    hdrs = ["window_tpu.h"],
+    deps = [
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/common:device_type",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:structured_log_buffer",
+        "//torch_tpu/eager:tensor_to_buffer",
+        "//torch_tpu/pjrt:pjrt_utils",
+        "@com_google_absl//absl/status",
+        "@xla//xla:future",
+    ],
+    alwayslink = True,
+)
+
+torch_tpu_cc_library(
     name = "process_group_tpu",
     srcs = ["process_group_tpu.cc"],
     hdrs = ["process_group_tpu.h"],
@@ -30,6 +50,7 @@ torch_tpu_cc_library(
         ":reduce_scatter",
         ":types",
         ":utils",
+        ":window_tpu",
         "//shims/torch",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",

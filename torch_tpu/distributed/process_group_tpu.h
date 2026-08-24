@@ -27,6 +27,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -41,6 +42,7 @@
 #include "torch/csrc/distributed/c10d/Backend.hpp"
 #include "torch/csrc/distributed/c10d/Store.hpp"
 #include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch/csrc/distributed/c10d/Window.hpp"
 #include "torch/csrc/distributed/c10d/Work.hpp"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/distributed/types.h"
@@ -243,17 +245,41 @@ class ProcessGroupTpu : public c10d::Backend {
   c10::intrusive_ptr<c10d::Work> barrier(
       const c10d::BarrierOptions& opts) override;
 
-  // Experimental P2P send. Mirrors the semantics of c10d::Backend::send,
-  // but is kept isolated from the public torch.distributed API to safely
-  // prototype TPU-specific behaviors.
+  // Two-way (two-sided) P2P point-to-point communication overrides for
+  // c10d::Backend and WindowTPU. Both sender (send) and receiver (recv) must
+  // actively participate and specify matching tags for the transfer to
+  // complete.
+  c10::intrusive_ptr<c10d::Work> send(std::vector<at::Tensor>& tensors,
+                                      int dstRank, int tag) override {
+    return experimental_send(tensors, dstRank, tag);
+  }
+
+  c10::intrusive_ptr<c10d::Work> recv(std::vector<at::Tensor>& tensors,
+                                      int srcRank, int tag) override {
+    return experimental_recv(tensors, srcRank, tag);
+  }
+
+  // TODO(cbasile): Drop experimental_send in the future and merge its
+  // functionality directly into the ProcessGroup send method.
+  // Experimental two-way P2P send. Mirrors the semantics of
+  // c10d::Backend::send, but is kept isolated from the public torch.distributed
+  // API to safely prototype TPU-specific behaviors.
   c10::intrusive_ptr<c10d::Work> experimental_send(
       std::vector<at::Tensor>& tensors, int dst_rank, int tag);
 
-  // Experimental P2P recv. Mirrors the semantics of c10d::Backend::recv,
-  // but is kept isolated from the public torch.distributed API to safely
-  // prototype TPU-specific behaviors.
+  // TODO(cbasile): Drop experimental_recv in the future and merge its
+  // functionality directly into the ProcessGroup recv method.
+  // Experimental two-way P2P recv. Mirrors the semantics of
+  // c10d::Backend::recv, but is kept isolated from the public torch.distributed
+  // API to safely prototype TPU-specific behaviors.
   c10::intrusive_ptr<c10d::Work> experimental_recv(
       std::vector<at::Tensor>& tensors, int src_rank, int tag);
+
+  // One-sided Remote Memory Access (RMA) Window support.
+  bool supportsWindow() const override { return true; }
+
+  c10::intrusive_ptr<c10d::Window> new_window(
+      const std::optional<at::Tensor>& tensor) override;
 
  private:
   // Differently from PyTorch distributed APIs, XLA requires that all processes

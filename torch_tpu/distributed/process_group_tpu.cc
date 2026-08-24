@@ -23,6 +23,7 @@
 #include <exception>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -58,6 +59,7 @@
 #include "torch/csrc/distributed/c10d/Backend.hpp"
 #include "torch/csrc/distributed/c10d/Store.hpp"
 #include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch/csrc/distributed/c10d/Window.hpp"
 #include "torch/csrc/distributed/c10d/Work.hpp"
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch_tpu/common/cache_key.h"
@@ -75,6 +77,7 @@
 #include "torch_tpu/distributed/reduce_scatter.h"
 #include "torch_tpu/distributed/types.h"
 #include "torch_tpu/distributed/utils.h"
+#include "torch_tpu/distributed/window_tpu.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -132,7 +135,7 @@ class TpuWork : public c10d::Work {
     return results_future_->completed() && !results_future_->hasError();
   }
 
-  bool wait(std::chrono::milliseconds timeout = kNoTimeout) override {
+  bool wait(std::chrono::milliseconds timeout) override {
     results_future_->wait();
     TT_CHECK_THROW(!results_future_->hasError(), error::kInternal)
         << results_future_->tryRetrieveErrorMessage();
@@ -450,9 +453,12 @@ ProcessGroupTpu::CrossHostReceiveBuffers(
 
   // Initiate the receive process on the PJRT client. The resulting buffers
   // will be populated once the remote sender initiates its transfer.
+  auto* client = PjrtBackend::GetInstance().GetClient();
+  TT_RET_CHECK(client != nullptr, error::kInternal)
+      << "PjRtClient is not initialized.";
   TT_ASSIGN_OR_RETURN(
       auto buffers,
-      PjrtBackend::GetInstance().GetClient()->MakeCrossHostReceiveBuffers(
+      client->MakeCrossHostReceiveBuffers(
           shapes, PjrtBackend::GetInstance().GetDevice(), std::move(notifier)));
 
   // Wait for the buffer to be ready to transfer and descriptors to be
@@ -1517,6 +1523,17 @@ int64_t ProcessGroupTpu::GetLogicalDeviceId(int64_t physical_device_id) const {
       << "Could not map physical ID " << physical_device_id
       << " to logical ID.";
   return it - device_ids_.begin();
+}
+
+c10::intrusive_ptr<c10d::Window> ProcessGroupTpu::new_window(
+    const std::optional<at::Tensor>& tensor) {
+  auto win = c10::make_intrusive<WindowTPU>(
+      c10::intrusive_ptr<ProcessGroupTpu>::unsafe_reclaim_from_nonowning(this),
+      rank_);
+  if (tensor.has_value()) {
+    win->tensor_register(*tensor, /*owning=*/true);
+  }
+  return win;
 }
 
 }  // namespace torch_tpu
