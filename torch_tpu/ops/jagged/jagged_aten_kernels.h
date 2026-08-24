@@ -63,6 +63,54 @@ at::Tensor AtenPaddedDenseToJaggedForward(const at::Tensor& dense,
                                           at::TensorList offsets,
                                           std::optional<c10::SymInt> total_L);
 
+// Converts a flat jagged values tensor into a nested view tensor.
+//
+// Arguments:
+//   - self: Flat 1D or ND jagged values tensor.
+//   - offsets: 1D int64 offsets tensor.
+//   - dummy: Dummy jagged tensor used for dispatch.
+//   - lengths: Optional 1D int64 lengths tensor.
+//   - ragged_idx: Index of the ragged dimension (default 1).
+//   - min_seqlen: Optional minimum sequence length tensor.
+//   - max_seqlen: Optional maximum sequence length tensor.
+//
+// Returns:
+//   An aliased view of self.
+at::Tensor AtenNestedViewFromJagged(
+    const at::Tensor& self, const at::Tensor& offsets, const at::Tensor& dummy,
+    const std::optional<at::Tensor>& lengths, int64_t ragged_idx,
+    const std::optional<at::Tensor>& min_seqlen,
+    const std::optional<at::Tensor>& max_seqlen);
+
+// Converts a padded dense tensor into a nested jagged view tensor.
+at::Tensor AtenNestedFromPaddedTensor(
+    const at::Tensor& padded, const at::Tensor& offsets,
+    const at::Tensor& dummy, int64_t ragged_idx = 1,
+    const std::optional<at::Tensor>& min_seqlen = std::nullopt,
+    const std::optional<at::Tensor>& max_seqlen = std::nullopt,
+    std::optional<c10::SymInt> sum_S = std::nullopt);
+
+// Extracts the underlying values buffer from a nested jagged tensor.
+at::Tensor AtenNestedGetValues(const at::Tensor& self);
+
+// Extracts the offsets tensor from a nested jagged tensor.
+at::Tensor AtenNestedGetOffsets(const at::Tensor& self);
+
+// Extracts the lengths tensor from a nested jagged tensor.
+at::Tensor AtenNestedGetLengths(const at::Tensor& self);
+
+// Extracts the ragged index from a nested jagged tensor.
+int64_t AtenNestedGetRaggedIdx(const at::Tensor& self);
+
+// Extracts the min sequence length tensor from a nested jagged tensor.
+at::Tensor AtenNestedGetMinSeqlen(const at::Tensor& self);
+
+// Extracts the max sequence length tensor from a nested jagged tensor.
+at::Tensor AtenNestedGetMaxSeqlen(const at::Tensor& self);
+
+// Returns a jagged dummy tensor for dispatching nested operations.
+at::Tensor AtenNestedGetJaggedDummy(const at::Tensor& any);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_JAGGED_JAGGED_ATEN_KERNELS_H_

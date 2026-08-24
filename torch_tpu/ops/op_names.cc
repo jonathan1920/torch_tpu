@@ -1073,6 +1073,24 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "ne.Tensor_out";
     case OpName::kNegOut:
       return "neg.out";
+    case OpName::kNestedFromPaddedTensor:
+      return "_nested_from_padded_tensor";
+    case OpName::kNestedGetJaggedDummy:
+      return "_nested_get_jagged_dummy";
+    case OpName::kNestedGetLengths:
+      return "_nested_get_lengths";
+    case OpName::kNestedGetMaxSeqlen:
+      return "_nested_get_max_seqlen";
+    case OpName::kNestedGetMinSeqlen:
+      return "_nested_get_min_seqlen";
+    case OpName::kNestedGetOffsets:
+      return "_nested_get_offsets";
+    case OpName::kNestedGetRaggedIdx:
+      return "_nested_get_ragged_idx";
+    case OpName::kNestedGetValues:
+      return "_nested_get_values";
+    case OpName::kNestedViewFromJagged:
+      return "_nested_view_from_jagged";
     case OpName::kNllLoss2dBackward:
       return "nll_loss2d_backward";
     case OpName::kNllLoss2dBackwardGradInput:

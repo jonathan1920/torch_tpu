@@ -27,6 +27,7 @@ Tests cover:
 
 from absl.testing import absltest
 import torch
+from torch.nested._internal import nested_tensor as nt_internal
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
 
@@ -207,6 +208,426 @@ class JaggedTensorTest(seed_test_utils.RepeatableTest):
     self.assertEqual(nt_back_to_cpu.layout, torch.jagged)
     utils.assert_close(nt_back_to_cpu.values(), nt_cpu.values())
     utils.assert_close(nt_back_to_cpu.offsets(), nt_cpu.offsets())
+
+  # ---------------------------------------------------------------------------
+  # Autograd & Backward Operator Derivative Tests
+  # ---------------------------------------------------------------------------
+
+  def test_to_padded_tensor_autograd_analytic_gradients(self):
+    """Verifies analytical gradients of to_padded_tensor across dtypes."""
+    for dtype in [torch.float32, torch.bfloat16, torch.float64]:
+      values = torch.randn(5, 4, dtype=dtype, device="tpu", requires_grad=True)
+      offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device="tpu")
+
+      nt = nt_internal.nested_view_from_values_offsets(
+          values, offsets, min_seqlen=2, max_seqlen=3
+      )
+      padded = nt.to_padded_tensor(0.0)
+
+      self.assertEqual(padded.shape, (2, 3, 4))
+      self.assertEqual(padded.dtype, dtype)
+      self.assertEqual(padded.device.type, "tpu")
+
+      # Backpropagate arbitrary weight matrix
+      weights = torch.randn(2, 3, 4, dtype=dtype, device="tpu")
+      loss = (padded * weights).sum()
+      loss.backward()
+
+      self.assertIsNotNone(values.grad)
+      self.assertEqual(values.grad.shape, values.shape)
+      self.assertEqual(values.grad.dtype, dtype)
+
+      # Analytical expected grad: gather non-padded elements from weights
+      expected_grad = torch.cat(
+          [weights[0, :2, :], weights[1, :3, :]], dim=0
+      ).cpu()
+      utils.assert_close(values.grad.cpu(), expected_grad, atol=1e-3, rtol=1e-3)
+
+  def test_to_padded_tensor_with_output_size_autograd(self):
+    """Verifies autograd when padding to an explicit larger output_size."""
+    values = torch.randn(
+        5, 3, dtype=torch.float32, device="tpu", requires_grad=True
+    )
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device="tpu")
+
+    nt = nt_internal.nested_view_from_values_offsets(
+        values, offsets, min_seqlen=2, max_seqlen=3
+    )
+    # Pad to explicit larger sequence length = 4 (batch 0 has 2 pads, batch 1 has 1 pad)
+    padded = nt.to_padded_tensor(0.0, output_size=(2, 4, 3))
+
+    self.assertEqual(padded.shape, (2, 4, 3))
+    loss = padded.sum()
+    loss.backward()
+
+    self.assertIsNotNone(values.grad)
+    grad_cpu = values.grad.cpu()
+
+    # All active tokens must have gradient 1.0
+    self.assertTrue(torch.all(grad_cpu == 1.0))
+
+  def test_nested_from_padded_tensor_autograd(self):
+    """Verifies gradient flow through _nested_from_padded_tensor."""
+    dense = torch.randn(
+        2, 4, 3, dtype=torch.float32, device="tpu", requires_grad=True
+    )
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device="tpu")
+    dummy = nt_internal._nt_view_dummy()
+
+    nt = torch.ops.aten._nested_from_padded_tensor(
+        dense, offsets, dummy, sum_S=5
+    )
+    self.assertEqual(nt.values().shape, (5, 3))
+
+    # Compute loss on flat values
+    target_weights = torch.arange(
+        1, 16, dtype=torch.float32, device="tpu"
+    ).reshape(5, 3)
+    loss = (nt.values() * target_weights).sum()
+    loss.backward()
+
+    self.assertIsNotNone(dense.grad)
+    dense_grad_cpu = dense.grad.cpu()
+
+    # Active sequence elements receive the upstream weights
+    utils.assert_close(dense_grad_cpu[0, :2, :], target_weights[:2].cpu())
+    utils.assert_close(dense_grad_cpu[1, :3, :], target_weights[2:].cpu())
+
+    # Padding positions in the dense tensor MUST receive zero gradient
+    self.assertTrue(torch.all(dense_grad_cpu[0, 2:, :] == 0.0))
+    self.assertTrue(torch.all(dense_grad_cpu[1, 3:, :] == 0.0))
+
+  def test_roundtrip_jagged_to_padded_to_jagged_autograd(self):
+    """Verifies identity gradient propagation through jagged -> padded -> jagged."""
+    values = torch.randn(
+        6, 4, dtype=torch.float32, device="tpu", requires_grad=True
+    )
+    offsets = torch.tensor([0, 3, 6], dtype=torch.int64, device="tpu")
+
+    nt_in = nt_internal.nested_view_from_values_offsets(
+        values, offsets, min_seqlen=3, max_seqlen=3
+    )
+    padded = nt_in.to_padded_tensor(0.0)
+    dummy = nt_internal._nt_view_dummy()
+    nt_out = torch.ops.aten._nested_from_padded_tensor(
+        padded, offsets, dummy, sum_S=6
+    )
+
+    loss = (nt_out.values() * 3.5).sum()
+    loss.backward()
+
+    self.assertIsNotNone(values.grad)
+    utils.assert_close(values.grad.cpu(), torch.full_like(values.cpu(), 3.5))
+
+  def test_multidimensional_features_autograd(self):
+    """Verifies autograd on jagged tensors with multidimensional feature shapes."""
+    # (total_L=4, feature_dim_0=3, feature_dim_1=5)
+    values = torch.randn(
+        4, 3, 5, dtype=torch.float32, device="tpu", requires_grad=True
+    )
+    offsets = torch.tensor([0, 1, 4], dtype=torch.int64, device="tpu")
+
+    nt = nt_internal.nested_view_from_values_offsets(
+        values, offsets, min_seqlen=1, max_seqlen=3
+    )
+    padded = nt.to_padded_tensor(0.0)
+
+    self.assertEqual(padded.shape, (2, 3, 3, 5))
+    loss = padded.pow(2).sum()
+    loss.backward()
+
+    self.assertIsNotNone(values.grad)
+    expected_grad = (2.0 * values).cpu()
+    utils.assert_close(values.grad.cpu(), expected_grad)
+
+  def test_autograd_retain_graph_and_accumulation(self):
+    """Verifies gradient accumulation across multiple backward passes."""
+    values = torch.randn(
+        5, 2, dtype=torch.float32, device="tpu", requires_grad=True
+    )
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device="tpu")
+
+    nt = nt_internal.nested_view_from_values_offsets(
+        values, offsets, min_seqlen=2, max_seqlen=3
+    )
+    padded = nt.to_padded_tensor(0.0)
+
+    loss1 = (padded * 1.5).sum()
+    loss1.backward(retain_graph=True)
+
+    loss2 = (padded * 2.5).sum()
+    loss2.backward()
+
+    # Accumulated grad must be 1.5 + 2.5 = 4.0
+    self.assertIsNotNone(values.grad)
+    utils.assert_close(values.grad.cpu(), torch.full_like(values.cpu(), 4.0))
+
+  # ---------------------------------------------------------------------------
+  # _nested_view_from_jagged Dedicated Unit Tests
+  # ---------------------------------------------------------------------------
+
+  def test_nested_view_from_jagged_basic_and_cpu_parity(self):
+    """Tests _nested_view_from_jagged tensor construction and CPU parity."""
+    values_cpu = torch.tensor(
+        [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0], [9.0, 10.0]],
+        dtype=torch.float32,
+    )
+    offsets_cpu = torch.tensor([0, 2, 5], dtype=torch.int64)
+    dummy_cpu = nt_internal._nt_view_dummy()
+
+    nt_cpu = torch._nested_view_from_jagged(values_cpu, offsets_cpu, dummy_cpu)
+
+    values_tpu = values_cpu.to("tpu")
+    offsets_tpu = offsets_cpu.to("tpu")
+    dummy_tpu = nt_internal._nt_view_dummy()
+
+    nt_tpu = torch._nested_view_from_jagged(values_tpu, offsets_tpu, dummy_tpu)
+
+    self.assertEqual(nt_tpu.device.type, "tpu")
+    self.assertEqual(nt_tpu.layout, torch.jagged)
+    self.assertEqual(nt_tpu.shape[0], nt_cpu.shape[0])
+    self.assertEqual(nt_tpu.shape[2], nt_cpu.shape[2])
+    self.assertEqual(nt_tpu.dtype, nt_cpu.dtype)
+    utils.assert_close(nt_tpu.values().cpu(), nt_cpu.values())
+    utils.assert_close(nt_tpu.offsets().cpu(), nt_cpu.offsets())
+
+  def test_nested_view_from_jagged_with_lengths(self):
+    """Tests _nested_view_from_jagged with explicit lengths parameter."""
+    values = torch.randn(6, 4, device="tpu")
+    offsets = torch.tensor([0, 2, 6], dtype=torch.int64, device="tpu")
+    lengths = torch.tensor([2, 4], dtype=torch.int64, device="tpu")
+    dummy = nt_internal._nt_view_dummy()
+
+    nt = torch._nested_view_from_jagged(values, offsets, dummy, lengths=lengths)
+    self.assertEqual(nt.device.type, "tpu")
+    self.assertEqual(nt.layout, torch.jagged)
+    self.assertEqual(nt.shape[0], 2)
+    self.assertEqual(nt.shape[2], 4)
+    utils.assert_close(nt.values().cpu(), values.cpu())
+    utils.assert_close(nt.offsets().cpu(), offsets.cpu())
+
+  def test_nested_view_from_jagged_with_min_max_seqlen(self):
+    """Tests _nested_view_from_jagged with min_seqlen and max_seqlen tensors."""
+    values = torch.randn(7, 3, device="tpu")
+    offsets = torch.tensor([0, 3, 7], dtype=torch.int64, device="tpu")
+    dummy = nt_internal._nt_view_dummy()
+    min_seqlen = torch.tensor(3, device="tpu")
+    max_seqlen = torch.tensor(4, device="tpu")
+
+    nt = torch._nested_view_from_jagged(
+        values,
+        offsets,
+        dummy,
+        min_seqlen=min_seqlen,
+        max_seqlen=max_seqlen,
+    )
+    self.assertEqual(nt.device.type, "tpu")
+    self.assertEqual(nt.layout, torch.jagged)
+    utils.assert_close(nt.values().cpu(), values.cpu())
+
+  def test_nested_view_from_jagged_dtypes(self):
+    """Tests _nested_view_from_jagged across multiple supported dtypes."""
+    for dtype in [
+        torch.float32,
+        torch.bfloat16,
+        torch.float64,
+        torch.int32,
+        torch.int64,
+        torch.bool,
+    ]:
+      if dtype == torch.bool:
+        values = torch.tensor([True, False, True, True, False], device="tpu")
+      elif dtype in (torch.int32, torch.int64):
+        values = torch.tensor([1, 2, 3, 4, 5], dtype=dtype, device="tpu")
+      else:
+        values = torch.randn(5, 2, dtype=dtype, device="tpu")
+
+      offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device="tpu")
+      dummy = nt_internal._nt_view_dummy()
+
+      nt = torch._nested_view_from_jagged(values, offsets, dummy)
+      self.assertEqual(nt.dtype, dtype)
+      self.assertEqual(nt.device.type, "tpu")
+      self.assertEqual(nt.layout, torch.jagged)
+      utils.assert_close(nt.values().cpu(), values.cpu())
+
+  def test_nested_view_from_jagged_mutation_aliasing(self):
+    """Verifies that _nested_view_from_jagged creates an aliased view."""
+    values = torch.zeros(5, 2, device="tpu")
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device="tpu")
+    dummy = nt_internal._nt_view_dummy()
+
+    nt = torch._nested_view_from_jagged(values, offsets, dummy)
+
+    # In-place add on values buffer should be reflected in the view
+    values.add_(5.0)
+    utils.assert_close(nt.values().cpu(), torch.full((5, 2), 5.0))
+
+  # ---------------------------------------------------------------------------
+  # _nested_from_padded_tensor Unit Tests
+  # ---------------------------------------------------------------------------
+
+  def test_nested_from_padded_tensor_eager_conversion_and_cpu_parity(self):
+    """Tests _nested_from_padded_tensor conversion and CPU parity."""
+    # Input dense tensor shape: (B=2, max_seqlen=3, D=2)
+    # Batch item 0: [[1.0, 2.0], [3.0, 4.0], [0.0, 0.0]] (padded with [0, 0] at index 2)
+    # Batch item 1: [[5.0, 6.0], [7.0, 8.0], [9.0, 10.0]] (full length 3)
+    dense_cpu = torch.tensor(
+        [
+            [[1.0, 2.0], [3.0, 4.0], [0.0, 0.0]],
+            [[5.0, 6.0], [7.0, 8.0], [9.0, 10.0]],
+        ],
+        dtype=torch.float32,
+    )
+    # Offsets [0, 2, 5]:
+    # - Batch 0 takes length 2 - 0 = 2 tokens: dense[0, 0:2, :] -> [[1.0, 2.0], [3.0, 4.0]]
+    # - Batch 1 takes length 5 - 2 = 3 tokens: dense[1, 0:3, :] -> [[5.0, 6.0], [7.0, 8.0], [9.0, 10.0]]
+    # Total extracted tokens: sum_S = 2 + 3 = 5
+    offsets_cpu = torch.tensor([0, 2, 5], dtype=torch.int64)
+    dummy_cpu = nt_internal._nt_view_dummy()
+
+    nt_cpu = torch.ops.aten._nested_from_padded_tensor(
+        dense_cpu, offsets_cpu, dummy_cpu, sum_S=5
+    )
+
+    dense_tpu = dense_cpu.to("tpu")
+    offsets_tpu = offsets_cpu.to("tpu")
+    dummy_tpu = nt_internal._nt_view_dummy()
+
+    nt_tpu = torch.ops.aten._nested_from_padded_tensor(
+        dense_tpu, offsets_tpu, dummy_tpu, sum_S=5
+    )
+
+    self.assertEqual(nt_tpu.device.type, "tpu")
+    self.assertEqual(nt_tpu.layout, torch.jagged)
+    self.assertEqual(nt_tpu.shape[0], nt_cpu.shape[0])
+    self.assertEqual(nt_tpu.shape[2], nt_cpu.shape[2])
+
+    # Explicitly verify against manually constructed expected values buffer (5, 2)
+    expected_values = torch.tensor(
+        [
+            [1.0, 2.0],
+            [3.0, 4.0],
+            [5.0, 6.0],
+            [7.0, 8.0],
+            [9.0, 10.0],
+        ],
+        dtype=torch.float32,
+    )
+    utils.assert_close(nt_tpu.values().cpu(), expected_values)
+    utils.assert_close(nt_tpu.values().cpu(), nt_cpu.values())
+    utils.assert_close(nt_tpu.offsets().cpu(), offsets_cpu)
+
+  def test_nested_from_padded_tensor_with_min_max_seqlen(self):
+    """Tests _nested_from_padded_tensor with min/max seqlen metadata."""
+    # Input dense tensor shape: (B=2, max_seqlen=4, D=3)
+    # Offsets [0, 2, 6]:
+    # - Batch 0 takes length 2 - 0 = 2 tokens (dense[0, :2, :])
+    # - Batch 1 takes length 6 - 2 = 4 tokens (dense[1, :4, :])
+    # - Total unpadded tokens = 2 + 4 = 6, yielding a flat values shape of (6, 3).
+    dense = torch.randn(2, 4, 3, device="tpu")
+    offsets = torch.tensor([0, 2, 6], dtype=torch.int64, device="tpu")
+    dummy = nt_internal._nt_view_dummy()
+    min_seqlen = torch.tensor(2, device="tpu")
+    max_seqlen = torch.tensor(4, device="tpu")
+
+    nt = torch.ops.aten._nested_from_padded_tensor(
+        dense,
+        offsets,
+        dummy,
+        ragged_idx=1,
+        min_seqlen=min_seqlen,
+        max_seqlen=max_seqlen,
+        sum_S=6,
+    )
+    self.assertEqual(nt.device.type, "tpu")
+    self.assertEqual(nt.layout, torch.jagged)
+    self.assertEqual(nt.values().shape, (6, 3))
+
+  def test_nested_from_padded_tensor_dtypes(self):
+    """Tests _nested_from_padded_tensor across multiple dtypes with CPU parity."""
+    offsets_cpu = torch.tensor([0, 2, 5], dtype=torch.int64)
+    dummy_cpu = nt_internal._nt_view_dummy()
+    offsets_tpu = offsets_cpu.to("tpu")
+    dummy_tpu = nt_internal._nt_view_dummy()
+
+    for dtype in [
+        torch.float32,
+        torch.bfloat16,
+        torch.float64,
+        torch.int32,
+        torch.int64,
+        torch.bool,
+    ]:
+      if dtype == torch.bool:
+        dense_cpu = torch.tensor(
+            [
+                [[True, False], [True, True], [False, False]],
+                [[False, True], [True, False], [True, True]],
+            ],
+            dtype=dtype,
+        )
+      elif dtype in (torch.int32, torch.int64):
+        dense_cpu = torch.tensor(
+            [[[1, 2], [3, 4], [0, 0]], [[5, 6], [7, 8], [9, 10]]],
+            dtype=dtype,
+        )
+      else:
+        dense_cpu = torch.randn(2, 3, 4, dtype=dtype)
+
+      dense_tpu = dense_cpu.to("tpu")
+
+      nt_cpu = torch.ops.aten._nested_from_padded_tensor(
+          dense_cpu, offsets_cpu, dummy_cpu, sum_S=5
+      )
+      nt_tpu = torch.ops.aten._nested_from_padded_tensor(
+          dense_tpu, offsets_tpu, dummy_tpu, sum_S=5
+      )
+
+      self.assertEqual(nt_tpu.dtype, dtype)
+      self.assertEqual(nt_tpu.device.type, "tpu")
+      self.assertEqual(nt_tpu.layout, torch.jagged)
+      self.assertEqual(nt_tpu.shape[0], nt_cpu.shape[0])
+      self.assertEqual(nt_tpu.shape[2], nt_cpu.shape[2])
+      utils.assert_close(nt_tpu.values().cpu(), nt_cpu.values())
+      utils.assert_close(nt_tpu.offsets().cpu(), nt_cpu.offsets())
+
+  # ---------------------------------------------------------------------------
+  # _nested_get_* Accessor Primitives Unit Tests
+  # ---------------------------------------------------------------------------
+
+  def test_nested_get_accessors(self):
+    """Tests ATen _nested_get_* accessor primitives on jagged nested tensors."""
+    values = torch.randn(5, 3, device="tpu", requires_grad=True)
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device="tpu")
+
+    nt = nt_internal.nested_view_from_values_offsets(
+        values, offsets, min_seqlen=2, max_seqlen=3
+    )
+
+    extracted_values = torch.ops.aten._nested_get_values(nt)
+    extracted_offsets = torch.ops.aten._nested_get_offsets(nt)
+    extracted_min_seqlen = torch.ops.aten._nested_get_min_seqlen(nt)
+    extracted_max_seqlen = torch.ops.aten._nested_get_max_seqlen(nt)
+    extracted_ragged_idx = torch.ops.aten._nested_get_ragged_idx(nt)
+    dummy = torch.ops.aten._nested_get_jagged_dummy(nt)
+
+    self.assertEqual(extracted_values.device.type, "tpu")
+    self.assertEqual(extracted_offsets.device.type, "tpu")
+    utils.assert_close(extracted_values.cpu(), values.cpu())
+    utils.assert_close(extracted_offsets.cpu(), offsets.cpu())
+    if extracted_min_seqlen.numel() > 0:
+      self.assertEqual(extracted_min_seqlen.item(), 2)
+    if extracted_max_seqlen.numel() > 0:
+      self.assertEqual(extracted_max_seqlen.item(), 3)
+    self.assertEqual(extracted_ragged_idx, 1)
+    self.assertIsNotNone(dummy)
+
+    # Verify autograd flows through _nested_get_values
+    loss = (extracted_values * 2.0).sum()
+    loss.backward()
+    self.assertIsNotNone(values.grad)
+    utils.assert_close(values.grad.cpu(), torch.full_like(values.cpu(), 2.0))
 
   # ---------------------------------------------------------------------------
   # Conversion Operators: Jagged <-> Padded Dense Tests

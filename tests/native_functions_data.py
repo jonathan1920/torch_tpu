@@ -90,17 +90,11 @@ UNREGISTERED_OPS = frozenset([
     '_mkldnn_transpose_',
     '_mps_convolution',
     '_mps_convolution_transpose',
+    # Legacy NestedTensor 1.0 operators (buffer-based storage with
+    # nested_sizes/strides metadata, superseded by modern torch.jagged):
     '_nested_compute_contiguous_strides_offsets',
     '_nested_from_padded',
     '_nested_from_padded_and_nested_example',
-    '_nested_from_padded_tensor',
-    '_nested_get_jagged_dummy',
-    '_nested_get_lengths',
-    '_nested_get_max_seqlen',
-    '_nested_get_min_seqlen',
-    '_nested_get_offsets',
-    '_nested_get_ragged_idx',
-    '_nested_get_values',
     '_nested_select_backward',
     '_nested_sum_backward',
     '_nested_tensor_from_mask',
@@ -110,7 +104,7 @@ UNREGISTERED_OPS = frozenset([
     '_nested_tensor_storage_offsets',
     '_nested_tensor_strides',
     '_nested_view_from_buffer',
-    '_nested_view_from_jagged',
+    # Other unregistered operators:
     '_nnz',
     '_philox_key_fold_in',
     '_philox_key_fold_in.Tensor',

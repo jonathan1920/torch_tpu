@@ -824,6 +824,15 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kNeScalarOut>(m, AtenNeScalarOut);
   ImplStable<OpName::kNeTensorOut>(m, AtenNeTensorOut);
   ImplStable<OpName::kNegOut>(m, AtenNegOut);
+  ImplStable<OpName::kNestedFromPaddedTensor>(m, AtenNestedFromPaddedTensor);
+  ImplStable<OpName::kNestedGetJaggedDummy>(m, AtenNestedGetJaggedDummy);
+  ImplStable<OpName::kNestedGetLengths>(m, AtenNestedGetLengths);
+  ImplStable<OpName::kNestedGetMaxSeqlen>(m, AtenNestedGetMaxSeqlen);
+  ImplStable<OpName::kNestedGetMinSeqlen>(m, AtenNestedGetMinSeqlen);
+  ImplStable<OpName::kNestedGetOffsets>(m, AtenNestedGetOffsets);
+  ImplStable<OpName::kNestedGetRaggedIdx>(m, AtenNestedGetRaggedIdx);
+  ImplStable<OpName::kNestedGetValues>(m, AtenNestedGetValues);
+  ImplStable<OpName::kNestedViewFromJagged>(m, AtenNestedViewFromJagged);
   ImplStable<OpName::kNllLoss2dBackward>(m, AtenNllLoss2dBackward);
   ImplStable<OpName::kNllLoss2dBackwardGradInput>(
       m, AtenNllLoss2dBackwardGradInput);

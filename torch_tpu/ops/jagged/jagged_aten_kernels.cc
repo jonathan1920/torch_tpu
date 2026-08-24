@@ -555,4 +555,78 @@ at::Tensor AtenPaddedDenseToJaggedForward(const at::Tensor& dense,
             });
 }
 
+// =============================================================================
+// Nested Tensor (torch.jagged) View Construction and Metadata Accessors
+// =============================================================================
+// In PyTorch's jagged nested tensor architecture (torch.jagged layout), a
+// jagged tensor is represented by a flat values buffer (`self`) and associated
+// sequence metadata (offsets, lengths, ragged dimension index, and min/max
+// sequence length bounds).
+//
+// At the backend device level (PrivateUse1):
+// 1. Zero-Copy Buffer Sharing: View constructors (`_nested_view_from_jagged`,
+//    `_nested_from_padded_tensor`) and buffer accessors (`_nested_get_values`,
+//    `_nested_get_jagged_dummy`) reuse the underlying device buffer via
+//    `self.alias()`, ensuring zero-copy performance and transparent backward
+//    autograd gradient propagation.
+// 2. Metadata Decoupling: Arguments such as `offsets`, `lengths`, `ragged_idx`,
+//    and sequence bounds are purely metadata encapsulated on the frontend
+//    NestedTensor wrapper. They do not alter physical TPU memory layout or
+//    require device execution graphs, and are ignored in StableHLO cache keys.
+// =============================================================================
+
+at::Tensor AtenNestedViewFromJagged(
+    const at::Tensor& self, const at::Tensor& offsets, const at::Tensor& dummy,
+    const std::optional<at::Tensor>& lengths, int64_t ragged_idx,
+    const std::optional<at::Tensor>& min_seqlen,
+    const std::optional<at::Tensor>& max_seqlen) {
+  TT_KERNEL(
+      OpName::kNestedViewFromJagged, _,
+      (self, offsets, dummy, IgnoreInCacheKey(lengths, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(ragged_idx, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(min_seqlen, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(max_seqlen, "Doesn't affect SHLO")),
+      { return self.alias(); });
+}
+
+at::Tensor AtenNestedFromPaddedTensor(
+    const at::Tensor& padded, const at::Tensor& offsets,
+    const at::Tensor& dummy, int64_t ragged_idx,
+    const std::optional<at::Tensor>& min_seqlen,
+    const std::optional<at::Tensor>& max_seqlen,
+    std::optional<c10::SymInt> sum_S) {
+  at::Tensor values = AtenPaddedDenseToJaggedForward(padded, {offsets}, sum_S);
+  return AtenNestedViewFromJagged(values, offsets, dummy,
+                                  /*lengths=*/std::nullopt, ragged_idx,
+                                  min_seqlen, max_seqlen);
+}
+
+at::Tensor AtenNestedGetValues(const at::Tensor& self) {
+  TT_KERNEL(OpName::kNestedGetValues, _, (self), { return self.alias(); });
+}
+
+at::Tensor AtenNestedGetOffsets(const at::Tensor& self) {
+  TT_KERNEL(OpName::kNestedGetOffsets, _, (self), { return at::Tensor(); });
+}
+
+at::Tensor AtenNestedGetLengths(const at::Tensor& self) {
+  TT_KERNEL(OpName::kNestedGetLengths, _, (self), { return at::Tensor(); });
+}
+
+int64_t AtenNestedGetRaggedIdx(const at::Tensor& self) {
+  TT_KERNEL(OpName::kNestedGetRaggedIdx, _, (self), { return 1; });
+}
+
+at::Tensor AtenNestedGetMinSeqlen(const at::Tensor& self) {
+  TT_KERNEL(OpName::kNestedGetMinSeqlen, _, (self), { return at::Tensor(); });
+}
+
+at::Tensor AtenNestedGetMaxSeqlen(const at::Tensor& self) {
+  TT_KERNEL(OpName::kNestedGetMaxSeqlen, _, (self), { return at::Tensor(); });
+}
+
+at::Tensor AtenNestedGetJaggedDummy(const at::Tensor& any) {
+  TT_KERNEL(OpName::kNestedGetJaggedDummy, _, (any), { return any.alias(); });
+}
+
 }  // namespace torch_tpu
