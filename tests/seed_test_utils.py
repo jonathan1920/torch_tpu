@@ -44,6 +44,7 @@ class SeededTest(parameterized.TestCase):
   """
 
   test_random_seed: int = DEFAULT_RANDOM_SEED
+  seed_in_setup: bool = True
 
   @classmethod
   def setUpClass(cls) -> None:
@@ -56,8 +57,9 @@ class SeededTest(parameterized.TestCase):
 
   def setUp(self) -> None:
     super().setUp()
-    # Set the random seed for Python and Torch.
-    seed_rngs(self.test_random_seed)
+    if self.seed_in_setup:
+      # Set the random seed for Python and Torch.
+      seed_rngs(self.test_random_seed)
 
 
 class RepeatableTest(SeededTest):
@@ -88,6 +90,21 @@ class RepeatableTest(SeededTest):
       # The user explicitly passed --test_random_seed=N, so we use that value.
       return absltest.FLAGS.test_random_seed
     return DEFAULT_RANDOM_SEED
+
+
+class MultiProcessRepeatableTest(RepeatableTest):
+  """Base class for multi-process TPU tests that launch processes via mp.spawn.
+
+  Disables seeding in setUp() in the main process to prevent torch.manual_seed
+  from initializing and locking the TPU device before child processes are
+  spawned.
+
+  # TODO: b/549297098 - Implement automatic per-rank RNG seeding in
+  # distributed_utils to resolve TPU device conflicts and ensure test
+  # reproducibility.
+  """
+
+  seed_in_setup = False
 
 
 class VaryingSeedInPostsubmitTest(SeededTest):

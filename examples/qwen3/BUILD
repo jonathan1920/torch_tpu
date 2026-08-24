@@ -119,6 +119,7 @@ torch_tpu_py_test(
         "//shims/gpu_profiler:gpuprof_lib",  # buildcleaner: keep
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/profiler:xprof_adapter",
@@ -351,6 +352,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
@@ -372,6 +374,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
@@ -393,6 +396,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",

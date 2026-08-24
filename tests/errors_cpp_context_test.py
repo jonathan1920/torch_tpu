@@ -19,14 +19,15 @@ import re
 from absl.testing import absltest
 
 # Enable C++ context in pytorch error messages. This must be done before
-# importing torch.
+# importing torch or seed_test_utils (which imports torch).
 os.environ["TORCH_SHOW_CPP_STACKTRACES"] = "1"
 
 import torch  # pylint: disable=g-import-not-at-top
 from torch_tpu._internal import testing as tt_testing
+from tests import seed_test_utils
 
 
-class TestErrorsWithCppContext(absltest.TestCase):
+class TestErrorsWithCppContext(seed_test_utils.RepeatableTest):
   """Tests that C++ error traces are included in error messages when requested."""
 
   def setUp(self):

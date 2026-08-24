@@ -1406,6 +1406,7 @@ torch_tpu_py_library(
     srcs = ["error_testing.py"],
     visibility = ["//:__subpackages__"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -1606,6 +1607,7 @@ torch_tpu_py_test(
     srcs = ["errors_cpp_context_test.py"],
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -1999,7 +2001,6 @@ torch_tpu_py_test(
         "requires-gpu-nvidia",
     ],
     deps = [
-        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
@@ -2475,6 +2476,7 @@ torch_tpu_py_test(
     srcs = ["large_invert_non_strided_slice_test.py"],
     tags = ["requires-tpu-v5lite"],
     deps = [
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
