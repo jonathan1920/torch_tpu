@@ -635,6 +635,35 @@ class CompiledRngTest(_BaseRngTest):
     with self.assertRaises(torch._dynamo.exc.Unsupported):
       torch.compile(fn_create_gen, fullgraph=True)(x)
 
+  def test_compiled_manual_seed_supported_with_graph_breaks(self):
+    """Verifies seeding works under standard compile."""
+    x = torch.zeros(10, device=self.device)
+
+    def fn(x):
+      torch.manual_seed(42)
+      return torch.rand_like(x)
+
+    compiled_fn = torch.compile(fn)
+    out = compiled_fn(x)
+    self.assertEqual(out.shape, x.shape)
+
+  def test_compiled_generator_supported_with_graph_breaks(self):
+    """Verifies generators work under standard compile."""
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+    x = torch.zeros(10, device=self.device)
+
+    def fn(x, gen):
+      g_local = torch.Generator(device=self.device)
+      g_local.manual_seed(42)
+      out1 = torch.rand_like(x, generator=gen)
+      out2 = torch.rand_like(x, generator=g_local)
+      return out1 + out2
+
+    compiled_fn = torch.compile(fn)
+    out = compiled_fn(x, g)
+    self.assertEqual(out.shape, x.shape)
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
