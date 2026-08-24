@@ -17,6 +17,7 @@
 # buildifier: disable=unused-load
 load(
     "//build_files:build_defs.bzl",
+    "oss_target",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
 )
@@ -26,18 +27,16 @@ package(
     default_visibility = ["//:__subpackages__"],
 )
 
-# copybara:comment_begin(oss-only)
-torch_tpu_py_library(
+oss_target(
+    torch_tpu_py_library,
     name = "benchmark_adapter",
     srcs = ["benchmark_adapter.py"],
 )
-# copybara:comment_end
 
-# copybara:comment_begin(oss-only)
-torch_tpu_py_library(
+oss_target(
+    torch_tpu_py_library,
     name = "export_adapter",
     srcs = ["export_adapter.py"],
 )
-# copybara:comment_end
 
 torch_tpu_package_end()

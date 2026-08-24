@@ -14,6 +14,7 @@
 
 load(
     "//build_files:build_defs.bzl",
+    "oss_target",
     "torch_tpu_cc_library",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
@@ -134,14 +135,13 @@ pybind_extension(
     ],
 )
 
-# copybara:comment_begin(oss-only)
-torch_tpu_py_library(
+oss_target(
+    torch_tpu_py_library,
     name = "multiprocessing",
     srcs = ["multiprocessing.py"],
     deps = [
         "//shims/absl_py:app",
     ],
 )
-# copybara:comment_end
 
 torch_tpu_package_end()

@@ -23,6 +23,7 @@ load(
 load("//bazel:pywrap_extensions.bzl", "PYWRAP_EXTENSIONS")
 load(
     "//build_files:build_defs.bzl",
+    "oss_target",
     "torch_tpu_cc_library",
     "torch_tpu_cc_test",
     "torch_tpu_package_end",
@@ -848,8 +849,8 @@ torch_tpu_cc_library(
     ],
 )
 
-# copybara:comment_begin(oss-only)
-torch_tpu_cc_library(
+oss_target(
+    torch_tpu_cc_library,
     name = "environment",
     srcs = ["environment.cc"],
     hdrs = ["environment.h"],
@@ -864,7 +865,8 @@ torch_tpu_cc_library(
     ],
 )
 
-torch_tpu_cc_test(
+oss_target(
+    torch_tpu_cc_test,
     name = "environment_test",
     srcs = ["environment_test.cc"],
     requires_libtpu = True,
@@ -876,7 +878,6 @@ torch_tpu_cc_test(
         "@com_google_absl//absl/status",
     ],
 )
-# copybara:comment_end
 
 torch_tpu_cc_library(
     name = "thread_pool",
@@ -1095,8 +1096,8 @@ torch_tpu_cc_library(
     ],
 )
 
-# copybara:comment_begin(oss-only)
-torch_tpu_cc_library(
+oss_target(
+    torch_tpu_cc_library,
     name = "contain",
     srcs = ["contain.cc"],
     hdrs = ["contain.h"],
@@ -1105,7 +1106,6 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status:statusor",
     ],
 )
-# copybara:comment_end
 
 torch_tpu_cc_library(
     name = "compilation_test_helper",
