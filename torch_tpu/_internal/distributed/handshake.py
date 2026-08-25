@@ -392,6 +392,41 @@ class RankCollectiveCounts:
     return count.collective_count_before + count.num_collectives_in_graph
 
 
+def should_handshake(
+    pg_to_num_collectives: dict[ProcessGroupId, int],
+) -> bool:
+  """Checks whether a handshake should be performed for the given collective counts.
+
+  Returns True if there is at least one collective and the only process group
+  is the global process group. Otherwise returns False. The global process group
+  behavior is temporary, and will be generalized in the near future.
+
+  Args:
+    pg_to_num_collectives: A dictionary mapping ProcessGroupId to collective
+      count.
+
+  Returns:
+    True if handshake should be performed, False otherwise.
+  """
+  if not pg_to_num_collectives:
+    return False
+
+  world_size = dist.get_world_size()
+  global_pg = ProcessGroupId(range(world_size), world_size=world_size)
+
+  # TODO(b/542976786): We currently Handshake only on global process
+  # groups.
+  if len(pg_to_num_collectives) != 1 or global_pg not in pg_to_num_collectives:
+    logging.warning(
+        "We do not support non global PG handshakes: expected only the global"
+        " process group, got %s.",
+        list(pg_to_num_collectives.keys()),
+    )
+    return False
+
+  return True
+
+
 class CollectiveHandshakeRequest:
   """Request payload for collective handshake consensus.
 

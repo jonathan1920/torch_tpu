@@ -50,6 +50,7 @@ ProcessGroupId = handshake.ProcessGroupId
 ProcessGroupCollectiveCount = handshake.ProcessGroupCollectiveCount
 _get_handshake_timeout_s = handshake._get_handshake_timeout_s
 RankCollectiveCounts = handshake.RankCollectiveCounts
+should_handshake = handshake.should_handshake
 
 
 def _make_request(
@@ -388,6 +389,34 @@ class RankCollectiveCountsTest(seed_test_utils.RepeatableTest):
     })
     with self.assertRaises(KeyError):
       counts.collective_count(ProcessGroupId([0, 1, 2, 3]))
+
+
+class ShouldHandshakeTest(seed_test_utils.RepeatableTest):
+  """Unit tests for should_handshake function."""
+
+  def setUp(self) -> None:
+    super().setUp()
+    self.world_size = 4
+    self.enter_context(
+        mock.patch.object(dist, "get_world_size", return_value=self.world_size)
+    )
+
+  def test_empty_dict(self) -> None:
+    self.assertFalse(should_handshake({}))
+
+  def test_global_process_group_returns_true(self) -> None:
+    global_pg = ProcessGroupId(range(4), self.world_size)
+    self.assertTrue(should_handshake({global_pg: 1}))
+    self.assertTrue(should_handshake({global_pg: 3}))
+
+  def test_sub_process_group_returns_false(self) -> None:
+    sub_pg = ProcessGroupId((0,), self.world_size)
+    self.assertFalse(should_handshake({sub_pg: 1}))
+
+  def test_multiple_process_groups_returns_false(self) -> None:
+    global_pg = ProcessGroupId(range(4), self.world_size)
+    sub_pg = ProcessGroupId((0,), self.world_size)
+    self.assertFalse(should_handshake({global_pg: 1, sub_pg: 1}))
 
 
 class CollectiveHandshakeRequestTest(seed_test_utils.RepeatableTest):
