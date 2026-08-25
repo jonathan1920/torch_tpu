@@ -822,7 +822,6 @@ def torch_tpu_py_test(
         args = None,
         shuffle_tests = True,
         autoload = True,
-        require_torch_tpu_dep = True,
         is_wheel_test = False,
         extra_pywrap_deps = ["//torch_tpu/common:pywrap_torch_tpu"],
         strict = False,
@@ -851,11 +850,8 @@ def torch_tpu_py_test(
         args: The arguments to pass to the test.
         shuffle_tests: Whether to shuffle the test cases.
         autoload: Enable autoload during the tests.
-        require_torch_tpu_dep: Whether to require //torch_tpu in deps.
-            Set to False for wheel tests that test wheel artifacts directly.
         is_wheel_test: Whether this test tests built wheel artifacts directly.
-            If True, automatically sets require_torch_tpu_dep to False and adds
-            :torch_tpu_wheel to data.
+            If True, automatically adds :torch_tpu_wheel to data.
         extra_pywrap_deps: Additional pywrap dependencies to add to the test.
         strict: Whether to use pytype.
         size: The size of the test.
@@ -910,7 +906,6 @@ def torch_tpu_py_test(
     tags = tags or []
     data = kwargs.pop("data", [])
     if is_wheel_test:
-        require_torch_tpu_dep = False
         if ":torch_tpu_wheel" not in data:
             data.append(":torch_tpu_wheel")
     if is_oss():
@@ -948,9 +943,9 @@ def torch_tpu_py_test(
 
     deps_to_add = []
 
-    # For wheel-only tests (require_torch_tpu_dep = False), skip enforcing
+    # For wheel-only tests (is_wheel_test = True), skip enforcing
     # //torch_tpu dependency and automatic environment setup.
-    if not require_torch_tpu_dep:
+    if is_wheel_test:
         test_env = existing_env or {}
     else:
         existing_env = existing_env or {}
