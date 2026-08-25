@@ -165,8 +165,13 @@ def _route_backend_deps_through_fixed(name, deps):
         "//conditions:default": pinned,
     })
 
+def _get_tpu_version(tag):
+    """Extracts the TPU version from a requires- tag, sanitized for target names."""
+    return tag[len("requires-"):].replace(":", "_")
+
 # Exported for build_defs_test.bzl.
 is_backend_dep_for_testing = is_backend_dep
+get_tpu_version_for_testing = _get_tpu_version
 
 def torch_tpu_cc_library(name, srcs = [], hdrs = [], copts = None, features = None, **kwargs):
     """Creates a C++ library for torch_tpu.
@@ -837,6 +842,7 @@ def torch_tpu_py_test(
         nopresubmit_oss = None,
         nonightly_oss = None,
         oss_presubmit_tpu_generation = None,
+        run_on_accelerators = None,
         tags = None,
         **kwargs):
     """Creates a py_test for torch_tpu.
@@ -884,6 +890,11 @@ def torch_tpu_py_test(
             OSS.
         oss_presubmit_tpu_generation: Optional integer specifying the TPU generation to run this
             test on in OSS presubmit.
+        run_on_accelerators: Optional list of `require-ACCELERATOR` tags to run the test on. If
+            this is provided, generate a test target for each element in the list. The name of
+            each target will be `<name>_<accelerator>`. For example, if this is set to
+            `["requires-foo:8", "requires-bar"]`, two targets will be created:
+            `<name>_foo_8` and `<name>_bar`.
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
@@ -911,28 +922,6 @@ def torch_tpu_py_test(
     if is_oss():
         data.append("@bazel_tools//tools/bash/runfiles")
     kwargs["data"] = data
-    result = _check_and_adjust_test_tags(
-        name = name,
-        is_oss = is_oss(),
-        size = size,
-        timeout = timeout,
-        nobuild = nobuild,
-        notap = notap,
-        nopresubmit = nopresubmit,
-        nolocal = nolocal,
-        notest_oss = notest_oss,
-        nobuild_oss = nobuild_oss,
-        nopresubmit_oss = nopresubmit_oss,
-        nonightly_oss = nonightly_oss,
-        oss_presubmit_tpu_generation = oss_presubmit_tpu_generation,
-        tags = tags,
-    )
-    if result.create_build_test:
-        build_test(
-            name = name + "_build_test",
-            targets = [":" + name],
-            tags = result.build_test_tags,
-        )
 
     # Remove internal-only attributes
     if is_oss():
@@ -1098,17 +1087,51 @@ def torch_tpu_py_test(
         rule = pytype_strict_contrib_test
     else:
         rule = py_test
-    rule(
-        name = name,
-        srcs = srcs,
-        args = args,
-        size = size,
-        timeout = timeout,
-        deps = all_deps,
-        env = test_env,
-        tags = tags,
-        **kwargs
-    )
+    run_on_accelerators = run_on_accelerators or []
+    if run_on_accelerators:
+        target_specs = [
+            (name + "_" + _get_tpu_version(requires_acc), [requires_acc])
+            for requires_acc in run_on_accelerators
+        ]
+    else:
+        target_specs = [(name, [])]
+
+    for target_name, additional_tags in target_specs:
+        target_tags = tags + additional_tags
+        result = _check_and_adjust_test_tags(
+            name = target_name,
+            is_oss = is_oss(),
+            size = size,
+            timeout = timeout,
+            nobuild = nobuild,
+            notap = notap,
+            nopresubmit = nopresubmit,
+            nolocal = nolocal,
+            notest_oss = notest_oss,
+            nobuild_oss = nobuild_oss,
+            nopresubmit_oss = nopresubmit_oss,
+            nonightly_oss = nonightly_oss,
+            oss_presubmit_tpu_generation = oss_presubmit_tpu_generation,
+            tags = target_tags,
+        )
+        if result.create_build_test:
+            build_test(
+                name = target_name + "_build_test",
+                targets = [":" + target_name],
+                tags = result.build_test_tags,
+            )
+
+        rule(
+            name = target_name,
+            srcs = srcs,
+            args = args,
+            size = size,
+            timeout = timeout,
+            deps = all_deps,
+            env = test_env,
+            tags = target_tags,
+            **kwargs
+        )
 
 # Enable build_cleaner to clean up deps for torch_tpu_py_test.
 register_extension_info(

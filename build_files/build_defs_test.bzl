@@ -16,7 +16,18 @@
 
 load("@rules_testing//lib:analysis_test.bzl", "analysis_test")
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
-load("//build_files:build_defs.bzl", "check_and_adjust_test_tags_for_testing", "is_backend_dep_for_testing", "is_oss", "torch_tpu_cc_test", "torch_tpu_py_test", "tpu_gen")
+load(
+    "//build_files:build_defs.bzl",
+    # go/keep-sorted start
+    "check_and_adjust_test_tags_for_testing",
+    "get_tpu_version_for_testing",
+    "is_backend_dep_for_testing",
+    "is_oss",
+    "torch_tpu_cc_test",
+    "torch_tpu_py_test",
+    "tpu_gen",
+    # go/keep-sorted end
+)
 
 _TagsInfo = provider(
     "Provider for extracting rule attributes during analysis tests.",
@@ -77,6 +88,113 @@ def _test_py_test_select_env(name):
         impl = _test_py_test_select_env_impl,
         targets = {"subject": name + "_subject"},
         attrs = {"subject": {"aspects": [tags_aspect]}},
+    )
+
+def _test_py_test_multi_tpu_targets_impl(env, targets):
+    """Verifies that torch_tpu_py_test expands multiple requires-TPU tags into per-TPU targets with tag isolation."""
+    target_v5_tags = targets.target_v5[_TagsInfo].tags
+    target_v6_tags = targets.target_v6[_TagsInfo].tags
+
+    # Target 1 (v5)
+    env.expect.that_collection(target_v5_tags).contains("requires-tpu-v5lite")
+    env.expect.that_collection(target_v5_tags).contains("custom_tag")
+    env.expect.that_collection(target_v5_tags).not_contains("requires-tpu-v6e")
+
+    # Target 2 (v6)
+    env.expect.that_collection(target_v6_tags).contains("requires-tpu-v6e")
+    env.expect.that_collection(target_v6_tags).contains("custom_tag")
+    env.expect.that_collection(target_v6_tags).not_contains("requires-tpu-v5lite")
+
+def _test_py_test_multi_tpu_targets(name):
+    torch_tpu_py_test(
+        name = name + "_subject",
+        srcs = ["build_defs_test.py"],
+        main = "build_defs_test.py",
+        is_wheel_test = True,
+        tags = [
+            "custom_tag",
+        ],
+        run_on_accelerators = [
+            "requires-tpu-v5lite",
+            "requires-tpu-v6e",
+        ],
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_py_test_multi_tpu_targets_impl,
+        targets = {
+            "target_v5": name + "_subject_" + get_tpu_version_for_testing("requires-tpu-v5lite"),
+            "target_v6": name + "_subject_" + get_tpu_version_for_testing("requires-tpu-v6e"),
+        },
+        attrs = {
+            "target_v5": {"aspects": [tags_aspect]},
+            "target_v6": {"aspects": [tags_aspect]},
+        },
+    )
+
+def _test_py_test_single_tpu_target_impl(env, targets):
+    """Verifies that torch_tpu_py_test with a single TPU tag creates target with original name."""
+    tags = targets.subject[_TagsInfo].tags
+    env.expect.that_collection(tags).contains("requires-tpu-v5lite")
+    env.expect.that_collection(tags).contains("custom_tag")
+
+def _test_py_test_single_tpu_target(name):
+    torch_tpu_py_test(
+        name = name + "_subject",
+        srcs = ["build_defs_test.py"],
+        main = "build_defs_test.py",
+        is_wheel_test = True,
+        tags = [
+            "custom_tag",
+            "requires-tpu-v5lite",
+        ],
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_py_test_single_tpu_target_impl,
+        targets = {
+            "subject": name + "_subject",
+        },
+        attrs = {
+            "subject": {"aspects": [tags_aspect]},
+        },
+    )
+
+def _test_py_test_non_tpu_requires_tags_impl(env, targets):
+    """Verifies that non-TPU requires-* tags do not trigger multi-target splitting."""
+    tags = targets.subject[_TagsInfo].tags
+    env.expect.that_collection(tags).contains("requires-net:external")
+    env.expect.that_collection(tags).contains("requires-mem:16g")
+
+def _test_py_test_non_tpu_requires_tags(name):
+    torch_tpu_py_test(
+        name = name + "_subject",
+        srcs = ["build_defs_test.py"],
+        main = "build_defs_test.py",
+        is_wheel_test = True,
+        tags = [
+            "requires-net:external",
+            "requires-mem:16g",
+        ],
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_py_test_non_tpu_requires_tags_impl,
+        targets = {
+            "subject": name + "_subject",
+        },
+        attrs = {
+            "subject": {"aspects": [tags_aspect]},
+        },
     )
 
 # --- requires_libtpu macro tests ---
@@ -479,6 +597,11 @@ def _test_oss_presubmit_tpu_generation_implicit_default_v5(env):
     )
     env.expect.that_collection(tags).contains("presubmit-v5")
 
+def _test_get_tpu_version(env):
+    env.expect.that_str(get_tpu_version_for_testing("requires-custom_hw")).equals("custom_hw")
+    env.expect.that_str(get_tpu_version_for_testing("requires-custom_hw:8")).equals("custom_hw_8")
+    env.expect.that_str(get_tpu_version_for_testing("requires-accelerator-v1:4")).equals("accelerator-v1_4")
+
 def build_defs_test_suite(name):
     """Creates a test suite for build_defs.bzl, which will run all tests in this file.
 
@@ -488,15 +611,21 @@ def build_defs_test_suite(name):
     test_suite(
         name = name + "_rules_testing",
         tests = [
+            # go/keep-sorted start
             _test_macro_tags,
+            _test_py_test_multi_tpu_targets,
+            _test_py_test_non_tpu_requires_tags,
             _test_py_test_select_env,
-            _test_requires_libtpu_inferred,
-            _test_requires_libtpu_explicit_true,
+            _test_py_test_single_tpu_target,
             _test_requires_libtpu_explicit_false,
+            _test_requires_libtpu_explicit_true,
+            _test_requires_libtpu_inferred,
+            # go/keep-sorted end
         ],
         basic_tests = [
             # go/keep-sorted start
             _test_cuda_build_test,
+            _test_get_tpu_version,
             _test_internal_manual_nonightly_oss_tag,
             _test_internal_manual_nopresubmit_oss_tag,
             _test_internal_nobuild_oss,
