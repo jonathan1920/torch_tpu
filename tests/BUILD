@@ -440,12 +440,16 @@ torch_tpu_py_test(
         "ops_test_gpu_golden_compiled2.gz",
     ],
     main = "ops_test.py",
+    run_on_accelerators = [
+        "requires-tpu-v6e",
+        "requires-tpu-v5lite",
+    ],
     shard_count = 40,
     tags = [
         "noasan",  # TODO: fix the timeout of test_grid_sampler in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the timeout of test_grid_sampler in tsan mode.
-        "requires-tpu-v5lite",
+        "ok-to-wait-for-v6e-in-presubmit",
     ],
     deps = [
         ":dynamism_test_utils",
@@ -684,11 +688,15 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=1",  # No need to test many samples to catch dynamism bugs.
     ],
     main = "ops_test.py",
+    run_on_accelerators = [
+        "requires-tpu-v6e",
+        "requires-tpu-v5lite",
+    ],
     shard_count = 32,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
-        "requires-tpu-v5lite",
+        "ok-to-wait-for-v6e-in-presubmit",
     ],
     deps = [
         ":dynamism_test_utils",
