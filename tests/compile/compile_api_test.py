@@ -800,6 +800,41 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertEqual(res.shape, (2, 2))
     self.assertEqual(res.stride(), (1, 2))
 
+  def test_static_compiler_none_args(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x, y):
+        if y is not None:
+          return x + y
+        return x + x
+
+    model = Model()
+    x = torch.ones((2, 2), device=torch.device('tpu'))
+
+    gm = make_fx(model)(x, None)
+
+    compiler_instance = compiler.StaticCompiler()
+    executable = compiler_instance(gm, [x, None])
+
+    _ = executable([x])
+
+  def test_static_compiler_scalar(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x, y):
+        return x + y
+
+    model = Model()
+    x = torch.ones((2, 2), device=torch.device('tpu'))
+    x.cpu()  # Force materialization to verify layout extraction with scalars
+
+    gm = make_fx(model)(x, 1)
+
+    compiler_instance = compiler.StaticCompiler()
+    executable = compiler_instance(gm, [x, 1])
+
+    _ = executable([x, 1])
+
   def test_dynamic_placeholder(self):
     max_dynamic_dim = 100
     static_dim_1 = 128

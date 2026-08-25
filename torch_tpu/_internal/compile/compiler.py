@@ -248,18 +248,17 @@ class StaticCompiler(Compiler):
         if argument_layouts is None:
           extracted_layouts = []
           for val in example_inputs:
-            if (
-                isinstance(val, torch.Tensor)
-                and val.device.type == "tpu"
-                and not isinstance(val, FakeTensor)
-            ):
-              layout = tpu_torch_compile.get_device_layout_if_materialized(val)
-              if layout is not None:
-                extracted_layouts.append(layout[0])
+            if isinstance(val, torch.Tensor):
+              if val.device.type == "tpu" and not isinstance(val, FakeTensor):
+                layout = tpu_torch_compile.get_device_layout_if_materialized(
+                    val
+                )
+                if layout is not None:
+                  extracted_layouts.append(layout[0])
+                else:
+                  extracted_layouts.append([])
               else:
                 extracted_layouts.append([])
-            else:
-              extracted_layouts.append([])
           if any(extracted_layouts):
             argument_layouts = extracted_layouts
 
