@@ -309,6 +309,54 @@ class StepperTypeTest(seed_test_utils.RepeatableTest):
     torch.accelerator.synchronize()
     self.assertEqual(cache.get_seq_length(), prompt_len + stepper.output_tokens)
 
+  def test_decode_stepper_dynamic_eager(self):
+    ops = self._ops()
+
+    config = transformers.LlamaConfig(
+        vocab_size=16,
+        hidden_size=8,
+        intermediate_size=16,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        num_key_value_heads=2,
+        max_position_embeddings=128,
+    )
+    if not hasattr(config, "head_dim"):
+      config.head_dim = config.hidden_size // config.num_attention_heads
+    model = transformers.LlamaForCausalLM(config).to(ops.device)
+    model.eval()
+
+    prompt_len = 4
+    x = torch.randint(0, 16, (1, prompt_len), device=ops.device)
+
+    stepper = decode.decode(output_tokens=8, dynamism=True)
+    stepper.init_with_benchmark_args(model, (), {"input_ids": x})
+
+    cache = stepper.get_cache()
+    self.assertIsInstance(cache, transformers.cache_utils.DynamicCache)
+    self.assertEqual(cache.get_seq_length(), 0)
+
+    stepper.pre_warmup_init()
+    torch.accelerator.synchronize()
+    cache = stepper.get_cache()
+    self.assertEqual(cache.get_seq_length(), prompt_len)
+    self.assertIsNotNone(stepper.next_token)
+
+    step_fn = stepper.get_step_fn()
+    _ = step_fn()
+    torch.accelerator.synchronize()
+    cache = stepper.get_cache()
+    self.assertEqual(cache.get_seq_length(), prompt_len + stepper.output_tokens)
+
+    stepper.post_warmup_hook()
+    cache = stepper.get_cache()
+    self.assertEqual(cache.get_seq_length(), prompt_len)
+
+    _ = step_fn()
+    torch.accelerator.synchronize()
+    cache = stepper.get_cache()
+    self.assertEqual(cache.get_seq_length(), prompt_len + stepper.output_tokens)
+
   def test_decode_stepper_compiled(self):
     with torch.no_grad():
       ops = self._ops()

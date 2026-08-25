@@ -22,9 +22,10 @@ from transformers import cache_utils
 
 class DecodeStepper(common.BaseStepper):
 
-  def __init__(self, output_tokens: int = 16):
+  def __init__(self, output_tokens: int = 16, dynamism: bool = False):
     super().__init__()
     self.output_tokens = output_tokens
+    self.dynamism = dynamism
     self.input_ids = None
     self.batch_size = None
     self.prompt_len = None
@@ -56,20 +57,24 @@ class DecodeStepper(common.BaseStepper):
         self._model.dtype if hasattr(self._model, "dtype") else torch.bfloat16
     )
 
-    self.cache = cache_utils.StaticCache(
-        config=model_config,
-        max_cache_len=self.prompt_len + self.output_tokens,
-        batch_size=self.batch_size,
-        dtype=self.dtype,
-        device=self.device,
-    )
-    self.cache.early_initialization(
-        batch_size=self.batch_size,
-        num_heads=self.num_heads,
-        head_dim=self.head_dim,
-        dtype=self.dtype,
-        device=self.device,
-    )
+    if not self.dynamism:
+      self.cache = cache_utils.StaticCache(
+          config=model_config,
+          max_cache_len=self.prompt_len + self.output_tokens,
+          batch_size=self.batch_size,
+          dtype=self.dtype,
+          device=self.device,
+      )
+      self.cache.early_initialization(
+          batch_size=self.batch_size,
+          num_heads=self.num_heads,
+          head_dim=self.head_dim,
+          dtype=self.dtype,
+          device=self.device,
+      )
+    else:
+      self.cache = cache_utils.DynamicCache(config=model_config)
+
     self.next_token = None
     self.prefill_next_token = None
     self.current_pos = None
@@ -122,19 +127,24 @@ class DecodeStepper(common.BaseStepper):
     assert self.prompt_len is not None
     self.next_token = self.prefill_next_token.clone()
 
-    def _reset_internal(cache, prompt_len):
-      for layer in cache.layers:
-        if hasattr(layer, "keys"):
-          layer.keys[:, :, prompt_len:, :].zero_()
-        if hasattr(layer, "values"):
-          layer.values[:, :, prompt_len:, :].zero_()
-        if hasattr(layer, "cumulative_length"):
-          if isinstance(layer.cumulative_length, int):
-            layer.cumulative_length = prompt_len
-          else:
-            layer.cumulative_length.fill_(prompt_len)
+    if self.dynamism:
+      self.cache.crop(self.prompt_len)
+    else:
 
-    _reset_internal(self.cache, self.prompt_len)
+      def _reset_internal(cache, prompt_len):
+        for layer in cache.layers:
+          if hasattr(layer, "keys"):
+            layer.keys[:, :, prompt_len:, :].zero_()
+          if hasattr(layer, "values"):
+            layer.values[:, :, prompt_len:, :].zero_()
+          if hasattr(layer, "cumulative_length"):
+            if isinstance(layer.cumulative_length, int):
+              layer.cumulative_length = prompt_len
+            else:
+              layer.cumulative_length.fill_(prompt_len)
+
+      _reset_internal(self.cache, self.prompt_len)
+
     self.current_pos = self.prompt_len
 
   def get_cache(self):
@@ -153,6 +163,7 @@ class DecodeStepper(common.BaseStepper):
               {"use_cache": True, "cache_position": cache_position},
               self.cache,
           )
+          self.cache = getattr(decode_output, "past_key_values", self.cache)
           logits = decode_output.logits
           self.next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
           assert self.current_pos is not None
@@ -165,6 +176,7 @@ class DecodeStepper(common.BaseStepper):
 @step_lib.register_stepper(step_lib.StepperType.DECODER_ONLY_DECODE)
 def decode(
     output_tokens: int = 16,
+    dynamism: bool = False,
 ) -> step_lib.Stepper:
   """Stateful decode step: prefill, reset, and decode iterations."""
-  return DecodeStepper(output_tokens=output_tokens)
+  return DecodeStepper(output_tokens=output_tokens, dynamism=dynamism)
