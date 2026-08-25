@@ -1185,6 +1185,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":error_testing",
+        ":oss_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1250,6 +1251,7 @@ torch_tpu_py_test(
     visibility = ["//:__subpackages__"],
     deps = [
         ":error_testing",
+        ":oss_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1319,6 +1321,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":error_testing",
+        ":oss_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",

@@ -14,6 +14,8 @@
 
 """Tests error handling on TPU vs on GPU."""
 
+from tests import oss_utils
+
 import re
 from typing import Any
 import unittest
@@ -6644,6 +6646,13 @@ Supported combinations for non-constant padding:
 
   def test_hardtanh_unsupported_unsigned_negative_limits(self):
     t = torch.ones(2, device=et.device(), dtype=torch.uint8)
+
+    # TODO: make the behavior of hardtanh() on TPU match the latest PyTorch
+    # CUDA behavior, which allows negative limits for unsigned types.
+    # The internal build uses a newer version of PyTorch than the OSS build,
+    # so we only need to skip this test in internal builds.
+    if et.is_on_gpu() and oss_utils.is_internal():
+      self.skipTest("TPU behavior different from latest torch CUDA.")
 
     with et.assert_raises_message(
         RuntimeError,

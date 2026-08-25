@@ -33,6 +33,11 @@ def is_oss() -> bool:
   return running_in_cloud() or os.getenv("IS_OSS", "0") == "1"
 
 
+def is_internal() -> bool:
+  """Returns True if running in the Google internal environment."""
+  return not is_oss()
+
+
 def skip_in_oss(
     reason: str = "Skipping in Open Source (OSS) environment due to numerics.",
 ):
