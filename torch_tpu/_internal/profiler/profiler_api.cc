@@ -26,6 +26,7 @@
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "pybind11/pybind11.h"
+#include "torch_tpu/_internal/profiler/xprof_callback_handler.h"
 #include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/error_utils.h"
@@ -110,6 +111,7 @@ absl::Status TpuProfilerServer::Start(int port) ABSL_LOCKS_EXCLUDED(mutex_) {
   absl::MutexLock lock(mutex_);
   TT_RET_CHECK(server_ == nullptr, error::kFailedPrecondition)
       << "the profiler server has already been started";
+  torch_tpu::XProfCallbackHandler::Register();
   server_ = std::make_unique<tsl::profiler::ProfilerServer>();
   server_->StartProfilerServer(port);
   return absl::OkStatus();

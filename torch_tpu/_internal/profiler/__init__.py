@@ -20,6 +20,8 @@
 from torch_tpu._internal.profiler.profiler_api import profile
 from torch_tpu._internal.profiler.profiler_api import ProfilerActivity
 from torch_tpu._internal.profiler.profiler_api import register_kineto_backend
+from torch_tpu._internal.profiler.profiler_api import start_server
+from torch_tpu._internal.profiler.profiler_api import stop_server
 from torch_tpu._internal.profiler.profiler_api import xprof_trace_handler
 from torch_tpu._internal.profiler.profiler_config import TpuProfilerConfig
 
@@ -29,6 +31,8 @@ __all__ = [
     'TpuProfilerConfig',
     'profile',
     'register_kineto_backend',
+    'start_server',
+    'stop_server',
     'xprof_trace_handler',
     # go/keep-sorted end
 ]

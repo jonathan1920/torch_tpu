@@ -135,6 +135,7 @@ torch_tpu_cc_library(
         "profiler_api.cc",
     ],
     deps = [
+        ":xprof_callback_handler",
         "//shims/pybind11",
         "//torch_tpu/common:context_manager",
         "//torch_tpu/common:context_states",
