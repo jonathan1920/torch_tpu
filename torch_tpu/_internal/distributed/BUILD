@@ -89,6 +89,16 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "process_group_utils",
+    srcs = ["process_group_utils.py"],
+    deps = [
+        ":handshake",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:collective_ops",
+    ],
+)
+
+torch_tpu_py_library(
     name = "torchcomm_tpu",
     srcs = ["torchcomm_tpu.py"],
     deps = [

@@ -109,6 +109,7 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/distributed:gpu_env",
         "//torch_tpu/_internal/distributed:handshake",
         "//torch_tpu/_internal/distributed:multiprocessing",
+        "//torch_tpu/_internal/distributed:process_group_utils",
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/export",
