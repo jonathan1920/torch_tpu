@@ -453,6 +453,9 @@ class TorchTpuCompiledExecutable(CompiledArtifact):
   def set_triton_bundle(self, triton_bundle: Any) -> None:
     pass
 
+  def fingerprint(self) -> str:
+    return self._executable.fingerprint_executable()
+
 
 class AsyncCompiledArtifact(CompiledArtifact):
   """A proxy for TorchTpuCompiledExecutable that compiles asynchronously.

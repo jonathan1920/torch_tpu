@@ -32,6 +32,7 @@
 #include "absl/base/nullability.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/escaping.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -78,6 +79,7 @@
 #include "torch_tpu/ops/view_decomposition/decomposition.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
+#include "tsl/platform/fingerprint.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/layout.h"
@@ -1211,7 +1213,15 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       std::shared_ptr<torch_tpu::LoadedExecutableWithMetadata>>(
       m, "LoadedExecutableWithMetadata")
       .def("get_parameter_layouts", &PyGetParameterLayoutsFromMetadata)
-      .def("get_output_layouts", &PyGetOutputLayoutsFromMetadata);
+      .def("get_output_layouts", &PyGetOutputLayoutsFromMetadata)
+      .def("fingerprint_executable",
+           [](const LoadedExecutableWithMetadata& executable) -> std::string {
+             TT_ASSIGN_OR_THROW(
+                 const std::string fingerprint,
+                 executable.GetExecutable()->FingerprintExecutable(),
+                 _.SetPrepend() << "failed to get executable fingerprint: ");
+             return absl::BytesToHexString(fingerprint);
+           });
 
   py::class_<xla::PjRtLoadedExecutable,  // NOLINT(bugprone-unused-raii)
              std::shared_ptr<xla::PjRtLoadedExecutable>>(m,
@@ -1372,6 +1382,12 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("get_materialize_collective_tensors_env_value",
         PyGetMaterializeCollectiveTensorsEnvValue,
         "Returns whether to materialize collective tensors.");
+
+  m.def(
+      "fingerprint64",
+      [](std::string_view input) { return tsl::Fingerprint64(input); },
+      py::arg("input"),
+      "Returns 64-bit unsigned integer fingerprint of input string.");
 
   py::enum_<torch_tpu::ScanDirection>(m, "ScanDirection")
       .value("kForward", torch_tpu::ScanDirection::kForward)
