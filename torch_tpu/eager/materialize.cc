@@ -267,9 +267,11 @@ class MaterializationWorker {
         absl::MutexLock lock(materialize_mu_);
         materialize_tasks_.push(ShutdownSentinel{});
       }
+      // Release the lock so that the thread can dequeue until the sentinel.
       if (materialize_thread_.joinable()) {
         materialize_thread_.join();
       }
+      FailRemainingMaterializationTasks();
       {
         absl::MutexLock lock(execute_mu_);
         execute_tasks_.push(ShutdownSentinel{});
@@ -277,6 +279,7 @@ class MaterializationWorker {
       if (execute_thread_.joinable()) {
         execute_thread_.join();
       }
+      FailRemainingExecutionTasks();
     }
   }
 
@@ -289,6 +292,16 @@ class MaterializationWorker {
     const CompilationMode compilation_mode = GetCompilationMode(GetEagerMode());
 
     absl::MutexLock lock(materialize_mu_);
+    // Check shutdown state after acquiring the lock to avoid a time-of-check/
+    // time-of-use error relative to Shutdown().
+    if (shutdown_.load()) {
+      // State is shutting down, fail the promise immediately.
+      promise.Set(
+          TT_ERROR(error::kCancelled)  // ERROR_COV_INFEASIBLE=unreachable
+                                       // from Python
+          << "MaterializationWorker is shutting down");
+      return future;
+    }
     materialize_tasks_.push(MaterializationTask{
         .kind =
             NodesMaterializationTask{
@@ -314,6 +327,16 @@ class MaterializationWorker {
     const CompilationMode compilation_mode = GetCompilationMode(GetEagerMode());
 
     absl::MutexLock lock(materialize_mu_);
+    // Check shutdown state after acquiring the lock to avoid a time-of-check/
+    // time-of-use error relative to Shutdown().
+    if (shutdown_.load()) {
+      // State is shutting down, fail the promise immediately.
+      promise.Set(
+          TT_ERROR(error::kCancelled)  // ERROR_COV_INFEASIBLE=unreachable
+                                       // from Python
+          << "MaterializationWorker is shutting down");
+      return future;
+    }
     materialize_tasks_.push(MaterializationTask{
         .kind =
             StreamMaterializationTask{
@@ -341,6 +364,16 @@ class MaterializationWorker {
     const CompilationMode compilation_mode = GetCompilationMode(GetEagerMode());
 
     absl::MutexLock lock(materialize_mu_);
+    // Check shutdown state after acquiring the lock to avoid a time-of-check/
+    // time-of-use error relative to Shutdown().
+    if (shutdown_.load()) {
+      // State is shutting down, fail the promise immediately.
+      promise.Set(
+          TT_ERROR(error::kCancelled)  // ERROR_COV_INFEASIBLE=unreachable
+                                       // from Python
+          << "MaterializationWorker is shutting down");
+      return future;
+    }
     materialize_tasks_.push(MaterializationTask{
         .kind =
             DeviceMaterializationTask{
@@ -382,6 +415,17 @@ class MaterializationWorker {
             std::move(executable), std::move(arguments), outputs, task_name));
 
     absl::MutexLock lock(execute_mu_);
+    // Check shutdown state after acquiring the lock to avoid a time-of-check/
+    // time-of-use error relative to Shutdown().
+    if (shutdown_.load()) {
+      // State is shutting down, fail the task and do not enqueue.
+      absl::Status shutdown_status =
+          TT_ERROR(error::kCancelled)  // ERROR_COV_INFEASIBLE=unreachable
+                                       // from Python
+          << "MaterializationWorker is shutting down";
+      task.SetOutputNodesAsError(shutdown_status);
+      return shutdown_status;
+    }
     execute_tasks_.push(std::move(task));
 
     return outputs;
@@ -493,6 +537,41 @@ class MaterializationWorker {
     }
   }
 
+  void FailRemainingMaterializationTasks() {
+    absl::MutexLock lock(materialize_mu_);
+    if (materialize_tasks_.empty()) return;
+
+    // materialize_tasks_ should be empty, but we clear it to be safe.
+    ABSL_LOG(WARNING) << "[MaterializationWorker::Shutdown] "
+                      << "materialize_tasks_ is not empty after shutdown "
+                         "sentinel. Discarding "
+                      << materialize_tasks_.size() << " tasks";
+    auto shutdown_status =
+        TT_ERROR(error::kCancelled)  // ERROR_COV_INFEASIBLE=unreachable
+                                     // from Python
+        << "MaterializationWorker is shutting down";
+    while (!materialize_tasks_.empty()) {
+      auto& task_or_shutdown = materialize_tasks_.front();
+      if (auto* materialization_task =
+              std::get_if<MaterializationTask>(&task_or_shutdown)) {
+        if (auto* nodes_task = std::get_if<NodesMaterializationTask>(
+                &materialization_task->kind)) {
+          for (const auto& node : nodes_task->nodes_to_materialize) {
+            node->SetAsError(shutdown_status);
+          }
+          nodes_task->completion_promise.Set(shutdown_status);
+        } else if (auto* stream_task = std::get_if<StreamMaterializationTask>(
+                       &materialization_task->kind)) {
+          stream_task->completion_promise.Set(shutdown_status);
+        } else if (auto* device_task = std::get_if<DeviceMaterializationTask>(
+                       &materialization_task->kind)) {
+          device_task->completion_promise.Set(shutdown_status);
+        }
+      }
+      materialize_tasks_.pop();
+    }
+  }
+
   void ExecuteLoop() {
     // Prevent execution worker threads from accessing thread-local context
     // states to enforce they always rely on resolved configurations passed
@@ -514,6 +593,28 @@ class MaterializationWorker {
     }
   }
 
+  void FailRemainingExecutionTasks() {
+    absl::MutexLock lock(execute_mu_);
+    if (execute_tasks_.empty()) return;
+
+    // execute_tasks_ should be empty, but we clear it to be safe.
+    ABSL_LOG(WARNING) << "[MaterializationWorker::Shutdown] "
+                      << "execute_tasks_ is not empty after shutdown "
+                         "sentinel. Discarding "
+                      << execute_tasks_.size() << " tasks";
+    auto shutdown_status =
+        TT_ERROR(error::kCancelled)  // ERROR_COV_INFEASIBLE=unreachable
+                                     // from Python
+        << "MaterializationWorker is shutting down";
+    while (!execute_tasks_.empty()) {
+      auto& task_or_shutdown = execute_tasks_.front();
+      if (auto* execution_task =
+              std::get_if<ExecutionTask>(&task_or_shutdown)) {
+        execution_task->SetOutputNodesAsError(shutdown_status);
+      }
+      execute_tasks_.pop();
+    }
+  }
   std::thread materialize_thread_;
   std::thread execute_thread_;
 
