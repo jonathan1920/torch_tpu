@@ -480,6 +480,15 @@ class WindowTpuTest(
 
   _world_size = 8
 
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    if not hasattr(dist, "_supports_window"):
+      raise absltest.SkipTest(
+          "c10d::Window RMA is not supported in this PyTorch version "
+          f"({torch.__version__}); requires PyTorch >= 2.14."
+      )
+
   def test_window_backend_support(self):
     """Verifies dist._supports_window() and backend.supports_window flags."""
     distributed_utils.dist_run(

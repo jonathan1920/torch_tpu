@@ -28,11 +28,15 @@
 #include "c10/util/intrusive_ptr.h"
 #include "torch/csrc/distributed/c10d/Backend.hpp"
 #include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch_tpu/common/macro_utils.h"
+#if TT_TORCH_VERSION_GE(2, 14)
 #include "torch/csrc/distributed/c10d/Window.hpp"
+#endif
 #include "torch/csrc/distributed/c10d/Work.hpp"
 #include "torch_tpu/common/error_utils.h"
 #include "xla/future.h"
 
+#if TT_TORCH_VERSION_GE(2, 14)
 namespace torch_tpu {
 
 // Work handle representing asynchronous TPU zero-copy DMA or RMA transfers.
@@ -144,5 +148,7 @@ class WindowTPU : public c10d::Window {
 };
 
 }  // namespace torch_tpu
+
+#endif  // TT_TORCH_VERSION_GE(2, 14)
 
 #endif  // TORCH_TPU_DISTRIBUTED_WINDOW_TPU_H_

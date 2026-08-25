@@ -54,12 +54,15 @@
 #include "c10/core/ScalarType.h"
 #include "c10/core/TensorOptions.h"
 #include "c10/util/intrusive_ptr.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/csrc/distributed/c10d/Backend.hpp"
 #include "torch/csrc/distributed/c10d/Store.hpp"
 #include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch_tpu/common/macro_utils.h"
+#if TT_TORCH_VERSION_GE(2, 14)
 #include "torch/csrc/distributed/c10d/Window.hpp"
+#endif
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/csrc/distributed/c10d/Work.hpp"
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch_tpu/common/cache_key.h"
@@ -477,6 +480,7 @@ ProcessGroupTpu::ProcessGroupTpu(c10::intrusive_ptr<c10d::Store> store,
   const auto* const pjrt_client = PjrtBackend::GetInstance().GetClient();
   TT_CHECK_THROW(pjrt_client != nullptr, error::kInternal)
       << "PjRtClient is not initialized.";
+  ABSL_CHECK(pjrt_client != nullptr);  // CRASH_OK
 
   // All devices in the slice:
   for (const auto* dev : pjrt_client->devices()) {
@@ -1525,6 +1529,7 @@ int64_t ProcessGroupTpu::GetLogicalDeviceId(int64_t physical_device_id) const {
   return it - device_ids_.begin();
 }
 
+#if TT_TORCH_VERSION_GE(2, 14)
 c10::intrusive_ptr<c10d::Window> ProcessGroupTpu::new_window(
     const std::optional<at::Tensor>& tensor) {
   auto win = c10::make_intrusive<WindowTPU>(
@@ -1535,5 +1540,6 @@ c10::intrusive_ptr<c10d::Window> ProcessGroupTpu::new_window(
   }
   return win;
 }
+#endif
 
 }  // namespace torch_tpu

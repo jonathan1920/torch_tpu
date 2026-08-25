@@ -22,7 +22,7 @@
 
 #include "absl/strings/str_split.h"    // IWYU pragma: keep for macro
 #include "absl/strings/string_view.h"  // IWYU pragma: keep for macro
-#include "torch/headeronly/version.h"  // IWYU pragma: keep for macro
+#include "torch/csrc/api/include/torch/version.h"  // IWYU pragma: keep for macro
 
 // Preprocessor utilities for making macro implementations more readable.
 

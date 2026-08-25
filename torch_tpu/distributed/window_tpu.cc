@@ -25,7 +25,10 @@
 #include "c10/util/intrusive_ptr.h"
 #include "torch/csrc/distributed/c10d/Backend.hpp"
 #include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch_tpu/common/macro_utils.h"
+#if TT_TORCH_VERSION_GE(2, 14)
 #include "torch/csrc/distributed/c10d/Window.hpp"
+#endif
 #include "torch/csrc/distributed/c10d/Work.hpp"
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/error_utils.h"
@@ -34,6 +37,7 @@
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
 
+#if TT_TORCH_VERSION_GE(2, 14)
 namespace torch_tpu {
 
 WindowTPU::WindowTPU(c10::intrusive_ptr<c10d::Backend> backend, int64_t rank)
@@ -193,3 +197,4 @@ c10d::WindowAttr WindowTPU::get_attr(int64_t peerRank) {
 }
 
 }  // namespace torch_tpu
+#endif  // TT_TORCH_VERSION_GE(2, 14)

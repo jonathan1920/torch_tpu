@@ -778,7 +778,7 @@ torch_tpu_py_test(
     name = "window_tpu_test",
     srcs = ["window_tpu_test.py"],
     autoload = True,
-    notest_oss = "fix hang in OSS",  # TODO
+    notest_oss = "Requires PJRT RawBuffer extension not yet exported in OSS libtpu.",
     shard_count = 6,
     tags = if_oss(
         ["exclusive"],
