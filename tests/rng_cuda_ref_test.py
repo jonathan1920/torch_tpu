@@ -664,6 +664,80 @@ class CompiledRngTest(_BaseRngTest):
     out = compiled_fn(x, g)
     self.assertEqual(out.shape, x.shape)
 
+  def test_eager_dropout_backward_mask_equivalence(self):
+    """Verifies eager dropout backward mask matches forward."""
+    model = torch.nn.Dropout(p=0.5).to(self.device)
+
+    torch.manual_seed(42)
+    # The input tensor `x` is initialized to all ones, and the upstream gradient
+    # from `out.sum().backward()` is also implicitly a tensor of all ones.
+    x = torch.ones(100, device=self.device, requires_grad=True)
+
+    # When dropout is applied in the forward pass (`out = model(x)`), it zeros
+    # out approximately half the elements and scales the remaining elements by
+    # `1 / (1 - p)` (which is 2.0 since `p=0.5`). So `out` consists of 0s and
+    # 2s, making `mask_fwd = out > 0` a boolean representation of the forward
+    # dropout mask.
+    out = model(x)
+    mask_fwd = out > 0
+
+    # During the backward pass, dropout propagates the upstream gradient (all
+    # 1s) only through the elements that were kept, applying the same scaling.
+    # Therefore, `x.grad` will also consist of 0s (where dropped) and 2.0s
+    # (where kept). Checking `x.grad > 0` reconstructs the backward dropout mask,
+    # allowing for a direct `torch.equal` comparison to verify that the same mask
+    # was used in both directions.
+    out.sum().backward()
+    mask_bwd = x.grad > 0
+    self.assertTrue(torch.equal(mask_fwd, mask_bwd))
+
+  def test_compiled_dropout_backward_mask_equivalence(self):
+    """Verifies compiled dropout backward mask matches forward."""
+    # See test_eager_dropout_backward_mask_equivalence for mask computation details.
+    model = torch.nn.Dropout(p=0.5).to(self.device)
+    compiled_model = torch.compile(model)
+
+    torch.manual_seed(42)
+    x = torch.ones(100, device=self.device, requires_grad=True)
+    out = compiled_model(x)
+    mask_fwd = out > 0
+    out.sum().backward()
+    mask_bwd = x.grad > 0
+    self.assertTrue(torch.equal(mask_fwd, mask_bwd))
+
+  @_fail_on_tpu(
+      "b/496168350: Compiled activation checkpointing RNG preservation requires"
+      " graphsafe RNG."
+  )
+  def test_compiled_activation_checkpointing_dropout(self):
+    """Verifies non-reentrant activation checkpointing reproduces the mask."""
+
+    class CheckpointModel(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.drop = torch.nn.Dropout(p=0.5)
+
+      def forward(self, x):
+        def inner_fn(x):
+          return self.drop(x)
+
+        return torch.utils.checkpoint.checkpoint(
+            inner_fn, x, use_reentrant=False
+        )
+
+    model = CheckpointModel().to(self.device)
+    compiled_model = torch.compile(model, fullgraph=True)
+
+    torch.manual_seed(42)
+    x = torch.ones(100, device=self.device, requires_grad=True)
+    out = compiled_model(x)
+    mask_fwd = out > 0
+    out.sum().backward()
+    mask_bwd = x.grad > 0
+
+    self.assertTrue(torch.equal(mask_fwd, mask_bwd))
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
