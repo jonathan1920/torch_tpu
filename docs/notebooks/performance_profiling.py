@@ -48,16 +48,17 @@ def _(mo):
   mo.md(r"""
     ## **1. The TPU Profiler**
 
-    The `torch.profiler` provides a **context manager** interface for tracing both CPU and TPU activities. You wrap the code you want to profile in a `profiler.profile()` block, and the collected traces are saved to disk for viewing in TensorBoard.
+    Standard `torch.profiler` (integrated with `torch_tpu`) provides a **context manager** interface for tracing both CPU and TPU activities. You wrap the code you want to profile in a `torch.profiler.profile()` block, and the collected traces are saved to disk for viewing in TensorBoard.
 
     **Key components:**
 
     | Component | Role |
     |-----------|------|
-    | `profiler.profile()` | Context manager that starts/stops trace collection |
-    | `ProfilerActivity.CPU` | Traces CPU-side operations (dispatch, data loading) |
-    | `ProfilerActivity.TPU` | Traces TPU hardware execution (compute, memory, interconnect) |
-    | `xprof_trace_handler` | Callback that saves traces to a directory for TensorBoard |
+    | `torch.profiler.profile()` | Standard context manager that starts/stops trace collection |
+    | `torch.profiler.ProfilerActivity.CPU` | Traces CPU-side operations (dispatch, data loading) |
+    | `torch.profiler.ProfilerActivity.TPU` | Traces TPU hardware execution (compute, memory, interconnect) |
+    | `torch.profiler.tensorboard_trace_handler` | Callback that saves traces to a directory for TensorBoard |
+    | `TpuProfilerConfig` | Helper for custom TPU profiling configuration |
     """)
   return
 
@@ -65,22 +66,66 @@ def _(mo):
 @app.cell
 def _():
   import torch
-  from torch import profiler
+  from torch.tpu.profiler import TpuProfilerConfig
 
   device = torch.device("tpu")
-  return device, profiler, torch
+  return TpuProfilerConfig, device, torch
 
 
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **2. Capturing a Profile**
+    ## **2. Custom Profiling Configuration (`TpuProfilerConfig`)**
+
+    Options passed via `TpuProfilerConfig` allow fine-grained control over host and device tracer levels as well as output directory structures.
+
+    ### **Sanctioned Configuration Options**
+
+    | Option Key | Type | Default | Description |
+    | :--- | :--- | :--- | :--- |
+    | `host_tracer_level` | `int` | `2` | Controls CPU host tracer verbosity (0=off, 1=critical, 2=all). |
+    | `device_tracer_level` | `int` | `1` | Controls TPU hardware device tracer verbosity (0=off, 1=on). |
+    | `python_tracer_level` | `int` | `0` | Controls Python function tracing level (0=off, 1=on). |
+    | `run_dir` | `pathlib.Path` | `None` | Output directory where TPU hardware trace files (`.xplane.pb`) are saved. |
+
+
+    ```python
+    import pathlib
+    import torch
+    from torch.tpu.profiler import TpuProfilerConfig
+
+    config = TpuProfilerConfig(
+        host_tracer_level=2,
+        device_tracer_level=1,
+        python_tracer_level=0,
+        run_dir=pathlib.Path("./profiler_output"),
+    )
+
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.TPU,
+        ],
+        experimental_config=config,
+        on_trace_ready=torch.profiler.tensorboard_trace_handler("./profiler_output"),
+    ) as prof:
+        model(inputs)
+    ```
+    """)
+  return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+  mo.md(r"""
+    ## **3. Capturing a Profile**
 
     The cell below runs a small training loop inside the profiler context. The key points:
 
-    1. **Wrap your training loop** inside `profiler.profile()`
+    1. **Wrap your training loop** inside `torch.profiler.profile()`
     2. **Specify activities** — `CPU` for host-side ops, `TPU` for hardware execution
-    3. **Set `on_trace_ready`** to save traces to a directory
+    3. **Set `on_trace_ready`** to save traces to a directory using `torch.profiler.tensorboard_trace_handler`
+    4. **(Optional) Pass `experimental_config`** with `TpuProfilerConfig` to control tracer levels
 
     > **⚠️ Important:** The profiler adds overhead. Profile only a representative subset of steps (e.g., 100–1000), not your entire training run.
     """)
@@ -88,7 +133,7 @@ def _(mo):
 
 
 @app.cell
-def _(device, profiler, torch):
+def _(TpuProfilerConfig, device, torch):
   # Build a small model and optimizer
   model = (
       torch.nn.Sequential(
@@ -104,19 +149,28 @@ def _(device, profiler, torch):
   # Where to save the profiler traces
   log_dir = "/tmp/profiler_output"
 
-  # Profile 100 training steps
-  with profiler.profile(
+  # Configure TPU-specific tracer levels
+  config = TpuProfilerConfig(
+      host_tracer_level=2,
+      device_tracer_level=1,
+  )
+
+  # Profile 100 training steps with native PyTorch profiler
+  with torch.profiler.profile(
       activities=[
-          profiler.ProfilerActivity.CPU,
-          profiler.ProfilerActivity.TPU,  # type: ignore
+          torch.profiler.ProfilerActivity.CPU,
+          torch.profiler.ProfilerActivity.TPU,
       ],
-      on_trace_ready=profiler.xprof_trace_handler(dir_name=log_dir),
-  ):
+      experimental_config=config,
+      on_trace_ready=torch.profiler.tensorboard_trace_handler(log_dir),
+  ) as prof:
     for step in range(100):
       optimizer.zero_grad()
       loss = model(data).sum()
       loss.backward()
       optimizer.step()
+      torch.accelerator.synchronize()
+      prof.step()
 
   print(f"✅ Profile captured: {100} steps saved to {log_dir}")
   return (log_dir,)
@@ -125,7 +179,7 @@ def _(device, profiler, torch):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **3. Viewing Traces in TensorBoard**
+    ## **4. Viewing Traces in TensorBoard**
 
     Run the following commands:
 
@@ -139,7 +193,7 @@ def _(mo):
     tensorboard --logdir=/tmp/profiler_output --port=6006
     ```
 
-    xprof can also be run as a standalone server.
+    xprof can also be run as a standalone server. 
     ```shell
     xprof --logdir=profiler/demo --port=6006
     ```
@@ -162,7 +216,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **4. What to Look For**
+    ## **5. What to Look For**
 
     ### **Red Flags in Traces**
 
@@ -185,7 +239,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **5. Verifying the Traces Were Captured**
+    ## **6. Verifying the Traces Were Captured**
 
     The cell below checks that the profiler output directory contains trace files.
     """)
@@ -214,13 +268,13 @@ def _(log_dir):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **6. Quick Reference**
+    ## **7. Quick Reference**
 
     | Step | Command / Code |
     |------|---------------|
-    | **Import** | `from torch import profiler` |
-    | **Profile** | `with profiler.profile(activities=[...], on_trace_ready=...):` |
-    | **Save** | `profiler.xprof_trace_handler(dir_name="/tmp/profiler_output")` |
+    | **Import** | `from torch.tpu.profiler import TpuProfilerConfig` |
+    | **Profile** | `with torch.profiler.profile(activities=[...], on_trace_ready=...):` |
+    | **Save** | `torch.profiler.tensorboard_trace_handler("/tmp/profiler_output")` |
     | **View** | `tensorboard --logdir=/tmp/profiler_output` |
 
     > [!TIP]

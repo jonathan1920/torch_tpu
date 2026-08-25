@@ -20,18 +20,16 @@ import torch
 
 
 def test_profiler_init(device):
-  """Cell: import profiler and sync, initialize device."""
-  from torch_tpu._internal import profiler
-  from torch_tpu._internal import sync
+  """Cell: import PyTorch profiler and TpuProfilerConfig."""
+  from torch.tpu.profiler import TpuProfilerConfig
 
-  assert profiler is not None
-  assert sync is not None
+  assert torch.profiler.profile is not None
+  assert TpuProfilerConfig is not None
 
 
 def test_capture_profile(device):
-  """Cell: run training loop inside profiler context (reduced to 10 steps)."""
-  from torch_tpu._internal import profiler
-  from torch_tpu._internal import sync
+  """Cell: run training loop inside native profiler context (reduced to 10 steps)."""
+  from torch.tpu.profiler import TpuProfilerConfig
 
   model = (
       torch.nn.Sequential(
@@ -46,19 +44,26 @@ def test_capture_profile(device):
 
   log_dir = "/tmp/test_profiler_output"
 
-  with profiler.profile(
+  config = TpuProfilerConfig(
+      host_tracer_level=2,
+      device_tracer_level=1,
+  )
+
+  with torch.profiler.profile(
       activities=[
-          profiler.ProfilerActivity.CPU,
-          profiler.ProfilerActivity.TPU,  # type: ignore
+          torch.profiler.ProfilerActivity.CPU,
+          torch.profiler.ProfilerActivity.TPU,
       ],
-      on_trace_ready=profiler.xprof_trace_handler(dir_name=log_dir),
-  ):
+      experimental_config=config,
+      on_trace_ready=torch.profiler.tensorboard_trace_handler(log_dir),
+  ) as prof:
     for step in range(10):  # Reduced from 100 for test speed
       optimizer.zero_grad()
       loss = model(data).sum()
       loss.backward()
       optimizer.step()
-      sync.synchronize(loss)
+      torch.accelerator.synchronize()
+      prof.step()
 
   assert os.path.exists(log_dir)
 
