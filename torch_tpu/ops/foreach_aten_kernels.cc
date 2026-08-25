@@ -25,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "ATen/OpMathType.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/ops/result_type.h"
 #include "absl/functional/any_invocable.h"
@@ -115,10 +116,13 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachShlo(
     mlir::MlirOp current_self = self[i];
     mlir::MlirOp current_other = other[i];
 
+    TT_ASSIGN_OR_RETURN(const mlir::ElementType compute_dtype,
+                        InferComputationDtype(out_dtypes[i]));
+
     TT_ASSIGN_OR_RETURN(current_self,
-                        CastIfNeeded(current_self, out_dtypes[i]));
+                        CastIfNeeded(current_self, compute_dtype));
     TT_ASSIGN_OR_RETURN(current_other,
-                        CastIfNeeded(current_other, out_dtypes[i]));
+                        CastIfNeeded(current_other, compute_dtype));
 
     std::array<mlir::MlirOp, 2> broadcasted_ops;
     TT_ASSIGN_OR_RETURN(broadcasted_ops,
@@ -127,6 +131,49 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachShlo(
     current_other = broadcasted_ops[1];
 
     mlir::MlirOp result = tensor_transform(current_self, current_other);
+    TT_ASSIGN_OR_RETURN(result, CastIfNeeded(result, out_dtypes[i]));
+    results.push_back(result);
+  }
+  return results;
+}
+
+absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachAddShlo(
+    absl::Span<const mlir::MlirOp> self, absl::Span<const mlir::MlirOp> other,
+    std::optional<absl::Span<const mlir::MlirOp>> alpha,
+    bool alpha_is_minus_one, absl::Span<const mlir::ElementType> out_dtypes,
+    mlir::MlirBuilder& builder) {
+  mlir::SmallVector<mlir::MlirOp> results;
+  results.reserve(self.size());
+  for (int i = 0; i < self.size(); ++i) {
+    mlir::MlirOp current_self = self[i];
+    mlir::MlirOp current_other = other[i];
+
+    TT_ASSIGN_OR_RETURN(const mlir::ElementType compute_dtype,
+                        InferComputationDtype(out_dtypes[i]));
+
+    TT_ASSIGN_OR_RETURN(current_self,
+                        CastIfNeeded(current_self, compute_dtype));
+    TT_ASSIGN_OR_RETURN(current_other,
+                        CastIfNeeded(current_other, compute_dtype));
+
+    mlir::MlirOp scaled_other;
+    if (alpha.has_value()) {
+      mlir::MlirOp current_alpha = (*alpha)[i];
+      TT_ASSIGN_OR_RETURN(current_alpha,
+                          CastIfNeeded(current_alpha, compute_dtype));
+      TT_ASSIGN_OR_RETURN(scaled_other,
+                          BuildMulShlo(current_other, current_alpha));
+    } else {
+      scaled_other = current_other;
+    }
+
+    mlir::MlirOp result;
+    if (alpha_is_minus_one) {
+      TT_ASSIGN_OR_RETURN(result, BuildSubShlo(current_self, scaled_other));
+    } else {
+      TT_ASSIGN_OR_RETURN(result, BuildAddShlo(current_self, scaled_other));
+    }
+    TT_ASSIGN_OR_RETURN(result, CastIfNeeded(result, out_dtypes[i]));
     results.push_back(result);
   }
   return results;
@@ -220,12 +267,15 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachLerpShlo(
     mlir::MlirOp current_other = other[i];
     mlir::MlirOp current_weight = weight[i];
 
+    TT_ASSIGN_OR_RETURN(const mlir::ElementType compute_dtype,
+                        InferComputationDtype(out_dtypes[i]));
+
     TT_ASSIGN_OR_RETURN(current_self,
-                        CastIfNeeded(current_self, out_dtypes[i]));
+                        CastIfNeeded(current_self, compute_dtype));
     TT_ASSIGN_OR_RETURN(current_other,
-                        CastIfNeeded(current_other, out_dtypes[i]));
+                        CastIfNeeded(current_other, compute_dtype));
     TT_ASSIGN_OR_RETURN(current_weight,
-                        CastIfNeeded(current_weight, out_dtypes[i]));
+                        CastIfNeeded(current_weight, compute_dtype));
 
     // lerp(start, end, weight) = start + weight * (end - start)
     TT_ASSIGN_OR_RETURN(mlir::MlirOp diff,
@@ -234,6 +284,7 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachLerpShlo(
                         BuildMulShlo(current_weight, diff));
     TT_ASSIGN_OR_RETURN(mlir::MlirOp result,
                         BuildAddShlo(current_self, weighted_diff));
+    TT_ASSIGN_OR_RETURN(result, CastIfNeeded(result, out_dtypes[i]));
     results.push_back(result);
   }
   return results;
@@ -554,7 +605,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachUnaryOp(
     // OpName to use for dispatching. If omitted, use the op name from the
     // active TT_KERNEL() context.
     std::optional<OpName> op_name = std::nullopt,
-    // If true, cast all inputs to the corresponding output dtype before
+    // If true, cast all inputs to the computation dtype before
     // applying the tensor_transform.
     bool cast_inputs = true) {
   auto op_builder =
@@ -565,12 +616,16 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachUnaryOp(
     mlir::SmallVector<mlir::MlirOp> results;
     results.reserve(inputs.size());
     for (int i = 0; i < inputs.size(); ++i) {
-      mlir::MlirOp input = inputs[i];
+      TT_ASSIGN_OR_RETURN(const mlir::ElementType comp_dtype,
+                          InferComputationDtype(out_dtypes[i]));
+      mlir::MlirOp input_comp = inputs[i];
       if (cast_inputs) {
-        TT_ASSIGN_OR_RETURN(input, CastIfNeeded(input, out_dtypes[i]));
+        TT_ASSIGN_OR_RETURN(input_comp, CastIfNeeded(inputs[i], comp_dtype));
       }
+      TT_ASSIGN_OR_RETURN(mlir::MlirOp res_comp,
+                          tensor_transform(input_comp, comp_dtype));
       TT_ASSIGN_OR_RETURN(mlir::MlirOp result,
-                          tensor_transform(input, out_dtypes[i]));
+                          CastIfNeeded(res_comp, out_dtypes[i]));
       results.push_back(result);
     }
     return results;
@@ -597,7 +652,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachUnaryOp(
     // OpName to use for dispatching. If omitted, use the op name from the
     // active TT_KERNEL() context.
     std::optional<OpName> op_name = std::nullopt,
-    // If true, cast all inputs to the corresponding output dtype before
+    // If true, cast all inputs to the computation dtype before
     // applying the tensor_transform.
     bool cast_inputs = true) {
   auto tmp_tensor_transform = [tensor_transform = std::move(tensor_transform)](
@@ -627,7 +682,8 @@ std::vector<DeviceBufferRef> ForeachAddList(
       param_keys.SetParam("alpha_is_minus_one", alpha_is_minus_one));
   if (!alpha_is_one && !alpha_is_minus_one) {
     for (auto i = 0; i < num_tensors; ++i) {
-      at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
+      const at::ScalarType scalar_type =
+          at::toOpMathType(ConvertTo<at::ScalarType>(out_dtypes[i]));
       TT_ASSIGN_OR_THROW(at::Tensor alpha_tensor,
                          promoted_alpha.GetTensor(scalar_type));
       inputs.push_back(alpha_tensor);
@@ -643,25 +699,16 @@ std::vector<DeviceBufferRef> ForeachAddList(
     absl::Span<mlir::MlirOp> other_ops =
         inputs.subspan(num_tensors, num_tensors);
 
-    // If alpha is 1.0, do a simple addition without multiplying by alpha.
-    if (alpha_is_one) {
-      return BuildForeachShlo(self_ops, other_ops, out_dtypes,
-                              mlir::stablehlo::Add, builder);
-    }
-
-    // If alpha is -1.0, do a simple subtraction without multiplying by alpha.
-    if (alpha_is_minus_one) {
-      return BuildForeachShlo(self_ops, other_ops, out_dtypes,
-                              mlir::stablehlo::Subtract, builder);
+    if (alpha_is_one || alpha_is_minus_one) {
+      return BuildForeachAddShlo(self_ops, other_ops, std::nullopt,
+                                 alpha_is_minus_one, out_dtypes, builder);
     }
 
     absl::Span<mlir::MlirOp> alpha_ops =
-        inputs.subspan(2 * num_tensors, 3 * num_tensors);
-    TT_ASSIGN_OR_RETURN(auto new_other_ops,
-                        BuildForeachShlo(other_ops, alpha_ops, out_dtypes,
-                                         mlir::stablehlo::Mul, builder));
-    return BuildForeachShlo(self_ops, absl::MakeSpan(new_other_ops), out_dtypes,
-                            mlir::stablehlo::Add, builder);
+        inputs.subspan(2 * num_tensors, num_tensors);
+    return BuildForeachAddShlo(self_ops, other_ops, alpha_ops,
+                               /*alpha_is_minus_one=*/false, out_dtypes,
+                               builder);
   };
 
   // Dispatch the op and prepare results.
@@ -1709,7 +1756,8 @@ std::vector<at::Tensor> AtenForeachAddScalar(at::TensorList self,
     std::vector<at::Tensor> other;
     other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
+      const at::ScalarType scalar_type =
+          at::toOpMathType(ConvertTo<at::ScalarType>(out_dtypes[i]));
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
                          promoted_scalar.GetTensor(scalar_type));
       other.push_back(scalar_tensor);
@@ -1731,7 +1779,8 @@ std::vector<at::Tensor> AtenForeachAddScalarList(
     std::vector<at::Tensor> other;
     other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
+      const at::ScalarType scalar_type =
+          at::toOpMathType(ConvertTo<at::ScalarType>(out_dtypes[i]));
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
                          promoted_scalars[i].GetTensor(scalar_type));
       other.push_back(scalar_tensor);
@@ -1783,8 +1832,9 @@ void AtenForeachAdd_Scalar(at::TensorList self, const at::Scalar& scalar) {
     std::vector<at::Tensor> other;
     other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
-                         promoted_scalar.GetTensor(self[i].scalar_type()));
+      TT_ASSIGN_OR_THROW(
+          at::Tensor scalar_tensor,
+          promoted_scalar.GetTensor(at::toOpMathType(self[i].scalar_type())));
       other.push_back(scalar_tensor);
     }
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
@@ -1806,7 +1856,8 @@ void AtenForeachAdd_ScalarList(at::TensorList self,
     other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
-                         promoted_scalars[i].GetTensor(self[i].scalar_type()));
+                         promoted_scalars[i].GetTensor(
+                             at::toOpMathType(self[i].scalar_type())));
       other.push_back(scalar_tensor);
     }
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
@@ -2253,9 +2304,7 @@ std::vector<at::Tensor> AtenForeachLerpScalar(at::TensorList self,
     std::vector<at::Tensor> weight_list;
     weight_list.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
-      TT_ASSIGN_OR_THROW(at::Tensor weight_tensor,
-                         promoted_weight.GetTensor(scalar_type));
+      TT_ASSIGN_OR_THROW(at::Tensor weight_tensor, promoted_weight.GetTensor());
       weight_list.push_back(weight_tensor);
     }
     return ForeachConvertToTensor(
@@ -2274,9 +2323,8 @@ std::vector<at::Tensor> AtenForeachLerpScalarList(
         std::vector<at::Tensor> weight_list;
         weight_list.reserve(self.size());
         for (size_t i = 0; i < self.size(); ++i) {
-          at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
           TT_ASSIGN_OR_THROW(at::Tensor weight_tensor,
-                             promoted_scalars[i].GetTensor(scalar_type));
+                             promoted_scalars[i].GetTensor());
           weight_list.push_back(weight_tensor);
         }
         return ForeachConvertToTensor(
@@ -2303,8 +2351,7 @@ void AtenForeachLerp_Scalar(at::TensorList self, at::TensorList other,
     std::vector<at::Tensor> weight_list;
     weight_list.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(at::Tensor weight_tensor,
-                         promoted_weight.GetTensor(self[i].scalar_type()));
+      TT_ASSIGN_OR_THROW(at::Tensor weight_tensor, promoted_weight.GetTensor());
       weight_list.push_back(weight_tensor);
     }
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
@@ -2322,9 +2369,8 @@ void AtenForeachLerp_ScalarList(at::TensorList self, at::TensorList other,
               std::vector<at::Tensor> weight_list;
               weight_list.reserve(self.size());
               for (size_t i = 0; i < self.size(); ++i) {
-                TT_ASSIGN_OR_THROW(
-                    at::Tensor weight_tensor,
-                    promoted_scalars[i].GetTensor(self[i].scalar_type()));
+                TT_ASSIGN_OR_THROW(at::Tensor weight_tensor,
+                                   promoted_scalars[i].GetTensor());
                 weight_list.push_back(weight_tensor);
               }
               TT_THROW_IF_ERROR(ForeachAssignToTensor(
@@ -2521,9 +2567,7 @@ std::vector<at::Tensor> AtenForeachSubScalar(at::TensorList self,
     std::vector<at::Tensor> other;
     other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
-      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
-                         promoted_scalar.GetTensor(scalar_type));
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor, promoted_scalar.GetTensor());
       other.push_back(scalar_tensor);
     }
     return ForeachConvertToTensor(
@@ -2548,9 +2592,7 @@ void AtenForeachSub_Scalar(at::TensorList self, const at::Scalar& scalar) {
     std::vector<at::Tensor> other;
     other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
-      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
-                         promoted_scalar.GetTensor(scalar_type));
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor, promoted_scalar.GetTensor());
       other.push_back(scalar_tensor);
     }
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
@@ -2576,9 +2618,8 @@ std::vector<at::Tensor> AtenForeachSubScalarList(
     std::vector<at::Tensor> other;
     other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
-                         promoted_scalars[i].GetTensor(scalar_type));
+                         promoted_scalars[i].GetTensor());
       other.push_back(scalar_tensor);
     }
     return ForeachConvertToTensor(
@@ -2604,9 +2645,8 @@ void AtenForeachSub_ScalarList(at::TensorList self,
     std::vector<at::Tensor> other;
     other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
-                         promoted_scalars[i].GetTensor(scalar_type));
+                         promoted_scalars[i].GetTensor());
       other.push_back(scalar_tensor);
     }
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
