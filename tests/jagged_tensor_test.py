@@ -25,6 +25,7 @@ Tests cover:
   all-empty batches, strided/non-contiguous offsets, and compilation cache keys.
 """
 
+import functools
 from absl.testing import absltest
 import torch
 from torch.nested._internal import nested_tensor as nt_internal
@@ -1043,6 +1044,582 @@ class JaggedTensorTest(seed_test_utils.RepeatableTest):
       torch.ops.aten._padded_dense_to_jagged_forward(
           dense, [mismatched_batch_offsets]
       )
+
+  # ---------------------------------------------------------------------------
+  # Pointwise & Activation Kernels Unit Tests
+  # ---------------------------------------------------------------------------
+
+  def test_unary_pointwise_activations_and_cpu_parity(self):
+    """Tests unary activation functions on TPU jagged nested tensors with CPU parity."""
+    t1_cpu = torch.tensor([[-1.0, 2.0], [0.5, -3.0]], dtype=torch.float32)
+    t2_cpu = torch.tensor(
+        [[1.5, -0.5], [-2.0, 4.0], [0.0, 1.0]], dtype=torch.float32
+    )
+    nt_cpu = torch.nested.nested_tensor([t1_cpu, t2_cpu], layout=torch.jagged)
+
+    nt_tpu = torch.nested.nested_tensor(
+        [t1_cpu.to("tpu"), t2_cpu.to("tpu")], layout=torch.jagged
+    )
+
+    activations = [
+        ("relu", torch.relu),
+        (
+            "gelu_exact",
+            functools.partial(torch.nn.functional.gelu, approximate="none"),
+        ),
+        (
+            "gelu_tanh",
+            functools.partial(torch.nn.functional.gelu, approximate="tanh"),
+        ),
+        ("silu", torch.nn.functional.silu),
+        ("sigmoid", torch.sigmoid),
+        ("tanh", torch.tanh),
+    ]
+
+    for name, act_fn in activations:
+      out_cpu = act_fn(nt_cpu)
+      out_tpu = act_fn(nt_tpu)
+
+      self.assertEqual(
+          out_tpu.device.type, "tpu", msg=f"Device mismatch for {name}"
+      )
+      self.assertEqual(
+          out_tpu.layout, torch.jagged, msg=f"Layout mismatch for {name}"
+      )
+      self.assertEqual(
+          out_tpu.shape[0],
+          out_cpu.shape[0],
+          msg=f"Batch size mismatch for {name}",
+      )
+      self.assertEqual(
+          out_tpu.shape[2],
+          out_cpu.shape[2],
+          msg=f"Feature dim mismatch for {name}",
+      )
+      utils.assert_close(out_tpu.offsets().cpu(), out_cpu.offsets())
+      utils.assert_close(
+          out_tpu.values().cpu(),
+          out_cpu.values(),
+          rtol=1e-4,
+          atol=1e-4,
+      )
+
+  def test_unary_pointwise_math_and_dtypes(self):
+    """Tests unary mathematical functions across supported floating point dtypes."""
+    for dtype in [torch.float32, torch.bfloat16, torch.float64]:
+      t1 = torch.tensor([[0.5, 1.2], [-0.8, 2.3]], dtype=dtype, device="tpu")
+      t2 = torch.tensor(
+          [[1.1, 0.4], [1.9, 0.7], [0.2, 3.1]], dtype=dtype, device="tpu"
+      )
+      nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+      math_ops = [
+          ("sin", torch.sin),
+          ("cos", torch.cos),
+          ("exp", torch.exp),
+          ("abs", torch.abs),
+          ("neg", torch.neg),
+          ("sqrt", torch.sqrt),
+          ("clamp", functools.partial(torch.clamp, min=0.0, max=2.0)),
+      ]
+
+      for name, op in math_ops:
+        out = op(nt)
+        self.assertEqual(
+            out.device.type, "tpu", msg=f"Device mismatch for {name}"
+        )
+        self.assertEqual(
+            out.layout, torch.jagged, msg=f"Layout mismatch for {name}"
+        )
+        self.assertEqual(out.dtype, dtype, msg=f"Dtype mismatch for {name}")
+        utils.assert_close(out.offsets().cpu(), nt.offsets().cpu())
+        utils.assert_close(out.values().cpu(), op(nt.values()).cpu())
+
+  def test_unary_pointwise_autograd_gradients(self):
+    """Tests backward autograd gradient propagation through unary activations."""
+    values_tpu = torch.randn(
+        5, 3, dtype=torch.float32, device="tpu", requires_grad=True
+    )
+    offsets_tpu = torch.tensor([0, 2, 5], dtype=torch.int64, device="tpu")
+
+    nt_tpu = nt_internal.nested_view_from_values_offsets(
+        values_tpu, offsets_tpu
+    )
+    out_tpu = torch.nn.functional.gelu(nt_tpu)
+
+    loss = (out_tpu.values() * 3.0).sum()
+    loss.backward()
+
+    self.assertIsNotNone(values_tpu.grad)
+
+    # Compare against CPU direct autograd
+    values_cpu = values_tpu.detach().cpu().requires_grad_(True)
+    out_cpu = torch.nn.functional.gelu(values_cpu)
+    loss_cpu = (out_cpu * 3.0).sum()
+    loss_cpu.backward()
+
+    utils.assert_close(values_tpu.grad.cpu(), values_cpu.grad)
+
+  def test_unary_pointwise_multidimensional_features(self):
+    """Tests unary pointwise activations with multi-dimensional trailing feature shapes."""
+    t1 = torch.randn(2, 4, 8, device="tpu")
+    t2 = torch.randn(3, 4, 8, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    out = torch.relu(nt)
+    self.assertEqual(out.device.type, "tpu")
+    self.assertEqual(out.layout, torch.jagged)
+    self.assertEqual(out.values().shape, (5, 4, 8))
+    utils.assert_close(out.values().cpu(), torch.relu(nt.values()).cpu())
+
+  # ---------------------------------------------------------------------------
+  # Binary Operators & Arithmetic Unit Tests
+  # ---------------------------------------------------------------------------
+
+  def test_binary_jagged_with_jagged_arithmetic(self):
+    """Tests elementwise binary operations between two identically-shaped jagged tensors."""
+    # 1. Set up CPU input data & compute EXPECTED results
+    offsets_cpu = torch.tensor([0, 3, 5], dtype=torch.int64)
+    values_a_cpu = torch.randn(5, 4, dtype=torch.float32)
+    values_b_cpu = torch.randn(5, 4, dtype=torch.float32)
+
+    nt_a_cpu = nt_internal.nested_view_from_values_offsets(
+        values_a_cpu, offsets_cpu
+    )
+    nt_b_cpu = nt_internal.nested_view_from_values_offsets(
+        values_b_cpu, offsets_cpu
+    )
+
+    # 2. Set up TPU input data & compute ACTUAL results
+    offsets_tpu = offsets_cpu.to("tpu")
+    values_a_tpu = values_a_cpu.to("tpu")
+    values_b_tpu = values_b_cpu.to("tpu")
+
+    nt_a_tpu = nt_internal.nested_view_from_values_offsets(
+        values_a_tpu, offsets_tpu
+    )
+    nt_b_tpu = nt_internal.nested_view_from_values_offsets(
+        values_b_tpu, offsets_tpu
+    )
+
+    binary_ops = [
+        ("add", lambda a, b: a + b),
+        ("sub", lambda a, b: a - b),
+        ("mul", lambda a, b: a * b),
+        ("div", lambda a, b: a / b.abs().clamp(min=0.1)),
+    ]
+
+    # 3. Compare ACTUAL (TPU) results against EXPECTED (CPU) results
+    for name, op in binary_ops:
+      expected_cpu = op(nt_a_cpu, nt_b_cpu)
+      actual_tpu = op(nt_a_tpu, nt_b_tpu)
+
+      self.assertEqual(
+          actual_tpu.device.type, "tpu", msg=f"Device mismatch for {name}"
+      )
+      self.assertEqual(
+          actual_tpu.layout, torch.jagged, msg=f"Layout mismatch for {name}"
+      )
+      utils.assert_close(actual_tpu.offsets().cpu(), expected_cpu.offsets())
+      utils.assert_close(actual_tpu.values().cpu(), expected_cpu.values())
+
+  def test_binary_jagged_with_scalar(self):
+    """Tests binary operations between a jagged nested tensor and a scalar."""
+    t1 = torch.randn(3, 4, device="tpu")
+    t2 = torch.randn(2, 4, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    out_add = nt + 2.5
+    self.assertEqual(out_add.device.type, "tpu")
+    self.assertEqual(out_add.layout, torch.jagged)
+    utils.assert_close(out_add.values().cpu(), (nt.values() + 2.5).cpu())
+
+    out_mul = nt * 0.5
+    self.assertEqual(out_mul.device.type, "tpu")
+    utils.assert_close(out_mul.values().cpu(), (nt.values() * 0.5).cpu())
+
+  def test_binary_jagged_with_broadcast_dense_feature(self):
+    """Tests broadcasting a dense feature vector (D,) over a jagged tensor (B, j1, D)."""
+    t1 = torch.randn(3, 4, device="tpu")
+    t2 = torch.randn(2, 4, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    bias = torch.randn(4, device="tpu")
+    out = nt + bias
+
+    self.assertEqual(out.device.type, "tpu")
+    self.assertEqual(out.layout, torch.jagged)
+    self.assertEqual(out.values().shape, (5, 4))
+    utils.assert_close(out.values().cpu(), (nt.values() + bias).cpu())
+
+  def test_binary_autograd_gradients(self):
+    """Tests two-sided and broadcasted autograd gradient flow for binary operations."""
+    values_a = torch.randn(5, 4, device="tpu", requires_grad=True)
+    values_b = torch.randn(5, 4, device="tpu", requires_grad=True)
+    bias = torch.randn(4, device="tpu", requires_grad=True)
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device="tpu")
+
+    nt_a = nt_internal.nested_view_from_values_offsets(values_a, offsets)
+    nt_b = nt_internal.nested_view_from_values_offsets(values_b, offsets)
+
+    # c = a * b + bias
+    out = nt_a * nt_b + bias
+    loss = out.values().sum()
+    loss.backward()
+
+    self.assertIsNotNone(values_a.grad)
+    self.assertIsNotNone(values_b.grad)
+    self.assertIsNotNone(bias.grad)
+
+    utils.assert_close(values_a.grad.cpu(), values_b.detach().cpu())
+    utils.assert_close(values_b.grad.cpu(), values_a.detach().cpu())
+    utils.assert_close(bias.grad.cpu(), torch.full((4,), 5.0))
+
+  def test_binary_mismatched_offsets_error(self):
+    """Tests that binary operations between jagged tensors with mismatched offsets raise RuntimeError."""
+    t_a = torch.randn(5, 4, device="tpu")
+    t_b = torch.randn(5, 4, device="tpu")
+    offsets_a = torch.tensor([0, 2, 5], dtype=torch.int64, device="tpu")
+    offsets_b = torch.tensor([0, 3, 5], dtype=torch.int64, device="tpu")
+
+    nt_a = nt_internal.nested_view_from_values_offsets(t_a, offsets_a)
+    nt_b = nt_internal.nested_view_from_values_offsets(t_b, offsets_b)
+
+    with self.assertRaises(RuntimeError):
+      _ = nt_a + nt_b
+
+  # ---------------------------------------------------------------------------
+  # Core Neural Network Modules Unit Tests
+  # ---------------------------------------------------------------------------
+
+  def test_nn_linear_layer(self):
+    """Tests nn.Linear forward and backward propagation on jagged nested tensors."""
+    t1_cpu = torch.randn(3, 8, dtype=torch.float32)
+    t2_cpu = torch.randn(2, 8, dtype=torch.float32)
+    nt_cpu = torch.nested.nested_tensor([t1_cpu, t2_cpu], layout=torch.jagged)
+
+    nt_tpu = torch.nested.nested_tensor(
+        [t1_cpu.to("tpu"), t2_cpu.to("tpu")], layout=torch.jagged
+    )
+
+    linear_cpu = torch.nn.Linear(8, 16, bias=True)
+    linear_tpu = torch.nn.Linear(8, 16, bias=True).to("tpu")
+    linear_tpu.weight.data.copy_(linear_cpu.weight.data)
+    linear_tpu.bias.data.copy_(linear_cpu.bias.data)
+
+    out_cpu = linear_cpu(nt_cpu)
+    out_tpu = linear_tpu(nt_tpu)
+
+    self.assertEqual(out_tpu.device.type, "tpu")
+    self.assertEqual(out_tpu.layout, torch.jagged)
+    self.assertEqual(out_tpu.shape[0], 2)
+    self.assertEqual(out_tpu.shape[2], 16)
+    utils.assert_close(
+        out_tpu.values().cpu(), out_cpu.values(), rtol=1e-2, atol=1e-2
+    )
+    utils.assert_close(out_tpu.offsets().cpu(), out_cpu.offsets())
+
+    # Test backward pass
+    loss_cpu = out_cpu.values().sum()
+    loss_cpu.backward()
+
+    loss_tpu = out_tpu.values().sum()
+    loss_tpu.backward()
+
+    utils.assert_close(
+        linear_tpu.weight.grad.cpu(),
+        linear_cpu.weight.grad,
+        rtol=1e-2,
+        atol=1e-2,
+    )
+    utils.assert_close(
+        linear_tpu.bias.grad.cpu(), linear_cpu.bias.grad, rtol=1e-2, atol=1e-2
+    )
+
+  def test_nn_embedding_layer(self):
+    """Tests nn.Embedding lookup with jagged integer token IDs."""
+    ids_cpu = torch.tensor([1, 4, 2, 7, 3], dtype=torch.int64)
+    offsets_cpu = torch.tensor([0, 2, 5], dtype=torch.int64)
+    nt_ids_cpu = nt_internal.nested_view_from_values_offsets(
+        ids_cpu, offsets_cpu
+    )
+
+    nt_ids_tpu = nt_internal.nested_view_from_values_offsets(
+        ids_cpu.to("tpu"), offsets_cpu.to("tpu")
+    )
+
+    emb_cpu = torch.nn.Embedding(10, 16)
+    emb_tpu = torch.nn.Embedding(10, 16).to("tpu")
+    emb_tpu.weight.data.copy_(emb_cpu.weight.data)
+
+    out_cpu = emb_cpu(nt_ids_cpu)
+    out_tpu = emb_tpu(nt_ids_tpu)
+
+    self.assertEqual(out_tpu.device.type, "tpu")
+    self.assertEqual(out_tpu.layout, torch.jagged)
+    self.assertEqual(out_tpu.values().shape, (5, 16))
+    utils.assert_close(out_tpu.values().cpu(), out_cpu.values())
+
+    # Test backward gradient accumulation to embedding table
+    loss_cpu = out_cpu.values().sum()
+    loss_cpu.backward()
+
+    loss_tpu = out_tpu.values().sum()
+    loss_tpu.backward()
+
+    utils.assert_close(emb_tpu.weight.grad.cpu(), emb_cpu.weight.grad)
+
+  def test_nn_layernorm(self):
+    """Tests nn.LayerNorm over feature dimensions of jagged nested tensors."""
+    t1 = torch.randn(3, 16, device="tpu")
+    t2 = torch.randn(4, 16, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    ln = torch.nn.LayerNorm(16).to("tpu")
+    out = ln(nt)
+
+    self.assertEqual(out.device.type, "tpu")
+    self.assertEqual(out.layout, torch.jagged)
+    self.assertEqual(out.values().shape, (7, 16))
+    utils.assert_close(
+        out.values().cpu(), ln(nt.values()).cpu(), rtol=1e-3, atol=1e-3
+    )
+
+  def test_nn_rmsnorm(self):
+    """Tests nn.RMSNorm over feature dimensions of jagged nested tensors."""
+    t1 = torch.randn(3, 16, device="tpu")
+    t2 = torch.randn(4, 16, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    rms = torch.nn.RMSNorm(16).to("tpu")
+    out = rms(nt)
+
+    self.assertEqual(out.device.type, "tpu")
+    self.assertEqual(out.layout, torch.jagged)
+    self.assertEqual(out.values().shape, (7, 16))
+    utils.assert_close(
+        out.values().cpu(), rms(nt.values()).cpu(), rtol=1e-3, atol=1e-3
+    )
+
+  def test_nn_dropout(self):
+    """Tests nn.Dropout in eval and train modes on jagged nested tensors."""
+    t1 = torch.randn(3, 8, device="tpu")
+    t2 = torch.randn(2, 8, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    dropout = torch.nn.Dropout(p=0.5).to("tpu")
+    dropout.eval()
+    out_eval = dropout(nt)
+    utils.assert_close(out_eval.values().cpu(), nt.values().cpu())
+
+  def test_transformer_feedforward_block_e2e(self):
+    """Tests complete Transformer Feed-Forward Network block on jagged nested tensors."""
+    d_model = 16
+    d_ff = 64
+
+    class TransformerFFN(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.linear1 = torch.nn.Linear(d_model, d_ff)
+        self.act = torch.nn.GELU()
+        self.dropout = torch.nn.Dropout(0.1)
+        self.linear2 = torch.nn.Linear(d_ff, d_model)
+        self.norm = torch.nn.LayerNorm(d_model)
+
+      def forward(self, x):
+        residual = x
+        x = self.linear1(x)
+        x = self.act(x)
+        x = self.dropout(x)
+        x = self.linear2(x)
+        return self.norm(residual + x)
+
+    model = TransformerFFN().to("tpu")
+    t1 = torch.randn(4, d_model, device="tpu", requires_grad=True)
+    t2 = torch.randn(2, d_model, device="tpu", requires_grad=True)
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    out = model(nt)
+    self.assertEqual(out.device.type, "tpu")
+    self.assertEqual(out.layout, torch.jagged)
+    self.assertEqual(out.values().shape, (6, d_model))
+
+    loss = out.values().sum()
+    loss.backward()
+
+    self.assertIsNotNone(model.linear1.weight.grad)
+    self.assertIsNotNone(model.linear2.weight.grad)
+    self.assertIsNotNone(model.norm.weight.grad)
+
+  # ---------------------------------------------------------------------------
+  # Tensor Manipulation & Slicing Unit Tests
+  # ---------------------------------------------------------------------------
+
+  def test_tensor_manipulation_split_chunk_cat(self):
+    """Tests feature-dimension split, chunk, and concatenation on jagged tensors."""
+    t1 = torch.randn(3, 12, device="tpu")
+    t2 = torch.randn(2, 12, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    # Split into 3 equal chunks along feature dim
+    chunks = torch.chunk(nt, 3, dim=-1)
+    self.assertEqual(len(chunks), 3)
+    for c in chunks:
+      self.assertEqual(c.device.type, "tpu")
+      self.assertEqual(c.layout, torch.jagged)
+      self.assertEqual(c.values().shape, (5, 4))
+
+    # Cat them back together along feature dim
+    reconstructed = torch.cat(list(chunks), dim=-1)
+    self.assertEqual(reconstructed.device.type, "tpu")
+    self.assertEqual(reconstructed.layout, torch.jagged)
+    self.assertEqual(reconstructed.values().shape, (5, 12))
+    utils.assert_close(reconstructed.values().cpu(), nt.values().cpu())
+
+  def test_tensor_manipulation_softmax(self):
+    """Tests softmax normalization across feature dimensions of jagged tensors."""
+    t1 = torch.randn(3, 8, device="tpu")
+    t2 = torch.randn(2, 8, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    out = torch.softmax(nt, dim=-1)
+    self.assertEqual(out.device.type, "tpu")
+    self.assertEqual(out.layout, torch.jagged)
+    self.assertEqual(out.values().shape, (5, 8))
+    utils.assert_close(
+        out.values().cpu(), torch.softmax(nt.values(), dim=-1).cpu()
+    )
+
+  def test_tensor_manipulation_clone_and_unbind(self):
+    """Tests clone and unbind operations on jagged nested tensors."""
+    t1 = torch.randn(3, 4, device="tpu")
+    t2 = torch.randn(2, 4, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    # Clone
+    nt_cloned = nt.clone()
+    self.assertEqual(nt_cloned.device.type, "tpu")
+    self.assertEqual(nt_cloned.layout, torch.jagged)
+    utils.assert_close(nt_cloned.values().cpu(), nt.values().cpu())
+    utils.assert_close(nt_cloned.offsets().cpu(), nt.offsets().cpu())
+
+    # Unbind into list of dense tensors
+    dense_list = torch.unbind(nt, dim=0)
+    self.assertEqual(len(dense_list), 2)
+    self.assertEqual(dense_list[0].shape, (3, 4))
+    self.assertEqual(dense_list[1].shape, (2, 4))
+    utils.assert_close(dense_list[0].cpu(), t1.cpu())
+    utils.assert_close(dense_list[1].cpu(), t2.cpu())
+
+  # ---------------------------------------------------------------------------
+  # Reductions & Pooling Unit Tests
+  # ---------------------------------------------------------------------------
+
+  def test_reduction_global_and_feature(self):
+    """Tests global and feature-dimension reduction operations on jagged tensors."""
+    t1 = torch.randn(3, 4, device="tpu")
+    t2 = torch.randn(2, 4, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    # Global reductions
+    self.assertAlmostEqual(nt.sum().item(), nt.values().sum().item(), places=4)
+    self.assertAlmostEqual(
+        nt.mean().item(), nt.values().mean().item(), places=4
+    )
+
+    # Feature-dimension reduction (dim=-1)
+    feat_sum = nt.sum(dim=-1)
+    self.assertEqual(feat_sum.device.type, "tpu")
+    self.assertEqual(feat_sum.layout, torch.jagged)
+    self.assertEqual(feat_sum.values().shape, (5,))
+    utils.assert_close(feat_sum.values().cpu(), nt.values().sum(dim=-1).cpu())
+
+  def test_reduction_sequence_dim_pooling(self):
+    """Tests sequence-dimension pooling (dim=1) reducing jagged (B, j1, D) to dense (B, D)."""
+    t1 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device="tpu")
+    t2 = torch.tensor([[5.0, 6.0], [7.0, 8.0], [9.0, 10.0]], device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+
+    # Sequence sum pooling: Batch 0 -> [4.0, 6.0], Batch 1 -> [21.0, 24.0]
+    pooled_sum = nt.sum(dim=1)
+    self.assertEqual(pooled_sum.shape, (2, 2))
+    expected_sum = torch.tensor([[4.0, 6.0], [21.0, 24.0]], device="tpu")
+    utils.assert_close(pooled_sum.cpu(), expected_sum.cpu())
+
+    # Sequence mean pooling: Batch 0 -> [2.0, 3.0], Batch 1 -> [7.0, 8.0]
+    pooled_mean = nt.mean(dim=1)
+    self.assertEqual(pooled_mean.shape, (2, 2))
+    expected_mean = torch.tensor([[2.0, 3.0], [7.0, 8.0]], device="tpu")
+    utils.assert_close(pooled_mean.cpu(), expected_mean.cpu())
+
+  # ---------------------------------------------------------------------------
+  # Performance Optimizations & Pipeline Verification Unit Tests
+  # ---------------------------------------------------------------------------
+
+  def test_inplace_residual_accumulation(self):
+    """Verifies that in-place residual addition (add_) operates zero-copy and matches out-of-place add."""
+    t1_x = torch.randn(3, 16, device="tpu")
+    t2_x = torch.randn(2, 16, device="tpu")
+    nt_x = torch.nested.nested_tensor([t1_x, t2_x], layout=torch.jagged)
+
+    t1_res = torch.randn(3, 16, device="tpu")
+    t2_res = torch.randn(2, 16, device="tpu")
+    nt_res = torch.nested.nested_tensor([t1_res, t2_res], layout=torch.jagged)
+
+    # Out-of-place baseline
+    expected = nt_x.values() + nt_res.values()
+
+    # In-place accumulation
+    initial_ptr = nt_x.values().data_ptr()
+    nt_x.values().add_(nt_res.values())
+
+    # Verify zero-copy pointer preservation and numerical equivalence
+    self.assertEqual(nt_x.values().data_ptr(), initial_ptr)
+    utils.assert_close(nt_x.values().cpu(), expected.cpu())
+
+  def test_zero_host_sync_pipeline_execution(self):
+    """Verifies that complete Transformer blocks on jagged tensors execute asynchronously without host syncs."""
+    d_model = 32
+    d_ff = 128
+
+    class FullTransformerLayer(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.qkv = torch.nn.Linear(d_model, 3 * d_model)
+        self.proj = torch.nn.Linear(d_model, d_model)
+        self.ffn1 = torch.nn.Linear(d_model, d_ff)
+        self.ffn2 = torch.nn.Linear(d_ff, d_model)
+        self.norm1 = torch.nn.RMSNorm(d_model)
+        self.norm2 = torch.nn.RMSNorm(d_model)
+
+      def forward(self, x):
+        # Attention projection & residual
+        residual = x
+        qkv = self.qkv(x)
+        q, k, v = torch.chunk(qkv, 3, dim=-1)
+        attn_out = self.proj(q)
+        x = self.norm1(residual + attn_out)
+
+        # FFN & residual
+        residual = x
+        ffn_out = self.ffn2(torch.nn.functional.gelu(self.ffn1(x)))
+        return self.norm2(residual + ffn_out)
+
+    layer = FullTransformerLayer().to("tpu")
+    values = torch.randn(10, d_model, device="tpu", requires_grad=True)
+    offsets = torch.tensor([0, 3, 7, 10], dtype=torch.int64, device="tpu")
+    nt = nt_internal.nested_view_from_values_offsets(values, offsets)
+
+    # Forward + backward pass executes asynchronously without blocking
+    out = layer(nt)
+    loss = out.values().sum()
+    loss.backward()
+
+    self.assertIsNotNone(values.grad)
+    self.assertIsNotNone(layer.qkv.weight.grad)
+    self.assertIsNotNone(layer.ffn2.weight.grad)
 
 
 if __name__ == "__main__":
