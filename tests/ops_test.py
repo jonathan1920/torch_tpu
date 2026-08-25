@@ -810,6 +810,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float32: {"rtol": 5.5e-6},
         torch.int16: {"atol": 1.3},
         torch.int32: {"atol": 1.3},
+        torch.int64: {"atol": 1.3},
         torch.int8: {"atol": 1.3},
     },
     "_foreach_sigmoid": {
@@ -1887,10 +1888,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "all",
         exclude_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -1898,10 +1896,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "any",
         exclude_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -2029,7 +2024,6 @@ class TestOps(op_testing.OpInfoTestBase):
             "cpu": COMPLEX_DTYPES,
             "gpu": (
                 *COMPLEX_DTYPES,
-                torch.float4_e2m1fn_x2,
                 torch.int4,
             ),
         },
@@ -2119,9 +2113,6 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_clamp(self):
     self.do_test_op(
         "clamp",
-        # b/446131726 - clamp() fails on TPU with bool dtypes.
-        exclude_dtypes=(torch.bool,),
-        exclude_inplace_dtypes=(torch.bool,),
         # TODO: b/478321000 remove when PyTorch#173110 is fixed.
         skip_if=_inplace_clamp_input_has_negative_values_uint8_gpu,
         # TODO: fix clamp() returning enormous errors or nans when dynamism is
@@ -2134,14 +2125,8 @@ class TestOps(op_testing.OpInfoTestBase):
         "clamp_min",
         # TODO: b/478321000 remove when PyTorch#173110 is fixed.
         skip_if=_inplace_clamp_input_has_negative_values_uint8_gpu,
-        exclude_dtypes=(
-            torch.complex64,
-            torch.bool,
-        ),
-        exclude_inplace_dtypes=(
-            torch.complex64,
-            torch.bool,
-        ),
+        exclude_dtypes=(torch.complex64,),
+        exclude_inplace_dtypes=(torch.complex64,),
     )
 
   def test_clamp_max(self):
@@ -2149,14 +2134,8 @@ class TestOps(op_testing.OpInfoTestBase):
         "clamp_max",
         # TODO: b/478321000 remove when PyTorch#173110 is fixed.
         skip_if=_inplace_clamp_input_has_negative_values_uint8_gpu,
-        exclude_dtypes=(
-            torch.complex64,
-            torch.bool,
-        ),
-        exclude_inplace_dtypes=(
-            torch.complex64,
-            torch.bool,
-        ),
+        exclude_dtypes=(torch.complex64,),
+        exclude_inplace_dtypes=(torch.complex64,),
     )
 
   def test_clone(self):
@@ -2335,10 +2314,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "eq",
         exclude_inplace_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -2370,10 +2346,7 @@ class TestOps(op_testing.OpInfoTestBase):
         # there's no point in checking the values.
         check_value=CheckValueMode.SKIP,
         exclude_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -2503,7 +2476,6 @@ class TestOps(op_testing.OpInfoTestBase):
             "gpu": (
                 torch.float8_e4m3fn,
                 torch.float8_e5m2,
-                torch.float4_e2m1fn_x2,
             ),
         },
     )
@@ -2795,7 +2767,6 @@ class TestOps(op_testing.OpInfoTestBase):
             "cpu": COMPLEX_DTYPES,
             "gpu": (
                 *COMPLEX_DTYPES,
-                torch.float4_e2m1fn_x2,
                 torch.int4,
             ),
         },
@@ -2807,8 +2778,8 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "_foreach_pow",
         # TODO: fix TPU failure for these dtypes.
-        exclude_dtypes=(torch.bool, torch.int64, torch.complex64),
-        exclude_inplace_dtypes=(torch.bool, torch.int64, torch.complex64),
+        exclude_dtypes=(torch.bool, torch.complex64),
+        exclude_inplace_dtypes=(torch.bool, torch.complex64),
     )
 
   @category("foreach")
@@ -2882,10 +2853,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "ge",
         exclude_inplace_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -2893,10 +2861,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "gt",
         exclude_inplace_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -3005,10 +2970,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "le",
         exclude_inplace_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -3044,8 +3006,9 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_linalg_triangular_solve(self):
     self.do_test_op(
         "linalg.solve_triangular",
-        # bool triggers an error in the sample generation code
-        exclude_dtypes=(torch.bool,),
+        exclude_dtypes={
+            "cpu": (torch.bool,),
+        },
     )
 
   def test_logit(self):
@@ -3188,10 +3151,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "linalg.vector_norm",
         exclude_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -3209,10 +3169,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "lt",
         exclude_inplace_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -3519,10 +3476,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "ne",
         exclude_inplace_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -3598,10 +3552,7 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int64,
                 )
             ),
-            "gpu": (
-                COMPLEX_DTYPES
-                + (torch.uint8, torch.int8, torch.int16, torch.int64)
-            ),
+            "gpu": COMPLEX_DTYPES + (torch.uint8, torch.int8, torch.int16),
         },
     )
 
@@ -3621,10 +3572,7 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int64,
                 )
             ),
-            "gpu": (
-                COMPLEX_DTYPES
-                + (torch.uint8, torch.int8, torch.int16, torch.int64)
-            ),
+            "gpu": COMPLEX_DTYPES + (torch.uint8, torch.int8, torch.int16),
         },
     )
 
@@ -3638,9 +3586,6 @@ class TestOps(op_testing.OpInfoTestBase):
         # Known issues:
         # 1. CPU sometimes fails with low-bitwidth integers, even though XLA
         #    succeeds; possible bug in CPU kernel?
-        # 2. TPU lowering for int64 crashes due to "While rewriting computation
-        #    to not contain X64 element types, XLA encountered an HLO for which
-        #    this rewriting is not implemented: %convolution [...]"
         exclude_dtypes={
             "cpu": (
                 COMPLEX_DTYPES
@@ -3652,10 +3597,7 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int64,
                 )
             ),
-            "gpu": (
-                COMPLEX_DTYPES
-                + (torch.uint8, torch.int8, torch.int16, torch.int64)
-            ),
+            "gpu": COMPLEX_DTYPES + (torch.uint8, torch.int8, torch.int16),
         },
     )
 
@@ -3667,9 +3609,6 @@ class TestOps(op_testing.OpInfoTestBase):
         # Known issues:
         # 1. CPU sometimes fails with low-bitwidth integers, even though XLA
         #    succeeds; possible bug in CPU kernel?
-        # 2. TPU lowering for int64 crashes due to "While rewriting computation
-        #    to not contain X64 element types, XLA encountered an HLO for which
-        #    this rewriting is not implemented: %convolution [...]"
         exclude_dtypes={
             "cpu": (
                 COMPLEX_DTYPES
@@ -3681,10 +3620,7 @@ class TestOps(op_testing.OpInfoTestBase):
                     torch.int64,
                 )
             ),
-            "gpu": (
-                COMPLEX_DTYPES
-                + (torch.uint8, torch.int8, torch.int16, torch.int64)
-            ),
+            "gpu": COMPLEX_DTYPES + (torch.uint8, torch.int8, torch.int16),
         },
     )
 
@@ -3953,25 +3889,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("rsub")
 
   def test_scaled_mm_v2(self):
-    self.do_test_op(
-        "torch._scaled_mm_v2",
-        exclude_dtypes={
-            "cpu": ALL_NUMERIC_DTYPES,
-            "gpu": (
-                torch.complex64,
-                torch.float64,
-                torch.float32,
-                torch.float16,
-                torch.bfloat16,
-                torch.uint8,
-                torch.int8,
-                torch.int16,
-                torch.bool,
-                torch.int4,
-                torch.float4_e2m1fn_x2,
-            ),
-        },
-    )
+    self.do_test_op("torch._scaled_mm_v2")
 
   def test_scatter(self):
     self.do_test_op("scatter")
@@ -4216,10 +4134,7 @@ class TestOps(op_testing.OpInfoTestBase):
         # there's no point in checking the values.
         check_value=CheckValueMode.SKIP,
         exclude_dtypes={
-            "gpu": (
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
