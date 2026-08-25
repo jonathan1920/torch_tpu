@@ -17,10 +17,8 @@
 import contextlib
 import dataclasses
 import enum
-import os
-import random
 import time
-from typing import Any, Callable, Iterable, Optional, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from absl import flags
 from absl import logging
@@ -28,7 +26,6 @@ import numpy as np
 import torch
 from torch.utils import _pytree as pytree
 from torch_tpu._internal.utils import log_utils
-from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e.harness import metrics as metrics_lib
 from examples.benchmarks.quality_utils import quality_benchmark_model

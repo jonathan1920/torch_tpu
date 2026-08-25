@@ -131,9 +131,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=batch_size,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
@@ -198,9 +198,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             custom_kwargs={"dist_strat": "ddp"},
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
@@ -233,9 +233,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             custom_kwargs={"dist_strat": "fsdp"},
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
@@ -299,9 +299,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_3B_BENCHMARK_NAME)
@@ -352,9 +352,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
@@ -444,9 +444,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_2_2B_BENCHMARK_NAME)
@@ -504,9 +504,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             custom_kwargs={
                 "modify_config_hook": _modify_gemma4_config_to_small,
                 "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
+                "precompute_attention_mask": True,
             },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        # (@lukeboyer): Investigate OOM for functorch tracing.
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
             grad_accumulation_steps=1,
@@ -541,6 +543,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        # (@lukeboyer): Investigate OOM for functorch tracing.
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
             grad_accumulation_steps=1,
@@ -953,9 +956,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=4,
             custom_kwargs={
                 "disable_vision_inputs": run_mode == common.RunMode.COMPILED,
+                "precompute_attention_mask": True,
             },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        # (@lukeboyer): Investigate OOM for functorch tracing.
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
             grad_accumulation_steps=1,
@@ -986,6 +991,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        # (@lukeboyer): Investigate OOM for functorch tracing.
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
             grad_accumulation_steps=1,
@@ -1017,8 +1023,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             },
         ),
         model_and_input_factory=model_utils.gemma4_custom_standalone_model_builder,
+        # (@lukeboyer): Fix custom autograd incompatibility with functorch tracing.
         train_factory=functools.partial(
-            benchmark_function_db.generic_train_factory,
+            benchmark_function_db.huggingface_llm_train_factory,
             grad_accumulation_steps=1,
         ),
     )
@@ -1071,9 +1078,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_QWEN3_1_7B_BENCHMARK_NAME)
@@ -1196,9 +1203,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_QWEN3_0_6B_BENCHMARK_NAME)
@@ -1241,9 +1248,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_QWEN3_4B_BENCHMARK_NAME)
@@ -1319,9 +1326,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GPT_OSS_20B_BENCHMARK_NAME)
@@ -1382,9 +1389,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             custom_kwargs={"modify_config_hook": modify_config_hook},
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GPT_OSS_120B_BENCHMARK_NAME)
@@ -1427,6 +1434,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        # (@lukeboyer): Investigate SDPA fallback issue in functorch.
         train_factory=functools.partial(
             benchmark_function_db.huggingface_llm_train_factory,
             grad_accumulation_steps=1,
@@ -1478,9 +1486,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode,
+            eager_fact=benchmark_function_db.huggingface_llm_train_factory,
         ),
     )
     self.run_performance_benchmark_test(
@@ -1571,6 +1579,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_resnet_model_builder,
+        # (@lukeboyer): Fix custom autograd incompatibility with functorch..
         train_factory=functools.partial(
             benchmark_function_db.generic_train_factory,
             grad_accumulation_steps=1,
@@ -1616,9 +1625,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             custom_kwargs={"input_shape": (1, 3, 224, 224)},
         ),
         model_and_input_factory=model_utils.timm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.generic_train_factory,
-            grad_accumulation_steps=1,
+        train_factory=benchmark_function_db.get_train_factory(
+            run_mode, eager_fact=benchmark_function_db.generic_train_factory
         ),
     )
     self.run_performance_benchmark_test(

@@ -143,7 +143,7 @@ torch_tpu_py_library(
         ":optimizers",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/compile:compiler",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
     ],
 )

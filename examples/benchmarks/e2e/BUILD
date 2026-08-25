@@ -42,7 +42,6 @@ torch_tpu_py_library(
     name = "benchmark_utils",
     srcs = ["benchmark_utils.py"],
     deps = [
-        ":common",
         ":device_utils",
         "//examples/benchmarks/e2e/harness:metrics",
         "//examples/benchmarks/quality_utils:quality_benchmark_model",
@@ -520,10 +519,11 @@ torch_tpu_py_test(
 
 torch_tpu_py_library(
     name = "benchmark_function_db",
-    testonly = 1,
     srcs = ["benchmark_function_db.py"],
     deps = [
         ":common",
+        "//examples/benchmarks:optimizers",
+        "//examples/benchmarks:single_trace_trainer",
         "//shims/torch:pytorch",
     ],
 )

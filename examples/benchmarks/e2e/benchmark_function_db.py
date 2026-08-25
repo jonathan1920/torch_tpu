@@ -16,9 +16,12 @@
 """Database of benchmark execution functions for backend performance tests."""
 
 import contextlib
+import functools
 from typing import Any, Callable
 
 import torch
+from examples.benchmarks import optimizers
+from examples.benchmarks import single_trace_trainer
 from examples.benchmarks.e2e import common
 
 
@@ -322,3 +325,67 @@ def generic_train_factory(
     return step_loss
 
   return train_step
+
+
+def functional_train_factory(
+    grad_accumulation_steps: int = 1,
+    optimizer: Any = None,
+) -> Callable[
+    [torch.nn.Module, Any, torch.optim.Optimizer | None], torch.Tensor
+]:
+  """Returns a functional training step runner using SingleTraceTrainer.
+
+  Args:
+    grad_accumulation_steps: Ignored (SingleTraceTrainer doesn't support
+      accumulation yet).
+    optimizer: SingleTraceTrainer Optimizer instance.
+
+  Returns:
+    A callable step function that executes functional FWD + BWD + OPT in one
+    graph using SingleTraceTrainer.
+  """
+
+  state: dict[str, Any] = {"step_fn": None}
+  del grad_accumulation_steps  # Ignored; SingleTraceTrainer doesn't support accumulation yet.
+
+  def train_step(
+      model: torch.nn.Module,
+      inputs: Any,
+      opt_arg: torch.optim.Optimizer | None = None,
+  ) -> torch.Tensor:
+    with _sdpa_kernel_if_not_cuda():
+      del opt_arg  # Ignored; use SingleTraceTrainer's internal optimizer.
+      if state["step_fn"] is None:
+        trainer = single_trace_trainer.SingleTraceTrainer(
+            model=model,
+            optimizer=optimizer,
+        )
+        state["step_fn"] = trainer.make_compiled_train_step(
+            example_inputs=inputs,
+        )
+
+      return state["step_fn"](inputs)
+
+  setattr(train_step, "is_pre_compiled", True)
+  return train_step
+
+
+def get_train_factory(
+    run_mode: common.RunMode,
+    eager_fact: Callable[..., Any],
+    **eager_kwargs: Any,
+) -> Callable[..., Any]:
+  """Returns a training step runner factory for the given run mode."""
+  if run_mode == common.RunMode.COMPILED:
+    return functools.partial(
+        functional_train_factory,
+        grad_accumulation_steps=1,
+        optimizer=optimizers.ReferenceAdamw(),
+    )
+  if eager_fact == simple_train_factory:
+    return eager_fact
+  return functools.partial(
+      eager_fact,
+      grad_accumulation_steps=1,
+      **eager_kwargs,
+  )
