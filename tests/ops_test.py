@@ -2540,6 +2540,11 @@ class TestOps(op_testing.OpInfoTestBase):
         # dtypes.
         exclude_inplace_dtypes=COMPLEX_DTYPES,
         check_dynamism=False,  # TODO(b/488338235): dynamism is flaky
+        # TODO(b/552441831): Remove skip_if once GPU golden files are updated
+        # with 'value' kwarg.
+        skip_if=lambda _1, _2, op_input: (
+            not oss_utils.is_oss() and "scalars" in op_input.kwargs
+        ),
     )
 
   @category("foreach")
@@ -2550,6 +2555,11 @@ class TestOps(op_testing.OpInfoTestBase):
         # TODO(b/485291373): fix _foreach_addcmul_() failing with complex
         # dtypes.
         exclude_inplace_dtypes=COMPLEX_DTYPES,
+        # TODO(b/552441831): Remove skip_if once GPU golden files are updated
+        # with 'value' kwarg.
+        skip_if=lambda _1, _2, op_input: (
+            not oss_utils.is_oss() and "scalars" in op_input.kwargs
+        ),
     )
 
   @category("foreach")
