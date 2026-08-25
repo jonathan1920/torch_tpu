@@ -44,6 +44,7 @@
 #include "stablehlo/dialect/StablehloOps.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/utils.h"
 
 namespace torch_tpu {
 
@@ -253,9 +254,6 @@ template <typename T>
 struct supports_tostring_method<
     T, std::void_t<decltype(std::declval<const T&>().ToString())>>
     : std::true_type {};
-
-template <typename T>
-inline constexpr bool always_false_v = false;
 
 // The primary ToString() template. It delegates to absl::StrCat(), the
 // .ToString() method, or operator<< depending on which is supported by T.

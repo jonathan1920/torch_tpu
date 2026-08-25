@@ -21,7 +21,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -51,6 +50,13 @@
 #endif
 
 namespace torch_tpu {
+
+// always_false_v<T> is always false.
+//
+// This is useful for static_assert(always_false_v<T>, ...) to trigger the
+// compiler to generate an error message about type T.
+template <typename T>
+inline constexpr bool always_false_v = false;
 
 // Returns a copy of the array of integers.
 [[nodiscard]] inline SmallInt64Vector CopyIntVector(at::IntArrayRef ints) {

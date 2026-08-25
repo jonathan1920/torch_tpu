@@ -688,6 +688,21 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "constexpr_map",
+    hdrs = ["constexpr_map.h"],
+    deps = [":utils"],
+)
+
+torch_tpu_cc_test(
+    name = "constexpr_map_test",
+    srcs = ["constexpr_map_test.cc"],
+    deps = [
+        ":constexpr_map",
+        "//torch_tpu/common:oss_test_main",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "to_string",
     srcs = ["to_string.cc"],
     hdrs = ["to_string.h"],
