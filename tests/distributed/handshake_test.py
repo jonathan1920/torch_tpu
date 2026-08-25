@@ -12,42 +12,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for distributed handshake protocol."""
+"""Tests for distributed handshake protocol using PyZMQ and asyncio."""
 
 import asyncio
 import json
 import os
 import threading
-from typing import Any
+import time
+from typing import Any, Callable
 from unittest import mock
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import portpicker
 import torch.distributed as dist
+import torch.multiprocessing as mp
 from torch_tpu._internal.distributed import handshake
+from torch_tpu._internal.distributed import multiprocessing
 from tests import seed_test_utils
+from tests.distributed import distributed_utils
 import zmq
 
 _LoopRunner = handshake._LoopRunner
-_CollectiveHandshakeConsensus = handshake._CollectiveHandshakeConsensus
 
+_CollectiveHandshakeConsensus = handshake._CollectiveHandshakeConsensus
 _CollectiveHandshakeRequestZMQEnvelope = (
     handshake._CollectiveHandshakeRequestZMQEnvelope
 )
-
 _ZMQClient = handshake._ZMQClient
 _ZMQServer = handshake._ZMQServer
 _HandshakeClient = handshake._HandshakeClient
 _HandshakeServer = handshake._HandshakeServer
-
+Handshake = handshake.Handshake
 CollectiveHandshakeRequest = handshake.CollectiveHandshakeRequest
 CollectiveHandshakeResponse = handshake.CollectiveHandshakeResponse
 ProcessGroupId = handshake.ProcessGroupId
 ProcessGroupCollectiveCount = handshake.ProcessGroupCollectiveCount
 _get_handshake_timeout_s = handshake._get_handshake_timeout_s
 RankCollectiveCounts = handshake.RankCollectiveCounts
-
-# TODO(b/542976786): Distributed tests will be added in a follow up CL.
 
 
 def _make_request(
@@ -891,25 +893,6 @@ class HandshakeServerClientBackendTest(seed_test_utils.RepeatableTest):
     server2 = _HandshakeServer(current_rank=0, port=31234, world_size=1)
     self.assertIs(server1, server2)
 
-  def test_handshake_server_client_echo_false(self) -> None:
-    """Tests that _HandshakeServer echoes False to client and coordinator."""
-    port = portpicker.pick_unused_port()
-    server = _HandshakeServer(current_rank=0, port=port, world_size=2)
-    client = _HandshakeClient(port=port)
-    try:
-      client_req = _make_request(rank=1, participating_ranks=[0, 1])
-      client.send(client_req)
-      resp = client.recv()
-      self.assertFalse(resp.success)
-
-      coord_req = _make_request(rank=0, participating_ranks=[0, 1])
-      server.send(coord_req)
-      server_resp = server.recv()
-      self.assertFalse(server_resp.success)
-    finally:
-      client.close()
-      server.close()
-
   def test_handshake_server_close_cancels_loop_tasks_and_shuts_down_loop(
       self,
   ) -> None:
@@ -938,5 +921,436 @@ class HandshakeServerClientBackendTest(seed_test_utils.RepeatableTest):
     self.assertFalse(server._initialized)
 
 
+def test_wrapper(
+    target_fn: Callable[..., Any], *args: Any, **kwargs: Any
+) -> Any:
+  """Wrapper for distributed test worker functions.
+
+  Initializes the PyTorch process group before invoking target_fn and tears it
+  down afterwards.
+
+  Args:
+    target_fn: Target worker function to invoke.
+    *args: Positional arguments for `target_fn`.
+    **kwargs: Keyword arguments for `target_fn`.
+
+  Returns:
+    Result of calling `target_fn(*args, **kwargs)`.
+  """
+  dist.init_process_group(
+      backend="gloo",
+      init_method="env://",
+      rank=int(os.environ.get("RANK", "0")),
+      world_size=int(os.environ.get("WORLD_SIZE", "1")),
+  )
+  try:
+    return target_fn(*args, **kwargs)
+  finally:
+    if dist.is_initialized():
+      dist.destroy_process_group()
+
+
+def _run_handshake_request_matching(coordinator_rank: int) -> None:
+  """Worker function to test matching CollectiveHandshakeRequest across ranks."""
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  Handshake._reset_instances()
+
+  hs = Handshake(coordinator_rank=coordinator_rank)
+  msg = _make_request(
+      rank=rank,
+      participating_ranks=list(range(world_size)),
+      fingerprint="matching_fingerprint_123",
+      num_collectives_in_graph=2,
+      collective_count_before=0,
+  )
+  res = hs.submit(msg)
+  assert res, f"Rank {rank} expected True, got {res}"
+
+
+def _run_handshake_request_mismatching(coordinator_rank: int) -> None:
+  """Worker function to test mismatching CollectiveHandshakeRequest fingerprints across ranks."""
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  Handshake._reset_instances()
+
+  hs = Handshake(coordinator_rank=coordinator_rank)
+  # Rank 0 has a different fingerprint than other ranks
+  fingerprint = "fp_coordinator" if rank == 0 else f"fp_worker_{rank}"
+  msg = _make_request(
+      rank=rank,
+      participating_ranks=list(range(world_size)),
+      fingerprint=fingerprint,
+      num_collectives_in_graph=2,
+      collective_count_before=0,
+  )
+  res = hs.submit(msg)
+  assert not res, f"Rank {rank} expected False for mismatch, got {res}"
+
+
+def _run_multiple_consecutive_submissions(coordinator_rank: int) -> None:
+  """Worker function to test multiple consecutive step submissions."""
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  Handshake._reset_instances()
+
+  hs = Handshake(coordinator_rank=coordinator_rank)
+
+  for step in range(5):
+    # Step where all ranks match
+    msg_match = _make_request(
+        rank=rank,
+        participating_ranks=list(range(world_size)),
+        fingerprint=f"step_{step}_match",
+        num_collectives_in_graph=2,
+        collective_count_before=step * 2,
+    )
+    assert hs.submit(msg_match)
+
+    # Step where ranks mismatch
+    msg_mismatch = _make_request(
+        rank=rank,
+        participating_ranks=list(range(world_size)),
+        fingerprint=f"step_{step}_rank_{rank}",
+        num_collectives_in_graph=1,
+        collective_count_before=(step + 1) * 2,
+    )
+    assert not hs.submit(msg_mismatch)
+
+
+def _run_select_handshake_port_pg_broadcast(coordinator_rank: int) -> None:
+  """Verifies that non-coordinator ranks receive the broadcasted port."""
+  rank = int(os.environ["RANK"])
+
+  port = handshake._select_handshake_port(
+      current_rank=rank, coordinator_rank=coordinator_rank
+  )
+
+  world_size = dist.get_world_size()
+  gathered_ports = [None for _ in range(world_size)] if rank == 0 else None
+  dist.gather_object(port, gathered_ports, dst=0)
+
+  if rank == 0:
+    assert gathered_ports is not None
+    unique_ports = set(gathered_ports)
+    assert (
+        len(unique_ports) == 1
+    ), f"All ranks must see identical port, got {gathered_ports}"
+    assert (
+        gathered_ports[0] > 0
+    ), f"Port must be valid positive int, got {gathered_ports[0]}"
+
+
+def _run_handshake_with_initialized_process_group(
+    coordinator_rank: int,
+) -> None:
+  """Worker function to test Handshake port exchange over process group."""
+  Handshake._reset_instances()
+  hs = Handshake(coordinator_rank=coordinator_rank)
+  msg = _make_request(
+      rank=int(os.environ["RANK"]),
+      participating_ranks=list(range(int(os.environ["WORLD_SIZE"]))),
+      fingerprint="pg_fingerprint_test",
+      num_collectives_in_graph=2,
+      collective_count_before=0,
+  )
+  res = hs.submit(msg)
+  assert res, f"Rank {os.environ['RANK']} expected True, got {res}"
+
+
+def _run_subset_handshake_without_coordinator(coordinator_rank: int) -> None:
+  """Worker function testing subset handshake raises RuntimeError."""
+  rank = int(os.environ["RANK"])
+  Handshake._reset_instances()
+
+  hs = Handshake(coordinator_rank=coordinator_rank)
+  # Ranks 1, 2, 3 participate (subset of world_size 4), coordinator rank 0 does
+  # not call submit().
+  if rank != coordinator_rank:
+    msg = _make_request(
+        rank=rank,
+        participating_ranks=[1, 2, 3],
+        fingerprint="subset_fingerprint_456",
+        num_collectives_in_graph=2,
+        collective_count_before=0,
+    )
+    try:
+      hs.submit(msg)
+      assert (
+          False
+      ), f"Rank {rank} expected RuntimeError for subgroup communication"
+    except RuntimeError as e:
+      assert "do not support subgroup communication" in str(e)
+  else:
+    time.sleep(2)
+
+
+def _run_mismatched_frame_count() -> None:
+  """Worker function testing mismatched frame count between rank 0 and 1-7."""
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  Handshake._reset_instances()
+
+  hs = Handshake(coordinator_rank=0)
+  participating_ranks = list(range(world_size))
+
+  if rank == 0:
+    # Rank 0 sends 2 handshakes:
+    # 1st handshake: fingerprint_A, before=0, num_collectives=1
+    msg1 = _make_request(
+        rank=0,
+        participating_ranks=participating_ranks,
+        fingerprint="fingerprint_A",
+        num_collectives_in_graph=1,
+        collective_count_before=0,
+    )
+    res1 = hs.submit(msg1)
+    assert not res1, f"Rank 0 expected False for 1st submit, got {res1}"
+    # 2nd handshake: fingerprint_B, before=1, num_collectives=1
+    msg2 = _make_request(
+        rank=0,
+        participating_ranks=participating_ranks,
+        fingerprint="fingerprint_B",
+        num_collectives_in_graph=1,
+        collective_count_before=1,
+    )
+    res2 = hs.submit(msg2)
+    assert not res2, f"Rank 0 expected False for 2nd submit, got {res2}"
+  else:
+    # Ranks 1-7 send 1 handshake: fingerprint_C, before=0, num_collectives=2
+    msg = _make_request(
+        rank=rank,
+        participating_ranks=participating_ranks,
+        fingerprint="fingerprint_C",
+        num_collectives_in_graph=2,
+        collective_count_before=0,
+    )
+    res = hs.submit(msg)
+    assert not res, f"Rank {rank} expected False, got {res}"
+
+
+def _run_mismatched_multi_frame_count_exhaustion() -> None:
+  """Worker function testing multi-frame exhaustion before matching step."""
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  Handshake._reset_instances()
+
+  hs = Handshake(coordinator_rank=0)
+  participating_ranks = list(range(world_size))
+
+  if rank == 0:
+    # Rank 0 sends 3 handshakes with 1 collective each (after=1, after=2,
+    # after=3).
+    msg1 = _make_request(
+        rank=0,
+        participating_ranks=participating_ranks,
+        fingerprint="fp_rank0_1",
+        num_collectives_in_graph=1,
+        collective_count_before=0,
+    )
+    assert not hs.submit(msg1)
+
+    msg2 = _make_request(
+        rank=0,
+        participating_ranks=participating_ranks,
+        fingerprint="fp_rank0_2",
+        num_collectives_in_graph=1,
+        collective_count_before=1,
+    )
+    assert not hs.submit(msg2)
+
+    msg3 = _make_request(
+        rank=0,
+        participating_ranks=participating_ranks,
+        fingerprint="fp_rank0_3",
+        num_collectives_in_graph=1,
+        collective_count_before=2,
+    )
+    assert not hs.submit(msg3)
+  else:
+    # Ranks 1-7 send 1 handshake with 3 collectives (after=3)
+    msg = _make_request(
+        rank=rank,
+        participating_ranks=participating_ranks,
+        fingerprint="fp_other",
+        num_collectives_in_graph=3,
+        collective_count_before=0,
+    )
+    assert not hs.submit(msg)
+
+  # Next step: all ranks submit matching messages
+  msg_match = _make_request(
+      rank=rank,
+      participating_ranks=participating_ranks,
+      fingerprint="matching_after_multi_exhaust",
+      num_collectives_in_graph=2,
+      collective_count_before=3,
+  )
+  assert hs.submit(msg_match)
+
+
+def _run_target_count_increases_during_exhaustion() -> None:
+  """Worker function testing target count increases during exhaustion."""
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  Handshake._reset_instances()
+
+  hs = Handshake(coordinator_rank=0)
+  participating_ranks = list(range(world_size))
+
+  if rank == 0:
+    # Rank 0 starts with 1 collective (after=1), then in exhaust round 1 runs
+    # ahead with after=5 (num_collectives_in_graph=4)
+    msg1 = _make_request(
+        rank=0,
+        participating_ranks=participating_ranks,
+        fingerprint="fp_rank0_1",
+        num_collectives_in_graph=1,
+        collective_count_before=0,
+    )
+    assert not hs.submit(msg1)
+
+    msg2 = _make_request(
+        rank=0,
+        participating_ranks=participating_ranks,
+        fingerprint="fp_rank0_2",
+        num_collectives_in_graph=4,
+        collective_count_before=1,
+    )
+    assert not hs.submit(msg2)
+  else:
+    # Ranks 1-3 start with 2 collectives (after=2).
+    # Initially target_count=2, so only rank 0 is in ranks_to_exhaust.
+    # When rank 0 sends after=5 in exhaust round 1, ranks 1-3 must be added to
+    # ranks_to_exhaust in round 2 (num_collectives_in_graph=3).
+    msg1 = _make_request(
+        rank=rank,
+        participating_ranks=participating_ranks,
+        fingerprint=f"fp_rank_{rank}_1",
+        num_collectives_in_graph=2,
+        collective_count_before=0,
+    )
+    assert not hs.submit(msg1)
+
+    msg2 = _make_request(
+        rank=rank,
+        participating_ranks=participating_ranks,
+        fingerprint=f"fp_rank_{rank}_2",
+        num_collectives_in_graph=3,
+        collective_count_before=2,
+    )
+    assert not hs.submit(msg2)
+
+  # Step 2: Next matching step where all ranks match.
+  msg_match = _make_request(
+      rank=rank,
+      participating_ranks=participating_ranks,
+      fingerprint="matching_step2",
+      num_collectives_in_graph=2,
+      collective_count_before=5,
+  )
+  assert hs.submit(msg_match)
+
+
+class HandshakeTest(seed_test_utils.RepeatableTest):
+  """Unit tests for distributed Handshake protocol on CPU."""
+
+  def setUp(self) -> None:
+    super().setUp()
+    Handshake._reset_instances()
+
+  def tearDown(self) -> None:
+    super().tearDown()
+    Handshake._reset_instances()
+
+  def test_handshake_port_cache(self) -> None:
+    """Tests that Handshake caches port selection per coordinator rank."""
+    with mock.patch.object(
+        handshake, "_select_handshake_port", return_value=31234
+    ):
+      with mock.patch.object(dist, "get_world_size", return_value=1):
+        _ = Handshake(current_rank=0, coordinator_rank=0)
+        self.assertEqual(Handshake._port_cache[0], 31234)
+
+  def test_submit_invalid_message_type(self) -> None:
+    """Tests that submitting non-CollectiveHandshakeRequest raises TypeError."""
+    with mock.patch.object(
+        handshake, "_select_handshake_port", return_value=31234
+    ):
+      with mock.patch.object(dist, "get_world_size", return_value=1):
+        hs = Handshake(current_rank=0, coordinator_rank=0)
+        with self.assertRaises(TypeError):
+          hs.submit("invalid_string")  # pyrefly: ignore[bad-argument-type]
+
+  def test_submit_subgroup_not_supported(self) -> None:
+    """Tests that submitting participating_ranks != world_size raises RuntimeError."""
+    with mock.patch.object(
+        handshake, "_select_handshake_port", return_value=31234
+    ):
+      with mock.patch.object(dist, "get_world_size", return_value=4):
+        hs = Handshake(current_rank=0, coordinator_rank=0)
+        msg = _make_request(
+            rank=0,
+            participating_ranks=[0, 1],  # len 2 != world_size 4
+            fingerprint="fp",
+            num_collectives_in_graph=2,
+            collective_count_before=0,
+        )
+        with self.assertRaisesRegex(
+            RuntimeError, "do not support subgroup communication"
+        ):
+          hs.submit(msg)
+
+  def test_select_handshake_port_pg_broadcast(self) -> None:
+    """Tests that worker ranks receive the broadcasted port from coordinator."""
+    distributed_utils.dist_run(
+        3, test_wrapper, _run_select_handshake_port_pg_broadcast, 0
+    )
+
+  @parameterized.parameters(0, 1)
+  def test_handshake_request_matching(self, coordinator_rank: int) -> None:
+    distributed_utils.dist_run(
+        4, test_wrapper, _run_handshake_request_matching, coordinator_rank
+    )
+
+  @parameterized.parameters(0, 1)
+  def test_handshake_request_mismatching(self, coordinator_rank: int) -> None:
+    distributed_utils.dist_run(
+        4, test_wrapper, _run_handshake_request_mismatching, coordinator_rank
+    )
+
+  def test_multiple_consecutive_submissions(self) -> None:
+    distributed_utils.dist_run(
+        3, test_wrapper, _run_multiple_consecutive_submissions, 0
+    )
+
+  def test_handshake_with_initialized_process_group(self) -> None:
+    distributed_utils.dist_run(
+        3, test_wrapper, _run_handshake_with_initialized_process_group, 0
+    )
+
+  def test_subset_handshake_without_coordinator(self) -> None:
+    distributed_utils.dist_run(
+        4, test_wrapper, _run_subset_handshake_without_coordinator, 0
+    )
+
+  def test_mismatched_frame_count(self) -> None:
+    """Tests that mismatched frame count across ranks is exhausted cleanly without deadlocking."""
+    distributed_utils.dist_run(8, test_wrapper, _run_mismatched_frame_count)
+
+  def test_mismatched_multi_frame_count_exhaustion(self) -> None:
+    """Tests that multi-frame count mismatch across ranks is exhausted cleanly before a subsequent matching step."""
+    distributed_utils.dist_run(
+        8, test_wrapper, _run_mismatched_multi_frame_count_exhaustion
+    )
+
+  def test_target_count_increases_during_exhaustion(self) -> None:
+    """Tests that when target_count increases during an exhaust round, lagging ranks are exhausted to the higher target count."""
+    distributed_utils.dist_run(
+        4, test_wrapper, _run_target_count_increases_during_exhaustion
+    )
+
+
 if __name__ == "__main__":
-  absltest.main()
+  mp.set_start_method("spawn")
+  multiprocessing.handle_test_main(absltest.main)

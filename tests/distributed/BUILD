@@ -763,12 +763,16 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "handshake_test",
     srcs = ["handshake_test.py"],
+    shard_count = 8,
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/distributed:handshake",
+        "//torch_tpu/_internal/distributed:multiprocessing",
         "@pypi//portpicker",
         "@pypi//pyzmq",
     ],

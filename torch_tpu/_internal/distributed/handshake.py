@@ -23,6 +23,7 @@ import dataclasses
 import functools
 import json
 import os
+import queue
 import struct
 import threading
 from typing import Any, Coroutine, TypeVar, cast
@@ -38,6 +39,8 @@ ZMQError = error.ZMQError
 Again = error.Again
 
 _T = TypeVar("_T")
+
+_COORDINATOR_RANK = 0  # Default coordinator rank, can be overridden.
 
 
 def _get_handshake_timeout_s() -> int:
@@ -966,11 +969,15 @@ class _HandshakeServer(_HandshakeBackend):
       with worker clients.
     _world_size: Total number of ranks participating in the distributed job.
     _current_rank: The current rank of the process running this server.
-    _response_queue: An asyncio.Queue holding consensus responses for the
-      coordinator rank.
+    _handshake_consensus: The _CollectiveHandshakeConsensus instance managing
+      consensus queues.
+    _local_consensus_queue: A queue holding consensus responses for the local
+      rank.
     _loop_runner: The _LoopRunner managing the server background event loop.
     _listen_task: The background task running _listen_loop to process client
       requests.
+    _consensus_task: The background task running _consensus_loop to process
+      consensus requests.
     _closed: Whether the server has been closed.
     _initialized: Whether the server instance has been initialized.
   """
@@ -979,11 +986,13 @@ class _HandshakeServer(_HandshakeBackend):
   _instance_lock = threading.Lock()
 
   _zmq_server: _ZMQServer
+  _handshake_consensus: _CollectiveHandshakeConsensus
+  _local_consensus_queue: queue.Queue[CollectiveHandshakeResponse]
   _world_size: int
   _current_rank: int
-  _response_queue: asyncio.Queue[CollectiveHandshakeResponse]
   _loop_runner: _LoopRunner
   _listen_task: asyncio.Task[None]
+  _consensus_task: asyncio.Task[None]
   _closed: bool
   _initialized: bool
 
@@ -1022,13 +1031,22 @@ class _HandshakeServer(_HandshakeBackend):
             port=port,
             send_timeout_s=_get_handshake_timeout_s(),
         )
+        inst._handshake_consensus = _CollectiveHandshakeConsensus(
+            num_queues=world_size
+        )
+        # For the coordinator rank, we don't want to send the message over the
+        # network, instead we put the response directly into the queue for it to
+        # be consumed by the _HandshakeServer.recv() method.
+        inst._local_consensus_queue = queue.Queue()
         inst._world_size = world_size
         inst._current_rank = current_rank
-        inst._response_queue = asyncio.Queue()
         inst._loop_runner = _LoopRunner(thread_name="HandshakeServerLoop")
         # LINT.IfChange(server_loop_tasks)
         inst._listen_task = inst._loop_runner.run_coroutine_async(
             inst._listen_loop()
+        )
+        inst._consensus_task = inst._loop_runner.run_coroutine_async(
+            inst._consensus_loop()
         )
         # LINT.ThenChange(handshake.py:get_loop_tasks)
         inst._closed = False
@@ -1039,24 +1057,25 @@ class _HandshakeServer(_HandshakeBackend):
   # LINT.IfChange(get_loop_tasks)
   def _get_loop_tasks(self) -> list[asyncio.Task[Any]]:
     """Returns all background loop tasks managed by the server."""
-    return [self._listen_task]
+    return [self._listen_task, self._consensus_task]
 
   # LINT.ThenChange(handshake.py:server_loop_tasks)
 
   async def _listen_loop(self) -> None:
-    """Continuously receives requests and echoes back a False response.
+    """Continuously receives requests and passes them to the consensus queues.
 
     Raises:
       Again: If socket receive times out while server is active.
       ZMQError: If socket encounters an error while server is active.
     """
-    false_response = CollectiveHandshakeResponse(success=False)
     while True:
       try:
         envelope = await self._zmq_server.recv_request()
         if envelope is None:
           continue
-        await self._zmq_server.send_reply(envelope.client_id, false_response)
+        await self._handshake_consensus.put_request(
+            envelope.request.rank, envelope
+        )
       except asyncio.CancelledError:
         logging.info("_HandshakeServer _listen_loop cancelled.")
         raise
@@ -1079,18 +1098,21 @@ class _HandshakeServer(_HandshakeBackend):
           raise RuntimeError("Handshake server loop task failed.") from exc
 
   def send(self, request: CollectiveHandshakeRequest) -> None:
-    """Sends coordinator message to local queue echoing False.
+    """Directly adds coordinator message to _CollectiveHandshakeConsensus.
 
     Args:
-      request: Ignored request payload for the echo server.
+      request: Request to be added to the consensus queue.
     """
-    del request
     self._check_loop_task_errors()
-    false_response = CollectiveHandshakeResponse(success=False)
-    self._loop_runner.run_coroutine(self._response_queue.put(false_response))
+    envelope = _CollectiveHandshakeRequestZMQEnvelope(
+        client_id=b"", request=request
+    )
+    self._loop_runner.run_coroutine(
+        self._handshake_consensus.put_request(request.rank, envelope)
+    )
 
   def recv(self) -> CollectiveHandshakeResponse:
-    """Awaits result from local queue.
+    """Awaits consensus result from the background consensus loop.
 
     Blocks until a response is available or timeout expires.
 
@@ -1103,12 +1125,7 @@ class _HandshakeServer(_HandshakeBackend):
     """
     self._check_loop_task_errors()
     try:
-      return self._loop_runner.run_coroutine(
-          asyncio.wait_for(
-              self._response_queue.get(),
-              timeout=_get_handshake_timeout_s(),
-          )
-      )
+      return self._local_consensus_queue.get(timeout=_get_handshake_timeout_s())
     except Exception:  # pylint: disable=broad-except
       self._check_loop_task_errors()
       raise
@@ -1122,6 +1139,105 @@ class _HandshakeServer(_HandshakeBackend):
           await task
         except (asyncio.CancelledError, concurrent.futures.CancelledError) as e:
           logging.debug("Loop task cancelled during cleanup: %s", e)
+
+  async def _reply_to_rank(
+      self, rank: int, client_id: bytes, response: CollectiveHandshakeResponse
+  ) -> None:
+    """Sends reply to rank (via _local_consensus_queue if coordinator, else _ZMQServer)."""
+    if rank == self._current_rank:
+      self._local_consensus_queue.put(response)
+    else:
+      await self._zmq_server.send_reply(client_id, response)
+
+  async def _gather_handshake_messages(
+      self,
+  ) -> tuple[dict[int, CollectiveHandshakeRequest], dict[int, bytes]]:
+    """Gathers requests and client IDs from all participating ranks for a handshake step."""
+    first_envelope = await self._handshake_consensus.get_first_request()
+    first_msg = first_envelope.request
+    received_msgs = {first_msg.rank: first_msg}
+    client_ids = {first_msg.rank: first_envelope.client_id}
+
+    remaining = set(first_msg.participating_ranks) - {first_msg.rank}
+
+    results = await self._handshake_consensus.get_from_ranks(remaining)
+    for env in results:
+      received_msgs[env.request.rank] = env.request
+      client_ids[env.request.rank] = env.client_id
+
+    return received_msgs, client_ids
+
+  async def _exhaust_ranks(
+      self,
+      received_msgs: dict[int, CollectiveHandshakeRequest],
+  ) -> None:
+    """Exhausts queues for ranks that have collective count < max collective count."""
+    # TODO(b/542976786): The handshake currently supports only the global
+    # process group. There is an explicit check against this in the invocation of the `Handshake.submit` function.
+    # The reason we do not iterate pg_collective_counts here is that this exhaustion algorithm won't be applicable to non-global process groups.
+    global_pg = ProcessGroupId(
+        range(self._world_size), world_size=self._world_size
+    )
+
+    local_count = {
+        r: m.pg_collective_counts.collective_count(global_pg)
+        for r, m in received_msgs.items()
+    }
+    target_count = max(local_count.values())
+    ranks_to_exhaust = [
+        r for r, count in local_count.items() if count < target_count
+    ]
+    false_response = CollectiveHandshakeResponse(success=False)
+
+    while ranks_to_exhaust:
+      exhaust_envelopes = await self._handshake_consensus.get_from_ranks(
+          ranks_to_exhaust
+      )
+      for envelope in exhaust_envelopes:
+        await self._reply_to_rank(
+            envelope.request.rank, envelope.client_id, false_response
+        )
+        count_after = envelope.request.pg_collective_counts.collective_count(
+            global_pg
+        )
+        local_count[envelope.request.rank] = count_after
+        target_count = max(target_count, count_after)
+
+      ranks_to_exhaust = [
+          r for r, count in local_count.items() if count < target_count
+      ]
+
+  async def _consensus_loop(self) -> None:
+    """Continuously processes consensus rounds and replies to participating ranks."""
+    while True:
+      try:
+        received_msgs, client_ids = await self._gather_handshake_messages()
+        logging.debug("Received handshake messages: %s", received_msgs)
+        first_msg = next(iter(received_msgs.values()))
+
+        # Make consensus decision.
+        first_fp = first_msg.executable_fingerprint
+        all_match = all(
+            m.executable_fingerprint == first_fp
+            and m.pg_collective_counts == first_msg.pg_collective_counts
+            for m in received_msgs.values()
+        )
+        consensus_response = CollectiveHandshakeResponse(success=all_match)
+
+        for r in received_msgs.keys():
+          await self._reply_to_rank(
+              r, client_ids.get(r, b""), consensus_response
+          )
+
+        await self._exhaust_ranks(received_msgs)
+      except asyncio.CancelledError:
+        logging.info("_HandshakeServer _consensus_loop cancelled.")
+        raise
+      except Again as e:
+        logging.debug(
+            "Timeout expired in _HandshakeServer _consensus_loop: %s", e
+        )
+        raise e
 
   def close(self) -> None:
     """Closes server sockets, background tasks, and event loop thread.
@@ -1320,3 +1436,96 @@ class _HandshakeClient(_HandshakeBackend):
         except Exception as e:  # pylint: disable=broad-except
           logging.debug("Error resetting _HandshakeClient instance: %s", e)
         cls._instance = None
+
+
+class Handshake:
+  """Handshake protocol across distributed ranks using ZMQ backend.
+
+  A single entry point for HandshakeServer / HandshakeClient.
+  This class coordinates the creation of the correct backend instance based on
+  the rank of the current process and the coordinator rank.
+  This class allows user code to not have to distinct between the two roles.
+
+  Attributes:
+    _port_cache: Dictionary mapping coordinator ranks to handshake ports.
+    _port_cache_lock: A threading lock ensuring thread-safe access to the port
+      cache.
+  """
+
+  _port_cache: dict[int, int] = {}
+  _port_cache_lock = threading.Lock()
+
+  def __init__(
+      self,
+      current_rank: int | None = None,
+      coordinator_rank: int = _COORDINATOR_RANK,
+  ) -> None:
+    if current_rank is None:
+      current_rank = dist.get_rank()
+    world_size = dist.get_world_size()
+
+    self._current_rank = current_rank
+    self._coordinator_rank = coordinator_rank
+    self._world_size = world_size
+
+    with self._port_cache_lock:
+      if coordinator_rank in self._port_cache:
+        port = self._port_cache[coordinator_rank]
+      else:
+        port = _select_handshake_port(current_rank, coordinator_rank)
+        self._port_cache[coordinator_rank] = port
+
+    if self._current_rank == self._coordinator_rank:
+      self._backend: _HandshakeBackend = _HandshakeServer(
+          current_rank=coordinator_rank, port=port, world_size=world_size
+      )
+    else:
+      self._backend = _HandshakeClient(port=port)
+
+  @classmethod
+  def _reset_instances(cls) -> None:
+    """Resets singleton instances and port cache for testing purposes."""
+    with cls._port_cache_lock:
+      cls._port_cache.clear()
+    _HandshakeServer._reset_instance()  # pylint: disable=protected-access
+    _HandshakeClient._reset_instance()  # pylint: disable=protected-access
+
+  def submit(self, msg: CollectiveHandshakeRequest) -> bool:
+    """Submits a CollectiveHandshakeRequest to the handshake protocol.
+
+    Args:
+      msg: CollectiveHandshakeRequest object to submit for consensus.
+
+    Returns:
+      True if executable fingerprint was identical across all participating
+      ranks, else False.
+
+    Raises:
+      TypeError: If `msg` is not a `CollectiveHandshakeRequest`.
+      RuntimeError: If subgroup communication is attempted.
+      ValueError: If `_current_rank` is not in `msg.participating_ranks`.
+    """
+    if not isinstance(msg, CollectiveHandshakeRequest):
+      raise TypeError(
+          "Expected msg to be CollectiveHandshakeRequest, got"
+          f" {type(msg).__name__}."
+      )
+
+    if len(msg.participating_ranks) != self._world_size:
+      raise RuntimeError("We currently do not support subgroup communication.")
+
+    if self._current_rank not in msg.participating_ranks:
+      raise ValueError(
+          f"Current rank {self._current_rank} is not in participating ranks"
+          f" {msg.participating_ranks}."
+      )
+
+    self._backend.send(msg)
+    response = self._backend.recv()
+    return response.success
+
+  def close(self) -> None:
+    """Closes the underlying backend connection."""
+    if hasattr(self, "_backend") and self._backend is not None:
+      if hasattr(self._backend, "close"):
+        self._backend.close()
