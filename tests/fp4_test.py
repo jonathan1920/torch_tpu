@@ -15,6 +15,7 @@
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.utils import test_utils as utils
+from tests import quantize_utils
 from tests import seed_test_utils
 
 
@@ -56,7 +57,7 @@ class FP4Test(seed_test_utils.RepeatableTest):
     with self.subTest(name="storage_bytes"):
       self.assertEqual(x_cpu.storage().nbytes(), 8)
     with self.subTest(name="values"):
-      utils.assert_close(x_cpu.view(torch.uint8), x_uint8)
+      utils.assert_close(x_cpu, x)
 
   def test_fp4_casting_and_rounding_on_tpu(self):
     device = torch.device("tpu")
@@ -102,28 +103,6 @@ class FP4Test(seed_test_utils.RepeatableTest):
     # Copy back to CPU
     x_fp4_cpu = x_fp4_tpu.to("cpu")
 
-    # View as uint8 to inspect exact bit patterns
-    x_uint8_cpu = x_fp4_cpu.view(torch.uint8)
-
-    # Expected byte representation calculated mathematically:
-    # - 0.24 -> 0.0 (0x0), 0.25 -> 0.0 (0x0) -> 0x00
-    # - 0.26 -> 0.5 (0x1), 0.74 -> 0.5 (0x1) -> 0x11
-    # - 0.75 -> 1.0 (0x2), 0.76 -> 1.0 (0x2) -> 0x22
-    # - 1.24 -> 1.0 (0x2), 1.25 -> 1.0 (0x2) -> 0x22
-    # - 1.26 -> 1.5 (0x3), 1.74 -> 1.5 (0x3) -> 0x33
-    # - 1.75 -> 2.0 (0x4), 1.76 -> 2.0 (0x4) -> 0x44
-    # - 2.49 -> 2.0 (0x4), 2.5  -> 2.0 (0x4) -> 0x44
-    # - 2.51 -> 3.0 (0x5), 3.49 -> 3.0 (0x5) -> 0x55
-    # - 3.5  -> 4.0 (0x6), 3.51 -> 4.0 (0x6) -> 0x66
-    # - 4.99 -> 4.0 (0x6), 5.0  -> 4.0 (0x6) -> 0x66
-    # - 5.01 -> 6.0 (0x7), 7.0  -> 6.0 (0x7) -> 0x77
-    # - -7.0 -> -6.0 (0xF), 0.0  -> 0.0 (0x0) -> 0x0F
-    # Since dest has shape [1, 24] of FP4, it has logical shape [1, 48].
-    # The cast only produces 24 logical values, which we padded with zeros
-    # to 48.
-    # So we expect 12 bytes of casted values followed by 12 bytes of zero
-    # padding.
-    #
     # Detect if the TPU compiler exhibits the wrap-around emulation
     # limitation on TPU v5e. Under software emulation for sub-byte types on
     # v5e, out-of-range values like 7.0 and -7.0 wrap to -0.0 (0x8) instead of
@@ -136,47 +115,17 @@ class FP4Test(seed_test_utils.RepeatableTest):
     detect_uint8 = detect_fp4.to("cpu").view(torch.uint8)
     has_emulation_limitation = (detect_uint8[0] & 0x0F) == 0x08
 
-    expected_bytes = torch.tensor(
-        [[
-            0x00,
-            0x11,
-            0x22,
-            0x22,
-            0x33,
-            0x44,
-            0x44,
-            0x55,
-            0x66,
-            0x66,
-            0x77,
-            0x0F,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-        ]],
-        dtype=torch.uint8,
-    )
+    expected_fp4 = quantize_utils.quantize_to_float4_e2m1fn_x2(x_float)
 
     if has_emulation_limitation:
-      # If the emulation limitation is present, adjust the expected bytes
-      # for the wrapped out-of-range values:
-      # - 7.0 -> -0.0 (0x8)
-      # - -7.0 -> -0.0 (0x8)
-      # This results in the 11th byte (5.01 and 7.0) being 0x87 instead of 0x77,
-      # and the 12th byte (-7.0 and 0.0) being 0x08 instead of 0x0F.
+      # Under emulation, out-of-range values wrap to -0.0 (0x8) instead of
+      # saturating. Patch the packed bytes directly.
+      expected_bytes = expected_fp4.view(torch.uint8).clone()
       expected_bytes[0, 10] = 0x87
       expected_bytes[0, 11] = 0x08
+      expected_fp4 = expected_bytes.view(torch.float4_e2m1fn_x2)
 
-    utils.assert_close(x_uint8_cpu, expected_bytes)
+    utils.assert_close(x_fp4_cpu, expected_fp4)
 
   def test_fp4_dequantization_on_tpu(self):
     device = torch.device("tpu")
