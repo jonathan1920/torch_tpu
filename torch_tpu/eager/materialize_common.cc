@@ -241,62 +241,93 @@ ExtractArgumentLayoutsIfDifferentFromDefault(const Traversal& traversal) {
   return argument_layouts;
 }
 
-}  // namespace
+struct CompiledTraversal {
+  CompilationCacheKey compilation_cache_key;
+  CompiledKernel compiled_kernel;
+};
 
-absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
-    absl_nonnull std::unique_ptr<Traversal> traversal,
-    mlir::MLIRContext& mlir_context, CompilationSpec compilation_spec,
+absl::StatusOr<CompiledTraversal> VerifyAndCompileTraversal(
+    Traversal& traversal, mlir::MLIRContext& mlir_context,
+    CompilationSpec compilation_spec,
     std::string* absl_nullable out_mlir_text) {
   // Propagate bounded dynamism annotations if needed.
-  if (traversal->IsBoundedDynamic()) {
-    TT_RETURN_IF_ERROR(PropagateBoundedDynamism(*traversal, mlir_context));
+  if (traversal.IsBoundedDynamic()) {
+    TT_RETURN_IF_ERROR(PropagateBoundedDynamism(traversal, mlir_context));
   }
 
   const CompilationCacheKey compilation_cache_key =
-      traversal->GetCacheKey(compilation_spec.compile_options_key);
-  for (const auto& argument : traversal->arguments()) {
-    if (!argument.is_materializing()) {
-      if (argument.is_placeholder()) {
-        return TT_ERROR(error::kInternal)
-               << "materialize was called on a placeholder tensor. This "
-                  "should never happen.\nkPlaceholder tensors should only "
-                  "appear in compiled mode, which should never try to "
-                  "materialize tensors.\n"
-               << argument.DebugString();
-      } else if (const auto deferred_op = argument.deferred_op()) {
-        return TT_ERROR(error::kInternal)
-               << "traversal (cache key: " << compilation_cache_key
-               << ") has deferred argument " << ToString(deferred_op->op_name())
-               << ToString(argument.dimensions())
-               << ".\nAll arguments must be set to pending materialization "
-                  "before creating chained ExecutionTasks";
-      } else {
-        return TT_ERROR(error::kInternal)
-               << "traversal argument has an unknown state (not deferred, "
-                  "placeholder, or materializing):\n"
-               << argument.DebugString();
+      traversal.GetCacheKey(compilation_spec.compile_options_key);
+  for (const auto& argument : traversal.arguments()) {
+    if (argument.is_materialized()) {
+      // Argument has either succeeded or failed; check that it didn't fail.
+      // AwaitBuffer is non-blocking when is_materialized() is true.
+      auto buffer_or = argument.AwaitBuffer();
+      if (!buffer_or.ok()) {
+        return TT_ERROR(error::kFailedPrecondition)
+               << "a required argument is in a failed state";
       }
+    } else if (argument.is_materializing()) {
+      // Input isn't ready yet, so we will wait and recheck it during Run().
+      continue;
+    } else if (argument.is_placeholder()) {
+      return TT_ERROR(error::kInternal)
+             << "materialize was called on a placeholder tensor. This "
+                "should never happen.\nkPlaceholder tensors should only "
+                "appear in compiled mode, which should never try to "
+                "materialize tensors.\n"
+             << argument.DebugString();
+    } else if (const auto deferred_op = argument.deferred_op()) {
+      return TT_ERROR(error::kInternal)
+             << "traversal (cache key: " << compilation_cache_key
+             << ") has deferred argument " << ToString(deferred_op->op_name())
+             << ToString(argument.dimensions())
+             << ".\nAll arguments must be set to pending materialization "
+                "before creating chained ExecutionTasks";
+    } else {
+      return TT_ERROR(error::kInternal)
+             << "traversal argument has an unknown state (not deferred, "
+                "placeholder, or materializing):\n"
+             << argument.DebugString();
     }
   }
 
 #ifndef NDEBUG
   // Check that the traversal has a valid set of outputs before we start
   // compiling.
-  TT_RETURN_IF_ERROR(VerifyPerNodeOutputs(traversal->outputs()));
+  TT_RETURN_IF_ERROR(VerifyPerNodeOutputs(traversal.outputs()));
 #endif  // NDEBUG
 
   TT_ASSIGN_OR_RETURN(const std::vector<Indices> argument_layouts,
-                      ExtractArgumentLayoutsIfDifferentFromDefault(*traversal));
+                      ExtractArgumentLayoutsIfDifferentFromDefault(traversal));
 
   // Start compiling the traversal.
   ABSL_VLOG(1) << "[ExecutionTask] Compiling traversal";
   absl::StatusOr<CompiledKernel> compiled_kernel;
   {
     tsl::profiler::TraceMe t("CompileTraversal");
-    TT_ASSIGN_OR_RETURN(
-        compiled_kernel,
-        traversal->Compile(std::move(compilation_spec), out_mlir_text,
-                           /*use_stablehlo_bounds=*/false, argument_layouts));
+    compiled_kernel =
+        traversal.Compile(std::move(compilation_spec), out_mlir_text,
+                          /*use_stablehlo_bounds=*/false, argument_layouts);
+    TT_RETURN_IF_ERROR(compiled_kernel.status());
+  }
+  return CompiledTraversal{
+      .compilation_cache_key = std::move(compilation_cache_key),
+      .compiled_kernel = std::move(*compiled_kernel)};
+}
+
+}  // namespace
+
+absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
+    absl_nonnull std::unique_ptr<Traversal> traversal,
+    mlir::MLIRContext& mlir_context, CompilationSpec compilation_spec,
+    std::string* absl_nullable out_mlir_text) {
+  auto compiled_traversal_or = VerifyAndCompileTraversal(
+      *traversal, mlir_context, std::move(compilation_spec), out_mlir_text);
+  if (!compiled_traversal_or.ok()) {
+    for (const auto& output : traversal->outputs()) {
+      output.device_buffer_list()->SetAsError(compiled_traversal_or.status());
+    }
+    return compiled_traversal_or.status();
   }
 
   // Mark all outputs of the split as scheduled/materialized.
@@ -310,12 +341,13 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
 
   std::string task_name;
   if (ABSL_VLOG_IS_ON(1)) {
-    task_name = absl::StrCat(compilation_cache_key);
+    task_name = absl::StrCat(compiled_traversal_or->compilation_cache_key);
   }
   Traversal::Parts traversal_parts = traversal->IntoParts();
-  return ExecutionTask(
-      std::move(task_name), std::move(traversal_parts.arguments),
-      std::move(traversal_parts.outputs), std::move(*compiled_kernel));
+  return ExecutionTask(std::move(task_name),
+                       std::move(traversal_parts.arguments),
+                       std::move(traversal_parts.outputs),
+                       std::move(compiled_traversal_or->compiled_kernel));
 }
 
 absl::StatusOr<ExecutionTask> ExecutionTask::FromExecutable(
