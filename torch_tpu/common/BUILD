@@ -703,6 +703,21 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
+    name = "symbol_stage",
+    hdrs = ["symbol_stage.h"],
+)
+
+torch_tpu_cc_test(
+    name = "symbol_stage_test",
+    srcs = ["symbol_stage_test.cc"],
+    deps = [
+        ":constexpr_map",
+        ":symbol_stage",
+        "//torch_tpu/common:oss_test_main",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "to_string",
     srcs = ["to_string.cc"],
     hdrs = ["to_string.h"],
