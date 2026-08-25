@@ -639,3 +639,59 @@ def libtpu_at_least(min_version: tuple[int, ...]) -> bool:
   if ver is None:
     return True  # In-tree / source builds link PJRT directly without a wheel
   return ver >= min_version
+
+
+def get_primary_tensor_output(out: Any) -> torch.Tensor | None:
+  """Recursively extracts a primary output torch.Tensor from model output objects.
+
+  Hugging Face and PyTorch models return output tensors wrapped in heterogeneous
+  structures (e.g., HF ModelOutput dataclasses, tuples, lists, or dicts).
+  This function resolves the primary numerical tensor using the following
+  priority resolution strategy:
+    1. Direct Tensor: Returns the input if it is already a torch.Tensor.
+    2. Priority Attributes & Keys: Checks attributes and dictionary keys in
+       precedence order to isolate the primary prediction head and avoid
+       auxiliary tensors (e.g., loss, KV caches, image features):
+       - `.logits` / "logits"
+       - `.last_hidden_state` / "last_hidden_state"
+       - `.sample` / "sample"
+       - `.reconstruction` / "reconstruction"
+       - `.prediction_logits` / "prediction_logits"
+       - `.output` / "output"
+    3. Sequences (tuple/list): Recursively unwraps the first element (out[0]).
+    4. Dictionaries (dict):
+       - Fallback: Scans out.values() recursively to extract the first
+         available tensor (for custom model dictionaries).
+
+  Args:
+    out: The raw model output object returned by forward execution.
+
+  Returns:
+    The extracted primary torch.Tensor, or None if no tensor could be found.
+  """
+  if isinstance(out, torch.Tensor):
+    return out
+
+  priority_keys = (
+      "logits",
+      "last_hidden_state",
+      "sample",
+      "reconstruction",
+      "prediction_logits",
+      "output",
+  )
+  for k in priority_keys:
+    if hasattr(out, k) and (val := getattr(out, k)) is not None:
+      return get_primary_tensor_output(val)
+    if isinstance(out, dict) and k in out and out[k] is not None:
+      return get_primary_tensor_output(out[k])
+
+  if isinstance(out, (tuple, list)) and len(out) > 0:
+    return get_primary_tensor_output(out[0])
+
+  if isinstance(out, dict):
+    for v in out.values():
+      if (res := get_primary_tensor_output(v)) is not None:
+        return res
+
+  return None

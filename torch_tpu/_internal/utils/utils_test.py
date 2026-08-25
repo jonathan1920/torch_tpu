@@ -722,6 +722,56 @@ class AllTest(seed_test_utils.RepeatableTest):
     ]
     self.assert_logs_equal(tracer.backward_log, expected)
 
+  def test_get_primary_tensor_output(self):
+    t = torch.tensor([1.0, 2.0, 3.0])
+    self.assertIs(utils.get_primary_tensor_output(t), t)
+    self.assertIs(utils.get_primary_tensor_output([t]), t)
+    self.assertIs(utils.get_primary_tensor_output((t, "extra")), t)
+
+    class DummyWithLogits:
+
+      def __init__(self, logits):
+        self.logits = logits
+
+    self.assertIs(utils.get_primary_tensor_output(DummyWithLogits(t)), t)
+
+    class DummyWithLastHiddenState:
+
+      def __init__(self, last_hidden_state):
+        self.last_hidden_state = last_hidden_state
+
+    self.assertIs(
+        utils.get_primary_tensor_output(DummyWithLastHiddenState(t)), t
+    )
+
+    class DummyWithSample:
+
+      def __init__(self, sample):
+        self.sample = sample
+
+    self.assertIs(utils.get_primary_tensor_output(DummyWithSample(t)), t)
+
+    class DummyWithLossAndLogits:
+
+      def __init__(self, loss, logits):
+        self.loss = loss
+        self.logits = logits
+
+    loss_t = torch.tensor(0.5)
+    self.assertIs(
+        utils.get_primary_tensor_output(DummyWithLossAndLogits(loss_t, t)), t
+    )
+    self.assertIs(
+        utils.get_primary_tensor_output({"loss": loss_t, "logits": t}), t
+    )
+    self.assertIs(
+        utils.get_primary_tensor_output({"aux_loss": loss_t, "output": t}), t
+    )
+    self.assertIs(utils.get_primary_tensor_output({"logits": t}), t)
+    self.assertIs(utils.get_primary_tensor_output({"custom": {"nested": t}}), t)
+    self.assertIsNone(utils.get_primary_tensor_output("non_tensor_string"))
+    self.assertIsNone(utils.get_primary_tensor_output([]))
+
 
 if __name__ == "__main__":
   absltest.main()

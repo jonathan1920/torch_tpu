@@ -536,16 +536,21 @@ class TorchvisionProvider(BaseProvider):
           "Loading pretrained weights not yet implemented."
       )
     default_shape = (1, 3, 224, 224)
+
+    def _torchvision_input_factory(shape=None, device="cpu"):
+      g = torch.Generator(device="cpu").manual_seed(42)
+      return (
+          (
+              torch.randn(
+                  shape if shape is not None else default_shape, generator=g
+              ).to(device),
+          ),
+          {},
+      )
+
     return ModuleSpec(
         lambda: torchvision.models.get_model(name),
-        lambda shape=None, device="cpu": (
-            (
-                torch.randn(
-                    shape if shape is not None else default_shape, device=device
-                ),
-            ),
-            {},
-        ),
+        _torchvision_input_factory,
     )
 
 
@@ -618,7 +623,7 @@ class TimmProvider(BaseProvider):
           model = timm.create_model(name, pretrained=False)
           #  local checkpoint can't be loaded by timm.create_model directly.
           with local_checkpoint.open("rb") as f:
-            state_dict = torch.load(f)
+            state_dict = torch.load(f, map_location="cpu")
           model.load_state_dict(state_dict)
           return model
         else:
@@ -630,9 +635,10 @@ class TimmProvider(BaseProvider):
       return timm.create_model(name, pretrained=False)
 
     def _input_factory(shape=None, device="cpu"):
+      g = torch.Generator(device="cpu").manual_seed(42)
       input_size = config.input_size if config else (3, 224, 224)
       final_shape = shape if shape else (1, *input_size)
-      return ((torch.randn(final_shape, device=device),), {})
+      return ((torch.randn(final_shape, generator=g).to(device),), {})
 
     def _preprocessor_factory():
       if config:
@@ -672,6 +678,7 @@ def _get_max_seq_len(
     for attr in [
         "max_text_len",
         "max_position_embeddings",
+        "max_target_positions",
         "n_positions",
         "seq_length",
         "max_seq_len",
@@ -810,6 +817,7 @@ def _generate_gemma4_inputs(
     image_size: int,
     device: str,
     input_kwargs: dict[str, Any],
+    generator: torch.Generator | None = None,
 ) -> None:
   """Generates gemma4 specific inputs (patchified image and position ids).
 
@@ -868,8 +876,8 @@ def _generate_gemma4_inputs(
   patch_pixels = num_channels * patch_size * patch_size
 
   input_kwargs["pixel_values"] = torch.randn(
-      batch_size, max_patches, patch_pixels, device=device
-  )
+      batch_size, max_patches, patch_pixels, generator=generator
+  ).to(device)
 
   # Generate image_position_ids: (batch_size, max_patches, 2).
   # We initialize with -1 (padding).
@@ -910,6 +918,9 @@ def _generate_gemma4_inputs(
 
 def _extract_target_dtype(config: Any) -> torch.dtype:
   """Extracts target torch_dtype from root or nested transformer configs."""
+  if getattr(config, "model_type", "") == "gemma2":
+    return torch.bfloat16
+
   dtype = getattr(config, "torch_dtype", None)
   if dtype is None:
     dtype = getattr(config, "dtype", None)
@@ -953,6 +964,7 @@ def _generate_transformers_inputs(
   Returns:
     A dictionary of input tensors.
   """
+  g = torch.Generator(device="cpu").manual_seed(42)
   input_kwargs = {}
   model_type = getattr(config, "model_type", "unknown").lower()
   archs = getattr(config, "architectures", []) or []
@@ -969,8 +981,8 @@ def _generate_transformers_inputs(
       vocab_size = 32000
 
     input_kwargs["input_ids"] = torch.randint(
-        0, vocab_size, actual_shape, device=device, dtype=torch.long
-    )
+        0, vocab_size, actual_shape, generator=g, dtype=torch.long
+    ).to(device)
     input_kwargs["attention_mask"] = torch.ones(
         actual_shape, device=device, dtype=torch.long
     )
@@ -978,7 +990,7 @@ def _generate_transformers_inputs(
     if model_type.startswith("gemma4"):
       image_size = _parse_image_size(config, default_size=288)
       _generate_gemma4_inputs(
-          config, actual_shape[0], image_size, device, input_kwargs
+          config, actual_shape[0], image_size, device, input_kwargs, generator=g
       )
     elif any(k in model_type for k in _VISION_LANGUAGE_MODEL_TYPES):
       image_size = _parse_image_size(config)
@@ -999,8 +1011,8 @@ def _generate_transformers_inputs(
             num_channels,
             image_size,
             image_size,
-            device=device,
-        )
+            generator=g,
+        ).to(device)
         input_kwargs["pixel_values"] = dummy_img
         input_kwargs["aspect_ratio_ids"] = torch.ones(
             (batch_size, num_images), device=device, dtype=torch.long
@@ -1010,8 +1022,12 @@ def _generate_transformers_inputs(
         )
       else:
         dummy_img = torch.randn(
-            batch_size, num_channels, image_size, image_size, device=device
-        )
+            batch_size,
+            num_channels,
+            image_size,
+            image_size,
+            generator=g,
+        ).to(device)
         input_kwargs["pixel_values"] = dummy_img
 
         num_image_tokens = getattr(config, "image_seq_length", None)
@@ -1037,9 +1053,9 @@ def _generate_transformers_inputs(
               0,
               vocab_size,
               (batch_size, new_seq_len),
-              device=device,
+              generator=g,
               dtype=torch.long,
-          )
+          ).to(device)
           input_kwargs["attention_mask"] = torch.ones(
               (batch_size, new_seq_len), device=device, dtype=torch.long
           )
@@ -1069,8 +1085,8 @@ def _generate_transformers_inputs(
     batch_size = shape[0] if shape else 1
     num_channels = getattr(config, "num_channels", 3)
     dummy_img = torch.randn(
-        batch_size, num_channels, image_size, image_size, device=device
-    )
+        batch_size, num_channels, image_size, image_size, generator=g
+    ).to(device)
     input_kwargs["pixel_values"] = dummy_img
 
     if any(
@@ -1089,21 +1105,21 @@ def _generate_transformers_inputs(
           else 50265
       )
       input_kwargs["decoder_input_ids"] = torch.randint(
-          0, vocab_size, (batch_size, 8), device=device, dtype=torch.long
-      )
+          0, vocab_size, (batch_size, 8), generator=g, dtype=torch.long
+      ).to(device)
 
   elif modality == Modality.AUDIO:
     batch_size = shape[0] if shape else 1
     if "whisper" in model_type:
       num_mel = getattr(config, "num_mel_bins", 80)
       input_kwargs["input_features"] = torch.randn(
-          batch_size, num_mel, 3000, device=device
-      )
+          batch_size, num_mel, 3000, generator=g
+      ).to(device)
     elif "clap" in model_type:
       num_mel = getattr(config, "num_mel_bins", 64)
       input_kwargs["input_features"] = torch.randn(
-          batch_size, 1, 1001, num_mel, device=device
-      )
+          batch_size, 1, 1001, num_mel, generator=g
+      ).to(device)
       input_kwargs["is_longer"] = torch.zeros(
           (batch_size, 1), device=device, dtype=torch.bool
       )
@@ -1111,8 +1127,8 @@ def _generate_transformers_inputs(
       actual_shape = (batch_size, safe_seq_len)
       vocab_size = getattr(config, "vocab_size", 32000)
       input_kwargs["input_ids"] = torch.randint(
-          0, vocab_size, actual_shape, device=device, dtype=torch.long
-      )
+          0, vocab_size, actual_shape, generator=g, dtype=torch.long
+      ).to(device)
       input_kwargs["attention_mask"] = torch.ones(
           actual_shape, device=device, dtype=torch.long
       )
@@ -1123,8 +1139,8 @@ def _generate_transformers_inputs(
       max_length = getattr(config, "max_length", 1024)
       num_mel = getattr(config, "num_mel_bins", 128)
       input_kwargs["input_values"] = torch.randn(
-          batch_size, max_length, num_mel, device=device
-      )
+          batch_size, max_length, num_mel, generator=g
+      ).to(device)
     elif "speecht5" in model_type:
       safe_seq_len = min(_get_max_seq_len(config), 8)
       actual_shape = (batch_size, safe_seq_len)
@@ -1133,17 +1149,17 @@ def _generate_transformers_inputs(
       num_mel = getattr(config, "num_mel_bins", 80)
       dec_seq_len = 8
       input_kwargs["input_ids"] = torch.randint(
-          2, max_vocab, actual_shape, device=device, dtype=torch.long
-      )
+          2, max_vocab, actual_shape, generator=g, dtype=torch.long
+      ).to(device)
       input_kwargs["attention_mask"] = torch.ones(
           actual_shape, device=device, dtype=torch.long
       )
       input_kwargs["speaker_embeddings"] = torch.randn(
-          batch_size, 512, device=device
-      )
+          batch_size, 512, generator=g
+      ).to(device)
       input_kwargs["labels"] = torch.randn(
-          batch_size, dec_seq_len, num_mel, device=device
-      )
+          batch_size, dec_seq_len, num_mel, generator=g
+      ).to(device)
       input_kwargs["decoder_attention_mask"] = torch.ones(
           (batch_size, dec_seq_len), device=device, dtype=torch.long
       )
@@ -1153,8 +1169,8 @@ def _generate_transformers_inputs(
       vocab_size = getattr(config, "vocab_size", 38)
       max_vocab = max(3, min(vocab_size, 38))
       input_kwargs["input_ids"] = torch.randint(
-          2, max_vocab, actual_shape, device=device, dtype=torch.long
-      )
+          2, max_vocab, actual_shape, generator=g, dtype=torch.long
+      ).to(device)
       input_kwargs["attention_mask"] = torch.ones(
           actual_shape, device=device, dtype=torch.long
       )
@@ -1179,8 +1195,8 @@ def _generate_transformers_inputs(
       audio_len = window_size  # nblocks = 1
 
       input_kwargs["input_features"] = torch.randn(
-          batch_size, audio_len, num_mel, device=device
-      )
+          batch_size, audio_len, num_mel, generator=g
+      ).to(device)
       # Calculate exact number of audio tokens expected by GraniteSpeech
       num_audio_tokens = window_size // downsample_rate
       audio_token_id = getattr(
@@ -1204,8 +1220,8 @@ def _generate_transformers_inputs(
         vocab_size = getattr(config.model_config, "vocab_size", None)
       vocab_size = vocab_size or 38
       input_kwargs["input_ids"] = torch.randint(
-          0, vocab_size, actual_shape, device=device, dtype=torch.long
-      )
+          0, vocab_size, actual_shape, generator=g, dtype=torch.long
+      ).to(device)
       input_kwargs["attention_mask"] = torch.ones(
           actual_shape, device=device, dtype=torch.long
       )
@@ -1218,8 +1234,8 @@ def _generate_transformers_inputs(
       if vocab_size is None:
         vocab_size = 32000
       input_kwargs["input_ids"] = torch.randint(
-          0, vocab_size, actual_shape, device=device, dtype=torch.long
-      )
+          0, vocab_size, actual_shape, generator=g, dtype=torch.long
+      ).to(device)
       hop_length = 1920
       audio_cfg = getattr(config, "audio_config", None)
       if audio_cfg and hasattr(audio_cfg, "dac_config"):
@@ -1230,13 +1246,13 @@ def _generate_transformers_inputs(
           hop_length = getattr(dac_cfg, "hop_length", 1920)
       audio_len = safe_seq_len * hop_length
       input_kwargs["input_values"] = torch.randn(
-          batch_size, 1, audio_len, device=device
-      )
+          batch_size, 1, audio_len, generator=g
+      ).to(device)
     else:
       seq_len = shape[1] if shape and len(shape) > 1 else 16000
       input_kwargs["input_values"] = torch.randn(
-          batch_size, seq_len, device=device
-      )
+          batch_size, seq_len, generator=g
+      ).to(device)
 
   else:  # text_default, causal_lm, seq2seq
     safe_seq_len = min(_get_max_seq_len(config), 512)
@@ -1251,9 +1267,9 @@ def _generate_transformers_inputs(
         0,
         vocab_size,
         actual_shape,
-        device=device,
+        generator=g,
         dtype=torch.long,
-    )
+    ).to(device)
     input_kwargs["attention_mask"] = torch.ones(
         actual_shape, device=device, dtype=torch.long
     )
@@ -1293,7 +1309,11 @@ def _generate_transformers_inputs(
     if vocab_size is None:
       vocab_size = 32000
 
-    safe_seq_len = min(_get_max_seq_len(config), 512)
+    max_len = _get_max_seq_len(config)
+    if "whisper" in model_type or hasattr(config, "max_target_positions"):
+      max_len = min(max_len, getattr(config, "max_target_positions", 448))
+    seq_limit = shape[1] if shape and len(shape) > 1 else 512
+    safe_seq_len = min(max_len, seq_limit)
     # Use first dimension of shape or 1 for batch size
     batch_size = shape[0] if shape else 1
     decoder_shape = (batch_size, safe_seq_len)
@@ -1301,9 +1321,9 @@ def _generate_transformers_inputs(
         0,
         vocab_size,
         decoder_shape,
-        device=device,
+        generator=g,
         dtype=torch.long,
-    )
+    ).to(device)
 
   target_dtype = _extract_target_dtype(config)
 
@@ -1460,6 +1480,11 @@ class TransformersProvider(BaseProvider):
       else:
         model_cls = transformers.AutoModel
 
+      target_dtype = _extract_target_dtype(config)
+      kwargs.setdefault("low_cpu_mem_usage", True)
+      kwargs.setdefault("ignore_mismatched_sizes", True)
+      if target_dtype != torch.float32:
+        kwargs.setdefault("torch_dtype", target_dtype)
       model_fn = lambda: model_cls.from_pretrained(  # pyrefly: ignore[missing-attribute]
           str(model_dir_or_repo_id), **kwargs
       )
@@ -1649,6 +1674,7 @@ class DiffusersProvider(BaseProvider):
         return model_cls.from_config(config_dict).to(d_type)
 
     def _input_factory(shape=None, device="cpu"):
+      g = torch.Generator(device="cpu").manual_seed(42)
       batch_size = shape[0] if shape else 1
       seq_len = shape[1] if shape and len(shape) > 1 else 77
       cfg = config_dict
@@ -1680,14 +1706,14 @@ class DiffusersProvider(BaseProvider):
 
       noisy_latents = torch.randn(
           (batch_size, latent_channels, *latent_dims),
+          generator=g,
           dtype=d_type,
-          device=device,
-      )
+      ).to(device)
 
       # standard num_train_timesteps for diffusion models is typically 1000
       timesteps = torch.randint(
-          0, 1000, (batch_size,), device=device, dtype=torch.long
-      )
+          0, 1000, (batch_size,), generator=g, dtype=torch.long
+      ).to(device)
 
       # Fallback to text_dim if cross_attention_dim is not specified in config
       # (e.g. for Wan2.2)
@@ -1699,9 +1725,9 @@ class DiffusersProvider(BaseProvider):
       # returned by CLIP-ViT/L text encoder
       dummy_encoder_hidden_states = torch.randn(
           (batch_size, seq_len, cross_attention_dim),
+          generator=g,
           dtype=d_type,
-          device=device,
-      )
+      ).to(device)
 
       # Dynamically get the model class to inspect its signature
       class_name = cfg.get("_class_name")
@@ -1745,16 +1771,16 @@ class DiffusersProvider(BaseProvider):
         # Pooled text embeddings - A single embedding vector per batch
         # representing the entire text sequence returned by OpenCLIP-ViT/G
         dummy_pooled_embeds = torch.randn(
-            (batch_size, text_embeds_dim), dtype=d_type, device=device
-        )
+            (batch_size, text_embeds_dim), generator=g, dtype=d_type
+        ).to(device)
         # time_ids - Tensor of shape [batch_size, 6] providing crop information
         # to the unet (nothing to do with timesteps).
         # Represents: [orig_height, orig_width, crops_coords_top,
         # crops_coords_left, target_height, target_width]
         # Here, we initialize random values.
         dummy_time_ids = torch.randn(
-            (batch_size, 6), dtype=d_type, device=device
-        )
+            (batch_size, 6), generator=g, dtype=d_type
+        ).to(device)
 
         kwargs["added_cond_kwargs"] = {
             "text_embeds": dummy_pooled_embeds,
