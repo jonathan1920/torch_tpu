@@ -85,9 +85,7 @@ def _get_num_sc_per_device():
     )
 
 
-class SparseDenseMatmulTest(
-    op_testing.TorchTpuTestBase, parameterized.TestCase
-):
+class SparseDenseMatmulTest(op_testing.TorchTpuTestBase):
   """Tests for sparse_dense_matmul op.
 
   This operator requires TPU v5e hardware because it uses SparseCore.

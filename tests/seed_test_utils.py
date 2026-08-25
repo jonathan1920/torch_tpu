@@ -33,13 +33,13 @@ def seed_rngs(seed: int) -> None:
   torch.manual_seed(seed)
 
 
-class SeededTest(parameterized.TestCase):
+class SeededTest(parameterized.TestCase):  # ABSLTEST_OK=base seed class
   """Abstract base class that fixes RNG seeds to make tests reproducible.
 
   This class picks a random seed in setUpClass() and sets it in setUp().
   A subclass must define choose_seed() to determine the seed.
 
-  Since this inherits from parameterized.TestCase, subclasses may use
+  Since this inherits from parameterized TestCase, subclasses may use
   parameterized test methods but don't have to.
   """
 

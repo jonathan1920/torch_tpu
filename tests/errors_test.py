@@ -303,7 +303,7 @@ def _run_native_layer_norm_backward(
   )
 
 
-class TpuVsGpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
+class TpuVsGpuErrorTest(et.ErrorTestBase):
   """Tests error messages on TPU vs on GPU."""
 
   def test_triu_insufficient_dims(self):
@@ -10223,7 +10223,7 @@ Device-side assertion tracking was not enabled by user.""",
       )
 
 
-class InputPreprocessingErrorTest(et.ErrorTestBase, parameterized.TestCase):
+class InputPreprocessingErrorTest(et.ErrorTestBase):
 
   def test_input_preprocessing_offsets_invalid_dtype(self):
     if et.is_on_gpu():

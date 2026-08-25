@@ -111,7 +111,7 @@ class TpuTopologyMockTest(seed_test_utils.RepeatableTest):
       self.assertEqual(topology, expected_topology)
 
 
-class NvidiaGpuMockTest(parameterized.TestCase):
+class NvidiaGpuMockTest(seed_test_utils.RepeatableTest):
 
   @parameterized.parameters(
       ("/dev/nvidia0",),

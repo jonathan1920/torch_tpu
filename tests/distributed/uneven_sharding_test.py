@@ -25,6 +25,7 @@ from torch_tpu._internal import compile as tt_compile
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import test_utils as utils
 from torch_tpu._internal.distributed import multiprocessing
+from tests import seed_test_utils
 from tests.distributed import distributed_utils
 
 
@@ -89,7 +90,7 @@ def _replicate_tensor(
     utils.assert_close(out, expected)
 
 
-class UnevenShardingTest(parameterized.TestCase):
+class UnevenShardingTest(seed_test_utils.MultiProcessRepeatableTest):
 
   @parameterized.named_parameters(
       ("1d_eager_small", 1, False, 4),

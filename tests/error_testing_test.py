@@ -77,9 +77,7 @@ class ErrorTestingTest(seed_test_utils.RepeatableTest):
   def test_why_tpu_only_works_for_parameterized_tests(self):
     """Tests that @why_tpu_only decorator works for parameterized tests."""
 
-    class DummyParameterizedTest(
-        et.TpuOnlyErrorTestBase, parameterized.TestCase
-    ):
+    class DummyParameterizedTest(et.TpuOnlyErrorTestBase):
 
       @parameterized.named_parameters(
           {"testcase_name": "param1", "value": 1},
@@ -102,9 +100,7 @@ class ErrorTestingTest(seed_test_utils.RepeatableTest):
   def test_standalone_method_in_parameterized_test_enforces_decorator(self):
     """Tests standalone method in parameterized test enforces decorator."""
 
-    class DummyParameterizedTest(
-        et.TpuOnlyErrorTestBase, parameterized.TestCase
-    ):
+    class DummyParameterizedTest(et.TpuOnlyErrorTestBase):
 
       def test_standalone_missing(self):
         pass

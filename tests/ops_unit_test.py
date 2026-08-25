@@ -86,7 +86,7 @@ def set_default_dtype(dtype):
     torch.set_default_dtype(original_dtype)
 
 
-class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
+class OpsUnitTest(TorchTpuVsCpuTestBase):
   """Tests for ops using custom values.
 
   If a bug is found that's not covered by do_test_op() in ops_test.py, please
@@ -8159,7 +8159,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(compute)
 
 
-class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
+class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase):
   """Tests for custom ops."""
 
   def test_ragged_dot_on_tpu(self):
@@ -8982,7 +8982,7 @@ module {
     self.assertEqual(results[0].shape, torch.Size([]))
 
 
-class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
+class OpsGradUnitTest(TorchTpuVsCpuTestBase):
   """Tests for backward ops."""
 
   def _nll_loss_grad(self, device, reduction, use_weight):
@@ -10862,7 +10862,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
 
 
-class OpTestingFrameworkTest(op_testing.OpInfoTestBase, parameterized.TestCase):
+class OpTestingFrameworkTest(op_testing.OpInfoTestBase):
   """Tests for the op_testing framework itself."""
 
   def test_torch_tpu_vs_gpu_missing_golden_fails(self):

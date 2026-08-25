@@ -21,6 +21,7 @@ import jax.numpy as jnp
 import numpy as np
 import torch
 from torch_tpu.ops.scaled_dot_product_attention.kernels import scaled_dot_product_attention_kernels as kernels
+from tests import seed_test_utils
 
 ALL_ONES_Q = False
 ALL_ONES_K = False
@@ -29,7 +30,7 @@ KERNEL_TYPE = "flash"
 USE_DYNAMIC_KERNEL = True
 
 
-class ScaledDotProductAttentionGenerateTest(parameterized.TestCase):
+class ScaledDotProductAttentionGenerateTest(seed_test_utils.RepeatableTest):
   # pylint: disable=invalid-name
   B = 16
   Hq = 16

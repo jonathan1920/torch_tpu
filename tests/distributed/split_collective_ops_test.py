@@ -18,7 +18,6 @@ from typing import Any, Callable
 from unittest import mock
 
 from absl.testing import absltest
-from absl.testing import parameterized
 import torch
 from torch import distributed as dist
 from torch_tpu._internal.compile import _backend
@@ -29,6 +28,7 @@ from torch_tpu._internal.compile import torch_tpu_compiled_executable
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import test_utils as utils
 from torch_tpu._internal.distributed import multiprocessing
+from tests import seed_test_utils
 from tests.distributed import distributed_utils
 
 CompiledArtifact = torch_tpu_compiled_executable.CompiledArtifact
@@ -562,7 +562,7 @@ class DummyBaseCompiler(compiler.Compiler):
     return _DummyCompiledExecutable(gm)
 
 
-class SplitCollectiveOpsTest(parameterized.TestCase):
+class SplitCollectiveOpsTest(seed_test_utils.MultiProcessRepeatableTest):
   _world_size = 4
 
   def test_compile_all_reduce_and_serdes(self):

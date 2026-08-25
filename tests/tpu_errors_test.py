@@ -72,7 +72,7 @@ def _make_lu_unpack_outputs(
   )
 
 
-class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
+class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase):
   """Tests error messages on TPU."""
 
   @et.why_tpu_only("TODO: support int1 dtype on TPU")

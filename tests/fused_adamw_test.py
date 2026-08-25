@@ -26,7 +26,7 @@ _loader._init_device("tpu")
 TorchTpuVsCpuTestBase = op_testing.TorchTpuVsCpuTestBase
 
 
-class FusedAdamWTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
+class FusedAdamWTest(TorchTpuVsCpuTestBase):
   """Tests for aten::_fused_adamw_ and aten::_fused_adamw_.tensor_lr."""
 
   @parameterized.product(

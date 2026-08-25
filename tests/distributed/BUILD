@@ -557,6 +557,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/distributed:multiprocessing",
@@ -733,8 +734,8 @@ torch_tpu_py_test(
     deps = [
         ":distributed_utils",
         "//shims/absl_py/testing:absltest",
-        "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile:collective_ops",
         "//torch_tpu/_internal/compile:compiler",

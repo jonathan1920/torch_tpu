@@ -25,7 +25,7 @@ _loader._init_device("tpu")
 TorchTpuVsCpuTestBase = op_testing.TorchTpuVsCpuTestBase
 
 
-class FusedAdagradTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
+class FusedAdagradTest(TorchTpuVsCpuTestBase):
   """Tests for aten::_fused_adagrad_ and aten::_fused_adagrad_.tensor_lr."""
 
   def _get_tols(self, dtype):
