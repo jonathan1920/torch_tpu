@@ -129,6 +129,17 @@ class PythonContext {
   MaybeSharedTraceback traceback_;
 };
 
+// Encapsulates the name of the Python API boundary call.
+//
+// Used to distinguish Python API names from internal OpName when constructing
+// ScopedPythonContextCapturer.
+struct PythonApiName {
+  explicit PythonApiName(const std::string_view name) : name(name) {}
+
+  // The string representation of the Python API name.
+  std::string_view name;
+};
+
 // RAII class to capture the python context for an op. Conceptually, it
 // maintains a per-thread singleton stack of PythonContext objects (the context
 // capturer stack).
@@ -158,6 +169,13 @@ class ScopedPythonContextCapturer {
   // be captured.
   explicit ScopedPythonContextCapturer(OpName op_name);
 
+  // Explicit PythonApiName constructor.
+  //
+  // Used inside the Python API wrapper helper class ErrorHandlingHelper.
+  // Behaves the same way as the `OpName` overload, but pushing the current API
+  // name being run.
+  explicit ScopedPythonContextCapturer(PythonApiName op_name);
+
   // This class is neither copyable nor movable.
   ScopedPythonContextCapturer(const ScopedPythonContextCapturer&) = delete;
   ScopedPythonContextCapturer& operator=(const ScopedPythonContextCapturer&) =
@@ -186,6 +204,9 @@ class ScopedPythonContextCapturer {
   }
 
  private:
+  // Common initialization logic for the Python context capturer.
+  explicit ScopedPythonContextCapturer(std::string_view op_name);
+
   // Returns the number of alive ScopedPythonContextCapturer instances for the
   // current thread. This is the size of the context capturer stack for the
   // current thread.
@@ -267,10 +288,6 @@ class ScopedPythonContextProvider {
   // constructor and restores the location in its destructor.
   std::optional<mlir::ScopedBuilderLocation> scoped_builder_loc_;
 };
-
-// Returns the op name without the suffix (e.g. "add.out" -> "add").
-// If the op name doesn't have a suffix, it is returned unchanged.
-[[nodiscard]] std::string_view RemoveOpSuffix(std::string_view op_name);
 
 // Returns the root op name for the current op.
 //

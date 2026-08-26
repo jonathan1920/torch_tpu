@@ -250,8 +250,9 @@ mlir::Location MakeMlirLocation(mlir::MLIRContext& ctx,
   return root_loc;
 }
 
-ScopedPythonContextCapturer::ScopedPythonContextCapturer(const OpName op_name) {
-  op_names_.push_back(std::string(ToBaseName(op_name)));
+ScopedPythonContextCapturer::ScopedPythonContextCapturer(
+    const std::string_view op_name) {
+  op_names_.push_back(std::string(op_name));
   if (GetNumAliveForThread() == 1) {
     ABSL_CHECK(traceback_ == nullptr)  // CRASH_OK
         << "While creating the first alive ScopedPythonContextCapturer, we "
@@ -265,6 +266,13 @@ ScopedPythonContextCapturer::ScopedPythonContextCapturer(const OpName op_name) {
   ABSL_VLOG(3) << "[ScopedPythonContextCapturer] Current call chain: "
                << absl::StrJoin(op_names_, ", ");
 }
+
+ScopedPythonContextCapturer::ScopedPythonContextCapturer(
+    const PythonApiName op_name)
+    : ScopedPythonContextCapturer(op_name.name) {}
+
+ScopedPythonContextCapturer::ScopedPythonContextCapturer(const OpName op_name)
+    : ScopedPythonContextCapturer(ToBaseName(op_name)) {}
 
 ScopedPythonContextCapturer::~ScopedPythonContextCapturer() {
   ABSL_CHECK(!op_names_.empty())  // CRASH_OK

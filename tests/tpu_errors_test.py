@@ -1524,7 +1524,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dimension indices and upper bounds must have the same size, got 1 and 2""",
+        tpu="""get_or_compile_pad_module(): dimension indices and upper bounds must have the same size, got 1 and 2""",
     ):
       tpu_torch_compile.get_or_compile_pad_module(
           tensor_info,
@@ -1538,7 +1538,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dimension index must be within bounds [0, 1], got 2 for input tensor 0 with shape [1, 4]""",
+        tpu="""get_or_compile_pad_module(): dimension index must be within bounds [0, 1], got 2 for input tensor 0 with shape [1, 4]""",
     ):
       tpu_torch_compile.get_or_compile_pad_module(
           tensor_info,
@@ -1552,7 +1552,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""upper bound must be greater than or equal to the static shape's dimension size, got upper bound 2 for dimension 1 for input tensor 0 with shape [1, 4]""",
+        tpu="""get_or_compile_pad_module(): upper bound must be greater than or equal to the static shape's dimension size, got upper bound 2 for dimension 1 for input tensor 0 with shape [1, 4]""",
     ):
       tpu_torch_compile.get_or_compile_pad_module(
           tensor_info,
@@ -1561,7 +1561,10 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
   @et.why_tpu_only("Dynamic compilation is TPU-only.")
   def test_get_dynamic_pad_module_empty_shapes(self):
-    expected = re.compile(r".*DynamicPadModule requires at least one shape\..*")
+    expected = re.compile(
+        r".*get_dynamic_pad_module\(\): dynamic_pad_module requires at least"
+        r" one shape\..*"
+    )
     with et.assert_raises_message(
         RuntimeError,
         tpu=expected,
@@ -1575,8 +1578,8 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           padded_shapes=[[1, 8], [1, 16]],
           input_scalar_types=[torch.float32],
           expected_error_message=(
-              "target shapes and padded shapes must have the same size, got 1"
-              " and 2"
+              "get_or_compile_slice_module(): target shapes and padded shapes"
+              " must have the same size, got 1 and 2"
           ),
       ),
       dict(
@@ -1585,8 +1588,8 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           padded_shapes=[[1, 8]],
           input_scalar_types=[torch.float32, torch.float32],
           expected_error_message=(
-              "target shapes and input scalar types must have the same size,"
-              " got 1 and 2"
+              "get_or_compile_slice_module(): target shapes and input scalar"
+              " types must have the same size, got 1 and 2"
           ),
       ),
       dict(
@@ -1594,7 +1597,10 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           target_shapes=[],
           padded_shapes=[],
           input_scalar_types=[],
-          expected_error_message="expected at least one target shape, got none",
+          expected_error_message=(
+              "get_or_compile_slice_module(): expected at least one target"
+              " shape, got none"
+          ),
       ),
       dict(
           testcase_name="mismatched_dimensions_size",
@@ -1602,8 +1608,9 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           padded_shapes=[[1, 8, 16]],
           input_scalar_types=[torch.float32],
           expected_error_message=(
-              "target shape and padded shape must have the same number of"
-              " dimensions, got 2 and 3 for tensor index 0"
+              "get_or_compile_slice_module(): target shape and padded shape"
+              " must have the same number of dimensions, got 2 and 3 for tensor"
+              " index 0"
           ),
       ),
       dict(
@@ -1612,9 +1619,9 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           padded_shapes=[[1, 2]],
           input_scalar_types=[torch.float32],
           expected_error_message=(
-              "padded shape dimension size must be greater than or equal to"
-              " target shape dimension size, got padded shape [1, 2] and target"
-              " shape [1, 4] for tensor index 0"
+              "get_or_compile_slice_module(): padded shape dimension size must"
+              " be greater than or equal to target shape dimension size, got"
+              " padded shape [1, 2] and target shape [1, 4] for tensor index 0"
           ),
       ),
   )
@@ -1649,7 +1656,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""output shapes must be specified for all outputs or none, got 2 output shapes for 1 output tensors""",
+        tpu="""execute(): output shapes must be specified for all outputs or none, got 2 output shapes for 1 output tensors""",
     ):
       tpu_torch_compile.execute(
           executable,
@@ -1672,7 +1679,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""output shape number of dimensions must match the statically inferred dimensions, got output shape dimensions 2 and inferred dimensions 1 for output tensor 0""",
+        tpu="""execute(): output shape number of dimensions must match the statically inferred dimensions, got output shape dimensions 2 and inferred dimensions 1 for output tensor 0""",
     ):
       tpu_torch_compile.execute(
           executable, [x, y], [tpu_torch_compile.OutputShape([5, 2])]
@@ -1690,7 +1697,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""output shape dimension must not exceed the statically inferred bound, got output shape [15] and inferred shape [10]""",
+        tpu="""execute(): output shape dimension must not exceed the statically inferred bound, got output shape [15] and inferred shape [10]""",
     ):
       tpu_torch_compile.execute(
           executable, [x, y], [tpu_torch_compile.OutputShape([15])]
@@ -1705,7 +1712,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # 1 argument, but 2 layouts provided. Should fail.
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""number of argument_layouts must match with the number of argument_tensors, got number of argument_layouts 2 and number of argument_tensors 1""",
+        tpu="""traverse_and_compile(): number of argument_layouts must match with the number of argument_tensors, got number of argument_layouts 2 and number of argument_tensors 1""",
     ):
       tpu_torch_compile.traverse_and_compile(
           [z], [x], argument_layouts=[[1, 0], [0, 1]]
@@ -1720,14 +1727,14 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # Rank mismatch: shape [2, 3] (rank 2), layout [0] (rank 1)
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""invalid layout for argument 0, got layout [0] for shape [2, 3]""",
+        tpu="""traverse_and_compile(): invalid layout for argument 0, got layout [0] for shape [2, 3]""",
     ):
       tpu_torch_compile.traverse_and_compile([z], [x], argument_layouts=[[0]])
 
     # Out of bounds index: shape [2, 3], layout [2, 0]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""invalid layout for argument 0, got layout [2, 0] for shape [2, 3]""",
+        tpu="""traverse_and_compile(): invalid layout for argument 0, got layout [2, 0] for shape [2, 3]""",
     ):
       tpu_torch_compile.traverse_and_compile(
           [z], [x], argument_layouts=[[2, 0]]
@@ -1736,7 +1743,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # Duplicate index: shape [2, 3], layout [0, 0]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""invalid layout for argument 0, got layout [0, 0] for shape [2, 3]""",
+        tpu="""traverse_and_compile(): invalid layout for argument 0, got layout [0, 0] for shape [2, 3]""",
     ):
       tpu_torch_compile.traverse_and_compile(
           [z], [x], argument_layouts=[[0, 0]]
@@ -1752,11 +1759,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     argument_tensors = [x]
     with et.assert_raises_message(
         RuntimeError,
-        tpu=re.compile(
-            r"compile_mlir\(\): failed to validate and reorder inputs: "
-            r"identified an argument that was not provided:"
-            r" DeviceBufferRef:[\s\S]*"
-        ),
+        tpu="""build_mlir(): failed to validate and reorder inputs: identified an argument that was not provided: 10xfloat32""",
     ):
       tpu_torch_compile.build_mlir(result_tensors, argument_tensors)
 

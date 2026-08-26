@@ -217,7 +217,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetDynamicPadModule(
       << "[GetDynamicPadModule] Creating a padding module for dynamism with "
       << shapes.size() << " shapes.";
   TT_RET_CHECK(!shapes.empty(), error::kInvalidArgument)
-      << "DynamicPadModule requires at least one shape.";
+      << "dynamic_pad_module requires at least one shape.";
   std::string module_name = "dynamic_pad_module";
   mlir::ModuleBuilder mb(mlir_context, module_name);
   mlir::func::FunctionBuilder fb(mb, "main");

@@ -204,6 +204,20 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "pybind_error_utils",
+    hdrs = ["pybind_error_utils.h"],
+    deps = [
+        ":error_utils",
+        "//shims/pybind11",
+        "//shims/torch:torch_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "static_shape_check",
     srcs = ["static_shape_check.cc"],
     hdrs = ["static_shape_check.h"],
@@ -240,6 +254,25 @@ torch_tpu_cc_test(
         "@com_google_absl//absl/log:log_sink_registry",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+# This test target cannot be built in dbg mode (-c dbg) because it includes
+# pybind_error_utils.h (which transitively includes pybind11). In dbg mode (-O0),
+# the compiler emits unused pybind11 inline functions that reference Python C APIs,
+# which fail to link because we do not link the Python runtime.
+torch_tpu_cc_test(
+    name = "pybind_error_utils_test",
+    srcs = ["pybind_error_utils_test.cc"],
+    tags = [
+        "nodbg",
+    ],
+    deps = [
+        ":error_utils",
+        ":pybind_error_utils",
+        ":utils",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/common:oss_test_main",
     ],
 )
 

@@ -240,14 +240,15 @@ absl::Status StartsWithNonUppercaseLetter(const std::string_view message) {
 // allowed characters (see kAllowedCharacters).
 absl::Status EndsWithAlphaNumAndAllowedCharacters(
     const std::string_view message) {
-  // Each character allowed to appear at the end must have a following
+  // Each character allowed to appear at the end must be followed by an
   // explanation.
   //   - ']': covers error messages ending with lists and shapes
   //   - ')': covers error messages ending with tuples and actual parenthesis
   //   - '}': covers error messages ending with shapes in braces
+  //   - '>': covers error messages ending with templated types
   //   - "'": covers error messages ending with quoted devices or arbitrary
   //          strings (e.g. 'tpu')
-  constexpr std::string_view kAllowedCharacters = "])}'";
+  constexpr std::string_view kAllowedCharacters = "])}>'";
 
   ABSL_CHECK(  // CRASH_OK
       !message.empty())

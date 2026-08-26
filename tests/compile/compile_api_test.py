@@ -407,7 +407,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     # y is on the TPU.
     self.assertEqual(y.device.type, tpu_device.type)
 
-    expected_mlir = """module @tt_jit_torchtpu_internal_constant {
+    expected_mlir = """module @tt_jit_make_constant_tensor_torchtpu_internal_constant {
   func.func @main() -> tensor<2x2xf32> {
     %cst = stablehlo.constant dense<[[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>
     return %cst : tensor<2x2xf32>
@@ -442,14 +442,14 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     # go from 0x00 or 0x01 to False or True.
     # Whether or not the initial constant is an i8 or ui8 depends on the
     # implementation of std::numeric_limits<char>::is_signed in C++.
-    expected_mlir_unsigned = """module @tt_jit_torchtpu_internal_constant {
+    expected_mlir_unsigned = """module @tt_jit_make_constant_tensor_torchtpu_internal_constant {
   func.func @main() -> tensor<2x2xi1> {
     %c = stablehlo.constant dense<[[0, 1], [1, 0]]> : tensor<2x2xui8>
     %0 = stablehlo.convert %c : (tensor<2x2xui8>) -> tensor<2x2xi1>
     return %0 : tensor<2x2xi1>
   }
 }"""
-    expected_mlir_signed = """module @tt_jit_torchtpu_internal_constant {
+    expected_mlir_signed = """module @tt_jit_make_constant_tensor_torchtpu_internal_constant {
   func.func @main() -> tensor<2x2xi1> {
     %c = stablehlo.constant dense<[[0, 1], [1, 0]]> : tensor<2x2xi8>
     %0 = stablehlo.convert %c : (tensor<2x2xi8>) -> tensor<2x2xi1>
@@ -483,7 +483,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     # y is on the TPU.
     self.assertEqual(y.device.type, tpu_device.type)
 
-    expected_mlir = """module @tt_jit_torchtpu_internal_constant {
+    expected_mlir = """module @tt_jit_make_constant_tensor_torchtpu_internal_constant {
   func.func @main() -> tensor<2x2xcomplex<f32>> {
     %cst = stablehlo.constant dense<[[(1.000000e+00,5.000000e+00), (2.000000e+00,6.000000e+00)], [(3.000000e+00,7.000000e+00), (4.000000e+00,8.000000e+00)]]> : tensor<2x2xcomplex<f32>>
     return %cst : tensor<2x2xcomplex<f32>>
@@ -513,7 +513,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     # tpu_dst is (still) on the TPU.
     self.assertEqual(tpu_dst.device.type, tpu_device.type)
 
-    expected_mlir = """module @tt_jit_torchtpu_internal_constant {
+    expected_mlir = """module @tt_jit_assign_constant_tensor_torchtpu_internal_constant {
   func.func @main() -> tensor<2x2xf32> {
     %cst = stablehlo.constant dense<[[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>
     return %cst : tensor<2x2xf32>
@@ -554,7 +554,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     # The MLIR reflects that the elements of the original tensor (NaNs,
     # 0x7FC00000) which are outside of tpu_dst's view are preserved, using a
     # dynamic_update_slice and slice operation.
-    expected_mlir = """module @tt_jit_compile_mlir_as_strided {
+    expected_mlir = """module @tt_jit_build_mlir_compile_mlir_as_strided {
   func.func @main() -> tensor<2x2xf32> {
     %cst = stablehlo.constant dense<[[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>
     %cst_0 = stablehlo.constant dense<0x7FC00000> : tensor<3x2xf32>

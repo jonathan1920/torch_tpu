@@ -65,6 +65,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/pybind_error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
@@ -549,8 +550,7 @@ CompileResult PyTraverseAndCompile(
               .argument_layouts = converted_layouts,
               .donated_inputs =
                   Indices(donated_inputs.begin(), donated_inputs.end()),
-          }),
-      _.SetPrepend() << "Failed to traverse and compile: ");
+          }));
   return result;
 }
 
@@ -1172,6 +1172,8 @@ class MultiGeneratorLocker {
 };
 
 PYBIND11_MODULE(tpu_torch_compile, m) {
+  auto mod_with_error_handling = PyBindWrapWithErrorHandling(m);
+
   py::class_<TensorInfo>(m, "TensorInfo")
       .def(py::init([](const py::tuple& t) {
         return TensorInfo{t[0].cast<std::vector<int64_t>>(),  // INT_VEC_OK
@@ -1210,8 +1212,9 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
 
   py::class_<  // NOLINT(bugprone-unused-raii)
       torch_tpu::LoadedExecutableWithMetadata,
-      std::shared_ptr<torch_tpu::LoadedExecutableWithMetadata>>(
-      m, "LoadedExecutableWithMetadata")
+      std::shared_ptr<torch_tpu::LoadedExecutableWithMetadata>>
+      py_loaded_exec(m, "LoadedExecutableWithMetadata");
+  PyBindWrapWithErrorHandling(py_loaded_exec)
       .def("get_parameter_layouts", &PyGetParameterLayoutsFromMetadata)
       .def("get_output_layouts", &PyGetOutputLayoutsFromMetadata)
       .def("fingerprint_executable",
@@ -1224,164 +1227,197 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
            });
 
   py::class_<xla::PjRtLoadedExecutable,  // NOLINT(bugprone-unused-raii)
-             std::shared_ptr<xla::PjRtLoadedExecutable>>(m,
-                                                         "PjRtLoadedExecutable")
+             std::shared_ptr<xla::PjRtLoadedExecutable>>
+      py_pjrt_loaded_exec(m, "PjRtLoadedExecutable");
+  PyBindWrapWithErrorHandling(py_pjrt_loaded_exec)
       .def("get_parameter_layouts", &PyGetParameterLayouts)
       .def("get_output_layouts", &PyGetOutputLayouts);
 
-  pybind11::class_<MultiGeneratorLocker>(
+  pybind11::class_<MultiGeneratorLocker> py_multi_generator_locker(
       m, "MultiGeneratorLocker",
       "A context manager for locking multiple generators' mutexes.\n\n"
       "This is necessary to prevent generator state conflicts in between\n"
       "getting the device state tensor, executing compiled executable, and\n"
-      "setting the updated device state tensor.")
+      "setting the updated device state tensor.");
+  PyBindWrapWithErrorHandling(py_multi_generator_locker)
       .def(pybind11::init<std::vector<at::Generator>&>())
-      .def("__enter__", &MultiGeneratorLocker::Enter)
-      .def("__exit__", &MultiGeneratorLocker::Exit);
+      .def("__enter__", [](MultiGeneratorLocker& self) { self.Enter(); })
+      .def("__exit__", [](MultiGeneratorLocker& self, pybind11::handle exc_type,
+                          pybind11::handle exc_val, pybind11::handle exc_tb) {
+        self.Exit(exc_type, exc_val, exc_tb);
+      });
 
-  m.def("execute", PyExecuteCompiledModel,
-        // Type: PjRtLoadedExecutable
-        py::arg("executable"), py::arg("argument_tensors"),
-        py::arg("output_shapes") = std::vector<OutputShape>(),
-        "Executes a compiled PJRT executable with the given arguments.\n\n"
-        "Args:\n"
-        "  executable: The loaded PJRT executable to run.\n"
-        "  argument_tensors: A list of PyTorch tensors to pass as inputs.\n"
-        "  output_shapes: Optional list of OutputShape objects for the output "
-        "tensors.\n"
-        "    If provided, the number of elements must match the number of "
-        "output tensors. These shapes override the static shapes inferred\n"
-        "    from the executable.\n"
-        "    This is useful for bounded dynamic programs where the actual\n"
-        "    output shape might differ from the static upper bound.");
-  m.def("placeholder", PyMakePlaceholder, py::arg("sizes"), py::arg("dtype"),
-        py::arg("requires_grad"));
-  m.def("placeholder_like", PyMakePlaceholderLike, py::arg("arg_tensor"));
-  m.def("dynamic_placeholder", PyMakeDynamicPlaceholder, py::arg("sizes"),
-        py::arg("dtype"), py::arg("tensor_bounds"),
-        py::arg("requires_grad") = false);
-  m.def("get_device_layout_if_materialized", &PyGetDeviceLayoutIfMaterialized,
-        py::arg("tensor"));
-  m.def("get_default_layout", &PyGetDefaultLayout, py::arg("dtype"),
-        py::arg("shape"));
-  m.def("is_device_shape_dynamic", &PyIsDeviceShapeDynamic, py::arg("tensor"));
-  m.def("traverse_and_compile", PyTraverseAndCompile, py::arg("result_tensors"),
-        py::arg("argument_tensors"), py::arg("fast_compile") = false,
-        py::arg("build_mlir_module") = false,
-        py::arg("use_stablehlo_bounds") = false,
-        py::arg("argument_layouts") = py::none(),
-        py::arg("donated_inputs") = std::vector<int64_t>{},  // INT_VEC_OK
-        "Traverses the graph from outputs to arguments and compiles it. \n\n"
-        "Args:\n"
-        "  result_tensors: The output tensors to compile.\n"
-        "  argument_tensors: The input tensors to compile.\n"
-        "  fast_compile: Whether to use the fast compile mode.\n"
-        "  build_mlir_module: Whether to build the MLIR module.\n"
-        "  use_stablehlo_bounds: Whether to use the StableHLO bounds for"
-        "    dynamic inputs.\n"
-        "  argument_layouts: Optional layout of the input arguments. If not"
-        "    empty, the size must match the number of arguments.\n"
-        "  donated_inputs: Optional list of argument indices to donate.\n"
-        "Returns:\n"
-        "  CompileResult: The compiled module and executable.");
+  mod_with_error_handling.def(
+      "execute", PyExecuteCompiledModel,
+      // Type: PjRtLoadedExecutable
+      py::arg("executable"), py::arg("argument_tensors"),
+      py::arg("output_shapes") = std::vector<OutputShape>(),
+      "Executes a compiled PJRT executable with the given arguments.\n\n"
+      "Args:\n"
+      "  executable: The loaded PJRT executable to run.\n"
+      "  argument_tensors: A list of PyTorch tensors to pass as inputs.\n"
+      "  output_shapes: Optional list of OutputShape objects for the output "
+      "tensors.\n"
+      "    If provided, the number of elements must match the number of "
+      "output tensors. These shapes override the static shapes inferred\n"
+      "    from the executable.\n"
+      "    This is useful for bounded dynamic programs where the actual\n"
+      "    output shape might differ from the static upper bound.");
+  mod_with_error_handling.def("placeholder", PyMakePlaceholder,
+                              py::arg("sizes"), py::arg("dtype"),
+                              py::arg("requires_grad"));
+  mod_with_error_handling.def("placeholder_like", PyMakePlaceholderLike,
+                              py::arg("arg_tensor"));
+  mod_with_error_handling.def("dynamic_placeholder", PyMakeDynamicPlaceholder,
+                              py::arg("sizes"), py::arg("dtype"),
+                              py::arg("tensor_bounds"),
+                              py::arg("requires_grad") = false);
+  mod_with_error_handling.def("get_device_layout_if_materialized",
+                              &PyGetDeviceLayoutIfMaterialized,
+                              py::arg("tensor"));
+  mod_with_error_handling.def("get_default_layout", &PyGetDefaultLayout,
+                              py::arg("dtype"), py::arg("shape"));
+  mod_with_error_handling.def("is_device_shape_dynamic",
+                              &PyIsDeviceShapeDynamic, py::arg("tensor"));
+  mod_with_error_handling.def(
+      "traverse_and_compile", PyTraverseAndCompile, py::arg("result_tensors"),
+      py::arg("argument_tensors"), py::arg("fast_compile") = false,
+      py::arg("build_mlir_module") = false,
+      py::arg("use_stablehlo_bounds") = false,
+      py::arg("argument_layouts") = py::none(),
+      py::arg("donated_inputs") = std::vector<int64_t>{},  // INT_VEC_OK
+      "Traverses the graph from outputs to arguments and compiles it. \n\n"
+      "Args:\n"
+      "  result_tensors: The output tensors to compile.\n"
+      "  argument_tensors: The input tensors to compile.\n"
+      "  fast_compile: Whether to use the fast compile mode.\n"
+      "  build_mlir_module: Whether to build the MLIR module.\n"
+      "  use_stablehlo_bounds: Whether to use the StableHLO bounds for"
+      "    dynamic inputs.\n"
+      "  argument_layouts: Optional layout of the input arguments. If not"
+      "    empty, the size must match the number of arguments.\n"
+      "  donated_inputs: Optional list of argument indices to donate.\n"
+      "Returns:\n"
+      "  CompileResult: The compiled module and executable.");
 
-  m.def("build_mlir", PyBuildMlir, py::arg("result_tensors"),
-        py::arg("argument_tensors"), py::arg("use_stablehlo_bounds") = false,
-        "Builds an MLIR module from the graph.");
+  mod_with_error_handling.def(
+      "build_mlir", PyBuildMlir, py::arg("result_tensors"),
+      py::arg("argument_tensors"), py::arg("use_stablehlo_bounds") = false,
+      "Builds an MLIR module from the graph.");
   // Returns: PjRtLoadedExecutable
-  m.def("compile_mlir", PyCompileMlir, py::arg("module"),
-        py::arg("fast_compile") = false,
-        py::arg("argument_layouts") =
-            std::vector<std::vector<int64_t>>{},  // INT_VEC_OK
-        "Compiles an MLIR module to a PjRtLoadedExecutable.");
-  m.def("parse_mlir_text", PyParseMlirText, py::arg("mlir_text"),
-        "Parses a StableHLO MLIR text string and returns a ContextedModule.");
-  m.def("serialize_mlir_text", PySerializeMlirText, py::arg("module"),
-        py::arg("enable_debug_info") = false,
-        "Serializes a ContextedModule to MLIR text.");
-  m.def("serialize_mlir_bytecode", PySerializeMlirBytecode, py::arg("module"),
-        "Serializes a ContextedModule to bytecode.");
-  m.def("serialize_mlir_portable_artifact", PySerializePortableArtifact,
-        py::arg("module"),
-        "Serializes a ContextedModule to a versioned portable artifact.");
-  m.def("get_or_compile_pad_module", PyGetOrCompilePadModule,
-        py::arg("tensor_info"), py::arg("bounds_list"),
-        py::arg("fast_compile") = false, py::arg("build_mlir_module") = false,
-        py::arg("is_caching_disabled") = false,
-        "Returns the compiled PJRT executable for a pad subgraph.\n\n"
-        "Args:\n"
-        "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
-        "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.\n"
-        "  fast_compile: Whether to use the fast compile mode.\n"
-        "  build_mlir_module: Whether to build the MLIR module.\n"
-        "  is_caching_disabled: Whether to use the cache.");
+  mod_with_error_handling.def(
+      "compile_mlir", PyCompileMlir, py::arg("module"),
+      py::arg("fast_compile") = false,
+      py::arg("argument_layouts") =
+          std::vector<std::vector<int64_t>>{},  // INT_VEC_OK
+      "Compiles an MLIR module to a PjRtLoadedExecutable.");
+  mod_with_error_handling.def(
+      "parse_mlir_text", PyParseMlirText, py::arg("mlir_text"),
+      "Parses a StableHLO MLIR text string and returns a ContextedModule.");
+  mod_with_error_handling.def("serialize_mlir_text", PySerializeMlirText,
+                              py::arg("module"),
+                              py::arg("enable_debug_info") = false,
+                              "Serializes a ContextedModule to MLIR text.");
+  mod_with_error_handling.def("serialize_mlir_bytecode",
+                              PySerializeMlirBytecode, py::arg("module"),
+                              "Serializes a ContextedModule to bytecode.");
+  mod_with_error_handling.def(
+      "serialize_mlir_portable_artifact", PySerializePortableArtifact,
+      py::arg("module"),
+      "Serializes a ContextedModule to a versioned portable artifact.");
+  mod_with_error_handling.def(
+      "get_or_compile_pad_module", PyGetOrCompilePadModule,
+      py::arg("tensor_info"), py::arg("bounds_list"),
+      py::arg("fast_compile") = false, py::arg("build_mlir_module") = false,
+      py::arg("is_caching_disabled") = false,
+      "Returns the compiled PJRT executable for a pad subgraph.\n\n"
+      "Args:\n"
+      "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
+      "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.\n"
+      "  fast_compile: Whether to use the fast compile mode.\n"
+      "  build_mlir_module: Whether to build the MLIR module.\n"
+      "  is_caching_disabled: Whether to use the cache.");
 
-  m.def("get_dynamic_pad_module", PyGetDynamicPadModule, py::arg("tensor_info"),
-        py::arg("bounds_list"), py::arg("fast_compile") = false,
-        "Returns the compiled PJRT executable for a dynamic pad subgraph.\n\n"
-        "Args:\n"
-        "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
-        "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.\n"
-        "  fast_compile: Whether to use the fast compile mode.");
+  mod_with_error_handling.def(
+      "get_dynamic_pad_module", PyGetDynamicPadModule, py::arg("tensor_info"),
+      py::arg("bounds_list"), py::arg("fast_compile") = false,
+      "Returns the compiled PJRT executable for a dynamic pad subgraph.\n\n"
+      "Args:\n"
+      "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
+      "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.\n"
+      "  fast_compile: Whether to use the fast compile mode.");
 
-  m.def("precompile_pad_module", PyPrecompilePadModule, py::arg("tensor_info"),
-        py::arg("bounds_list"), py::arg("fast_compile") = false,
-        "Returns immediately after enqueuing compilation of a pad module.\n\n"
-        "Args:\n"
-        "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
-        "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.\n"
-        "  fast_compile: Whether to use the fast compile mode.");
-  m.def("get_or_compile_slice_module", PyGetOrCompileSliceModule,
-        py::arg("target_shapes"), py::arg("padded_shapes"),
-        py::arg("input_scalar_types"), py::arg("fast_compile") = false,
-        py::arg("build_mlir_module") = false,
-        py::arg("is_caching_disabled") = false,
-        "Returns the compiled PJRT executable for a slice subgraph.\n\n"
-        "Args:\n"
-        "  target_shapes: A list of target shapes.\n"
-        "  padded_shapes: A list of padded shapes.\n"
-        "  input_scalar_types: A list of scalar types for each tensor.\n"
-        "  fast_compile: Whether to use the fast compile mode.\n"
-        "  build_mlir_module: Whether to build the MLIR module.\n"
-        "  is_caching_disabled: Whether to use the cache.");
-  m.def("precompile_slice_module", PyPrecompileSliceModule,
-        py::arg("target_shapes"), py::arg("padded_shapes"),
-        py::arg("input_scalar_types"), py::arg("fast_compile") = false,
-        "Returns immediately after enqueuing compilation of a slice module.\n\n"
-        "Args:\n"
-        "  target_shapes: A list of target shapes.\n"
-        "  padded_shapes: A list of padded shapes.\n"
-        "  input_scalar_types: A list of scalar types for each tensor.\n"
-        "  fast_compile: Whether to use the fast compile mode.");
-  m.def("pop_enable_tracebacks", &PopContextState<EnableTracebacksContextState>,
-        "Pops the current state of the enable_tracebacks context manager.");
-  m.def("push_enable_tracebacks", &PyPushEnableTracebacks, py::arg("enabled"),
-        "Pushes a new state onto the enable_tracebacks context manager.");
-  m.def("serialize_executable", PySerializeExecutable, py::arg("executable"),
-        "Serializes a PjRtLoadedExecutable to bytes for caching.");
-  m.def("load_serialized_executable", PyLoadSerializedExecutable,
-        py::arg("serialized_bytes"),
-        "Loads a PjRtLoadedExecutable from serialized bytes.");
-  m.def("make_constant_tensor", PyMakeConstantTensor, py::arg("cpu_tensor"),
-        "Creates a TPU tensor that represents the constant value of the CPU "
-        "tensor.");
-  m.def("assign_constant_tensor", PyAssignConstantTensor,
-        py::arg("cpu_src_tensor"), py::arg("tpu_dst_tensor"),
-        "Updates a TPU tensor to be a tensor with the constant value of the "
-        "CPU tensor.");
-  m.def("get_device_state_tensor", PyGetDeviceStateTensor, py::arg("generator"),
-        "Returns the internal TPU RNG state tensor from a generator.");
-  m.def("set_device_state_tensor", PySetDeviceStateTensor, py::arg("generator"),
-        py::arg("rng_state"),
-        "Sets the internal TPU RNG state tensor on a generator.");
-  m.def("force_strides", PyForceStrides, py::arg("tensor"),
-        py::arg("target_strides"), py::arg("target_storage_offset"),
-        "Returns a tensor with equivalent logical values to the input tensor, "
-        "but with the given strides and storage offset, copying "
-        "data as necessary.");
-  m.def("get_materialize_collective_tensors_env_value",
-        PyGetMaterializeCollectiveTensorsEnvValue,
-        "Returns whether to materialize collective tensors.");
+  mod_with_error_handling.def(
+      "precompile_pad_module", PyPrecompilePadModule, py::arg("tensor_info"),
+      py::arg("bounds_list"), py::arg("fast_compile") = false,
+      "Returns immediately after enqueuing compilation of a pad module.\n\n"
+      "Args:\n"
+      "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
+      "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.\n"
+      "  fast_compile: Whether to use the fast compile mode.");
+  mod_with_error_handling.def(
+      "get_or_compile_slice_module", PyGetOrCompileSliceModule,
+      py::arg("target_shapes"), py::arg("padded_shapes"),
+      py::arg("input_scalar_types"), py::arg("fast_compile") = false,
+      py::arg("build_mlir_module") = false,
+      py::arg("is_caching_disabled") = false,
+      "Returns the compiled PJRT executable for a slice subgraph.\n\n"
+      "Args:\n"
+      "  target_shapes: A list of target shapes.\n"
+      "  padded_shapes: A list of padded shapes.\n"
+      "  input_scalar_types: A list of scalar types for each tensor.\n"
+      "  fast_compile: Whether to use the fast compile mode.\n"
+      "  build_mlir_module: Whether to build the MLIR module.\n"
+      "  is_caching_disabled: Whether to use the cache.");
+  mod_with_error_handling.def(
+      "precompile_slice_module", PyPrecompileSliceModule,
+      py::arg("target_shapes"), py::arg("padded_shapes"),
+      py::arg("input_scalar_types"), py::arg("fast_compile") = false,
+      "Returns immediately after enqueuing compilation of a slice module.\n\n"
+      "Args:\n"
+      "  target_shapes: A list of target shapes.\n"
+      "  padded_shapes: A list of padded shapes.\n"
+      "  input_scalar_types: A list of scalar types for each tensor.\n"
+      "  fast_compile: Whether to use the fast compile mode.");
+  mod_with_error_handling.def(
+      "pop_enable_tracebacks", &PopContextState<EnableTracebacksContextState>,
+      "Pops the current state of the enable_tracebacks context manager.");
+  mod_with_error_handling.def(
+      "push_enable_tracebacks", &PyPushEnableTracebacks, py::arg("enabled"),
+      "Pushes a new state onto the enable_tracebacks context manager.");
+  mod_with_error_handling.def(
+      "serialize_executable", PySerializeExecutable, py::arg("executable"),
+      "Serializes a PjRtLoadedExecutable to bytes for caching.");
+  mod_with_error_handling.def(
+      "load_serialized_executable", PyLoadSerializedExecutable,
+      py::arg("serialized_bytes"),
+      "Loads a PjRtLoadedExecutable from serialized bytes.");
+  mod_with_error_handling.def(
+      "make_constant_tensor", PyMakeConstantTensor, py::arg("cpu_tensor"),
+      "Creates a TPU tensor that represents the constant value of the CPU "
+      "tensor.");
+  mod_with_error_handling.def(
+      "assign_constant_tensor", PyAssignConstantTensor,
+      py::arg("cpu_src_tensor"), py::arg("tpu_dst_tensor"),
+      "Updates a TPU tensor to be a tensor with the constant value of the "
+      "CPU tensor.");
+  mod_with_error_handling.def(
+      "get_device_state_tensor", PyGetDeviceStateTensor, py::arg("generator"),
+      "Returns the internal TPU RNG state tensor from a generator.");
+  mod_with_error_handling.def(
+      "set_device_state_tensor", PySetDeviceStateTensor, py::arg("generator"),
+      py::arg("rng_state"),
+      "Sets the internal TPU RNG state tensor on a generator.");
+  mod_with_error_handling.def(
+      "force_strides", PyForceStrides, py::arg("tensor"),
+      py::arg("target_strides"), py::arg("target_storage_offset"),
+      "Returns a tensor with equivalent logical values to the input tensor, "
+      "but with the given strides and storage offset, copying "
+      "data as necessary.");
+  mod_with_error_handling.def(
+      "get_materialize_collective_tensors_env_value",
+      PyGetMaterializeCollectiveTensorsEnvValue,
+      "Returns whether to materialize collective tensors.");
 
   m.def(
       "fingerprint64",
@@ -1393,10 +1429,11 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       .value("kForward", torch_tpu::ScanDirection::kForward)
       .value("kReverse", torch_tpu::ScanDirection::kReverse)
       .export_values();
-  m.def("create_scan_op", &PyCreateScanOp, py::arg("inits"), py::arg("inputs"),
-        py::arg("body_module"), py::arg("scan_direction"), py::arg("dummy_ys"),
-        py::arg("num_scan_inputs"),
-        "Creates a deferred scan operation and returns the output tensors.");
+  mod_with_error_handling.def(
+      "create_scan_op", &PyCreateScanOp, py::arg("inits"), py::arg("inputs"),
+      py::arg("body_module"), py::arg("scan_direction"), py::arg("dummy_ys"),
+      py::arg("num_scan_inputs"),
+      "Creates a deferred scan operation and returns the output tensors.");
 }
 
 }  // namespace torch_tpu

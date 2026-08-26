@@ -21,6 +21,7 @@
 #include "pybind11/stl.h"
 #include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep, for at::Tensor mapping
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/pybind_error_utils.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -50,28 +51,74 @@ std::string_view PyGetMemoryKind(const at::Tensor& tensor) {
   return pjrt_buffer->memory_space()->kind();
 }
 
+// Test fixtures used by pybind_error_utils_test to verify Python API error
+// handling and error translation wrappers.
+struct TestErrorClass {
+  void ThrowTtErrorInMemberFunction() {
+    TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Covered by pybind_error_utils_test.
+        false, error::kInvalidArgument)
+        << "class throwing invalid argument";
+  }
+};
+
+void ThrowTtErrorInFreeFunction() {
+  TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Covered by pybind_error_utils_test.
+      false, error::kInvalidArgument)
+      << "throwing invalid argument";
+}
+
+void ThrowTtErrorIndexError() {
+  TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Covered by pybind_error_utils_test.
+      false, error::kPythonIndexError)
+      << "throwing index error";
+}
+
 }  // namespace
 
 // Internal testing utilities.
 PYBIND11_MODULE(testing, m) {
+  auto mod_with_error_handling = PyBindWrapWithErrorHandling(m);
+
+  // Python bindings for testing PyBindWrapWithErrorHandling.
+  //
+  // These bindings throw errors on different contexts, making sure we are
+  // showing the correct prefix on error messages.
+  //
+  // See: torch_tpu/tests/pybind_error_utils_test.py
+  mod_with_error_handling.def("throw_tterror_in_free_function",
+                              &ThrowTtErrorInFreeFunction);
+  mod_with_error_handling.def("throw_tterror_index_error",
+                              &ThrowTtErrorIndexError);
+
+  py::class_<TestErrorClass> py_test_class(m, "TestErrorClass");
+  PyBindWrapWithErrorHandling(py_test_class)
+      .def(py::init<>())
+      .def("throw_tterror_in_member_function",
+           [](TestErrorClass& self) { self.ThrowTtErrorInMemberFunction(); });
+
   // Forces DynamicDispatchOp() to fail with the given message for ops whose
   // base name matches `op_base_name`. If `op_base_name` is empty, no op is
   // forced to fail.
   //
   // This is NOT accumulative. If you call this multiple times, only the last
   // call will take effect.
-  m.def("set_op_dispatch_failure", internal::SetOpDispatchFailure,  //
-        py::arg("op_base_name"), py::arg("failure_message"));
-  m.def("reset_eager_state", ResetEagerState,
-        "Resets the eager mode maintained state.");
-  m.def("set_init_default_generator_failure",
-        PySetInitDefaultGeneratorFailureForTesting, py::arg("failure_message"),
-        "Forces InitDefaultGenerator to fail with the given message.");
-  m.def("reset_default_device_generators",
-        PyResetDefaultDeviceGeneratorsForTesting,
-        "Resets the default device generators singleton state.");
-  m.def("get_memory_kind", PyGetMemoryKind, py::arg("tensor"),
-        "Returns the memory space kind of the given tensor's buffer.");
+  mod_with_error_handling.def("set_op_dispatch_failure",
+                              internal::SetOpDispatchFailure,  //
+                              py::arg("op_base_name"),
+                              py::arg("failure_message"));
+  mod_with_error_handling.def("reset_eager_state", ResetEagerState,
+                              "Resets the eager mode maintained state.");
+  mod_with_error_handling.def(
+      "set_init_default_generator_failure",
+      PySetInitDefaultGeneratorFailureForTesting, py::arg("failure_message"),
+      "Forces InitDefaultGenerator to fail with the given message.");
+  mod_with_error_handling.def(
+      "reset_default_device_generators",
+      PyResetDefaultDeviceGeneratorsForTesting,
+      "Resets the default device generators singleton state.");
+  mod_with_error_handling.def(
+      "get_memory_kind", PyGetMemoryKind, py::arg("tensor"),
+      "Returns the memory space kind of the given tensor's buffer.");
 }
 
 }  // namespace torch_tpu

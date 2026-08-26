@@ -2226,4 +2226,15 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_test(
+    name = "pybind_error_utils_test",
+    srcs = ["pybind_error_utils_test.py"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal:testing",
+    ],
+)
+
 torch_tpu_package_end()

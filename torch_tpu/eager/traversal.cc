@@ -347,14 +347,14 @@ absl::Status Traversal::ValidateAndReorderArguments(
   for (const DeviceBufferRef& input : arguments) {
     TT_RET_CHECK(!input.is_deferred(), error::kInvalidArgument)
         << "found a deferred argument, which is not allowed: "
-        << input.DebugString();
+        << ToString(input.shape());
     if (auto it = prev_arguments.find(input); it != prev_arguments.end()) {
       // The first time we see a previous argument in the new arguments, mark
       // it as used.
       // If we see it again, then the new arguments has a duplicate and is
       // invalid.
       TT_RET_CHECK(!it->second, error::kInvalidArgument)
-          << "identified a duplicate input: " << input.DebugString();
+          << "identified a duplicate input: " << ToString(input.shape());
       it->second = true;
     } else {
       // Found an new argument not part of the previous arguments.
@@ -370,7 +370,7 @@ absl::Status Traversal::ValidateAndReorderArguments(
   for (const auto& [arg, used] : prev_arguments) {
     TT_RET_CHECK(used, error::kInvalidArgument)
         << "identified an argument that was not provided: "
-        << arg.DebugString();
+        << ToString(arg.shape());
   }
   arguments_ = std::move(arguments);
   ABSL_VLOG(1)

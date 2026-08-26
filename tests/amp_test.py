@@ -110,7 +110,7 @@ class AmpTest(seed_test_utils.RepeatableTest):
     # - multiplication preserves bf16 (%11 through %15)
     # - y is cast to bf16 (%0)
     # - loss function converts to f32 (%16 through %25)
-    expected_mlir = """module @tt_jit_compile_mlir_as_strided {
+    expected_mlir = """module @tt_jit_build_mlir_compile_mlir_as_strided {
   func.func @main(%arg0: tensor<10xi64>, %arg1: tensor<10x10xf32>, %arg2: tensor<10x10xf32>, %arg3: tensor<10x10xf32>, %arg4: tensor<10xf32>) -> tensor<f32> {
     %cst = stablehlo.constant dense<2.000000e+00> : tensor<f32>
     %cst_0 = stablehlo.constant dense<-1.000000e+00> : tensor<f64>
