@@ -180,7 +180,7 @@ torch_tpu_py_test(
     timeout = "eternal",
     srcs = ["model_performance_benchmarks.py"],
     args = ["--backend=torchax"],
-    autoload = True,
+    autoload = False,
     main = "model_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
     notest_oss = "Benchmarks have a separate workflow.",
@@ -440,6 +440,7 @@ torch_tpu_py_test(
     args = [
         "--backend=torchax",
     ],
+    autoload = False,
     main = "layer_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
     shard_count = 9,
