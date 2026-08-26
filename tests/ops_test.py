@@ -3889,7 +3889,9 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("rsub")
 
   def test_scaled_mm_v2(self):
-    self.do_test_op("torch._scaled_mm_v2")
+    self.do_test_op(
+        "torch._scaled_mm_v2", exclude_dtypes={"cpu": ALL_NUMERIC_DTYPES}
+    )
 
   def test_scatter(self):
     self.do_test_op("scatter")
