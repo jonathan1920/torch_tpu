@@ -13,3 +13,11 @@
 # limitations under the License.
 
 """TorchTPU operators package."""
+
+from torch_tpu.ops.jagged import align_jagged_to_multiple
+from torch_tpu.ops.jagged import strip_jagged_padding
+
+__all__ = [
+    "align_jagged_to_multiple",
+    "strip_jagged_padding",
+]

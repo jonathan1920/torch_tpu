@@ -29,7 +29,9 @@ import functools
 from absl.testing import absltest
 import torch
 from torch.nested._internal import nested_tensor as nt_internal
+from torch_tpu._internal.utils import annotations
 from torch_tpu._internal.utils import test_utils as utils
+from torch_tpu.ops import jagged as jagged_ops
 from tests import seed_test_utils
 
 
@@ -1556,6 +1558,89 @@ class JaggedTensorTest(seed_test_utils.RepeatableTest):
   # ---------------------------------------------------------------------------
   # Performance Optimizations & Pipeline Verification Unit Tests
   # ---------------------------------------------------------------------------
+
+  def test_mxu_tile_alignment_utility(self):
+    """Tests padding jagged flat buffer to multiples of 128 for optimal TPU MXU systolic tiling."""
+    # Verify experimental API metadata
+    self.assertEqual(
+        getattr(jagged_ops.align_jagged_to_multiple, annotations.TT_API_STAGE),
+        annotations.Stage.EXPERIMENTAL,
+    )
+
+    # Create jagged tensor with 347 tokens (not divisible by 128)
+    t1 = torch.randn(200, 64, device="tpu")
+    t2 = torch.randn(147, 64, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+    self.assertEqual(nt.values().shape, (347, 64))
+
+    # Align to nearest multiple of 128 (384)
+    aligned_nt = jagged_ops.align_jagged_to_multiple(nt, multiple=128)
+    self.assertEqual(aligned_nt.device.type, "tpu")
+    self.assertEqual(aligned_nt.layout, torch.jagged)
+    self.assertEqual(aligned_nt.values().shape, (384, 64))
+    utils.assert_close(aligned_nt.offsets().cpu(), nt.offsets().cpu())
+
+    # Valid sequence values are preserved exactly
+    utils.assert_close(aligned_nt.values()[:347].cpu(), nt.values().cpu())
+
+    # 2D GEMM executes with 128-tile systolic efficiency
+    linear = torch.nn.Linear(64, 128).to("tpu")
+    projected = linear(aligned_nt)
+    self.assertEqual(projected.values().shape, (384, 128))
+
+    # Integer token ID jagged tensor with integer padding value
+    tok1 = torch.randint(0, 1000, (50,), dtype=torch.int64, device="tpu")
+    tok2 = torch.randint(0, 1000, (60,), dtype=torch.int64, device="tpu")
+    nt_tok = torch.nested.nested_tensor([tok1, tok2], layout=torch.jagged)
+    aligned_tok = jagged_ops.align_jagged_to_multiple(
+        nt_tok, multiple=128, padding_value=0
+    )
+    self.assertEqual(aligned_tok.values().dtype, torch.int64)
+    self.assertEqual(aligned_tok.values().shape, (128,))
+    utils.assert_close(aligned_tok.values()[:110].cpu(), nt_tok.values().cpu())
+
+    # Already aligned tensor is returned directly without extra allocations
+    t_aligned = torch.randn(256, 64, device="tpu")
+    nt_aligned = torch.nested.nested_tensor([t_aligned], layout=torch.jagged)
+    self.assertIs(
+        jagged_ops.align_jagged_to_multiple(nt_aligned, multiple=128),
+        nt_aligned,
+    )
+
+  def test_strip_jagged_padding_utility(self):
+    """Tests zero-copy stripping of trailing dummy padding rows from jagged tensors."""
+    # Verify experimental API metadata
+    self.assertEqual(
+        getattr(jagged_ops.strip_jagged_padding, annotations.TT_API_STAGE),
+        annotations.Stage.EXPERIMENTAL,
+    )
+
+    t1 = torch.randn(200, 64, device="tpu")
+    t2 = torch.randn(147, 64, device="tpu")
+    nt = torch.nested.nested_tensor([t1, t2], layout=torch.jagged)
+    self.assertEqual(nt.values().shape, (347, 64))
+
+    # Align to 384
+    aligned_nt = jagged_ops.align_jagged_to_multiple(nt, multiple=128)
+    self.assertEqual(aligned_nt.values().shape, (384, 64))
+
+    # Strip back to 347 (automatic sync)
+    stripped_nt = jagged_ops.strip_jagged_padding(aligned_nt)
+    self.assertEqual(stripped_nt.device.type, "tpu")
+    self.assertEqual(stripped_nt.layout, torch.jagged)
+    self.assertEqual(stripped_nt.values().shape, (347, 64))
+    utils.assert_close(stripped_nt.values().cpu(), nt.values().cpu())
+    utils.assert_close(stripped_nt.offsets().cpu(), nt.offsets().cpu())
+
+    # Strip back to 347 with explicit valid_tokens (bypassing host-sync)
+    stripped_explicit = jagged_ops.strip_jagged_padding(
+        aligned_nt, valid_tokens=347
+    )
+    self.assertEqual(stripped_explicit.values().shape, (347, 64))
+    utils.assert_close(stripped_explicit.values().cpu(), nt.values().cpu())
+
+    # Calling on already compact tensor returns original tensor
+    self.assertIs(jagged_ops.strip_jagged_padding(nt), nt)
 
   def test_inplace_residual_accumulation(self):
     """Verifies that in-place residual addition (add_) operates zero-copy and matches out-of-place add."""

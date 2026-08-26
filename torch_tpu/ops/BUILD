@@ -644,6 +644,18 @@ torch_tpu_cc_library(
 torch_tpu_py_library(
     name = "ops",
     srcs = ["__init__.py"],
+    deps = [
+        ":jagged",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "jagged",
+    srcs = ["jagged.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils:annotations",
+    ],
 )
 
 torch_tpu_py_library(
