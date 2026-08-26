@@ -193,11 +193,12 @@ class DynamismTest(seed_test_utils.RepeatableTest):
     # Compare outputs
     if isinstance(act, torch.Tensor):
       utils.assert_close(act.to("cpu"), expected, rtol=1e-5, atol=1e-5)
-      return
+      return act
 
     # Allow multiple outputs
     for act, expected in zip(act, expected):
       utils.assert_close(act.to("cpu"), expected, rtol=1e-5, atol=1e-5)
+    return act
 
   @parameterized.product(dtype=op_testing.all_xla_supported_dtypes())
   def test_elementwise_unary_op_one_dimension_dynamic(self, dtype):
@@ -507,6 +508,134 @@ class DynamismTest(seed_test_utils.RepeatableTest):
 
     args = (torch.ones(1, 16, 5, 128),)
     self._run_bounded_dynamism_test(reshape_fn, mark_dynamic, *args)
+
+  @parameterized.named_parameters(
+      ("indexed_dynamic_dim", lambda x, idx: x[idx], []),
+      (
+          "unindexed_dynamic_dim",
+          lambda x, idx: x[:, idx],
+          [(0, 2, 10)],
+      ),
+  )
+  def test_index_dynamic_operand(self, index_fn, expected_dynamism_info):
+    def mark_dynamic(x, idx):
+      del idx  # Unused
+      dynamism.mark_dynamic(x, 0, 2, 10)  # dim 0 of x (batch dim) is dynamic
+
+    args = (
+        torch.arange(50, dtype=torch.float32).reshape(10, 5),
+        torch.tensor([0, 2, 4], dtype=torch.int64),
+    )
+    act = self._run_bounded_dynamism_test(index_fn, mark_dynamic, *args)
+    act_dynamism_info = dynamism.get_dynamism_info(act)
+    self.assertLen(act_dynamism_info, len(expected_dynamism_info))
+    for actual, (expected_dim, expected_lb, expected_ub) in zip(
+        act_dynamism_info, expected_dynamism_info
+    ):
+      self.assertEqual(actual.dimension, expected_dim)
+      self.assertEqual(actual.lower_bound, expected_lb)
+      self.assertEqual(actual.upper_bound, expected_ub)
+
+  def test_index_dynamic_indices(self):
+    def mark_dynamic(x, idx):
+      del x  # Unused
+      dynamism.mark_dynamic(idx, 0, 2, 10)  # dim 0 of idx is dynamic
+
+    def index_fn(x, idx):
+      return x[idx]
+
+    args = (
+        torch.arange(50, dtype=torch.float32).reshape(10, 5),
+        torch.tensor([0, 2, 4], dtype=torch.int64),
+    )
+    act = self._run_bounded_dynamism_test(index_fn, mark_dynamic, *args)
+    act_dynamism_info = dynamism.get_dynamism_info(act)
+    self.assertLen(act_dynamism_info, 1)
+    self.assertEqual(act_dynamism_info[0].dimension, 0)
+    self.assertEqual(act_dynamism_info[0].lower_bound, 2)
+    self.assertEqual(act_dynamism_info[0].upper_bound, 10)
+
+  def test_index_multiple_broadcast_dynamic_indices(self):
+    def mark_dynamic(x, idx1, idx2):
+      del x, idx2  # Unused
+      dynamism.mark_dynamic(idx1, 0, 2, 10)
+
+    def index_fn(x, idx1, idx2):
+      return x[idx1, :, idx2]
+
+    args = (
+        torch.arange(60, dtype=torch.float32).reshape(3, 4, 5),
+        torch.tensor([[0], [1], [2]], dtype=torch.int64),  # [3, 1]
+        torch.tensor([1, 2], dtype=torch.int64),  # [1, 2]
+    )
+    act = self._run_bounded_dynamism_test(index_fn, mark_dynamic, *args)
+    act_dynamism_info = dynamism.get_dynamism_info(act)
+    self.assertLen(act_dynamism_info, 1)
+    self.assertEqual(act_dynamism_info[0].dimension, 0)
+    self.assertEqual(act_dynamism_info[0].lower_bound, 2)
+    self.assertEqual(act_dynamism_info[0].upper_bound, 10)
+
+  def test_index_both_dynamic_indices_broadcast(self):
+    def mark_dynamic(x, idx1, idx2):
+      del x
+      dynamism.mark_dynamic(idx1, 0, 2, 10)  # Dynamic rows
+      dynamism.mark_dynamic(idx2, 0, 2, 10)  # Dynamic rows
+
+    def index_fn(x, idx1, idx2):
+      return x[idx1, :, idx2]
+
+    args = (
+        torch.arange(60, dtype=torch.float32).reshape(3, 4, 5),
+        torch.tensor([[0], [1], [2]], dtype=torch.int64),  # [3, 1]
+        torch.tensor([[0, 1], [1, 2], [2, 0]], dtype=torch.int64),  # [3, 2]
+    )
+    act = self._run_bounded_dynamism_test(index_fn, mark_dynamic, *args)
+    act_dynamism_info = dynamism.get_dynamism_info(act)
+    self.assertLen(act_dynamism_info, 1)
+    self.assertEqual(act_dynamism_info[0].dimension, 0)
+    self.assertEqual(act_dynamism_info[0].lower_bound, 2)
+    self.assertEqual(act_dynamism_info[0].upper_bound, 10)
+
+  def test_index_dynamic_operand_and_indices(self):
+    def mark_dynamic(x, idx):
+      dynamism.mark_dynamic(x, 0, 2, 5)  # x has dynamic batch dim
+      dynamism.mark_dynamic(idx, 0, 2, 10)  # idx has dynamic length
+
+    def index_fn(x, idx):
+      return x[:, idx]
+
+    args = (
+        torch.arange(50, dtype=torch.float32).reshape(5, 10),
+        torch.tensor([0, 2, 4], dtype=torch.int64),
+    )
+    act = self._run_bounded_dynamism_test(index_fn, mark_dynamic, *args)
+    act_dynamism_info = dynamism.get_dynamism_info(act)
+    self.assertLen(act_dynamism_info, 2)
+    self.assertEqual(act_dynamism_info[0].dimension, 0)
+    self.assertEqual(act_dynamism_info[0].lower_bound, 2)
+    self.assertEqual(act_dynamism_info[0].upper_bound, 5)
+    self.assertEqual(act_dynamism_info[1].dimension, 1)
+    self.assertEqual(act_dynamism_info[1].lower_bound, 2)
+    self.assertEqual(act_dynamism_info[1].upper_bound, 10)
+
+  def test_index_negative_dynamic_indices(self):
+    def mark_dynamic(x, idx):
+      del x
+      dynamism.mark_dynamic(idx, 0, 2, 10)
+
+    def index_fn(x, idx):
+      return x[idx]
+
+    args = (
+        torch.arange(50, dtype=torch.float32).reshape(10, 5),
+        torch.tensor([-1, -3, 0], dtype=torch.int64),
+    )
+    act = self._run_bounded_dynamism_test(index_fn, mark_dynamic, *args)
+    act_dynamism_info = dynamism.get_dynamism_info(act)
+    self.assertLen(act_dynamism_info, 1)
+    self.assertEqual(act_dynamism_info[0].dimension, 0)
+    self.assertEqual(act_dynamism_info[0].lower_bound, 2)
+    self.assertEqual(act_dynamism_info[0].upper_bound, 10)
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@
 #include "absl/base/nullability.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/log/absl_vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -44,6 +45,7 @@
 #include "c10/util/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -508,23 +510,38 @@ absl::StatusOr<mlir::MlirOp> BroadcastIfNeeded(
   return mlir::MlirOp(input.getBuilder(), *broadcasted_value_or_fail);
 }
 
-absl::StatusOr<Dimensions> GetBroadcastShape(
+absl::StatusOr<std::vector<mlir::MlirOp>> ApplyBroadcastIfNeeded(
     absl::Span<const mlir::MlirOp> ops) {
-  TT_RET_CHECK(!ops.empty(), error::kInvalidArgument)
-      << "no tensor to broadcast";
-  Dimensions bcast_shape;  // An empty shape can be broadcasted to any shape.
-  for (int i = 0; i < ops.size(); ++i) {
-    const mlir::RankedTensorType tensor_type = GetTensorTypeOrDie(ops[i]);
-    // TODO(b/460206467): Update all broadcast APIs to support dynamic shapes.
-    ABSL_CHECK(  // CRASH_OK: Pending feature work, API needs refactor.
-        tensor_type.getNumDynamicDims() == 0)
-        << "Input shape must be static to use static `GetBroadcastShape` "
-           "API.";
-    TT_ASSIGN_OR_RETURN(bcast_shape,
-                        InferSize(bcast_shape, tensor_type.getShape()),
-                        _.SetPrepend() << "tensor " << i << ": ");
+  if (ops.empty()) {
+    return std::vector<mlir::MlirOp>{};
   }
-  return std::move(bcast_shape);
+  if (ABSL_VLOG_IS_ON(3)) {
+    ABSL_VLOG(3) << "[ApplyBroadcastIfNeeded] Broadcasting ops:" << '\n';
+    for (const mlir::MlirOp& op : ops) {
+      ABSL_VLOG(3) << "  " << mlir::debugString(op.getType()) << " from op "
+                   << op.ToString() << '\n';
+    }
+  }
+
+  mlir::SmallVector<mlir::Value> values = llvm::map_to_vector(
+      ops, [](const mlir::MlirOp& op) { return op.getValue(); });
+  mlir::BaseScopedDiagnosticHandler diag_handler(values[0].getContext());
+  mlir::MlirOp first_op = ops[0];
+  auto broadcasted_values_or_fail = mlir::stablehlo::numpyBroadcastIfNeeded(
+      first_op.getBuilder().getOpBuilder(), values);
+  TT_RET_CHECK(mlir::succeeded(broadcasted_values_or_fail),
+               error::kInvalidArgument)
+      << "failed to broadcast tensors: "
+      << diag_handler.ConsumeStatus().message();
+  mlir::SmallVector<mlir::Value> broadcasted_values =
+      std::move(*broadcasted_values_or_fail);
+  std::vector<mlir::MlirOp> result;
+  result.reserve(ops.size());
+  for (size_t i = 0; i < ops.size(); ++i) {
+    mlir::MlirOp op = ops[i];
+    result.emplace_back(op.getBuilder(), broadcasted_values[i]);
+  }
+  return result;
 }
 
 absl::StatusOr<mlir::MlirOp> Broadcast(mlir::MlirOp input,

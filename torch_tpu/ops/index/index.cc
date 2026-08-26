@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/index/index.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "absl/log/absl_log.h"
@@ -30,6 +31,7 @@
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
@@ -38,6 +40,11 @@
 namespace torch_tpu {
 
 namespace {
+
+struct DynamicUnindexedDim {
+  mlir::stablehlo::DimensionInfo dim_info;
+  int64_t out_dim;
+};
 
 bool AreConsecutive(const Indices& indexed_dims) {
   for (size_t i = 1; i < indexed_dims.size(); ++i) {
@@ -81,34 +88,50 @@ absl::StatusOr<mlir::MlirOp> BuildIndexShlo(
   }
 
   // Indexing tensors need to be broadcastable together.
-  TT_ASSIGN_OR_RETURN(auto broadcasted_shape, GetBroadcastShape(indices));
-  Dimensions reshaped_broadcasted_shape = broadcasted_shape;
-  reshaped_broadcasted_shape.push_back(1);
+  TT_ASSIGN_OR_RETURN(std::vector<mlir::MlirOp> broadcasted_indices,
+                      ApplyBroadcastIfNeeded(indices));
 
-  std::vector<mlir::MlirOp> broadcasted_indices;
-  broadcasted_indices.reserve(indices.size());
-  for (int i = 0; i < indices.size(); ++i) {
-    TT_ASSIGN_OR_RETURN(mlir::MlirOp broadcasted_index,
-                        BroadcastIfNeeded(indices[i], broadcasted_shape));
+  const int64_t broadcasted_rank =
+      GetTensorTypeOrDie(broadcasted_indices[0]).getRank();
 
-    mlir::MlirOp reshaped_broadcasted_index =
-        mlir::stablehlo::Reshape(broadcasted_index, reshaped_broadcasted_shape);
-    broadcasted_indices.push_back(reshaped_broadcasted_index);
+  std::vector<mlir::MlirOp> reshaped_indices;
+  reshaped_indices.reserve(broadcasted_indices.size());
+  for (const mlir::MlirOp& broadcasted_index : broadcasted_indices) {
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp reshaped_index,
+                        Unsqueeze(broadcasted_index, broadcasted_rank));
+    reshaped_indices.push_back(reshaped_index);
   }
   mlir::MlirOp index = mlir::stablehlo::Concatenate(
-      self.getBuilder(), broadcasted_indices, broadcasted_shape.size());
+      self.getBuilder(), reshaped_indices, broadcasted_rank);
 
-  // We stack them into a tensor of one more dimension to pass them to Gather.
-  Dimensions gather_slice_sizes = CopyIntVector(self_type.getShape());
+  // Dynamism in Gather:
+  // - `gather_slice_sizes` is a static attribute in StableHLO and must contain
+  //   compile-time non-negative integers. Therefore, we use `self_dims[i].size`
+  //   (the upper bound / physical dimension size) rather than
+  //   `self_type.getShape()[i]` which evaluates to `kDynamic` (-1) for dynamic
+  //   dimensions.
+  // - For indexed dimensions, the slice size is 1. If `index` has dynamic
+  //   dimensions, StableHLO Gather automatically preserves and propagates those
+  //   dynamic batch dimensions from `index` (via `start_indices`) into the
+  //   result type.
+  // - For unindexed dimensions, the slice size extracts the full upper-bound
+  //   extent from `self`. If an unindexed dimension is dynamic, we re-attach
+  //   its dynamic runtime bound onto the Gather output via `SetDimensionSize`.
+  mlir::stablehlo::Dimensions self_dims = GetDimensions(self);
+  Dimensions gather_slice_sizes;
+  gather_slice_sizes.reserve(self_dims.size());
   Indices offset_dims;
 
   bool index_dims_consecutive = AreConsecutive(indexed_dims);
 
-  for (int i = 0, j = 0; i < self_type.getRank(); ++i) {
+  std::vector<DynamicUnindexedDim> dynamic_unindexed_dims;
+
+  for (size_t i = 0, j = 0; i < self_dims.size(); ++i) {
     if (j < indexed_dims.size() && indexed_dims[j] == i) {
-      gather_slice_sizes[i] = 1;
+      gather_slice_sizes.push_back(1);
       ++j;
     } else {
+      gather_slice_sizes.push_back(self_dims[i].size);
       TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=AtenIndexTensorOut (caller) creates
                      // `indexed_dims`, making sure they are always increasing,
                      // non-negative, and distinct.
@@ -123,9 +146,12 @@ absl::StatusOr<mlir::MlirOp> BuildIndexShlo(
       // output tensor shape.
       // See
       // https://numpy.org/devdocs/user/basics.indexing.html#combining-advanced-and-basic-indexing
-      offset_dims.push_back(index_dims_consecutive && j == 0
-                                ? i
-                                : broadcasted_shape.size() + i - j);
+      int64_t out_dim =
+          index_dims_consecutive && j == 0 ? i : broadcasted_rank + i - j;
+      offset_dims.push_back(out_dim);
+      if (self_dims[i].boundOp.has_value()) {
+        dynamic_unindexed_dims.push_back({self_dims[i], out_dim});
+      }
     }
   }
 
@@ -140,13 +166,19 @@ absl::StatusOr<mlir::MlirOp> BuildIndexShlo(
           /*operand_batching_dims=*/{},
           /*start_indices_batching_dims=*/{},
           /*start_index_map=*/indexed_dims,
-          /*index_vector_dim=*/broadcasted_shape.size());
+          /*index_vector_dim=*/broadcasted_rank);
   ABSL_VLOG(2) << "[BuildIndexShlo]: GatherDimensionNumbers = "
                << mlir::debugString(gather_dimension_numbers);
 
   auto result = stablehlo::Gather(self, index, gather_dimension_numbers,
                                   gather_slice_sizes,
                                   /*indices_are_sorted=*/false);
+  for (const auto& [dim_info, out_dim] : dynamic_unindexed_dims) {
+    mlir::MlirOp bound_op_mlir(self.getBuilder(), *dim_info.boundOp);
+    mlir::MlirOp dim_size =
+        mlir::stablehlo::GetDimensionSize(bound_op_mlir, dim_info.boundOpDim);
+    result = mlir::stablehlo::SetDimensionSize(result, dim_size, out_dim);
+  }
   return stablehlo::ConvertElementType(result, self_type.getElementType());
 }
 

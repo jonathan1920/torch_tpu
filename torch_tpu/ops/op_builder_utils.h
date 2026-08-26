@@ -411,11 +411,6 @@ mlir::MlirOp GetNumElements(mlir::MlirOp input, mlir::Type element_type,
 // Returns the current ModuleOp a builder is operating in.
 mlir::ModuleOp GetModuleOp(mlir::MlirBuilder& builder);
 
-// Returns the common shape these ops would broadcast to, or an error if the
-// ops are not broadcastable.
-absl::StatusOr<Dimensions> GetBroadcastShape(
-    absl::Span<const mlir::MlirOp> ops);
-
 absl::StatusOr<mlir::MlirOp> BroadcastIfNeeded(mlir::MlirOp input,
                                                absl::Span<const int64_t> shape);
 
@@ -486,14 +481,18 @@ absl::StatusOr<std::array<mlir::MlirOp, kNumInputs>> ApplyBroadcastIfNeeded(
   return std::move(ops);
 }
 
-// This overload takes a variable number of inputs, where each input is a
-// mlir::MlirOp.
-template <typename... Ops>
-absl::StatusOr<std::array<mlir::MlirOp, sizeof...(Ops)>> ApplyBroadcastIfNeeded(
-    Ops... ops) {
-  return ApplyBroadcastIfNeeded<sizeof...(Ops)>(
-      std::array<mlir::MlirOp, sizeof...(Ops)>{ops...});
+// This overload takes a variable number (>= 2) of inputs, where each input is
+// a mlir::MlirOp.
+template <typename Op1, typename Op2, typename... Ops>
+absl::StatusOr<std::array<mlir::MlirOp, 2 + sizeof...(Ops)>>
+ApplyBroadcastIfNeeded(Op1 op1, Op2 op2, Ops... ops) {
+  return ApplyBroadcastIfNeeded<2 + sizeof...(Ops)>(
+      std::array<mlir::MlirOp, 2 + sizeof...(Ops)>{op1, op2, ops...});
 }
+
+// Applies Numpy's broadcasting rules to a dynamic span of ops, if needed.
+absl::StatusOr<std::vector<mlir::MlirOp>> ApplyBroadcastIfNeeded(
+    absl::Span<const mlir::MlirOp> ops);
 
 absl::StatusOr<mlir::MlirOp> Broadcast(mlir::MlirOp input,
                                        absl::Span<const int64_t> output_dims,

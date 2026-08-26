@@ -680,11 +680,96 @@ TEST(BroadcastIfNeeded, BroadcastLikeOtherOp) {
   mlir::OpBuilder& op_builder = mb.getOpBuilder();
   mlir::MlirOp cst = MakeConstant(mb, 1.0f, op_builder.getF32Type(), {});
   mlir::MlirOp op = MakeConstant(mb, 2.0f, op_builder.getF32Type(), {2, 2});
-  absl::StatusOr<mlir::MlirOp> cst_bcast = BroadcastIfNeeded(cst, op);
-  ASSERT_TRUE(cst_bcast.ok());
+  TF_ASSERT_OK_AND_ASSIGN(mlir::MlirOp cst_bcast, BroadcastIfNeeded(cst, op));
   mlir::RankedTensorType cst_bcast_type =
-      mlir::cast<mlir::RankedTensorType>(cst_bcast->getType());
+      mlir::cast<mlir::RankedTensorType>(cst_bcast.getType());
   EXPECT_THAT(cst_bcast_type.getShape(), ElementsAre(2, 2));
+}
+
+TEST(ApplyBroadcastIfNeeded, Span) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::ModuleBuilder& mb = op_builder_utils_builder.get();
+  mlir::OpBuilder& op_builder = mb.getOpBuilder();
+  mlir::MlirOp op1 = MakeConstant(mb, 1.0f, op_builder.getF32Type(), {3, 1});
+  mlir::MlirOp op2 = MakeConstant(mb, 2.0f, op_builder.getF32Type(), {1, 5});
+  std::vector<mlir::MlirOp> ops = {op1, op2};
+  TF_ASSERT_OK_AND_ASSIGN(const auto& bcast,
+                          ApplyBroadcastIfNeeded(ops));  // NOLINT
+  ASSERT_EQ(bcast.size(), 2);
+  auto type1 = mlir::cast<mlir::RankedTensorType>(bcast[0].getType());
+  auto type2 = mlir::cast<mlir::RankedTensorType>(bcast[1].getType());
+  EXPECT_THAT(type1.getShape(), ElementsAre(3, 5));
+  EXPECT_THAT(type2.getShape(), ElementsAre(3, 5));
+}
+
+TEST(ApplyBroadcastIfNeeded, DifferentRanks) {
+  OpBuilderUtilsBuilder builder;
+  mlir::ModuleBuilder& mb = builder.get();
+  mlir::OpBuilder& op_builder = mb.getOpBuilder();
+  mlir::MlirOp op1 = MakeConstant(mb, 1.0f, op_builder.getF32Type(), {5});
+  mlir::MlirOp op2 = MakeConstant(mb, 2.0f, op_builder.getF32Type(), {2, 3, 1});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const auto& bcast,
+      ApplyBroadcastIfNeeded(std::vector<mlir::MlirOp>{op1, op2}));  // NOLINT
+  ASSERT_EQ(bcast.size(), 2);
+  auto type1 = mlir::cast<mlir::RankedTensorType>(bcast[0].getType());
+  auto type2 = mlir::cast<mlir::RankedTensorType>(bcast[1].getType());
+  EXPECT_THAT(type1.getShape(), ElementsAre(2, 3, 5));
+  EXPECT_THAT(type2.getShape(), ElementsAre(2, 3, 5));
+}
+
+TEST(ApplyBroadcastIfNeeded, DynamicShape) {
+  OpBuilderUtilsBuilder builder;
+  mlir::ModuleBuilder& mb = builder.get();
+  mlir::OpBuilder& op_builder = mb.getOpBuilder();
+
+  // op1 has dynamic bounded shape [?x1] with upper bound 10 and dynamic size 5
+  // on dim 0
+  mlir::MlirOp bound_op = MakeConstant(mb, 5, op_builder.getI32Type(), {});
+  mlir::MlirOp base_op1 =
+      MakeConstant(mb, 1.0f, op_builder.getF32Type(), {10, 1});
+  mlir::MlirOp op1 =
+      mlir::stablehlo::SetDimensionSize(base_op1, bound_op, /*dim=*/0);
+
+  // op2 has static shape [1, 4]
+  mlir::MlirOp op2 = MakeConstant(mb, 2.0f, op_builder.getF32Type(), {1, 4});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const auto& bcast,
+      ApplyBroadcastIfNeeded(std::vector<mlir::MlirOp>{op1, op2}));  // NOLINT
+  ASSERT_EQ(bcast.size(), 2);
+
+  mlir::MlirOp bcast_op1 = bcast[0];
+  mlir::MlirOp bcast_op2 = bcast[1];
+
+  auto bcast_op1_type = mlir::cast<mlir::RankedTensorType>(bcast_op1.getType());
+  auto bcast_op2_type = mlir::cast<mlir::RankedTensorType>(bcast_op2.getType());
+
+  // Both tensors should now have dynamic shape [?x4]
+  EXPECT_TRUE(bcast_op1_type.isDynamicDim(0));
+  EXPECT_FALSE(bcast_op1_type.isDynamicDim(1));
+  EXPECT_EQ(bcast_op1_type.getDimSize(1), 4);
+
+  EXPECT_TRUE(bcast_op2_type.isDynamicDim(0));
+  EXPECT_FALSE(bcast_op2_type.isDynamicDim(1));
+  EXPECT_EQ(bcast_op2_type.getDimSize(1), 4);
+
+  // Verify bounded dimensions metadata on broadcasted op1
+  auto bcast_op1_dims = GetDimensions(bcast_op1);
+  EXPECT_EQ(bcast_op1_dims.size(), 2);
+  EXPECT_EQ(bcast_op1_dims[0].size, 10);
+  EXPECT_TRUE(bcast_op1_dims[0].boundOp.has_value());
+  EXPECT_EQ(bcast_op1_dims[1].size, 4);
+  EXPECT_FALSE(bcast_op1_dims[1].boundOp.has_value());
+
+  // Verify bounded dimensions metadata on broadcasted op2
+  auto bcast_op2_dims = GetDimensions(bcast_op2);
+  EXPECT_EQ(bcast_op2_dims.size(), 2);
+  EXPECT_EQ(bcast_op2_dims[0].size, 10);
+  EXPECT_TRUE(bcast_op2_dims[0].boundOp.has_value());
+  EXPECT_EQ(bcast_op2_dims[1].size, 4);
+  EXPECT_FALSE(bcast_op2_dims[1].boundOp.has_value());
 }
 
 TEST(GetNumElements, StaticShape) {
