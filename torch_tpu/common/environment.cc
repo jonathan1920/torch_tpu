@@ -44,7 +44,7 @@ absl::Status InitializeDistributedEnvironment(
   }
   std::vector<std::string> addresses = absl::StrSplit(config.sb_addrs, ',');
   int slice_rank = config.rank % static_cast<int>(addresses.size());
-  SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(slice_rank));
+  SetEnv<kCloudTpuTaskIdEnvVar>(absl::StrCat(slice_rank));
 
   // TPU_VISIBLE_DEVICES is our source of truth for device visibility.
   // Because libtpu prioritizes TPU_VISIBLE_CHIPS over TPU_VISIBLE_DEVICES when
@@ -56,25 +56,25 @@ absl::Status InitializeDistributedEnvironment(
                                   IsSingleDeviceSpecified(*visible_devices_env))
                                      ? *visible_devices_env
                                      : absl::StrCat(config.local_rank);
-  SetEnv(kTpuVisibleDevicesEnvVar, target_dev);
-  SetEnv(kTpuVisibleChipsEnvVar, target_dev);
+  SetEnv<kTpuVisibleDevicesEnvVar>(target_dev);
+  SetEnv<kTpuVisibleChipsEnvVar>(target_dev);
 
   std::vector<std::string> topology_dims = absl::StrSplit(config.topology, ',');
   std::string chips_bounds = (topology_dims.size() == 4) ? "1,1,1,1" : "1,1,1";
 
-  SetEnv(kTpuHostBoundsEnvVar, config.topology);
-  SetEnv(kTpuChipsPerHostBoundsEnvVar, chips_bounds);
-  SetEnv(kTpuProcessBoundsEnvVar, config.topology);
-  SetEnv(kTpuChipsPerProcessBoundsEnvVar, chips_bounds);
+  SetEnv<kTpuHostBoundsEnvVar>(config.topology);
+  SetEnv<kTpuChipsPerHostBoundsEnvVar>(chips_bounds);
+  SetEnv<kTpuProcessBoundsEnvVar>(config.topology);
+  SetEnv<kTpuChipsPerProcessBoundsEnvVar>(chips_bounds);
 
   // The free slicebuilder port of this process.
-  SetEnv(kTpuProcessPortEnvVar, config.sb_port);
+  SetEnv<kTpuProcessPortEnvVar>(config.sb_port);
 
   // The addresses of all other workers in the slice.
-  SetEnv(kTpuProcessAddressesEnvVar, config.sb_addrs);
+  SetEnv<kTpuProcessAddressesEnvVar>(config.sb_addrs);
 
   // Avoid multi-process libtpu lock in GCP init, see b/487769788.
-  SetEnv(kAllowMultipleLibtpuLoadEnvVar, "1");
+  SetEnv<kAllowMultipleLibtpuLoadEnvVar>("1");
 
   std::string libtpu_init_args_str =
       GetEnvOnce<kLibtpuInitArgsEnvVar>().value_or("");
@@ -95,7 +95,7 @@ absl::Status InitializeDistributedEnvironment(
     absl::StrAppend(&libtpu_init_args_str,
                     " --xla_tpu_use_enhanced_launch_barrier=false");
   }
-  SetEnv(kLibtpuInitArgsEnvVar, libtpu_init_args_str);
+  SetEnv<kLibtpuInitArgsEnvVar>(libtpu_init_args_str);
   return absl::OkStatus();
 }
 
@@ -110,8 +110,8 @@ absl::Status InitializeSingleDeviceEnvironment() {
                                   IsSingleDeviceSpecified(*visible_devices_env))
                                      ? *visible_devices_env
                                      : "0";
-  SetEnv(kTpuVisibleDevicesEnvVar, target_dev);
-  SetEnv(kTpuVisibleChipsEnvVar, target_dev);
+  SetEnv<kTpuVisibleDevicesEnvVar>(target_dev);
+  SetEnv<kTpuVisibleChipsEnvVar>(target_dev);
   return absl::OkStatus();
 }
 

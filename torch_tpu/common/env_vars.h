@@ -202,7 +202,11 @@ inline constexpr auto kEnvVarToStage =
     });
 
 // Sets the environment variable with the given name to the given value.
-inline void SetEnv(const char* name, const std::string& value) {
+template <const char* name>
+void SetEnv(const std::string& value) {
+  static_assert(kEnvVarToStage.contains(name),
+                "Unknown environment variable. All env vars used by TorchTPU "
+                "must be registered in kEnvVarToStage.");
   setenv(name, value.c_str(), /*overwrite=*/1);
 }
 

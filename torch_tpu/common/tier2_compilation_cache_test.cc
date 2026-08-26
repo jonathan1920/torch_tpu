@@ -134,8 +134,8 @@ auto* const test_env =
 class Tier2CacheTest : public testing::Test {
  protected:
   Tier2CacheTest() {
-    SetEnv(kTorchTpuTier2CompilationCacheEnvVar,
-           absl::StrCat("my_cache_", getpid()));
+    SetEnv<kTorchTpuTier2CompilationCacheEnvVar>(
+        absl::StrCat("my_cache_", getpid()));
     cache_path_ = GetTier2CompilationCachePath();
 
     // Ensure the cache directory exists. Otherwise tests that run first

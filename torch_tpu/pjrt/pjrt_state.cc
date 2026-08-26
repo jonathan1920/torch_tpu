@@ -63,12 +63,13 @@ bool IsRunningInTest() {
          GetEnvOnce<kTestTargetEnvVar>().has_value();
 }
 
-void TryExpandRankInEnvVar(const char* env_var_name, std::string_view rank) {
+template <const char* env_var_name>
+void TryExpandRankInEnvVar(std::string_view rank) {
   const char* env_val = std::getenv(env_var_name);  // GETENV_OK=Expanding rank.
   if (env_val == nullptr || !absl::StrContains(env_val, "${RANK}")) return;
   std::string new_val(env_val);
   absl::StrReplaceAll({{"${RANK}", rank}}, &new_val);
-  SetEnv(env_var_name, new_val);
+  SetEnv<env_var_name>(new_val);
 }
 
 // Creates a PluginTracer instance to collect TPU profile metrics.
@@ -198,8 +199,8 @@ absl::Status PjrtBackend::InitializeInternal() {
   const char* rank_val =
       std::getenv(kRankEnvVar);  // GETENV_OK=Getting rank for expansion.
   std::string rank = rank_val != nullptr ? rank_val : "0";
-  TryExpandRankInEnvVar(kXlaFlagsEnvVar, rank);
-  TryExpandRankInEnvVar(kLibtpuInitArgsEnvVar, rank);
+  TryExpandRankInEnvVar<kXlaFlagsEnvVar>(rank);
+  TryExpandRankInEnvVar<kLibtpuInitArgsEnvVar>(rank);
 
   PjRtDeviceType device_type = PjRtDeviceType::kUnknown;
   std::string plugin_name;

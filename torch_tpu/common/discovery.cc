@@ -30,7 +30,7 @@ const absl::StatusOr<int64_t>& GetPremappedBufferSizeFromEnvOnce() {
       premapped_buffer_size([]() -> absl::StatusOr<int64_t> {
         const auto& env_val = GetEnvOnce<kTpuPremappedBufferSizeEnvVar>();
         if (!env_val.has_value()) {
-          SetEnv(kTpuPremappedBufferSizeEnvVar, "0");
+          SetEnv<kTpuPremappedBufferSizeEnvVar>("0");
           return 0;
         }
         int64_t size;
