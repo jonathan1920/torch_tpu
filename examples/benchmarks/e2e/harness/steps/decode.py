@@ -50,8 +50,19 @@ class DecodeStepper(common.BaseStepper):
     self.prompt_len = self.input_ids.shape[1]
 
     model_config = getattr(self._model, "config")  # pytype: disable=attribute-error
-    self.head_dim = model_config.head_dim
-    self.num_heads = model_config.num_key_value_heads
+    cfg = getattr(model_config, "text_config", None) or model_config
+
+    head_dim = getattr(cfg, "head_dim", None)
+    if head_dim is None:
+      num_attn_heads = getattr(cfg, "num_attention_heads", 1) or 1
+      hidden_size = getattr(cfg, "hidden_size", 0) or 0
+      head_dim = hidden_size // num_attn_heads
+    self.head_dim = head_dim
+
+    num_heads = getattr(cfg, "num_key_value_heads", None)
+    if num_heads is None:
+      num_heads = getattr(cfg, "num_attention_heads", 1) or 1
+    self.num_heads = num_heads
     self.device = self.input_ids.device
     self.dtype = (
         self._model.dtype if hasattr(self._model, "dtype") else torch.bfloat16
