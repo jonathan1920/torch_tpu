@@ -53,6 +53,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -99,15 +100,13 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int) {
   mlir::MlirOp op1 = MakeScalarConstant(builder, 1, mlir::ElementType::I32);
   mlir::MlirOp op2 = MakeScalarConstant(builder, 1, mlir::ElementType::I32);
 
-  auto result = ConvertIfIntegers(op1, op2, default_mlir_type);
-  ASSERT_TRUE(result.ok());
+  TF_ASSERT_OK_AND_ASSIGN(ConvertedOps ops,
+                          ConvertIfIntegers(op1, op2, default_mlir_type));
 
   mlir::RankedTensorType default_type = mlir::RankedTensorType::get(
       {}, *GetMlirType(builder.getContext(), GetDefaultMlirDType()));
-  // TODO(b/545276070): Unwrap result safely using ASSERT_OK_AND_ASSIGN (or
-  // TF_ASSERT_OK_AND_ASSIGN in OSS) instead of unchecked access.
-  EXPECT_EQ(result->op1.getType(), default_type);  // NOLINT
-  EXPECT_EQ(result->op2.getType(), default_type);  // NOLINT
+  EXPECT_EQ(ops.op1.getType(), default_type);
+  EXPECT_EQ(ops.op2.getType(), default_type);
 }
 
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float) {
@@ -126,12 +125,10 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float) {
   mlir::MlirOp op1 = MakeScalarConstant(builder, 1, mlir::ElementType::F64);
   mlir::MlirOp op2 = MakeScalarConstant(builder, 1, mlir::ElementType::F64);
 
-  auto result = ConvertIfIntegers(op1, op2, default_mlir_type);
-  ASSERT_TRUE(result.ok());
-  // TODO(b/545276070): Unwrap result safely using ASSERT_OK_AND_ASSIGN (or
-  // TF_ASSERT_OK_AND_ASSIGN in OSS) instead of unchecked access.
-  EXPECT_EQ(result->op1.getType(), type);  // NOLINT
-  EXPECT_EQ(result->op2.getType(), type);  // NOLINT
+  TF_ASSERT_OK_AND_ASSIGN(ConvertedOps ops,
+                          ConvertIfIntegers(op1, op2, default_mlir_type));
+  EXPECT_EQ(ops.op1.getType(), type);
+  EXPECT_EQ(ops.op2.getType(), type);
 }
 
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int_Float) {
@@ -153,12 +150,10 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int_Float) {
   mlir::MlirOp op2 =
       MakeScalarConstant(builder, 1, float_type.getElementType());
 
-  auto result = ConvertIfIntegers(op1, op2, default_mlir_type);
-  ASSERT_TRUE(result.ok());
-  // TODO(b/545276070): Unwrap result safely using ASSERT_OK_AND_ASSIGN (or
-  // TF_ASSERT_OK_AND_ASSIGN in OSS) instead of unchecked access.
-  EXPECT_EQ(result->op1.getType(), float_type);  // NOLINT
-  EXPECT_EQ(result->op2.getType(), float_type);  // NOLINT
+  TF_ASSERT_OK_AND_ASSIGN(ConvertedOps ops,
+                          ConvertIfIntegers(op1, op2, default_mlir_type));
+  EXPECT_EQ(ops.op1.getType(), float_type);
+  EXPECT_EQ(ops.op2.getType(), float_type);
 }
 
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float_Int) {
@@ -180,12 +175,10 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float_Int) {
       MakeScalarConstant(builder, 1, float_type.getElementType());
   mlir::MlirOp op2 = MakeScalarConstant(builder, 1, int_type.getElementType());
 
-  auto result = ConvertIfIntegers(op1, op2, default_mlir_type);
-  ASSERT_TRUE(result.ok());
-  // TODO(b/545276070): Unwrap result safely using ASSERT_OK_AND_ASSIGN (or
-  // TF_ASSERT_OK_AND_ASSIGN in OSS) instead of unchecked access.
-  EXPECT_EQ(result->op1.getType(), float_type);  // NOLINT
-  EXPECT_EQ(result->op2.getType(), float_type);  // NOLINT
+  TF_ASSERT_OK_AND_ASSIGN(ConvertedOps ops,
+                          ConvertIfIntegers(op1, op2, default_mlir_type));
+  EXPECT_EQ(ops.op1.getType(), float_type);
+  EXPECT_EQ(ops.op2.getType(), float_type);
 }
 
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoIntegerOperands) {
@@ -206,12 +199,10 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoIntegerOperands) {
   mlir::MlirOp op1 = MakeScalarConstant(builder, 1, int_type.getElementType());
   mlir::MlirOp op2 = MakeScalarConstant(builder, 1, int_type.getElementType());
 
-  auto result = ConvertIfIntegers(op1, op2, default_mlir_type);
-  ASSERT_TRUE(result.ok());
-  // TODO(b/545276070): Unwrap result safely using ASSERT_OK_AND_ASSIGN (or
-  // TF_ASSERT_OK_AND_ASSIGN in OSS) instead of unchecked access.
-  EXPECT_EQ(result->op1.getType(), float_type);  // NOLINT
-  EXPECT_EQ(result->op2.getType(), float_type);  // NOLINT
+  TF_ASSERT_OK_AND_ASSIGN(ConvertedOps ops,
+                          ConvertIfIntegers(op1, op2, default_mlir_type));
+  EXPECT_EQ(ops.op1.getType(), float_type);
+  EXPECT_EQ(ops.op2.getType(), float_type);
 }
 
 TEST(OpBuilderUtils, ConvertIfInteger_OneOperand_Int) {
@@ -229,12 +220,12 @@ TEST(OpBuilderUtils, ConvertIfInteger_OneOperand_Int) {
       mlir::RankedTensorType::get({}, op_builder.getI32Type());
   mlir::MlirOp op = MakeScalarConstant(builder, 1, type.getElementType());
 
-  auto result = ConvertIfInteger(op, default_mlir_type);
-  ASSERT_TRUE(result.ok());
+  TF_ASSERT_OK_AND_ASSIGN(mlir::MlirOp converted_op,
+                          ConvertIfInteger(op, default_mlir_type));
 
   mlir::RankedTensorType default_type = mlir::RankedTensorType::get(
       {}, *GetMlirType(builder.getContext(), GetDefaultMlirDType()));
-  EXPECT_EQ(result->getType(), default_type);
+  EXPECT_EQ(converted_op.getType(), default_type);
 }
 
 TEST(OpBuilderUtils, ConvertIfInteger_OneOperand_Float) {
@@ -252,9 +243,9 @@ TEST(OpBuilderUtils, ConvertIfInteger_OneOperand_Float) {
       mlir::RankedTensorType::get({}, op_builder.getF64Type());
   mlir::MlirOp op = MakeScalarConstant(builder, 1, type.getElementType());
 
-  auto result = ConvertIfInteger(op, default_mlir_type);
-  ASSERT_TRUE(result.ok());
-  EXPECT_EQ(result->getType(), type);
+  TF_ASSERT_OK_AND_ASSIGN(mlir::MlirOp converted_op,
+                          ConvertIfInteger(op, default_mlir_type));
+  EXPECT_EQ(converted_op.getType(), type);
 }
 
 TEST(OpBuilderUtils, GetMinFiniteValueAttr_Float32) {

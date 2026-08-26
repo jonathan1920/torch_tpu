@@ -187,6 +187,7 @@ torch_tpu_cc_test(
         "@stablehlo//:stablehlo_builder",
         "@stablehlo//:stablehlo_ops",
         "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
