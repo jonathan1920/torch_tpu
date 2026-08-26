@@ -80,3 +80,19 @@ def test_verify_traces():
 
   trace_files = os.listdir(log_dir)
   assert len(trace_files) > 0, "No trace files found in profiler output"
+
+
+def test_kernel_profiling_config():
+  """Cell: configure TpuProfilerConfig with experimental kernel profiling options."""
+  from torch.tpu.profiler import TpuProfilerConfig
+
+  config = TpuProfilerConfig(
+      experimental_options={
+          "tpu_enable_periodic_counter_sampling": True,
+          "tpu_tc_perf_counter_sampling_options": (
+              "interval_us:1 scaling:0 counter_size_bits:1 indices:10"
+              " indices:11 indices:56 indices:57 indices:58"
+          ),
+      }
+  )
+  assert config is not None

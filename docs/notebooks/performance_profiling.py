@@ -268,7 +268,40 @@ def _(log_dir):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **7. Quick Reference**
+    ## **7. Kernel Profiling (Fine-Grained Performance Counters)**
+
+    Kernel Profiling enables the collection of fine-grained hardware performance counters (e.g., for Pallas kernels) to diagnose performance bottlenecks that are otherwise invisible in standard event traces.
+
+    > [!NOTE]
+    > Fine-grained performance counter sampling is an advanced hardware feature available for **Ironwood (TPU v7/TPU7x)** and subsequent TPU generations.
+
+    ### **Enabling Performance Counters**
+
+    You can enable performance counters by passing the counter configuration via `experimental_options` in `TpuProfilerConfig`:
+
+    ```python
+    from torch.tpu.profiler import TpuProfilerConfig
+
+    config = TpuProfilerConfig(
+        experimental_options={
+            "tpu_enable_periodic_counter_sampling": True,
+            "tpu_tc_perf_counter_sampling_options": (
+                "interval_us:1 scaling:0 counter_size_bits:1 indices:10"
+                " indices:11 indices:56 indices:57 indices:58"
+            ),
+        }
+    )
+    ```
+
+    For the detailed list of configuration parameters (such as sampling intervals, scaling, and trigger modes) and instructions on how to determine counter indices, refer to the official [OpenXLA Kernel Profiling Guide](https://openxla.org/xprof/kernel-profiling).
+    """)
+  return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+  mo.md(r"""
+    ## **8. Quick Reference**
 
     | Step | Command / Code |
     |------|---------------|
