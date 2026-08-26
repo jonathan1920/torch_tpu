@@ -1410,13 +1410,23 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::barrier(
     const c10d::BarrierOptions& opts) {
   TT_KERNEL(OpName::kDistributedBarrier, _, (opts), {
     // Check for unsupported options.
-    TT_CHECK_THROW(opts.device_ids.empty(), error::kPythonNotImplementedError)
-        << "device_ids in barrier options is not supported.";
+    //
+    // A process addresses exactly one TPU, so the only device id it can name
+    // is 0 (client->addressable_devices()). Accept that id as a no-op --
+    // the barrier below always runs on this process's own device -- so that
+    // device-agnostic callers such as
+    // torch.distributed.barrier(device_ids=[torch.tpu.current_device()]) work
+    // unchanged. Any other id names a device this process does not own.
+    TT_CHECK_THROW(opts.device_ids.empty() ||
+                       (opts.device_ids.size() == 1 && opts.device_ids[0] == 0),
+                   error::kPythonNotImplementedError)
+        << "device_ids in barrier options is not supported, except "
+           "device_ids=[0] which names this process's own device";
     TT_CHECK_THROW(opts.timeout == c10d::kUnsetTimeout,
                    error::kPythonNotImplementedError)
-        << "timeout in barrier options is not supported.";
+        << "timeout in barrier options is not supported";
     TT_CHECK_THROW(!opts.device.has_value(), error::kPythonNotImplementedError)
-        << "device in barrier options is not supported.";
+        << "device in barrier options is not supported";
 
     // A barrier is implemented by performing an all-reduce operation on a dummy
     // tensor. Since all-reduce is a synchronizing collective, this ensures all

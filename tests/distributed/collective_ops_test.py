@@ -32,6 +32,7 @@ from typing import Any, Callable, List, Union
 
 from absl import logging
 from absl.testing import absltest
+from absl.testing import parameterized
 from tests import seed_test_utils
 
 if __name__ == "__main__":  # We are in the parent process.
@@ -584,6 +585,26 @@ def run_barrier(async_op: bool) -> None:
   torch.distributed.barrier(async_op=async_op)
 
 
+def run_barrier_with_device_ids(async_op: bool) -> None:
+  """Tests barrier accepts device_ids naming this process's own device."""
+  torch.distributed.barrier(
+      device_ids=[torch.tpu.current_device()], async_op=async_op
+  )
+
+
+def run_barrier_rejects_foreign_device_ids() -> None:
+  """Tests barrier rejects device ids this process does not own."""
+  # A process addresses a single TPU, so only [0] is meaningful; a foreign
+  # index or more than one id must still be rejected.
+  for device_ids in ([1], [0, 0]):
+    with absltest.TestCase().assertRaisesRegex(  # ABSLTEST_OK=just using helper
+        NotImplementedError,
+        r"device_ids in barrier options is not supported, except "
+        r"device_ids=\[0\] which names this process's own device",
+    ):
+      torch.distributed.barrier(device_ids=device_ids)
+
+
 def run_barrier_blocking(async_op: bool) -> None:
   """Tests barrier functionality blocks."""
   rank = int(os.environ["RANK"])
@@ -647,7 +668,6 @@ def run_rank_variable_dead_collective_without_hang(world_size: int) -> None:
 
 
 class CollectiveOpsTest(seed_test_utils.MultiProcessRepeatableTest):
-
   _world_size = 8
 
   def test_all_reduce_sum(self):
@@ -922,6 +942,29 @@ class CollectiveOpsTest(seed_test_utils.MultiProcessRepeatableTest):
         ),
         test_fn=run_barrier,
         async_op=True,
+    )
+
+  @parameterized.named_parameters(
+      ("sync", False),
+      ("async", True),
+  )
+  def test_barrier_with_device_ids(self, async_op: bool):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            _test_wrapper, world_size=self._world_size
+        ),
+        test_fn=run_barrier_with_device_ids,
+        async_op=async_op,
+    )
+
+  def test_barrier_rejects_foreign_device_ids(self):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            _test_wrapper, world_size=self._world_size
+        ),
+        test_fn=run_barrier_rejects_foreign_device_ids,
     )
 
   def test_send_recv(self):
