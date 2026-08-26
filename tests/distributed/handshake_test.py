@@ -949,6 +949,45 @@ class HandshakeServerClientBackendTest(seed_test_utils.RepeatableTest):
     self.assertTrue(server._closed)
     self.assertFalse(server._initialized)
 
+  def test_zmq_ipv6_sockopt(self) -> None:
+    """Tests that _ZMQServer and _ZMQClient enable zmq.IPV6 on their sockets."""
+    port = portpicker.pick_unused_port()
+    server = _ZMQServer(port=port)
+    self.assertEqual(server._socket.getsockopt(zmq.IPV6), 1)
+    client = _ZMQClient(port=port)
+    self.assertEqual(client._socket.getsockopt(zmq.IPV6), 1)
+    client.close()
+    server.close()
+
+  @parameterized.parameters("::1", "[::1]", "127.0.0.1", "localhost")
+  def test_zmq_communication_address_formats(self, master_addr: str) -> None:
+    """Tests communication between _ZMQServer and _ZMQClient with various address formats including IPv6."""
+    port = portpicker.pick_unused_port()
+    server = _ZMQServer(port=port)
+    with mock.patch.dict(os.environ, {"MASTER_ADDR": master_addr}):
+      client = _ZMQClient(port=port)
+
+    req = _make_request(rank=1, participating_ranks=[0, 1])
+    client.send(req)
+
+    async def server_roundtrip():
+      envelope = await server.recv_request()
+      self.assertIsNotNone(envelope)
+      self.assertEqual(envelope.request.rank, 1)
+      await server.send_reply(
+          envelope.client_id, CollectiveHandshakeResponse(success=True)
+      )
+
+    loop = asyncio.new_event_loop()
+    try:
+      loop.run_until_complete(server_roundtrip())
+      resp = client.recv()
+      self.assertTrue(resp.success)
+    finally:
+      loop.close()
+      client.close()
+      server.close()
+
 
 def test_wrapper(
     target_fn: Callable[..., Any], *args: Any, **kwargs: Any

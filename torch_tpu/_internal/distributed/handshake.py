@@ -953,6 +953,7 @@ class _ZMQServer:
             f"recv_timeout_s must be non-negative, got {recv_timeout_s}."
         )
       self._socket.setsockopt(zmq.RCVTIMEO, recv_timeout_s * 1000)
+    self._socket.setsockopt(zmq.IPV6, 1)
     self._socket.bind(f"tcp://*:{self._port}")
 
   async def recv_request(self) -> _CollectiveHandshakeRequestZMQEnvelope | None:
@@ -1355,7 +1356,16 @@ class _ZMQClient:
             f"recv_timeout_s must be non-negative, got {recv_timeout_s}."
         )
       self._socket.setsockopt(zmq.RCVTIMEO, recv_timeout_s * 1000)
-    self._socket.connect(f"tcp://{self._master_addr}:{self._port}")
+
+    self._socket.setsockopt(zmq.IPV6, 1)
+    # If address is IPv6 and it isn't already in brackets, add them.
+    # Reference: https://datatracker.ietf.org/doc/html/rfc2732
+    master_addr = (
+        f"[{self._master_addr.strip().strip('[]')}]"
+        if ":" in self._master_addr
+        else self._master_addr
+    )
+    self._socket.connect(f"tcp://{master_addr}:{self._port}")
 
   def send(self, request: CollectiveHandshakeRequest) -> None:
     """Sends serialized request synchronously to the server via PyZMQ socket."""
