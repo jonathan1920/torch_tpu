@@ -107,7 +107,7 @@ torch_tpu_py_library(
         ":split_compiler",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/compile/dynamic:compiler",
+        "//torch_tpu/_internal/compile/dynamic:dynamic_compiler",
         "//torch_tpu/_internal/profiler:xprof_adapter",
         "//torch_tpu/_internal/utils",
     ],

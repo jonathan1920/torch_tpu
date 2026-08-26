@@ -68,9 +68,9 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
-    name = "view_ops_transformations",
+    name = "view_ops_passes",
     srcs = [
-        "view_ops_transformations.py",
+        "view_ops_passes.py",
     ],
     deps = [
         ":sym_shape_manager",
@@ -82,9 +82,9 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
-    name = "generative_ops_transformation",
+    name = "generative_ops_pass",
     srcs = [
-        "generative_ops_transformation.py",
+        "generative_ops_pass.py",
     ],
     deps = [
         ":sym_shape_manager",
@@ -100,19 +100,19 @@ torch_tpu_py_library(
         "graph_transformations.py",
     ],
     deps = [
-        ":generative_ops_transformation",
+        ":generative_ops_pass",
         ":sym_shape_manager",
         ":sym_utils",
         ":symbol_bounds",
-        ":view_ops_transformations",
+        ":view_ops_passes",
         "//shims/torch:pytorch",
     ],
 )
 
 torch_tpu_py_library(
-    name = "compiler",
+    name = "dynamic_compiler",
     srcs = [
-        "compiler.py",
+        "dynamic_compiler.py",
     ],
     visibility = [
         "//:__subpackages__",
@@ -122,7 +122,7 @@ torch_tpu_py_library(
         ":graph_transformations",
         ":sym_shape_manager",
         ":symbol_bounds",
-        ":view_ops_transformations",
+        ":view_ops_passes",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile:compiler",

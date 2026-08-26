@@ -23,15 +23,15 @@ import torch
 from torch.fx.passes import graph_transform_observer
 from torch.fx.passes import tools_common
 from torch.utils import _pytree
-from torch_tpu._internal.compile.dynamic import generative_ops_transformation
+from torch_tpu._internal.compile.dynamic import generative_ops_pass
 from torch_tpu._internal.compile.dynamic import sym_utils
 from torch_tpu._internal.compile.dynamic import symbol_bounds
-from torch_tpu._internal.compile.dynamic import view_ops_transformations
+from torch_tpu._internal.compile.dynamic import view_ops_passes
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
 
 GraphTransformObserver = graph_transform_observer.GraphTransformObserver
 get_symint_bounds = symbol_bounds.get_symint_bounds
-HandleGenerativeOpsPass = generative_ops_transformation.HandleGenerativeOpsPass
+HandleGenerativeOpsPass = generative_ops_pass.HandleGenerativeOpsPass
 
 
 class HandleDynamicInputTensorPass:
@@ -336,19 +336,17 @@ def apply_dynamism_transformations(
 
   # Updates view ops that are reshape-like and have dynamic inputs.
   GraphTransformObserver(graph_module, "handle_reshape_like_ops").apply_gm_pass(
-      view_ops_transformations.HandleReshapeLikeOpsPass(sym_shape_manager)
+      view_ops_passes.HandleReshapeLikeOpsPass(sym_shape_manager)
   )
 
   # Updates broadcast operations that have dynamic inputs.
   GraphTransformObserver(
       graph_module, "handle_broadcast_like_ops"
-  ).apply_gm_pass(
-      view_ops_transformations.HandleBroadcastLikeOpsPass(sym_shape_manager)
-  )
+  ).apply_gm_pass(view_ops_passes.HandleBroadcastLikeOpsPass(sym_shape_manager))
 
   # Updates slice operations that have dynamic inputs.
   GraphTransformObserver(graph_module, "handle_slice_like_ops").apply_gm_pass(
-      view_ops_transformations.HandleSliceLikeOpsPass(sym_shape_manager)
+      view_ops_passes.HandleSliceLikeOpsPass(sym_shape_manager)
   )
 
   # Replaces remaining usages of SymInt nodes in standard tensor operations.

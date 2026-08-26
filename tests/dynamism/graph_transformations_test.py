@@ -20,7 +20,7 @@ import torch
 from torch._dynamo.backends.common import aot_autograd
 from torch_tpu._internal.compile.dynamic import graph_transformations
 from torch_tpu._internal.compile.dynamic import sym_shape_manager
-from torch_tpu._internal.compile.dynamic import view_ops_transformations
+from torch_tpu._internal.compile.dynamic import view_ops_passes
 from tests import seed_test_utils
 
 
@@ -289,7 +289,7 @@ class GraphTransformationsTest(seed_test_utils.RepeatableTest):
         captured_sm, placeholders
     )(captured_gm)
 
-    view_ops_transformations.HandleReshapeLikeOpsPass(captured_sm)(captured_gm)
+    view_ops_passes.HandleReshapeLikeOpsPass(captured_sm)(captured_gm)
 
     dynamic_reshape_nodes = list(
         captured_gm.graph.find_nodes(
@@ -330,7 +330,7 @@ class GraphTransformationsTest(seed_test_utils.RepeatableTest):
         captured_sm, placeholders
     )(captured_gm)
 
-    view_ops_transformations.HandleReshapeLikeOpsPass(captured_sm)(captured_gm)
+    view_ops_passes.HandleReshapeLikeOpsPass(captured_sm)(captured_gm)
 
     dynamic_reshape_nodes = list(
         captured_gm.graph.find_nodes(
