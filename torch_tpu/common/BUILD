@@ -772,12 +772,12 @@ torch_tpu_cc_library(
     srcs = ["env_vars.cc"],
     hdrs = ["env_vars.h"],
     deps = [
+        ":constexpr_map",
+        ":symbol_stage",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base",
         "//shims/torch/c10/util:base_headers",
         "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )

@@ -85,10 +85,5 @@ TEST(EnvVarsTest, Tier2CompilationCacheWarnsOnce) {
   EXPECT_EQ(warnings.messages().size(), 1);
 }
 
-// Tests that GetStableEnvVars returns the set of stable environment variables.
-TEST(EnvVarsTest, StableEnvVarsContainsWorldSize) {
-  EXPECT_TRUE(GetStableEnvVars().contains(kWorldSizeEnvVar));
-}
-
 }  // namespace
 }  // namespace torch_tpu

@@ -20,11 +20,12 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "absl/base/no_destructor.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "c10/util/Exception.h"
+#include "torch_tpu/common/constexpr_map.h"
+#include "torch_tpu/common/symbol_stage.h"
 
 namespace torch_tpu {
 
@@ -154,36 +155,56 @@ inline constexpr char kWorldSizeEnvVar[] = "WORLD_SIZE";
 inline constexpr char kXlaFlagsEnvVar[] = "XLA_FLAGS";
 // go/keep-sorted end
 
+// Maps an env var to its symbol stage. nullopt means the stage is unknown.
+inline constexpr auto kEnvVarToStage =
+    MakeConstexprMap<std::string_view, std::optional<SymbolStage>>({
+        // go/keep-sorted start
+        {kAcceleratorTypeEnvVar, std::nullopt},
+        {kAllowMultipleLibtpuLoadEnvVar, std::nullopt},
+        {kCloudTpuTaskIdEnvVar, std::nullopt},
+        {kLibtpuInitArgsEnvVar, std::nullopt},
+        {kLocalRankEnvVar, std::nullopt},
+        {kMasterAddrEnvVar, std::nullopt},
+        {kMasterPortEnvVar, std::nullopt},
+        {kNprocEnvVar, std::nullopt},
+        {kRankEnvVar, std::nullopt},
+        {kTestTargetEnvVar, std::nullopt},
+        {kTestTmpdirEnvVar, std::nullopt},
+        {kTestWorkspaceEnvVar, std::nullopt},
+        {kTmpdirEnvVar, std::nullopt},
+        {kTorchShowCppStacktracesEnvVar, std::nullopt},
+        {kTorchTpuInternalDetectRepeatedOpsEnvVar, std::nullopt},
+        {kTorchTpuInternalEnableDebugChecksEnvVar, std::nullopt},
+        {kTorchTpuInternalMaterializeCollectiveTensorsEnvVar, std::nullopt},
+        {kTorchTpuInternalTier3CompilationCacheLocalBackupTaskEnvVar,
+         std::nullopt},
+        {kTorchTpuInternalXlaOptionsEnvVar, std::nullopt},
+        {kTorchTpuTier2CompilationCacheEnvVar, SymbolStage::Experimental()},
+        {kTorchTpuTier3CompilationCacheRootEnvVar, SymbolStage::Experimental()},
+        {kTorchTraceEnvVar, std::nullopt},
+        {kTpuChipsPerHostBoundsEnvVar, std::nullopt},
+        {kTpuChipsPerProcessBoundsEnvVar, std::nullopt},
+        {kTpuDeferAndFuse, std::nullopt},
+        {kTpuHostBoundsEnvVar, std::nullopt},
+        {kTpuLaunchBlocking, std::nullopt},
+        {kTpuPremappedBufferSizeEnvVar, std::nullopt},
+        {kTpuProcessAddressesEnvVar, std::nullopt},
+        {kTpuProcessBoundsEnvVar, std::nullopt},
+        {kTpuProcessPortEnvVar, std::nullopt},
+        {kTpuProfilerOutputDirEnvVar, std::nullopt},
+        {kTpuSlicebuilderAddressesEnvVar, std::nullopt},
+        {kTpuTopologyEnvVar, std::nullopt},
+        {kTpuVisibleChipsEnvVar, std::nullopt},
+        {kTpuVisibleDevicesEnvVar, std::nullopt},
+        {kWorldSizeEnvVar, SymbolStage::Stable()},
+        {kXlaFlagsEnvVar, SymbolStage::Experimental()},
+        // go/keep-sorted end
+    });
+
 // Sets the environment variable with the given name to the given value.
 inline void SetEnv(const char* name, const std::string& value) {
   setenv(name, value.c_str(), /*overwrite=*/1);
 }
-
-// Returns the set of environment variables that are considered stable.
-//
-// Note: for efficiency, we use raw pointers as keys in the set and the lookup
-// is done via pointer equality; therefore, when the caller looks up an
-// environment variable from the set, they must provide a kFooEnvVar variable
-// defined in this file.
-const absl::flat_hash_set<const char*>& GetStableEnvVars();
-
-// Returns the set of environment variables that are considered experimental.
-//
-// Note: for efficiency, we use raw pointers as keys in the set and the lookup
-// is done via pointer equality; therefore, when the caller looks up an
-// environment variable from the set, they must provide a kFooEnvVar variable
-// defined in this file.
-const absl::flat_hash_set<const char*>& GetExperimentalEnvVars();
-
-// Returns the map of environment variables that are considered deprecated.
-// The key is the name of the environment variable and the value is the
-// TorchTPU version that deprecated the environment variable.
-//
-// Note: for efficiency, we use raw pointers as keys in the map and the lookup
-// is done via pointer equality; therefore, when the caller looks up an
-// environment variable from the map, they must provide a kFooEnvVar variable
-// defined in this file.
-const absl::flat_hash_map<const char*, std::string>& GetDeprecatedEnvVars();
 
 // Returns the value of the environment variable with the given name, or
 // std::nullopt if it is not set.
@@ -196,8 +217,19 @@ const absl::flat_hash_map<const char*, std::string>& GetDeprecatedEnvVars();
 // this file.
 template <const char* name>
 const std::optional<std::string>& GetEnvOnce() {
+  static_assert(kEnvVarToStage.contains(name),
+                "Unknown environment variable. All env vars used by TorchTPU "
+                "must be registered in kEnvVarToStage.");
+  constexpr auto maybe_stage = kEnvVarToStage[name];
+  if constexpr (maybe_stage.has_value()) {
+    static_assert(
+        !maybe_stage->is_internal_implementation(),
+        "Cannot read from an internal implementation env var. "
+        "TorchTPU can only write to them. If TorchTPU really needs to "
+        "read this env var, its stage in kEnvVarToStage must be changed.");
+  }
   static const absl::NoDestructor<std::optional<std::string>> env_var(
-      []() -> std::optional<std::string> {
+      [maybe_stage]() -> std::optional<std::string> {
         const char* const env_var =  //
             std::getenv(name);       // GETENV_OK=implementing GetEnvOnce().
         if (env_var == nullptr) return std::nullopt;
@@ -205,17 +237,18 @@ const std::optional<std::string>& GetEnvOnce() {
 
         // The env var is set to a non-empty string. Warn the user if the env
         // var is experimental or deprecated.
-        if (GetExperimentalEnvVars().contains(name)) {
-          TORCH_WARN_ONCE("the ", name,
-                          " environment variable is an experimental feature "
-                          "and may change or be removed without notice.");
-        } else if (auto it = GetDeprecatedEnvVars().find(name);
-                   it != GetDeprecatedEnvVars().end()) {
-          const std::string& deprecated_since = it->second;
-          TORCH_WARN_ONCE(
-              "the ", name,
-              " environment variable is deprecated since TorchTPU v",
-              deprecated_since, " and will be removed in a future release.");
+        if (maybe_stage.has_value()) {
+          if (maybe_stage->is_experimental()) {
+            TORCH_WARN_ONCE("the ", name,
+                            " environment variable is an experimental feature "
+                            "and may change or be removed without notice.");
+          } else if (maybe_stage->is_deprecated()) {
+            const auto deprecated_since = maybe_stage->version();
+            TORCH_WARN_ONCE(
+                "the ", name,
+                " environment variable is deprecated since TorchTPU v",
+                deprecated_since, " and will be removed in a future release.");
+          }
         }
         return std::string(env_var);
       }());
