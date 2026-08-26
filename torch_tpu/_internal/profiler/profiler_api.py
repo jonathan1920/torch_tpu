@@ -23,8 +23,6 @@ import warnings
 
 from torch_tpu._internal.profiler import _profiler_backend
 import torch_tpu._internal.profiler._impl as profiler
-from torch_tpu._internal.profiler._impl import start_server
-from torch_tpu._internal.profiler._impl import stop_server
 
 
 class ProfilerActivity(enum.Enum):
@@ -175,13 +173,3 @@ def register_kineto_backend() -> None:
   # Registration happens via static initializers when the module is imported.
   # This function serves as an explicit entry point to avoid unused imports.
   pass
-
-
-__all__ = [
-    "ProfilerActivity",
-    "profile",
-    "register_kineto_backend",
-    "start_server",
-    "stop_server",
-    "xprof_trace_handler",
-]

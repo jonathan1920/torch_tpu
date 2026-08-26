@@ -113,7 +113,6 @@ py_library_providing_imports_info(
         ":_loader",
         ":_versioned_so_loader",
         "//torch_tpu/_internal:testing",  # buildcleaner: keep
-        "//torch_tpu/_internal/profiler:_impl",
     ],
 )
 

@@ -24,7 +24,7 @@ from torch_tpu import _versioned_so_loader
 _versioned_so_loader.install_hook(pathlib.Path(__file__).parent)
 
 try:
-  import libtpu  # pylint: disable=g-import-not-at-top # pyrefly: ignore[missing-import]
+  import libtpu  # pylint: disable=g-import-not-at-top # pytype: disable=import-error
 
   libtpu.configure_library_path()
 except ImportError:
@@ -33,11 +33,3 @@ except ImportError:
 
 
 # TODO: b/477401982 - Introduce a new flag module to hold all TorchTPU flags.
-# pylint: disable=g-import-not-at-top,g-importing-member
-from torch_tpu._internal.profiler._impl import start_server
-from torch_tpu._internal.profiler._impl import stop_server
-
-__all__ = [
-    "start_server",
-    "stop_server",
-]
