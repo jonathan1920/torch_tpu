@@ -219,7 +219,7 @@ def _qwen3_1_7b_benchmark_config(
   )
 
 
-class BenchmarkTest(seed_test_utils.RepeatableTest):
+class BenchmarkTest(seed_test_utils.MultiProcessRepeatableTest):
   """Tests for end-to-end quality benchmarks."""
 
   def run_benchmark_test(
