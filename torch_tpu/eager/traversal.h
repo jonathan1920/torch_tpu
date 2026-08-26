@@ -88,6 +88,11 @@ namespace torch_tpu {
 
 using RefToOpMap = absl::flat_hash_map<DeviceBufferRef, mlir::MlirOp>;
 
+// Annotates an existing GraphKey with argument layouts without rebuilding the
+// graph.
+GraphKey AnnotateGraphKeyWithArgumentLayouts(
+    const GraphKey& graph_key, absl::Span<const Indices> argument_layouts);
+
 // A traversed graph of deferred ops, ready to be compiled and (optionally)
 // executed.
 // TODO(bawilson): add tests once at::Tensor dependency is removed from core
@@ -125,12 +130,17 @@ class Traversal {
       absl::Span<const SharedDeviceBufferList> execution_order,
       absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
 
-  // Composes a cache key for the traversal with a specific compilation setting.
-  CompilationCacheKey GetCacheKey(CompileOptionsKey compile_options_key) const {
+  CompilationCacheKey GetCacheKey(
+      CompileOptionsKey compile_options_key,
+      absl::Span<const Indices> argument_layouts = {}) const {
     if (graph_key_ == std::nullopt) {
       graph_key_ = BuildGraphKey();
     }
-    return CompilationCacheKey(*graph_key_, compile_options_key);
+    GraphKey key = argument_layouts.empty()
+                       ? *graph_key_
+                       : AnnotateGraphKeyWithArgumentLayouts(*graph_key_,
+                                                             argument_layouts);
+    return CompilationCacheKey(key, compile_options_key);
   }
 
   // Validates that the provided arguments are a valid reordering of the

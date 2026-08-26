@@ -42,6 +42,9 @@
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -65,6 +68,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
@@ -78,8 +82,6 @@
 #include "xla/client/executable_build_options.h"
 #include "xla/layout_util.h"
 #include "xla/service/device_assignment.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -271,6 +273,16 @@ Traversal::CreateFromExecutionOrder(
   }
 #endif
   return traversal;
+}
+
+GraphKey AnnotateGraphKeyWithArgumentLayouts(
+    const GraphKey& graph_key, absl::Span<const Indices> argument_layouts) {
+  if (argument_layouts.empty()) return graph_key;
+  FingerprintType fp = graph_key.shapeless_key().key();
+  for (const auto& layout : argument_layouts) {
+    fp = FingerprintCat(fp, FingerprintCat(layout));
+  }
+  return GraphKey(ShapelessKey(fp), graph_key.dimensions_key());
 }
 
 GraphKey Traversal::BuildGraphKey() const {
@@ -612,24 +624,27 @@ std::vector<Shape> GetShapes(absl::Span<const DeviceBufferRef> buffers) {
   return shapes;
 }
 
-std::vector<xla::Shape> GetXlaShapes(absl::Span<const DeviceBufferRef> buffers,
-                                     bool use_stablehlo_bounds) {
-  std::vector<xla::Shape> shapes;
-  shapes.reserve(buffers.size());
-  for (const auto& buffer : buffers) {
-    xla::PrimitiveType primitive_type =
-        ConvertTo<xla::PrimitiveType>(buffer.element_type());
-    xla::Shape shape =
-        xla::ShapeUtil::MakeShape(primitive_type, buffer.dimensions());
-    shape.clear_layout();
-    if (use_stablehlo_bounds) {
-      for (const auto& dynamic_dim : buffer.dynamic_dimensions()) {
-        shape.set_dynamic_dimension(dynamic_dim.dimension, true);
-      }
+void AnnotateArgumentLayouts(mlir::ModuleOp module,
+                             absl::Span<const Indices> argument_layouts) {
+  if (argument_layouts.empty()) return;
+
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  ABSL_CHECK(main)  // CRASH_OK: Should never call API on a malformed module.
+      << "MLIR module does not contain a main function for argument layouts.";
+
+  mlir::Builder builder(main.getContext());
+  for (size_t i = 0; i < argument_layouts.size(); ++i) {
+    ABSL_CHECK(  // CRASH_OK: Only an infra bug could cause a bad arg layout idx
+        i < main.getNumArguments())
+        << "argument_layout index " << i << " is out of range [0, "
+        << main.getNumArguments() << ")";
+    if (!argument_layouts[i].empty()) {
+      main.setArgAttr(
+          i, "mhlo.layout_mode",
+          builder.getStringAttr(
+              xla::LayoutUtil::MakeLayout(argument_layouts[i]).ToString()));
     }
-    shapes.push_back(std::move(shape));
   }
-  return shapes;
 }
 
 std::string MlirModuleToString(mlir::ModuleOp module) {
@@ -681,16 +696,24 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
     }
   }
 
+  if (!argument_layouts.empty()) {
+    TT_RET_CHECK(arguments_.size() == argument_layouts.size(),
+                 error::kInvalidArgument)
+        << "argument layouts size must match, got " << arguments_.size()
+        << " arguments and " << argument_layouts.size() << " layouts";
+  }
+
   // Prepare a computation builder closure to be called on a cache miss.  Okay
   // to capture this here since CompilationCache::GetOrCompile() will call this
   // builder before the function returns and in the same thread it is invoked.
   MlirComputationBuilder final_op_builder =
-      [this, use_stablehlo_bounds, donated_inputs,
+      [this, use_stablehlo_bounds, donated_inputs, argument_layouts,
        out_mlir_text](mlir::MLIRContext& mlir_context)
       -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
     TT_ASSIGN_OR_RETURN(
         auto module,
         BuildMlirModule(mlir_context, use_stablehlo_bounds, donated_inputs));
+    AnnotateArgumentLayouts(*module, argument_layouts);
     if (out_mlir_text != nullptr) {
       *out_mlir_text = MlirModuleToString(*module);
     }
@@ -699,28 +722,8 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   std::vector<Shape> argument_shapes = GetShapes(arguments_);
   std::vector<Shape> output_shapes = GetShapes(outputs_);
 
-  if (!argument_layouts.empty()) {
-    std::vector<xla::Shape> xla_argument_shapes =
-        GetXlaShapes(arguments_, use_stablehlo_bounds);
-    TT_RET_CHECK(xla_argument_shapes.size() == argument_layouts.size(),
-                 error::kInvalidArgument)
-        << "argument layouts size must match, got "
-        << xla_argument_shapes.size() << " layouts and "
-        << argument_layouts.size() << " arguments";
-    for (size_t i = 0; i < xla_argument_shapes.size(); ++i) {
-      const auto& layout_indices = argument_layouts[i];
-      if (!layout_indices.empty()) {
-        *xla_argument_shapes[i].mutable_layout() =
-            xla::LayoutUtil::MakeLayout(layout_indices);
-      }
-    }
-    spec.xla_compile_options->argument_layouts = std::move(xla_argument_shapes);
-    spec.compile_options_key = MakeCompileOptionsKey(
-        GetEnvOnce<kXlaFlagsEnvVar>().value_or(""), *spec.xla_compile_options);
-  }
-
   CompilationCacheKey compilation_cache_key =
-      GetCacheKey(spec.compile_options_key);
+      GetCacheKey(spec.compile_options_key, argument_layouts);
   ABSL_VLOG(1) << "[Compile] compilation cache key: " << compilation_cache_key;
 
   return CompilationCache::GetInstance().GetOrCompile(

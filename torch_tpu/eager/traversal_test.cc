@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -27,6 +28,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -34,6 +36,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace torch_tpu {
@@ -175,6 +178,38 @@ TEST_F(TraversalTest, ReadableStringWithTraceback) {
       traversal->ReadableString(MaterializationReason::kUnknown);
   EXPECT_THAT(readable,
               testing::HasSubstr("# /path/to/user_code.py:42 in my_function"));
+}
+
+TEST_F(TraversalTest, CompileAnnotatesArgumentLayouts) {
+  auto refs_a = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape_});
+  ASSERT_TRUE(refs_a.ok());
+  auto ref_a = (*refs_a)[0];  // NOLINT
+
+  auto identity_builder = [](mlir::MlirBuilder& /*builder*/,
+                             absl::Span<mlir::MlirOp> inputs)
+      -> absl::StatusOr<DynamicMlirOpResults> {
+    return DynamicMlirOpResults{inputs[0]};
+  };
+
+  auto refs_b =
+      DeviceBufferList::CreateDeferred(OpName::kAdd, identity_builder, {ref_a},
+                                       OpParamCacheKeys::Empty(), {shape_});
+  ASSERT_TRUE(refs_b.ok());
+  auto ref_b = (*refs_b)[0];  // NOLINT
+
+  auto traversal =
+      Traversal::Create({ref_b}, {ref_a.device_buffer_list().get()});
+  ASSERT_TRUE(traversal.ok());
+
+  CompilationSpec spec(std::make_unique<xla::CompileOptions>(),
+                       CompileOptionsKey(12345));
+  std::string mlir_text;
+  auto status_or_kernel = (*traversal)
+                              ->Compile(std::move(spec), &mlir_text,  // NOLINT
+                                        /*use_stablehlo_bounds=*/false,
+                                        /*argument_layouts=*/{{1, 0}});
+  EXPECT_THAT(mlir_text, testing::HasSubstr("mhlo.layout_mode = \"{1,0}\""));
 }
 
 }  // namespace
