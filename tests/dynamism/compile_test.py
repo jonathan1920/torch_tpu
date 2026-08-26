@@ -988,6 +988,24 @@ class DynamicSliceTest(seed_test_utils.RepeatableTest):
     expected = x[:2, :]
     utils.assert_close(out, expected)
 
+  def test_select_negative_dim(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, grid):
+        return grid.select(-1, 1) * grid.select(-1, 2)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    grid = torch.tensor(
+        [[1, 24, 48], [1, 24, 48]], dtype=torch.int64, device=self.device
+    )
+    torch._dynamo.mark_dynamic(grid, 0, min=1, max=32)
+
+    out = compiled(grid)
+    expected = grid.select(-1, 1) * grid.select(-1, 2)
+    utils.assert_close(out, expected)
+
 
 class DynamicErrorHandlingTest(seed_test_utils.RepeatableTest):
 

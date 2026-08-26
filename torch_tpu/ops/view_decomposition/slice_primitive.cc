@@ -241,20 +241,7 @@ absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(mlir::MlirOp input,
     strides.push_back(slice_dim.stride);
   }
 
-  mlir::MlirOp sliced_op =
-      mlir::stablehlo::Slice(input, start_indices, limit_indices, strides);
-
-  for (size_t i = 0; i < input_dims.size(); ++i) {
-    if (input_dims[i].boundOp.has_value()) {
-      mlir::MlirOp boundOp =
-          mlir::MlirOp(input.getBuilder(), *input_dims[i].boundOp);
-      auto dim_size =
-          mlir::stablehlo::GetDimensionSize(boundOp, input_dims[i].boundOpDim);
-      sliced_op = mlir::stablehlo::SetDimensionSize(sliced_op, dim_size, i);
-    }
-  }
-
-  return sliced_op;
+  return mlir::stablehlo::Slice(input, start_indices, limit_indices, strides);
 }
 
 }  // namespace torch_tpu

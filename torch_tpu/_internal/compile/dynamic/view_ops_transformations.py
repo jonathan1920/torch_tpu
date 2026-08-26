@@ -230,8 +230,26 @@ class HandleSliceLikeOpsPass:
     self._op_handlers = {
         torch.ops.aten.slice.Tensor: self._process_slice_op,
         torch.ops.aten.slice_copy.Tensor: self._process_slice_op,
+        torch.ops.aten.select.int: self._process_select_op,
+        torch.ops.aten.select_copy.int: self._process_select_op,
         torch.ops.aten.slice_backward.default: self._process_slice_backward_op,
     }
+
+  def _extract_select_args(
+      self, node: torch.fx.Node, offset: int = 0
+  ) -> tuple[int, Any]:
+    """Extracts (dim, index) from select node args/kwargs."""
+    dim = (
+        node.args[1 + offset]
+        if len(node.args) > 1 + offset
+        else node.kwargs.get("dim", 0)
+    )
+    index = _get_node_val(
+        node.args[2 + offset]
+        if len(node.args) > 2 + offset
+        else node.kwargs.get("index", 0)
+    )
+    return dim, index  # pyrefly: ignore[bad-return]
 
   def _extract_slice_args(
       self, node: torch.fx.Node, offset: int = 0
@@ -424,6 +442,62 @@ class HandleSliceLikeOpsPass:
 
     self._replace_node_with_set_logical_sizes(
         graph_module, node, new_slice_bwd_node, dynamic_dim_sizes
+    )
+
+  def _process_select_op(
+      self,
+      graph_module: torch.fx.GraphModule,
+      node: torch.fx.Node,
+  ) -> None:
+    """Processes select op node and applies set_dimension_logical_size if input or output is dynamic."""
+    inp = node.args[0]
+    dim, index = self._extract_select_args(node, offset=0)
+    inp_val = _get_node_val(inp)
+    out_val = _get_node_val(node)
+
+    # Dynamic index requires dynamic_slice / gather; bail out just like dynamic start in slice.
+    if sym_utils.is_symint(index):
+      return
+
+    if not (
+        sym_utils.has_dynamic_shape(inp_val)
+        or sym_utils.has_dynamic_shape(out_val)
+    ):
+      return
+
+    # Normalize negative dim index to absolute index.
+    if hasattr(inp_val, "shape") and isinstance(dim, int) and dim < 0:
+      dim = dim + len(inp_val.shape)
+
+    dynamic_dim_sizes: list[tuple[int, torch.fx.Node]] = []
+    if "val" in node.meta and hasattr(node.meta["val"], "shape"):
+      for d, s in enumerate(node.meta["val"].shape):
+        if sym_utils.is_symint(s):
+          size_tensor_node = self._sym_shape_manager.ensure_tensor(
+              graph_module, s, node, dtype=torch.int32
+          )
+          dynamic_dim_sizes.append((d, size_tensor_node))
+
+    with graph_module.graph.inserting_before(node):
+      if hasattr(inp_val, "shape") and sym_utils.is_symint(inp_val.shape[dim]):
+        upper_bound = symbol_bounds.get_upper_bound(inp_val.shape[dim])
+        upper_bound_tensor = self._sym_shape_manager.ensure_tensor(
+            graph_module, upper_bound, node, dtype=torch.int32
+        )
+        inp_node = inp
+        inp = graph_module.graph.call_function(
+            torch.ops.tpu.set_dimension_logical_size,
+            args=(inp_node, dim, upper_bound_tensor),
+        )
+        if hasattr(inp_node, "meta"):
+          inp.meta = inp_node.meta.copy()
+      new_select_node = graph_module.graph.call_function(
+          node.target,  # pyrefly: ignore[bad-argument-type]
+          args=(inp, dim, index),
+      )
+
+    self._replace_node_with_set_logical_sizes(
+        graph_module, node, new_select_node, dynamic_dim_sizes
     )
 
 
