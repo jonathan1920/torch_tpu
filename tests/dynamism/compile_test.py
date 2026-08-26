@@ -956,6 +956,38 @@ class DynamicSliceTest(seed_test_utils.RepeatableTest):
     expected = grid[:, 1] * grid[:, 2]
     utils.assert_close(out, expected)
 
+  def test_slice_dynamic_tensor_with_symbolic_expression_shape(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x[: x.shape[0] - 1, :] * 2.0
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x = torch.randn(6, 4, dtype=torch.float32, device=self.device)
+    torch._dynamo.mark_dynamic(x, 0)
+
+    out = compiled(x)
+    expected = x[: x.shape[0] - 1, :] * 2.0
+    utils.assert_close(out, expected)
+
+  def test_slice_dynamic_dim_to_static_size(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x[:2, :]
+
+    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x = torch.randn(5, 4, dtype=torch.float32, device=self.device)
+    torch._dynamo.mark_dynamic(x, 0, min=3, max=32)
+
+    out = compiled(x)
+    expected = x[:2, :]
+    utils.assert_close(out, expected)
+
 
 class DynamicErrorHandlingTest(seed_test_utils.RepeatableTest):
 

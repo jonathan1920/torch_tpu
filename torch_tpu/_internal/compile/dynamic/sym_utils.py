@@ -121,6 +121,27 @@ def is_symint(val: Any) -> bool:
   return isinstance(val, torch.fx.Node) and is_symint_node(val)
 
 
+def has_dynamic_shape(val: Any) -> bool:
+  """Checks if a tensor, FX Node, or FakeTensor has any dynamic dimensions.
+
+  Args:
+    val: An FX Node, Tensor, FakeTensor, or any object with a 'shape' attribute
+      or 'meta["val"]' tensor.
+
+  Returns:
+    True if the object has a shape with at least one SymInt dimension, False
+    otherwise.
+  """
+  tensor_val = (
+      val.meta.get("val", val)
+      if isinstance(val, torch.fx.Node) and hasattr(val, "meta")
+      else val
+  )
+  return hasattr(tensor_val, "shape") and any(
+      is_symint(d) for d in tensor_val.shape
+  )
+
+
 def is_symexpr_node(node: torch.fx.Node) -> bool:
   """Checks if the FX node represents a complex math expression (e.g., s0 + 1).
 

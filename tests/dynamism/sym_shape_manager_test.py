@@ -19,10 +19,37 @@ from absl.testing import absltest
 import torch
 from torch._dynamo.backends.common import aot_autograd
 from torch_tpu._internal.compile.dynamic import sym_shape_manager
+from torch_tpu._internal.compile.dynamic import sym_utils
 from tests import seed_test_utils
 
 
 class SymShapeManagerTest(seed_test_utils.RepeatableTest):
+
+  def test_has_dynamic_shape(self):
+    captured_gm = None
+
+    def fw_compiler(graph_module, example_inputs):
+      nonlocal captured_gm
+      captured_gm = graph_module
+      return graph_module
+
+    @torch.compile(backend=aot_autograd(fw_compiler=fw_compiler), dynamic=True)
+    def f(x, y):
+      return x + 1, y + 1
+
+    t1 = torch.ones(4)
+    t2 = torch.ones(4)
+    torch._dynamo.mark_dynamic(t1, 0, min=2, max=8)
+
+    f(t1, t2)
+
+    self.assertIsNotNone(captured_gm)
+    placeholders = list(
+        captured_gm.graph.find_nodes(op="placeholder", sort=True)
+    )
+    # Dynamic placeholder vs static placeholder
+    self.assertTrue(sym_utils.has_dynamic_shape(placeholders[1]))
+    self.assertFalse(sym_utils.has_dynamic_shape(placeholders[2]))
 
   def test_symbol_manager_extraction(self):
     captured_sm = None
