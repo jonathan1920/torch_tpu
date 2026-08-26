@@ -253,6 +253,7 @@ torch_tpu_cc_library(
     deps = [
         ":strided_layout",
         ":view_primitive_error_utils",
+        "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
@@ -282,15 +283,7 @@ torch_tpu_cc_test(
         ":bitcast_primitive",
         ":strided_layout",
         "//torch_tpu/common:oss_test_main",
-        "//torch_tpu/ops:op_builder_utils",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
         "@stablehlo//:attr_type_builder_util",
-        "@stablehlo//:mlir_builder",
-        "@stablehlo//:register",
-        "@stablehlo//:stablehlo_builder",
-        "@xla//xla/hlo/testlib:filecheck",
     ],
 )
 
