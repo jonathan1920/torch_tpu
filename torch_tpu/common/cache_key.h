@@ -957,6 +957,26 @@ class ShapeDynamismMetadata {
   // The lower and upper bounds of each dimension in the graphs's outputs.
   std::vector<DimensionBounds> output_dimension_bounds_;
 };
+
+// A specifier for which TPU sub-core should be used for device-pinned
+// operations.
+//
+// Naturally, this is only supported when running on TPU hardware, not on
+// XLA:GPU or XLA:CPU, which do not have TensorCores or SparseCores.
+enum class CorePinningMode {
+  // Default mode. The XLA compiler is free to execute the compiled executable
+  // on the TensorCore and SparseCore in any combination or sequence.
+  kUnpinned = 0,
+  // The execution is forced to use the TensorCore, leaving the SparseCore
+  // available for concurrent execution. This is suitable for dense-matrix
+  // operations (e.g. matmul or convolution).
+  kTensorCore = 1,
+  // The execution is forced to use the SparseCore, leaving the TensorCore
+  // available for concurrent execution. This is suitable for sparse
+  // operations, such as scatter/gather or distributed collectives.
+  kSparseCore = 2,
+};
+
 // A GraphSignature holds all information necessary to uniquely identify and
 // describe a graph of DeferredOps.
 // This is *not* intended to be a long-lived object; it is only intended to be
@@ -1017,6 +1037,11 @@ class GraphSignature {
   // Specifies which tensors are graph outputs.
   void AddGraphOutput(int index);
 
+  // Sets the core pinning mode for the graph.
+  void SetCorePinningMode(CorePinningMode core_pinning_mode) {
+    core_pinning_mode_ = core_pinning_mode;
+  }
+
   // Computes the key for this graph. Note that this computes the final
   // key which involves sorting some properties, so it shouldn't be called
   // before the graph is fully constructed.
@@ -1029,6 +1054,7 @@ class GraphSignature {
   int next_tensor_index_ = 0;
   int num_inputs_ = 0;
   bool has_ops_ = false;
+  CorePinningMode core_pinning_mode_ = CorePinningMode::kUnpinned;
 
   // Adds a tensor to the graph, returning its topological index.
   int AddTensor(absl::Span<const int64_t> dimensions, mlir::ElementType dtype);

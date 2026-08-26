@@ -238,6 +238,18 @@ class Traversal {
         });
   }
 
+  [[nodiscard]] CorePinningMode core_pinning_mode() const {
+    return core_pinning_mode_;
+  }
+
+  // Sets the core pinning mode for the Traversal.
+  void SetCorePinningMode(CorePinningMode core_pinning_mode) {
+    // Invalidate the graph key, since it is dependent on the device pinning
+    // mode.
+    graph_key_ = std::nullopt;
+    core_pinning_mode_ = core_pinning_mode;
+  }
+
  private:
   // Private constructor, only called by Traversal::Create().
   // Definitions:
@@ -276,6 +288,14 @@ class Traversal {
   // Returns true if the traversal contains any SparseCore custom operations.
   [[nodiscard]] bool HasSparseCoreOp() const;
 
+  // Helper function for BuildMlirFunction.
+  // Returns the MLIR op corresponding to the provided buffer ref,
+  // the one corresponding to the dynamically redirected buffer ref, or an
+  // error, with that order of precedence.
+  absl::StatusOr<mlir::MlirOp> GetMlirOpForProcessedBuffer(
+      const absl::flat_hash_map<DeviceBufferRef, mlir::MlirOp>& ref_to_op_map,
+      const DeviceBufferRef& buffer_ref) const;
+
   // The arguments to the Traversal are all DeviceBufferRefs which are in either
   // the kMaterialized or kPlaceholder state.
   std::vector<DeviceBufferRef> arguments_;
@@ -295,13 +315,7 @@ class Traversal {
   // Lazily computed.
   mutable std::optional<ShapeDynamismMetadata> shape_dynamism_metadata_;
 
-  // Helper function for BuildMlirFunction.
-  // Returns the MLIR op corresponding to the provided buffer ref,
-  // the one corresponding to the dynamically redirected buffer ref, or an
-  // error, with that order of precedence.
-  absl::StatusOr<mlir::MlirOp> GetMlirOpForProcessedBuffer(
-      const absl::flat_hash_map<DeviceBufferRef, mlir::MlirOp>& ref_to_op_map,
-      const DeviceBufferRef& buffer_ref) const;
+  CorePinningMode core_pinning_mode_ = CorePinningMode::kUnpinned;
 };
 
 // A simple node traversal is one where the graph outputs are all the outputs of

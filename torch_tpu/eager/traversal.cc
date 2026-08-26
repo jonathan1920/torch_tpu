@@ -291,6 +291,8 @@ GraphKey Traversal::BuildGraphKey() const {
   // representation of the Traversal graph for the purposes of hashing.
   GraphSignature graph;
 
+  graph.SetCorePinningMode(core_pinning_mode_);
+
   absl::flat_hash_map<DeviceBufferRef, int> tensor_index_map;
 
   // Add all arguments to tensor-indexed properties.
@@ -491,6 +493,11 @@ const PythonContext* absl_nullable Traversal::GetPythonContext() const {
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
     mlir::MLIRContext& mlir_context, bool use_stablehlo_bounds,
     absl::Span<const int64_t> donated_inputs) const {
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=temporary
+      core_pinning_mode_ == CorePinningMode::kUnpinned,
+      error::kPythonNotImplementedError)
+      << "MLIR lowering for core pinning is not yet implemented";
+
   // Read the traversal's values.
   absl::Span<const DeviceBufferRef> arguments = this->arguments();
   absl::Span<const SharedDeviceBufferList> execution_order =

@@ -46,6 +46,7 @@
 #include "c10/core/Device.h"
 #include "c10/core/Stream.h"
 #include "mlir/IR/MLIRContext.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/context_manager.h"
@@ -160,12 +161,21 @@ MaterializationStages ApplySplitMode(
     std::vector<absl_nonnull std::unique_ptr<Traversal>> post_split_traversals;
     absl::flat_hash_set<const DeviceBufferList*> required_outputs;
     for (auto& pre_split_traversal : traversals) {
+      const auto core_pinning_mode = pre_split_traversal->core_pinning_mode();
+
       for (const auto& output : pre_split_traversal->outputs()) {
         required_outputs.insert(output.device_buffer_list().get());
       }
       auto split_traversals_or =
           SplitTraversal(std::move(pre_split_traversal), required_outputs);
       if (split_traversals_or.ok()) {
+        // Retain the core pinning mode when splitting traversals.
+        if (core_pinning_mode != CorePinningMode::kUnpinned) {
+          for (auto& split_traversal : *split_traversals_or) {
+            split_traversal->SetCorePinningMode(core_pinning_mode);
+          }
+        }
+
         post_split_traversals.insert(
             post_split_traversals.end(),
             std::make_move_iterator(split_traversals_or->begin()),

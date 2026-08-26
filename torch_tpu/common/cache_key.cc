@@ -612,7 +612,8 @@ GraphKey GraphSignature::GetKey() const {
   const ShapelessKey shapeless_key(FingerprintCat(
       graph_output_indices_, tensor_dimensions_starts_, tensor_element_types_,
       sorted_donated_indices, op_inputs_starts_, op_inputs_indices_, op_names_,
-      op_param_cache_keys_starts_, op_param_cache_keys_, op_outputs_indices_));
+      op_param_cache_keys_starts_, op_param_cache_keys_, op_outputs_indices_,
+      static_cast<int>(core_pinning_mode_)));
   const DimensionsKey dimensions_key(tensor_dimensions_);
   return GraphKey(shapeless_key, dimensions_key);
 }

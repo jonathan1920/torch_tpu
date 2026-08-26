@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <deque>
 #include <iterator>
@@ -285,6 +286,13 @@ class EventsQueue {
     return result;
   }
 
+  // Returns the core pinning mode of this events queue.
+  CorePinningMode core_pinning_mode() const { return core_pinning_mode_; }
+  // Sets the device pinning mode of this events queue.
+  void SetCorePinningMode(CorePinningMode core_pinning_mode) {
+    core_pinning_mode_ = core_pinning_mode;
+  }
+
  private:
   absl::Mutex data_ptr_mu_;
   // Hold a strong pointer to the DeviceBufferList as the key; as long as there
@@ -294,6 +302,8 @@ class EventsQueue {
 
   absl::Mutex deferred_ops_mu_;
   std::deque<DeferredOpEvent> deferred_ops_ ABSL_GUARDED_BY(deferred_ops_mu_);
+
+  std::atomic<CorePinningMode> core_pinning_mode_ = CorePinningMode::kUnpinned;
 };
 
 // The usage of a node within an execution region.
@@ -411,7 +421,8 @@ void ProcessDeferredOpEvent(
 absl::StatusOr<absl_nullable std::unique_ptr<Traversal>> FinishTraversal(
     std::vector<SharedDeviceBufferList>& execution_order,
     DefinedNodeMap& defined_node_map,
-    std::vector<SharedDeviceBufferList>& output_nodes) {
+    std::vector<SharedDeviceBufferList>& output_nodes,
+    CorePinningMode core_pinning_mode) {
   if (execution_order.empty()) {
     ABSL_CHECK(defined_node_map.empty())  // CRASH_OK
         << "defined node map is not empty when execution order is empty. These "
@@ -447,6 +458,10 @@ absl::StatusOr<absl_nullable std::unique_ptr<Traversal>> FinishTraversal(
   execution_order.clear();
   defined_node_map.clear();
   output_nodes.clear();
+  if (core_pinning_mode != CorePinningMode::kUnpinned) {
+    traversal->SetCorePinningMode(core_pinning_mode);
+  }
+
   return traversal;
 }
 
@@ -455,7 +470,8 @@ PrepareTraversals(
     absl::Span<const EventsQueue::DeferredOpEvent> deferred_op_events,
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
     const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-        nodes_to_materialize_set) {
+        nodes_to_materialize_set,
+    const CorePinningMode core_pinning_mode) {
   std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals;
 
   // Partition the deferred ops queue into separate traversals with these rules:
@@ -483,9 +499,9 @@ PrepareTraversals(
     const auto split_mode = deferred_op->split_mode();
 
     if (IsSplitBefore(split_mode)) {
-      TT_ASSIGN_OR_RETURN(
-          auto maybe_traversal,
-          FinishTraversal(execution_order, defined_node_map, output_nodes));
+      TT_ASSIGN_OR_RETURN(auto maybe_traversal,
+                          FinishTraversal(execution_order, defined_node_map,
+                                          output_nodes, core_pinning_mode));
       if (maybe_traversal != nullptr) {
         ABSL_VLOG(2) << "[PrepareTraversals] Split out "
                      << maybe_traversal->execution_order().size()
@@ -501,9 +517,9 @@ PrepareTraversals(
                            defined_node_map);
 
     if (IsSplitAfter(split_mode)) {
-      TT_ASSIGN_OR_RETURN(
-          auto maybe_traversal,
-          FinishTraversal(execution_order, defined_node_map, output_nodes));
+      TT_ASSIGN_OR_RETURN(auto maybe_traversal,
+                          FinishTraversal(execution_order, defined_node_map,
+                                          output_nodes, core_pinning_mode));
       if (maybe_traversal != nullptr) {
         ABSL_VLOG(2) << "[PrepareTraversals] Split out "
                      << maybe_traversal->execution_order().size()
@@ -533,9 +549,9 @@ PrepareTraversals(
     }
   }
 
-  TT_ASSIGN_OR_RETURN(
-      auto maybe_traversal,
-      FinishTraversal(execution_order, defined_node_map, output_nodes));
+  TT_ASSIGN_OR_RETURN(auto maybe_traversal,
+                      FinishTraversal(execution_order, defined_node_map,
+                                      output_nodes, core_pinning_mode));
   if (maybe_traversal != nullptr) {
     ABSL_VLOG(2) << "[PrepareTraversals] Final traversal has size "
                  << maybe_traversal->execution_order().size()
@@ -843,10 +859,11 @@ PrepareMaterializationTraversals(
     auto stream_state = GetStreamFor(stream_nodes.stream_nodes.front());
     auto deferred_op_events =
         stream_state->events_queue.TakeUntilNodes(stream_nodes.stream_node_set);
+    const auto pinning_mode = stream_state->events_queue.core_pinning_mode();
     TT_ASSIGN_OR_RETURN(
         auto stream_traversals,
         PrepareTraversals(deferred_op_events, stream_nodes.stream_nodes,
-                          stream_nodes.stream_node_set));
+                          stream_nodes.stream_node_set, pinning_mode));
     if (nodes_by_stream.size() == 1) {
       // Only one stream, return directly.
       ABSL_VLOG(1) << "[PrepareMaterializationTraversals] Created "
@@ -883,7 +900,8 @@ PrepareStreamTraversals(c10::DeviceIndex device_index,
   std::vector<EventsQueue::DeferredOpEvent> deferred_op_events =
       stream_state->events_queue.TakeAll();
   return PrepareTraversals(deferred_op_events, /*nodes_to_materialize=*/{},
-                           /*nodes_to_materialize_set=*/{});
+                           /*nodes_to_materialize_set=*/{},
+                           stream_state->events_queue.core_pinning_mode());
 }
 
 absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
@@ -900,7 +918,8 @@ PrepareDeviceTraversals(c10::DeviceIndex device_index) {
     TT_ASSIGN_OR_RETURN(
         auto stream_traversals,
         PrepareTraversals(deferred_op_events, /*nodes_to_materialize=*/{},
-                          /*nodes_to_materialize_set=*/{}));
+                          /*nodes_to_materialize_set=*/{},
+                          stream->events_queue.core_pinning_mode()));
     device_traversals.insert(device_traversals.end(),
                              std::make_move_iterator(stream_traversals.begin()),
                              std::make_move_iterator(stream_traversals.end()));
@@ -958,6 +977,12 @@ absl::StatusOr<bool> EventSnapshot::Query() const { return future_.IsReady(); }
 void ClearAllStreams() {
   GetStreamStates().Clear();
   ResetStreamIdCounters();
+}
+
+void SetCorePinningMode(c10::DeviceIndex device_index, c10::StreamId stream_id,
+                        CorePinningMode pinned) {
+  GetOrCreateStreamState(device_index, stream_id)
+      ->events_queue.SetCorePinningMode(pinned);
 }
 
 }  // namespace torch_tpu

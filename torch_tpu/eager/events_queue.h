@@ -119,6 +119,10 @@ class EventSnapshot {
 std::vector<std::shared_ptr<EventSnapshot>> RecordDeviceSnapshots(
     c10::DeviceIndex device_index);
 
+// Sets the core pinning mode for the given stream.
+void SetCorePinningMode(c10::DeviceIndex device_index, c10::StreamId stream_id,
+                        CorePinningMode pinned);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_EAGER_EVENTS_QUEUE_H_

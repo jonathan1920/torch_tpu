@@ -231,6 +231,38 @@ class TpuStreamsTest(seed_test_utils.RepeatableTest):
     # Verify that the tensor is now materialized.
     self.assertTrue(sync.is_materialized(x))
 
+  def test_stream_unpinned(self):
+    """Tests that streams are unpinned by default."""
+    new_stream = torch.tpu.Stream()
+    self.assertFalse(new_stream.is_sparse)
+    self.assertFalse(new_stream.is_dense)
+
+  def test_stream_pinned_to_sparse_core(self):
+    """Tests that a stream can be pinned to a sparse core."""
+    new_stream = torch.tpu.Stream(pinned='sparse')
+    self.assertTrue(new_stream.is_sparse)
+    self.assertFalse(new_stream.is_dense)
+
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        'MLIR lowering for core pinning is not yet implemented',
+    ):
+      with torch.tpu.stream(new_stream):
+        torch.ones(1, device='tpu').cpu()
+
+  def test_stream_pinned_to_tensor_core(self):
+    """Tests that a stream can be pinned to a dense core."""
+    new_stream = torch.tpu.Stream(pinned='dense')
+    self.assertTrue(new_stream.is_dense)
+    self.assertFalse(new_stream.is_sparse)
+
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        'MLIR lowering for core pinning is not yet implemented',
+    ):
+      with torch.tpu.stream(new_stream):
+        torch.ones(1, device='tpu').cpu()
+
 
 class TorchStreamsTest(seed_test_utils.RepeatableTest):
   """Tests for torch.Stream and torch.Event.

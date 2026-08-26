@@ -14,7 +14,7 @@
 
 """Python interface for streams and events on TPU."""
 
-from typing import Optional, Self
+from typing import Optional, Self, TypeAlias
 
 import torch
 from torch_tpu._internal.device import _device_ops_backend
@@ -50,6 +50,36 @@ def _get_device_index(device=None) -> int:
   return _device_ops_backend._get_current_device_id()
 
 
+CorePinningMode: TypeAlias = _device_ops_backend.CorePinningMode
+
+
+def _parse_pinned(pinned: CorePinningMode | str | None) -> CorePinningMode:
+  """Parses the "pinned" keyword argument using common strings."""
+  if pinned is None:
+    return CorePinningMode.UNPINNED
+  if isinstance(pinned, CorePinningMode):
+    return pinned
+
+  if isinstance(pinned, str):
+    lowercase = pinned.lower()
+    if lowercase == 'none' or lowercase == 'unpinned':
+      return CorePinningMode.UNPINNED
+    if lowercase in ('tensorcore', 'tensor_core', 'tc', 'tensor', 'dense'):
+      return CorePinningMode.TENSOR_CORE
+    if lowercase in (
+        'sparse',
+        'sparse_core',
+        'sparsecore',
+        'sc',
+        'sparseoffload',
+    ):
+      return CorePinningMode.SPARSE_CORE
+    raise ValueError(f'Unknown device pinning mode: {pinned}')
+  raise ValueError(
+      f'pinned must be a CorePinningMode or a string, got {type(pinned)}'
+  )
+
+
 class TpuStream:
   """A stream of operations on a TPU device.
 
@@ -75,16 +105,25 @@ class TpuStream:
       device=None,
       priority: int = 0,
       stream_id: Optional[int] = None,
-      **kwargs
+      *,
+      pinned: CorePinningMode | str | None = None,
+      **kwargs,
   ):
     # pylint: disable=unused-argument
     self.device_index = _get_device_index(device)
+
+    self.pinned: CorePinningMode = _parse_pinned(pinned)
 
     if stream_id is not None:
       self.stream_id = stream_id
     else:
       self.stream_id = _device_ops_backend._get_next_stream_id(
           self.device_index
+      )
+
+    if self.pinned != CorePinningMode.UNPINNED:
+      _device_ops_backend._set_core_pinning_mode(
+          self.device_index, self.stream_id, self.pinned
       )
 
   def wait_event(self, event: 'TpuEvent') -> None:  # pylint: disable=unused-argument
@@ -116,6 +155,14 @@ class TpuStream:
 
   def __repr__(self):
     return '<torch.tpu.TpuStream>'
+
+  @property
+  def is_sparse(self) -> bool:
+    return self.pinned == CorePinningMode.SPARSE_CORE
+
+  @property
+  def is_dense(self) -> bool:
+    return self.pinned == CorePinningMode.TENSOR_CORE
 
 
 class TpuEvent:

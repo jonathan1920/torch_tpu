@@ -355,6 +355,7 @@ torch_tpu_cc_library(
         ":traversal",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/common:cache_key",
         "//torch_tpu/common:compilation",
         "//torch_tpu/common:compilation_spec",
         "//torch_tpu/common:context_manager",

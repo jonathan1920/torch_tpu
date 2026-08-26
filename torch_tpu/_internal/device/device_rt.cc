@@ -25,6 +25,7 @@
 #include "absl/base/nullability.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "c10/core/Device.h"
 #include "c10/core/Stream.h"
@@ -35,6 +36,7 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep, needed for at::Tensor mapping
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/discovery.h"
@@ -445,6 +447,16 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       },
       "Returns True if this is an optimized build (compiled with -c opt / "
       "NDEBUG defined).");
+
+  py::enum_<CorePinningMode>(m, "CorePinningMode")
+      .value("UNPINNED", CorePinningMode::kUnpinned)
+      .value("TENSOR_CORE", CorePinningMode::kTensorCore)
+      .value("SPARSE_CORE", CorePinningMode::kSparseCore)
+      .export_values();
+
+  m.def("_set_core_pinning_mode", &SetCorePinningMode, py::arg("device_index"),
+        py::arg("stream_id"), py::arg("pinned"),
+        "Sets the pinning mode for the specified stream.");
 }
 
 }  // namespace torch_tpu
