@@ -103,4 +103,21 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "jagged_dynamism_test",
+    srcs = ["jagged_dynamism_test.py"],
+    notest_oss = "OSS needs to be updated with the latest libtpu release for bounded dynamism.",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/utils:test_utils",
+    ],
+)
+
 torch_tpu_package_end()

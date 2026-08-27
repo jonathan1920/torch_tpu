@@ -589,4 +589,23 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "jagged_compile_test",
+    srcs = ["jagged_compile_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils:test_utils",
+    ],
+)
+
 torch_tpu_package_end()
