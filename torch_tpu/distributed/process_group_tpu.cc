@@ -65,11 +65,11 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/csrc/distributed/c10d/Work.hpp"
 #include "torch/headeronly/core/DeviceType.h"
+#include "torch_tpu/_internal/compile/torch_compile_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
-#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/to_string.h"
@@ -298,7 +298,7 @@ OpSplitMode GetCollectiveSplitMode() {
     return OpSplitMode::kNone;
   }
 
-  if (GetMaterializeCollectiveTensorsEnvValue()) {
+  if (PyGetMaterializeCollectiveTensorsEnvVarOnce()) {
     return OpSplitMode::kSplitBoth;
   }
   return OpSplitMode::kNone;

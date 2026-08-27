@@ -182,6 +182,20 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "torch_compile_utils",
+    srcs = [
+        "torch_compile_utils.cc",
+    ],
+    hdrs = [
+        "torch_compile_utils.h",
+    ],
+    deps = [
+        "//torch_tpu/common:env_vars",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 # This library is not used directly, but is needed for go/cclean. Without
 # this rule, cclean complains that tpu_torch_compile.cc has no rule depending on it.
 torch_tpu_cc_library(
@@ -190,6 +204,7 @@ torch_tpu_cc_library(
     deps = [
         ":compiled_mode",
         ":dispatch_scan",
+        ":torch_compile_utils",
         "//shims/pybind11",
         "//shims/torch",
         "//shims/torch:aten",
@@ -258,6 +273,7 @@ pybind_extension(
     deps = [
         ":compiled_mode",
         ":dispatch_scan",
+        ":torch_compile_utils",
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:aten_headers",

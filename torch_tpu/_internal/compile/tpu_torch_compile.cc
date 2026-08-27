@@ -54,6 +54,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/_internal/compile/compiled_mode.h"
 #include "torch_tpu/_internal/compile/dispatch_scan.h"
+#include "torch_tpu/_internal/compile/torch_compile_utils.h"
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
@@ -1100,10 +1101,6 @@ at::Tensor PyForceStrides(
   return view_tensor;
 }
 
-bool PyGetMaterializeCollectiveTensorsEnvValue() {
-  return torch_tpu::GetMaterializeCollectiveTensorsEnvValue();
-}
-
 // A context manager for locking multiple generators' mutexes.
 //
 // This is necessary to prevent generator state conflicts in between getting the
@@ -1208,12 +1205,12 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       .def_readonly("module", &CompileResult::module)
       .def_readonly("executable", &CompileResult::executable);
 
-  py::class_<torch_tpu::ContextedModule,  // NOLINT(bugprone-unused-raii)
-             std::shared_ptr<torch_tpu::ContextedModule>>(m, "ContextedModule");
+  py::class_<ContextedModule,  // NOLINT(bugprone-unused-raii)
+             std::shared_ptr<ContextedModule>>(m, "ContextedModule");
 
   py::class_<  // NOLINT(bugprone-unused-raii)
-      torch_tpu::LoadedExecutableWithMetadata,
-      std::shared_ptr<torch_tpu::LoadedExecutableWithMetadata>>
+      LoadedExecutableWithMetadata,
+      std::shared_ptr<LoadedExecutableWithMetadata>>
       py_loaded_exec(m, "LoadedExecutableWithMetadata");
   PyBindWrapWithErrorHandling(py_loaded_exec)
       .def("get_parameter_layouts", &PyGetParameterLayoutsFromMetadata)
@@ -1417,7 +1414,7 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       "data as necessary.");
   mod_with_error_handling.def(
       "get_materialize_collective_tensors_env_value",
-      PyGetMaterializeCollectiveTensorsEnvValue,
+      PyGetMaterializeCollectiveTensorsEnvVarOnce,
       "Returns whether to materialize collective tensors.");
 
   m.def(
@@ -1426,9 +1423,9 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       py::arg("input"),
       "Returns 64-bit unsigned integer fingerprint of input string.");
 
-  py::enum_<torch_tpu::ScanDirection>(m, "ScanDirection")
-      .value("kForward", torch_tpu::ScanDirection::kForward)
-      .value("kReverse", torch_tpu::ScanDirection::kReverse)
+  py::enum_<ScanDirection>(m, "ScanDirection")
+      .value("kForward", ScanDirection::kForward)
+      .value("kReverse", ScanDirection::kReverse)
       .export_values();
   mod_with_error_handling.def(
       "create_scan_op", &PyCreateScanOp, py::arg("inits"), py::arg("inputs"),

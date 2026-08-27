@@ -268,19 +268,6 @@ const std::optional<std::string>& GetEnvOnce() {
   return *env_var;
 }
 
-// Returns whether to materialize collective tensors.
-//
-// Compiling a graph with collective ops can cause deadlocks on TPU if there are
-// slight graph differences between ranks (e.g. from "if rank == 0: ..."). We
-// avoid this by triggering a graph break for collective ops (materializing
-// them). This behavior can be disabled by setting the environment variable
-// `TORCH_TPU_INTERNAL_MATERIALIZE_COLLECTIVE_TENSORS` to `"false"` or `"0"`.
-// This is useful for SPMD workloads where graph differences between ranks are
-// not expected.
-//
-// Default is true.
-bool GetMaterializeCollectiveTensorsEnvValue();
-
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_COMMON_ENV_VARS_H_

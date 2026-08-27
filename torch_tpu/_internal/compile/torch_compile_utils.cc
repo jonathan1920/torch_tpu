@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/common/env_vars.h"
+#include "torch_tpu/_internal/compile/torch_compile_utils.h"
 
 #include "absl/strings/match.h"
+#include "torch_tpu/common/env_vars.h"
 
 namespace torch_tpu {
 
-bool GetMaterializeCollectiveTensorsEnvValue() {
+bool PyGetMaterializeCollectiveTensorsEnvVarOnce() {
   static const bool env_value = []() {
     const auto& raw_env_value =
         GetEnvOnce<kTorchTpuInternalMaterializeCollectiveTensorsEnvVar>();
