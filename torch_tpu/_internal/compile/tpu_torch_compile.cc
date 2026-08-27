@@ -507,12 +507,12 @@ CompileResult PyTraverseAndCompile(
     const std::vector<at::Tensor>& result_tensors,
     const std::vector<at::Tensor>& argument_tensors, bool fast_compile,
     bool build_mlir_module, bool use_stablehlo_bounds,
-    const std::optional<std::vector<std::vector<int64_t>>>&  // INT_VEC_OK
-        argument_layouts_opt,
+    std::optional<std::vector<std::vector<int64_t>>>  // INT_VEC_OK
+        argument_layouts_opt = std::nullopt,
     const std::vector<int64_t>& donated_inputs = {}) {        // INT_VEC_OK
   const std::vector<std::vector<int64_t>> argument_layouts =  // INT_VEC_OK
-      argument_layouts_opt.value_or(
-          std::vector<std::vector<int64_t>>{});  // INT_VEC_OK
+      std::move(argument_layouts_opt)
+          .value_or(std::vector<std::vector<int64_t>>{});  // INT_VEC_OK
   if (!argument_layouts.empty()) {
     TT_CHECK_THROW(argument_layouts.size() == argument_tensors.size(),
                    error::kInvalidArgument)
@@ -522,7 +522,7 @@ CompileResult PyTraverseAndCompile(
         << argument_tensors.size();
 
     for (size_t i = 0; i < argument_layouts.size(); ++i) {
-      const auto& layout = argument_layouts[i];
+      const std::vector<int64_t>& layout = argument_layouts[i];  // INT_VEC_OK
       if (!layout.empty()) {
         int64_t rank = argument_tensors[i].dim();
         TT_CHECK_THROW(IsValidLayout(layout, rank), error::kInvalidArgument)
@@ -532,10 +532,11 @@ CompileResult PyTraverseAndCompile(
       }
     }
   }
-  std::vector<Indices> converted_layouts;
+  std::vector<CustomLayout> converted_layouts;
   converted_layouts.reserve(argument_layouts.size());
-  for (const auto& layout : argument_layouts) {
-    converted_layouts.push_back(Indices(layout.begin(), layout.end()));
+  for (const std::vector<int64_t>& layout : argument_layouts) {  // INT_VEC_OK
+    converted_layouts.push_back(
+        CustomLayout{.minor_to_major = Indices(layout.begin(), layout.end())});
   }
 
   TT_ASSIGN_OR_THROW(
@@ -547,7 +548,7 @@ CompileResult PyTraverseAndCompile(
                                                : CompilationMode::kFastRuntime,
               .build_mlir_module = build_mlir_module,
               .use_stablehlo_bounds = use_stablehlo_bounds,
-              .argument_layouts = converted_layouts,
+              .argument_layouts = std::move(converted_layouts),
               .donated_inputs =
                   Indices(donated_inputs.begin(), donated_inputs.end()),
           }));

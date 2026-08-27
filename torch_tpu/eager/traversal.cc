@@ -276,11 +276,20 @@ Traversal::CreateFromExecutionOrder(
 }
 
 GraphKey AnnotateGraphKeyWithArgumentLayouts(
-    const GraphKey& graph_key, absl::Span<const Indices> argument_layouts) {
+    const GraphKey& graph_key,
+    absl::Span<const CustomLayout> argument_layouts) {
   if (argument_layouts.empty()) return graph_key;
   FingerprintType fp = graph_key.shapeless_key().key();
-  for (const auto& layout : argument_layouts) {
-    fp = FingerprintCat(fp, FingerprintCat(layout));
+  for (const CustomLayout& layout : argument_layouts) {
+    if (!layout.minor_to_major.empty()) {
+      fp = FingerprintCat(fp, FingerprintCat(layout.minor_to_major));
+      for (const Indices& tile : layout.tiles) {
+        fp = FingerprintCat(fp, FingerprintCat(tile));
+      }
+      fp = FingerprintCat(fp, layout.element_size_in_bits);
+    } else {
+      fp = FingerprintCat(fp, 0);
+    }
   }
   return GraphKey(ShapelessKey(fp), graph_key.dimensions_key());
 }
@@ -497,7 +506,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
       core_pinning_mode_ == CorePinningMode::kUnpinned,
       error::kPythonNotImplementedError)
       << "MLIR lowering for core pinning is not yet implemented";
-
   // Read the traversal's values.
   absl::Span<const DeviceBufferRef> arguments = this->arguments();
   absl::Span<const SharedDeviceBufferList> execution_order =
@@ -632,7 +640,7 @@ std::vector<Shape> GetShapes(absl::Span<const DeviceBufferRef> buffers) {
 }
 
 void AnnotateArgumentLayouts(mlir::ModuleOp module,
-                             absl::Span<const Indices> argument_layouts) {
+                             absl::Span<const CustomLayout> argument_layouts) {
   if (argument_layouts.empty()) return;
 
   mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
@@ -645,11 +653,12 @@ void AnnotateArgumentLayouts(mlir::ModuleOp module,
         i < main.getNumArguments())
         << "argument_layout index " << i << " is out of range [0, "
         << main.getNumArguments() << ")";
-    if (!argument_layouts[i].empty()) {
+    const CustomLayout& layout = argument_layouts[i];
+    if (!layout.minor_to_major.empty()) {
       main.setArgAttr(
           i, "mhlo.layout_mode",
           builder.getStringAttr(
-              xla::LayoutUtil::MakeLayout(argument_layouts[i]).ToString()));
+              xla::LayoutUtil::MakeLayout(layout.minor_to_major).ToString()));
     }
   }
 }
@@ -678,7 +687,7 @@ bool Traversal::HasSparseCoreOp() const {
 
 absl::StatusOr<CompiledKernel> Traversal::Compile(
     CompilationSpec spec, std::string* absl_nullable out_mlir_text,
-    bool use_stablehlo_bounds, absl::Span<const Indices> argument_layouts,
+    bool use_stablehlo_bounds, absl::Span<const CustomLayout> argument_layouts,
     absl::Span<const int64_t> donated_inputs) const {
   tsl::profiler::TraceMe trace_await("Traversal::Compile");
   if (HasSparseCoreOp()) {

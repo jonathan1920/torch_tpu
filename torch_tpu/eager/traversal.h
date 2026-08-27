@@ -91,7 +91,7 @@ using RefToOpMap = absl::flat_hash_map<DeviceBufferRef, mlir::MlirOp>;
 // Annotates an existing GraphKey with argument layouts without rebuilding the
 // graph.
 GraphKey AnnotateGraphKeyWithArgumentLayouts(
-    const GraphKey& graph_key, absl::Span<const Indices> argument_layouts);
+    const GraphKey& graph_key, absl::Span<const CustomLayout> argument_layouts);
 
 // A traversed graph of deferred ops, ready to be compiled and (optionally)
 // executed.
@@ -132,7 +132,7 @@ class Traversal {
 
   CompilationCacheKey GetCacheKey(
       CompileOptionsKey compile_options_key,
-      absl::Span<const Indices> argument_layouts = {}) const {
+      absl::Span<const CustomLayout> argument_layouts = {}) const {
     if (graph_key_ == std::nullopt) {
       graph_key_ = BuildGraphKey();
     }
@@ -204,7 +204,7 @@ class Traversal {
   absl::StatusOr<CompiledKernel> Compile(
       CompilationSpec spec, std::string* absl_nullable out_mlir_text = nullptr,
       bool use_stablehlo_bounds = false,
-      absl::Span<const Indices> argument_layouts = {},
+      absl::Span<const CustomLayout> argument_layouts = {},
       absl::Span<const int64_t> donated_inputs = {}) const;
 
   // Returns true if any argument to the traversal has bounded dynamic

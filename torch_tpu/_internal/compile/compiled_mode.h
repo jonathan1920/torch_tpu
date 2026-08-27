@@ -98,7 +98,7 @@ struct TraverseAndCompileOptions {
   // inputs
   bool use_stablehlo_bounds = false;
   // Forced layouts for arguments.
-  std::vector<Indices> argument_layouts;
+  std::vector<CustomLayout> argument_layouts;
   // Indices of arguments to donate.
   Indices donated_inputs;
 };

@@ -205,10 +205,13 @@ TEST_F(TraversalTest, CompileAnnotatesArgumentLayouts) {
   CompilationSpec spec(std::make_unique<xla::CompileOptions>(),
                        CompileOptionsKey(12345));
   std::string mlir_text;
-  auto status_or_kernel = (*traversal)
-                              ->Compile(std::move(spec), &mlir_text,  // NOLINT
-                                        /*use_stablehlo_bounds=*/false,
-                                        /*argument_layouts=*/{{1, 0}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      [[maybe_unused]] auto kernel,
+      (*traversal)
+          ->Compile(
+              std::move(spec), &mlir_text,
+              /*use_stablehlo_bounds=*/false,
+              /*argument_layouts=*/{CustomLayout{.minor_to_major = {1, 0}}}));
   EXPECT_THAT(mlir_text, testing::HasSubstr("mhlo.layout_mode = \"{1,0}\""));
 }
 

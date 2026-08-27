@@ -202,9 +202,9 @@ void FinalizePushTraceEvent(std::unique_ptr<StructuredLogEvent> event,
   StructuredLogBuffer::GetInstance().Push(std::move(event));
 }
 
-absl::StatusOr<std::vector<Indices>>
+absl::StatusOr<std::vector<CustomLayout>>
 ExtractArgumentLayoutsIfDifferentFromDefault(const Traversal& traversal) {
-  std::vector<Indices> argument_layouts;
+  std::vector<CustomLayout> argument_layouts;
   xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   ABSL_CHECK(client != nullptr)  // CRASH_OK
       << "Could not get PjRtClient from PjrtBackend.";
@@ -223,7 +223,8 @@ ExtractArgumentLayoutsIfDifferentFromDefault(const Traversal& traversal) {
     TT_ASSIGN_OR_RETURN(
         const auto default_layout,
         client->GetDefaultLayout(element_type, arg.dimensions()));
-    if (minor_to_major == default_layout.minor_to_major()) {
+    if (minor_to_major == default_layout.minor_to_major() &&
+        layout_opt->tiles.empty()) {
       continue;
     }
     ABSL_VLOG(3)
@@ -236,7 +237,7 @@ ExtractArgumentLayoutsIfDifferentFromDefault(const Traversal& traversal) {
     if (argument_layouts.empty()) {
       argument_layouts.resize(arguments.size());
     }
-    argument_layouts[i] = minor_to_major;
+    argument_layouts[i] = *layout_opt;
   }
   return argument_layouts;
 }
@@ -297,7 +298,7 @@ absl::StatusOr<CompiledTraversal> VerifyAndCompileTraversal(
   TT_RETURN_IF_ERROR(VerifyPerNodeOutputs(traversal.outputs()));
 #endif  // NDEBUG
 
-  TT_ASSIGN_OR_RETURN(const std::vector<Indices> argument_layouts,
+  TT_ASSIGN_OR_RETURN(const std::vector<CustomLayout> argument_layouts,
                       ExtractArgumentLayoutsIfDifferentFromDefault(traversal));
 
   // Start compiling the traversal.
