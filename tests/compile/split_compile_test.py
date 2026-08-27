@@ -18,7 +18,6 @@ import torch
 from torch_tpu._internal.compile import collective_ops
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import split_compiler
-from torch_tpu._internal.compile._backend import TpuBackend
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
 
@@ -27,6 +26,8 @@ class SplitCompileTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
+    if not torch.accelerator.is_available():
+      self.skipTest("TPU accelerator not available in this test environment.")
     # Dynamic shape buffers across partitions and host DMA alignment require
     # libtpu >= 0.0.44.
     if not utils.libtpu_at_least((0, 0, 44)):
@@ -36,8 +37,6 @@ class SplitCompileTest(seed_test_utils.RepeatableTest):
       )
 
   def test_split_graph_with_dynamic_tensor(self):
-    backend = TpuBackend(debug=True, dynamism=True)
-
     def f(x):
       y = x * 2
       z = y + 3
@@ -48,7 +47,9 @@ class SplitCompileTest(seed_test_utils.RepeatableTest):
     new_ops = orig_ops + (torch.ops.aten.mul,)
 
     with unittest.mock.patch.object(collective_ops, "COLLECTIVE_OPS", new_ops):
-      compiled_f = torch.compile(f, backend=backend)
+      compiled_f = torch.compile(
+          f, backend="tpu", options={"bounded_dynamism": True}
+      )
 
       x = torch.ones((2, 2), device="tpu")
       torch._dynamo.mark_dynamic(x, 0, min=2, max=8)
@@ -60,8 +61,6 @@ class SplitCompileTest(seed_test_utils.RepeatableTest):
     utils.assert_close(res.cpu(), expected)
 
   def test_split_graph_with_direct_symint_usage(self):
-    backend = TpuBackend(debug=True, dynamism=True)
-
     def f(x):
       s1 = x.shape[0]
       s2 = x.shape[1]
@@ -74,7 +73,9 @@ class SplitCompileTest(seed_test_utils.RepeatableTest):
     new_ops = orig_ops + (torch.ops.aten.mul,)
 
     with unittest.mock.patch.object(collective_ops, "COLLECTIVE_OPS", new_ops):
-      compiled_f = torch.compile(f, backend=backend)
+      compiled_f = torch.compile(
+          f, backend="tpu", options={"bounded_dynamism": True}
+      )
 
       x = torch.ones((8, 6), device="tpu")
       torch._dynamo.mark_dynamic(x, 0, min=2, max=16)
@@ -86,8 +87,6 @@ class SplitCompileTest(seed_test_utils.RepeatableTest):
     utils.assert_close(res.cpu(), expected)
 
   def test_split_graph_with_embedded_constants(self):
-    backend = TpuBackend(debug=True)
-
     def f(x):
       y = x * 2
       c = torch.tensor(5.0)
@@ -97,7 +96,7 @@ class SplitCompileTest(seed_test_utils.RepeatableTest):
     new_ops = orig_ops + (torch.ops.aten.mul,)
 
     with unittest.mock.patch.object(collective_ops, "COLLECTIVE_OPS", new_ops):
-      compiled_f = torch.compile(f, backend=backend)
+      compiled_f = torch.compile(f, backend="tpu")
 
       x = torch.ones((2, 2), device="tpu")
       res = compiled_f(x)

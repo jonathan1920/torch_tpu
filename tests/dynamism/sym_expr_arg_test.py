@@ -14,7 +14,6 @@
 
 from absl.testing import absltest
 import torch
-from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
 
@@ -23,6 +22,8 @@ class SymExprArgTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
+    if not torch.accelerator.is_available():
+      self.skipTest("TPU accelerator not available in this test environment.")
     self.device = torch.accelerator.current_accelerator()
 
   def test_tpu_backend_execution(self):
@@ -45,8 +46,9 @@ class SymExprArgTest(seed_test_utils.RepeatableTest):
         return CustomOp.apply(x, x.shape[0] // 2)
 
     m = Model()
-    backend = _backend.TpuBackend(debug=True, dynamism=True)
-    compiled = torch.compile(m, backend=backend)
+    compiled = torch.compile(
+        m, backend="tpu", options={"bounded_dynamism": True}
+    )
 
     # CPU Reference
     x_cpu = torch.ones(4, requires_grad=True)
@@ -81,8 +83,9 @@ class SymExprArgTest(seed_test_utils.RepeatableTest):
     out_cpu.sum().backward()
 
     # TPU Execution
-    tpu_backend = _backend.TpuBackend(debug=True, dynamism=True)
-    compiled = torch.compile(m, backend=tpu_backend)
+    compiled = torch.compile(
+        m, backend="tpu", options={"bounded_dynamism": True}
+    )
 
     x1 = torch.ones(8, 4, device=self.device, requires_grad=True)
     torch._dynamo.mark_dynamic(x1, 0)

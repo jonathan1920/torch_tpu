@@ -22,7 +22,6 @@ from absl import logging
 import psutil
 import torch
 from torch.utils._pytree import tree_flatten
-from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import sync as tpu_sync
 from torch_tpu._internal.profiler import xprof_adapter
 
@@ -345,14 +344,15 @@ def torch_compile(
           # we use dynamic=None instead of dynamic=True, which starts with as
           # much dynamism as possible.
           dynamic=None,
-          backend=torch_tpu_compile.TpuBackend(dynamism=True),
+          backend='tpu',
+          options={'bounded_dynamism': True},
           fullgraph=fullgraph,
       )
     else:
       func = torch.compile(
           func,
           dynamic=False,
-          backend=torch_tpu_compile.TpuBackend(),
+          backend='tpu',
           fullgraph=fullgraph,
       )
   else:

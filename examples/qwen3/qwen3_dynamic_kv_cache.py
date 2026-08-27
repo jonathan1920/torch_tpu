@@ -28,7 +28,6 @@ from absl import logging
 from etils import epath
 import torch
 import torch._inductor.config as inductor_config
-from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import utils
 from examples import paths
@@ -394,15 +393,17 @@ class CompiledConfig:
     backend: The backend to use for compilation.
     prefix: The prefix for log messages.
     key: The key for storing metrics.
+    options: The compiler options dict (optional).
   """
 
   backend: Any
   prefix: str
   key: str
+  options: dict[str, Any] | None = None
 
 
 def _get_compiled_config(device: Device, mode: Mode) -> CompiledConfig:
-  """Gets the backend, prefix, and key for torch.compile based on device and mode."""
+  """Gets the backend, options, prefix, and key for torch.compile based on device and mode."""
   if mode == Mode.COMPILED_DYNAMIC:
     if device == Device.CUDA:
       return CompiledConfig(
@@ -411,18 +412,20 @@ def _get_compiled_config(device: Device, mode: Mode) -> CompiledConfig:
           key="Compiled CUDA",
       )
     return CompiledConfig(
-        backend=_backend.TpuBackend(dynamism=True),
+        backend="tpu",
         prefix="[Compiled TPU (Dynamic)] ",
         key="Compiled TPU (Dynamic)",
+        options={"bounded_dynamism": True},
     )
 
   if mode == Mode.COMPILED_STATIC:
     if device == Device.CUDA:
       raise ValueError("Static compilation not supported for CUDA")
     return CompiledConfig(
-        backend=_backend.TpuBackend(dynamism=False),
+        backend="tpu",
         prefix="[Compiled TPU (Static)] ",
         key="Compiled TPU (Static)",
+        options={"bounded_dynamism": False},
     )
 
   raise ValueError(f"Invalid compiled mode: {mode}")
@@ -482,9 +485,10 @@ def _run_with_actual_weights(
 
     if mode == Mode.COMPILED_DYNAMIC:
       config = _get_compiled_config(device, mode)
-      model_device_compiled = torch.compile(
-          model_device, backend=config.backend
-      )
+      compile_kwargs = {"backend": config.backend}
+      if config.options:
+        compile_kwargs["options"] = config.options
+      model_device_compiled = torch.compile(model_device, **compile_kwargs)
 
       output_device_compiled, metrics_compiled = model_generate(
           model_device_compiled,
@@ -503,9 +507,10 @@ def _run_with_actual_weights(
 
     if mode == Mode.COMPILED_STATIC:
       config = _get_compiled_config(device, mode)
-      model_device_compiled = torch.compile(
-          model_device, backend=config.backend, dynamic=False
-      )
+      compile_kwargs = {"backend": config.backend, "dynamic": False}
+      if config.options:
+        compile_kwargs["options"] = config.options
+      model_device_compiled = torch.compile(model_device, **compile_kwargs)
 
       output_device_compiled, metrics_compiled = model_generate(
           model_device_compiled,
@@ -555,9 +560,10 @@ def _run_with_random_weights(
 
   if mode == Mode.COMPILED_DYNAMIC:
     compiled_config = _get_compiled_config(device, mode)
-    model_device_compiled = torch.compile(
-        model_device, backend=compiled_config.backend
-    )
+    compile_kwargs = {"backend": compiled_config.backend}
+    if compiled_config.options:
+      compile_kwargs["options"] = compiled_config.options
+    model_device_compiled = torch.compile(model_device, **compile_kwargs)
 
     _, metrics_compiled = model_generate(
         model_device_compiled,
@@ -573,9 +579,13 @@ def _run_with_random_weights(
 
   if mode == Mode.COMPILED_STATIC:
     compiled_config = _get_compiled_config(device, mode)
-    model_device_compiled = torch.compile(
-        model_device, backend=compiled_config.backend, dynamic=False
-    )
+    compile_kwargs = {
+        "backend": compiled_config.backend,
+        "dynamic": False,
+    }
+    if compiled_config.options:
+      compile_kwargs["options"] = compiled_config.options
+    model_device_compiled = torch.compile(model_device, **compile_kwargs)
 
     _, metrics_compiled = model_generate(
         model_device_compiled,

@@ -54,7 +54,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests:seed_test_utils",
         "//torch_tpu",
-        "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils:test_utils",
     ],
 )
@@ -72,7 +71,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests:seed_test_utils",
         "//torch_tpu",
-        "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils:test_utils",
     ],
 )

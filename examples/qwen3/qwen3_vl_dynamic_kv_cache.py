@@ -32,7 +32,6 @@ import torch
 import torch._inductor.config as inductor_config
 from torch_tpu._internal import dynamism
 from torch_tpu._internal import sync as tpu_sync
-from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import log_utils
 from examples import paths
 from torch_tpu._internal.profiler import xprof_adapter
@@ -364,6 +363,7 @@ class CompiledConfig:
   backend: Any
   prefix: str
   key: str
+  options: dict[str, Any] | None = None
 
 
 def _get_compiled_config(device: Device, mode: Mode) -> CompiledConfig:
@@ -375,18 +375,20 @@ def _get_compiled_config(device: Device, mode: Mode) -> CompiledConfig:
           key="Compiled CUDA",
       )
     return CompiledConfig(
-        backend=_backend.TpuBackend(dynamism=True),
+        backend="tpu",
         prefix="[Compiled TPU (Dynamic)] ",
         key="Compiled TPU (Dynamic)",
+        options={"bounded_dynamism": True},
     )
 
   if mode == Mode.COMPILED_STATIC:
     if device == Device.CUDA:
       raise ValueError("Static compilation not supported for CUDA")
     return CompiledConfig(
-        backend=_backend.TpuBackend(dynamism=False),
+        backend="tpu",
         prefix="[Compiled TPU (Static)] ",
         key="Compiled TPU (Static)",
+        options={"bounded_dynamism": False},
     )
 
   raise ValueError(f"Invalid compiled mode: {mode}")
@@ -430,16 +432,25 @@ def _run_with_random_weights(
   compiled_config = _get_compiled_config(device, mode)
 
   if mode == Mode.COMPILED_DYNAMIC:
+    compile_kwargs = {"backend": compiled_config.backend}
+    if compiled_config.options:
+      compile_kwargs["options"] = compiled_config.options
     model_device.model.language_model = torch.compile(
-        model_device.model.language_model, backend=compiled_config.backend
+        model_device.model.language_model,
+        **compile_kwargs,
     )
     model_device_compiled = model_device
 
   elif mode == Mode.COMPILED_STATIC:
+    compile_kwargs = {
+        "backend": compiled_config.backend,
+        "dynamic": False,
+    }
+    if compiled_config.options:
+      compile_kwargs["options"] = compiled_config.options
     model_device.model.language_model = torch.compile(
         model_device.model.language_model,
-        backend=compiled_config.backend,
-        dynamic=False,
+        **compile_kwargs,
     )
     model_device_compiled = model_device
 

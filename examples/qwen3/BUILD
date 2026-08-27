@@ -207,7 +207,6 @@ torch_tpu_py_test(
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/profiler:xprof_adapter",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",
@@ -238,7 +237,6 @@ torch_tpu_py_test(
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/profiler:xprof_adapter",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",
@@ -305,7 +303,6 @@ torch_tpu_py_test(
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/profiler:xprof_adapter",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",
@@ -525,7 +522,6 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/profiler:xprof_adapter",
         "//torch_tpu/_internal/sync",

@@ -412,9 +412,10 @@ class TpuBackend:
   ]:
     options = kwargs.get("options") or {}
     async_compile = options.get("async_compile", False)
+    bounded_dynamism = options.get("bounded_dynamism", self._dynamism)
 
     # Dynamism support is currently experimental.
-    if not self._dynamism:
+    if not bounded_dynamism:
       _raise_on_symint(example_inputs)
     elif not torch._dynamo.config.assume_static_by_default:  # pylint: disable=protected-access
       raise NotImplementedError(

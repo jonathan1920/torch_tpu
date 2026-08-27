@@ -22,7 +22,6 @@ import torch
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import testing as tt_testing
-from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.compiler import StaticCompiler
@@ -62,6 +61,8 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
+    if not torch.accelerator.is_available():
+      self.skipTest('TPU accelerator not available in this test environment.')
     tt_testing.reset_eager_state()
     self.device = torch.accelerator.current_accelerator()
 
@@ -1157,8 +1158,9 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     def fn(x):
       return x + 1
 
-    backend = _backend.TpuBackend(debug=True, dynamism=True)
-    compiled_fn = torch.compile(fn, backend=backend)
+    compiled_fn = torch.compile(
+        fn, backend='tpu', options={'bounded_dynamism': True}
+    )
     dynamic_input = torch.randn(5, 10, device='tpu')
     torch._dynamo.mark_dynamic(dynamic_input, 0)
     dynamic_output = compiled_fn(dynamic_input)

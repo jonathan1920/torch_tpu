@@ -17,7 +17,6 @@
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import testing as tt_testing
-from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
 
@@ -26,6 +25,8 @@ class DynamicViewTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
+    if not torch.accelerator.is_available():
+      self.skipTest("TPU accelerator not available in this test environment.")
     tt_testing.reset_eager_state()
     self.device = torch.accelerator.current_accelerator()
 
@@ -49,8 +50,9 @@ class DynamicViewTest(seed_test_utils.RepeatableTest):
 
     model_cpu = SlidingWindowCacheUpdate(sliding_window=128)
     model_tpu = SlidingWindowCacheUpdate(sliding_window=128)
-    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
-    compiled_model = torch.compile(model_tpu, backend=tpu_backend)
+    compiled_model = torch.compile(
+        model_tpu, backend="tpu", options={"bounded_dynamism": True}
+    )
 
     with torch.no_grad():
       # 1. Prefill (seq_len = 256 >= sliding_window 128):
@@ -96,8 +98,9 @@ class DynamicViewTest(seed_test_utils.RepeatableTest):
 
     model_cpu = DynamicViewModule()
     model_tpu = DynamicViewModule()
-    tpu_backend = _backend.TpuBackend(dynamism=True, debug=True)
-    compiled_model = torch.compile(model_tpu, backend=tpu_backend)
+    compiled_model = torch.compile(
+        model_tpu, backend="tpu", options={"bounded_dynamism": True}
+    )
 
     with torch.no_grad():
       # Step 1: Pass a dynamic non-contiguous view (transpose on dynamic seq_len)
