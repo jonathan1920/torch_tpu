@@ -51,6 +51,7 @@
 #include "torch/headeronly/core/Layout.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/context_states.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
@@ -505,6 +506,11 @@ absl::Status DeviceGeneratorImpl::AdvanceDeviceStateTensor(int64_t num_elements,
                            bit_width](mlir::MlirOp rng_input_state) {
     return BuildRngStateUpdateShlo(rng_input_state, num_elements, bit_width);
   };
+  const OpSplitMode split_mode =
+      GetEnvOnce<kTorchTpuInternalSplitRngStateUpdate>().value_or("0") == "1"
+          ? OpSplitMode::kSplitBoth
+          : OpSplitMode::kNone;
+
   TT_ASSIGN_OR_RETURN(
       auto rng_output_state_buf,
       (DispatchOp<1>(std::move(state_op_builder), {rng_input_state},
@@ -513,7 +519,8 @@ absl::Status DeviceGeneratorImpl::AdvanceDeviceStateTensor(int64_t num_elements,
                      {.op_name = OpName::kRngStateUpdate,
                       .out_dtype = mlir::ElementType::UI64,
                       .out_dims = {2},
-                      .op_param_cache_keys = std::move(state_param_keys)})));
+                      .op_param_cache_keys = std::move(state_param_keys),
+                      .split_mode = split_mode})));
 
   // Give back the updated state to the generator.
   auto rng_output_state =

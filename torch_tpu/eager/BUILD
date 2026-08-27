@@ -254,6 +254,7 @@ torch_tpu_cc_library(
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:context_states",
+        "//torch_tpu/common:env_vars",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",

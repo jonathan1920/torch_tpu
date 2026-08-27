@@ -85,6 +85,13 @@ inline constexpr char kTorchTpuInternalEnableDebugChecksEnvVar[] =
 // not expected. Default is "true".
 inline constexpr char kTorchTpuInternalMaterializeCollectiveTensorsEnvVar[] =
     "TORCH_TPU_INTERNAL_MATERIALIZE_COLLECTIVE_TENSORS";
+// If set to "1", forces the RNG state update to be isolated into a separate
+// compilation unit.
+// This may degrade performance, but improves error recovery due to failed
+// compilation or execution, as it keeps the RNG generator in a "clean" state
+// even in the presence of errors.
+inline constexpr char kTorchTpuInternalSplitRngStateUpdate[] =
+    "TORCH_TPU_INTERNAL_SPLIT_RNG_STATE_UPDATE";
 // If unset or set to "1", schedule local compilation right away as a backup to
 // tier-3 compilation cache read (whichever succeeds first will unblock
 // execution). If set to "0", local compilation is done only after tier-3
@@ -176,6 +183,7 @@ inline constexpr auto kEnvVarToStage =
         {kTorchTpuInternalDetectRepeatedOpsEnvVar, std::nullopt},
         {kTorchTpuInternalEnableDebugChecksEnvVar, std::nullopt},
         {kTorchTpuInternalMaterializeCollectiveTensorsEnvVar, std::nullopt},
+        {kTorchTpuInternalSplitRngStateUpdate, std::nullopt},
         {kTorchTpuInternalTier3CompilationCacheLocalBackupTaskEnvVar,
          std::nullopt},
         {kTorchTpuInternalXlaOptionsEnvVar, std::nullopt},
