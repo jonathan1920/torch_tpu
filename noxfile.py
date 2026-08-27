@@ -310,6 +310,7 @@ def _smoke_test_files(device: str) -> Sequence[str]:
   """
   smoke_test_files: Mapping[str, Sequence[str]] = {
       "common": (
+          "tests/import_test.py",
           f"tests/autoload_{device}_test.py",
           "tests/execution_mode_test.py",
       ),

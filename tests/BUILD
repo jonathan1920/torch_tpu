@@ -1759,6 +1759,22 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "import_test",
+    size = "medium",
+    srcs = ["import_test.py"],
+    main = "import_test.py",
+    shard_count = 4,
+    tags = [],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/distributed:multiprocessing",
+    ],
+)
+
+torch_tpu_py_test(
     name = "autoload_disabled_backend_test_gpu",
     srcs = ["autoload_disabled_backend_test.py"],
     main = "autoload_disabled_backend_test.py",

@@ -31,10 +31,8 @@ import torch
 import torch._dynamo.backends.registry as backend_registry
 from torch._dynamo.device_interface import get_interface_for_device
 from torch._dynamo.device_interface import register_interface_for_device
-from torch_tpu._internal import tracing
 from torch_tpu._internal.device import _device_module
 from torch_tpu._internal.device import _tpu_backend_config
-from torch_tpu._internal.distributed import torchcomm_tpu
 from torch_tpu._internal.distributed import tpu_distributed
 from torch_tpu._internal.utils import hardware
 
@@ -218,6 +216,8 @@ def _init_device_impl(device: str) -> torch.device:
     # register_backend string-handling bug fixed upstream in
     # pytorch/pytorch#187960; the list form is correct regardless.
     print("Initializing TPU distributed runtime")
+    from torch_tpu._internal.distributed import torchcomm_tpu  # pylint: disable=g-import-not-at-top
+
     torch.distributed.Backend.register_backend(
         "tpu_dist", tpu_distributed.create_process_group, devices=["tpu"]
     )
@@ -335,4 +335,6 @@ def load(allow_xla_backend: bool | None = None) -> None:
 
   # Start the eager-mode trace daemon if TORCH_TRACE was set at process
   # startup. No-op when TORCH_TRACE is unset.
+  from torch_tpu._internal import tracing  # pylint: disable=g-import-not-at-top
+
   tracing.enable_if_requested()
