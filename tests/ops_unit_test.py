@@ -1273,6 +1273,16 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  def test_gather_empty_batch_dim(self):
+    """Tests gather where index has size 0 along a batch dimension (d != dim)."""
+
+    def test_fn(device):
+      self_tensor = torch.randn(3, 5, device=device)
+      index = torch.empty(0, 2, dtype=torch.long, device=device)
+      return torch.gather(self_tensor, 1, index)
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
   @parameterized.product(
       batch_size=[1, 2],
       in_channels=[4],

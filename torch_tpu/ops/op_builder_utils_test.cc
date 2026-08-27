@@ -1309,5 +1309,59 @@ TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirElementType_InvalidShape) {
       testing::HasSubstr("must contain at least one dimension of size 0"));
 }
 
+TEST(OpBuilderUtils, GetBatchDimensions) {
+  EXPECT_THAT(GetBatchDimensions(0, 0), ElementsAre());
+  EXPECT_THAT(GetBatchDimensions(1, 0), ElementsAre());
+  EXPECT_THAT(GetBatchDimensions(2, 0), ElementsAre(1));
+  EXPECT_THAT(GetBatchDimensions(2, 1), ElementsAre(0));
+  EXPECT_THAT(GetBatchDimensions(3, 1), ElementsAre(0, 2));
+  EXPECT_THAT(GetBatchDimensions(4, 2), ElementsAre(0, 1, 3));
+}
+
+TEST(OpBuilderUtils, SliceBatchDimensions_NoSliceNeeded) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::MlirBuilder& builder = op_builder_utils_builder.get();
+  mlir::OpBuilder& op_builder = builder.getOpBuilder();
+
+  const mlir::MlirOp self =
+      MakeConstant(builder, 1.0f, op_builder.getF32Type(), {3, 4});
+  const mlir::RankedTensorType index_type =
+      mlir::RankedTensorType::get({3, 2}, op_builder.getI64Type());
+
+  const mlir::MlirOp sliced = SliceBatchDimensions(self, /*dim=*/1, index_type);
+  const mlir::RankedTensorType sliced_type = GetTensorTypeOrDie(sliced);
+  EXPECT_THAT(sliced_type.getShape(), ElementsAre(3, 4));
+}
+
+TEST(OpBuilderUtils, SliceBatchDimensions_SliceNeeded) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::MlirBuilder& builder = op_builder_utils_builder.get();
+  mlir::OpBuilder& op_builder = builder.getOpBuilder();
+
+  const mlir::MlirOp self =
+      MakeConstant(builder, 1.0f, op_builder.getF32Type(), {4, 5});
+  const mlir::RankedTensorType index_type =
+      mlir::RankedTensorType::get({2, 3}, op_builder.getI64Type());
+
+  const mlir::MlirOp sliced = SliceBatchDimensions(self, /*dim=*/1, index_type);
+  const mlir::RankedTensorType sliced_type = GetTensorTypeOrDie(sliced);
+  EXPECT_THAT(sliced_type.getShape(), ElementsAre(2, 5));
+}
+
+TEST(OpBuilderUtils, SliceBatchDimensions_ZeroDimBatch) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::MlirBuilder& builder = op_builder_utils_builder.get();
+  mlir::OpBuilder& op_builder = builder.getOpBuilder();
+
+  const mlir::MlirOp self =
+      MakeConstant(builder, 1.0f, op_builder.getF32Type(), {3, 5});
+  const mlir::RankedTensorType index_type =
+      mlir::RankedTensorType::get({0, 2}, op_builder.getI64Type());
+
+  const mlir::MlirOp sliced = SliceBatchDimensions(self, /*dim=*/1, index_type);
+  const mlir::RankedTensorType sliced_type = GetTensorTypeOrDie(sliced);
+  EXPECT_THAT(sliced_type.getShape(), ElementsAre(0, 5));
+}
+
 }  // namespace
 }  // namespace torch_tpu

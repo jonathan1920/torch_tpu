@@ -79,6 +79,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/python_context.h"
 #include "tsl/platform/path.h"
 #include "xla/mlir/utils/error_util.h"
@@ -1040,6 +1041,40 @@ Dimensions GetAllDimensions(mlir::MlirOp op) {
   Dimensions dims(GetTensorTypeOrDie(op).getRank());
   absl::c_iota(dims, 0);
   return dims;
+}
+
+Dimensions GetBatchDimensions(int64_t rank, int64_t dim) {
+  Dimensions batching_dims;
+  if (rank > 1) {
+    batching_dims.reserve(rank - 1);
+  }
+  for (int64_t i = 0; i < rank; ++i) {
+    if (i == dim) continue;
+    batching_dims.push_back(i);
+  }
+  return batching_dims;
+}
+
+mlir::MlirOp SliceBatchDimensions(mlir::MlirOp self, int64_t dim,
+                                  const mlir::RankedTensorType& index_type) {
+  const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self);
+  const int64_t rank = self_type.getRank();
+  bool needs_slice = false;
+  Indices slice_limits = CopyIntVector(self_type.getShape());
+  for (int64_t d = 0; d < rank; ++d) {
+    if (d != dim && self_type.getDimSize(d) > index_type.getDimSize(d)) {
+      slice_limits[d] = index_type.getDimSize(d);
+      needs_slice = true;
+    }
+  }
+
+  if (!needs_slice) {
+    return self;
+  }
+
+  const Indices start_indices(rank, 0);
+  const Indices strides(rank, 1);
+  return mlir::stablehlo::Slice(self, start_indices, slice_limits, strides);
 }
 
 absl::StatusOr<mlir::MlirOp> PromoteFloatDtype(

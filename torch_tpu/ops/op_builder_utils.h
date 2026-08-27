@@ -717,6 +717,14 @@ absl::StatusOr<mlir::MlirOp> BuildMaybeSlice(mlir::MlirOp op, int64_t dimension,
 // Returns a vector containing all dimensions of the given MlirOp.
 Dimensions GetAllDimensions(mlir::MlirOp op);
 
+// Returns the batching dimensions for a tensor of rank `rank` excluding `dim`.
+Dimensions GetBatchDimensions(int64_t rank, int64_t dim);
+
+// Slices batch dimensions of `self` (dimensions other than `dim`) to match the
+// corresponding dimension sizes of `index_type` if `self` is larger.
+mlir::MlirOp SliceBatchDimensions(mlir::MlirOp self, int64_t dim,
+                                  const mlir::RankedTensorType& index_type);
+
 // Converts the data type of given float op to the given type if it has a lower
 // precision. If given op is not a float op, it is returned unmodified.
 absl::StatusOr<mlir::MlirOp> PromoteFloatDtype(

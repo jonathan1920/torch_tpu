@@ -19,7 +19,6 @@
 #include <cstdint>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -28,15 +27,14 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
@@ -98,7 +96,7 @@ absl::Status CheckGatherInputs(absl::Span<const int64_t> self_dims, int64_t dim,
 absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
     mlir::MlirOp self, int64_t dim, mlir::MlirOp index, bool sparse_grad,
     mlir::ElementType computation_element_type) {
-  const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self);
+  mlir::RankedTensorType self_type = GetTensorTypeOrDie(self);
   const mlir::RankedTensorType index_type = GetTensorTypeOrDie(index);
 
   ABSL_VLOG(2) << "BuildGatherShlo:"
@@ -132,6 +130,8 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
     return self;
   }
 
+  const mlir::Type original_element_type = self_type.getElementType();
+
   // Convert arguments to the computation type if necessary.
   mlir::Type computation_type =
       mlir::getElementType(self.getContext(), computation_element_type);
@@ -140,51 +140,26 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
     self = stablehlo::ConvertElementType(self, computation_type);
   }
 
-  mlir::MlirBuilder& builder = self.getBuilder();
-  Dimensions all_dimensions(self_type.getRank());
-  absl::c_iota(all_dimensions, 0);
+  self = SliceBatchDimensions(self, dim, index_type);
+  self_type = GetTensorTypeOrDie(self);
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp gather_indices, Unsqueeze(index, -1));
 
-  Dimensions expanded_index_shape = CopyIntVector(index_type.getShape());
-  expanded_index_shape.push_back(1);
-  mlir::Type index_element_type = index_type.getElementType();
-
-  // gather_indices has one more dimension than `index`, and contains
-  // [i_1, i_2, ..., i_{dim-1}, index[i_1, i_2, ..., i_k], i_{dim+1}, ...,  i_k]
-  // for each element [i_1, i_2, ..., i_k] from the index space of `index`.
-  std::vector<mlir::MlirOp> parts;
-  for (int d = 0; d < self_type.getRank(); ++d) {
-    if (d == dim) {
-      mlir::MlirOp expanded_index =
-          stablehlo::Reshape(index, expanded_index_shape);
-      parts.push_back(expanded_index);
-    } else {
-      mlir::MlirOp j_part = stablehlo::Iota(
-          builder,
-          makeTensorType(builder.getContext(), index_type.getShape(),
-                         index_element_type),
-          /*iota_dimension=*/d);
-      j_part = stablehlo::Reshape(j_part, expanded_index_shape);
-      parts.push_back(j_part);
-    }
-  }
-  mlir::MlirOp gather_indices =
-      stablehlo::Concatenate(builder, parts, /*dimension=*/self_type.getRank());
-
-  stablehlo::GatherDimensionNumbersAttr gather_dimension_numbers =
+  const int64_t rank = self_type.getRank();
+  const Dimensions batching_dims = GetBatchDimensions(rank, dim);
+  const stablehlo::GatherDimensionNumbersAttr gather_dimension_numbers =
       stablehlo::GatherDimensionNumbersAttr::get(
           &self.getContext(),
           /*offset_dims=*/{},
-          /*collapsed_slice_dims=*/all_dimensions,
-          /*operand_batching_dims=*/{},
-          /*start_indices_batching_dims=*/{},
-          /*start_index_map=*/all_dimensions,
-          /*index_vector_dim=*/index_type.getRank());
+          /*collapsed_slice_dims=*/{dim},
+          /*operand_batching_dims=*/batching_dims,
+          /*start_indices_batching_dims=*/batching_dims,
+          /*start_index_map=*/{dim},
+          /*index_vector_dim=*/rank);
   ABSL_VLOG(2) << "BuildGatherShlo: GatherDimensionNumbers = "
                << mlir::debugString(gather_dimension_numbers);
 
-  auto slice_sizes =
-      std::vector<int64_t>(self_type.getRank(), 1);  // INT_VEC_OK
-  for (int64_t d = 0; d < self_type.getRank(); ++d) {
+  auto slice_sizes = std::vector<int64_t>(rank, 1);  // INT_VEC_OK
+  for (int64_t d = 0; d < rank; ++d) {
     if (self_type.getShape()[d] == 0) {
       slice_sizes[d] = 0;
     }
@@ -192,7 +167,7 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
   auto result = stablehlo::Gather(self, gather_indices,
                                   gather_dimension_numbers, slice_sizes,
                                   /*indices_are_sorted=*/false);
-  return stablehlo::ConvertElementType(result, self_type.getElementType());
+  return stablehlo::ConvertElementType(result, original_element_type);
 }
 
 }  // namespace torch_tpu

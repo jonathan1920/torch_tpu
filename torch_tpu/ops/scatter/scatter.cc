@@ -21,12 +21,11 @@
 #include <optional>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -36,10 +35,10 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/index_add/index_add.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
@@ -71,39 +70,6 @@ mlir::MlirOp GetIdentityValue(mlir::MlirBuilder& builder, mlir::Type type,
   // For kMean, sum and count are computed separately, so identity should be
   // 0.0 when include_self is kNo.
   return MakeScalarConstant(builder, 0.0, type);
-}
-
-// Builds the scatter_indices tensor for the given index tensor and dimension
-// to be used in the StableHLO scatter op.
-mlir::MlirOp BuildScatterIndices(mlir::MlirOp index, int64_t dim) {
-  mlir::MlirBuilder& builder = index.getBuilder();
-  mlir::RankedTensorType index_type = GetTensorTypeOrDie(index);
-  int64_t rank = index_type.getRank();
-  Dimensions expanded_index_shape = CopyIntVector(index_type.getShape());
-  expanded_index_shape.push_back(1);
-  mlir::Type index_element_type = index_type.getElementType();
-
-  // scatter_indices has one more dimension that src/index, and contains
-  // [i_1, i_2, ..., i_{dim-1}, index[i_1, i_2, ..., i_k], i_{dim+1}, ...,  i_k]
-  // for each element [i_1, i_2, ..., i_k] from the index space of src/index.
-  std::vector<mlir::MlirOp> parts;
-  parts.reserve(rank);
-  for (int d = 0; d < rank; ++d) {
-    if (d == dim) {
-      mlir::MlirOp expanded_index =
-          mlir::stablehlo::Reshape(index, expanded_index_shape);
-      parts.push_back(expanded_index);
-    } else {
-      mlir::MlirOp j_part = mlir::stablehlo::Iota(
-          builder,
-          makeTensorType(builder.getContext(), index_type.getShape(),
-                         index_element_type),
-          /*iota_dimension=*/d);
-      j_part = mlir::stablehlo::Reshape(j_part, expanded_index_shape);
-      parts.push_back(j_part);
-    }
-  }
-  return mlir::stablehlo::Concatenate(builder, parts, /*dimension=*/rank);
 }
 
 // If `index` is a broadcast of a 1-D tensor that is constant along every
@@ -216,6 +182,7 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
   // per-element scalar scatter built below, which materializes a full index
   // tensor. Restricted to what index_add can express: add/sum with include_self
   // and matching shapes.
+  const mlir::Type original_element_type = self_type.getElementType();
   if ((scatter_op == ScatterOp::kAdd || scatter_op == ScatterOp::kSum) &&
       include_self == ScatterIncludeSelf::kYes &&
       self_src_match_off_scatter_dim &&
@@ -231,9 +198,9 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
                           BuildIndexAddShlo(self, dim, *index_1d, src, alpha,
                                             computation_element_type));
       if (GetTensorTypeOrDie(result).getElementType() !=
-          self_type.getElementType()) {
-        result = mlir::stablehlo::ConvertElementType(
-            result, self_type.getElementType());
+          original_element_type) {
+        result =
+            mlir::stablehlo::ConvertElementType(result, original_element_type);
       }
       return result;
     }
@@ -251,10 +218,6 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
   }
 
   mlir::MlirBuilder& builder = self.getBuilder();
-  Dimensions all_dimensions(self_type.getRank());
-  absl::c_iota(all_dimensions, 0);
-
-  mlir::MlirOp scatter_indices = BuildScatterIndices(index, dim);
 
   // Slice src to match index shape if necessary. PyTorch allows src to be
   // larger than index, but StableHLO requires exact match for updates.
@@ -265,15 +228,22 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
     src = mlir::stablehlo::Slice(src, start_indices, limit_indices, strides);
   }
 
-  mlir::stablehlo::ScatterDimensionNumbersAttr scatter_dimension_numbers =
+  mlir::MlirOp full_self = self;
+  self = SliceBatchDimensions(self, dim, index_type);
+  self_type = GetTensorTypeOrDie(self);
+  const int64_t rank = self_type.getRank();
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp scatter_indices, Unsqueeze(index, -1));
+  const Dimensions batching_dims = GetBatchDimensions(rank, dim);
+
+  const mlir::stablehlo::ScatterDimensionNumbersAttr scatter_dimension_numbers =
       mlir::stablehlo::ScatterDimensionNumbersAttr::get(
           &self.getContext(),
           /*update_window_dims=*/{},
-          /*inserted_window_dims=*/all_dimensions,
-          /*input_batching_dims=*/{},
-          /*scatter_indices_batching_dims=*/{},
-          /*scatter_dims_to_operand_dims=*/all_dimensions,
-          /*index_vector_dim=*/index_type.getRank());
+          /*inserted_window_dims=*/{dim},
+          /*input_batching_dims=*/batching_dims,
+          /*scatter_indices_batching_dims=*/batching_dims,
+          /*scatter_dims_to_operand_dims=*/{dim},
+          /*index_vector_dim=*/rank);
   ABSL_VLOG(2) << "BuildScatterShlo: ScatterDimensionNumbers = "
                << mlir::debugString(scatter_dimension_numbers);
 
@@ -341,7 +311,7 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
     mlir::MlirOp ones_updates =
         mlir::stablehlo::BroadcastInDim(updates_count_type, one, {});
 
-    auto total_count_type = self_type.clone(computation_type);
+    auto total_count_type = GetTensorTypeOrDie(self).clone(computation_type);
     mlir::MlirOp initial_count = mlir::stablehlo::BroadcastInDim(
         total_count_type, include_self == ScatterIncludeSelf::kYes ? one : zero,
         {});
@@ -367,8 +337,17 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
     result = mlir::stablehlo::Select(is_hit, div_res, self);
   }
 
-  result =
-      mlir::stablehlo::ConvertElementType(result, self_type.getElementType());
+  const bool is_sliced = GetTensorTypeOrDie(self).getShape() !=
+                         GetTensorTypeOrDie(full_self).getShape();
+  if (is_sliced) {
+    const mlir::MlirOp zero =
+        MakeScalarConstant(builder, 0, mlir::ElementType::I64);
+    result = mlir::stablehlo::DynamicUpdateSlice(
+        full_self, result, std::vector<mlir::MlirOp>(rank, zero));
+  }
+
+  result = mlir::stablehlo::ConvertElementType(result, original_element_type);
+
   if (are_scalars) {
     result = mlir::stablehlo::Reshape(result, {});
   }
