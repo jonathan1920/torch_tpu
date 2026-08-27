@@ -14,6 +14,7 @@
 
 import functools
 import struct
+import threading
 from typing import Any
 import unittest
 
@@ -896,6 +897,60 @@ class SingleProcessMultiDeviceTest(_BaseRngTest):
     ]
     for exp, act in zip(expected_outs, actual_outs):
       self.assertTrue(torch.equal(exp, act))
+
+  @_fail_on_tpu(
+      "TPU backend does not support querying or executing on non-current"
+      " device in a single process."
+  )
+  def test_multithread_eager_cross_device_isolation(self):
+    """Verifies threads on distinct devices produce deterministic outputs."""
+    num_devices = self.backend_mod.device_count()
+    self.assertGreater(
+        num_devices,
+        1,
+        "Test target must be configured with multiple devices to verify"
+        " multi-threaded cross-device execution.",
+    )
+
+    def run_trial() -> list[torch.Tensor]:
+      """Runs a multi-threaded cross-device trial and returns outputs.
+
+      Returns:
+        List of generated tensors per device, ordered by device index.
+      """
+      results = {}
+      errors = []
+
+      def thread_worker(thread_id):
+        try:
+          dev = _get_device(self.backend, thread_id)
+          with self.backend_mod.device(thread_id):
+            self.backend_mod.manual_seed(42 + thread_id)
+            tensors = [torch.rand(10, device=dev) for _ in range(5)]
+            results[thread_id] = torch.stack(tensors).cpu()
+        except Exception as e:  # pylint: disable=broad-exception-caught
+          errors.append(e)
+
+      threads = [
+          threading.Thread(target=thread_worker, args=(i,))
+          for i in range(num_devices)
+      ]
+      for t in threads:
+        t.start()
+      for t in threads:
+        t.join()
+
+      if errors:
+        raise errors[0]
+
+      return [results[i] for i in range(num_devices)]
+
+    trial1 = run_trial()
+    trial2 = run_trial()
+
+    for res1, res2 in zip(trial1, trial2):
+      self.assertTrue(torch.equal(res1, res2))
+    self.assertFalse(torch.equal(trial1[0], trial1[1]))
 
 
 if __name__ == "__main__":
