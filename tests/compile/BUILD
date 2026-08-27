@@ -522,6 +522,18 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "sink_get_attr_constants_test",
+    srcs = ["sink_get_attr_constants_test.py"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile/fx_passes:sink_get_attr_constants",
+    ],
+)
+
+torch_tpu_py_test(
     name = "async_compile_test",
     srcs = ["async_compile_test.py"],
     tags = [

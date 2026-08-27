@@ -28,6 +28,7 @@ from absl import logging
 import torch
 from torch._dynamo.utils import detect_fake_mode
 from torch._inductor.utils import InputType
+from torch._subclasses.fake_tensor import unset_fake_temporarily
 from torch.fx.passes import graph_transform_observer
 from torch.fx.passes.split_module import split_module
 from torch_tpu._internal.compile import collective_ops
@@ -38,6 +39,7 @@ from torch_tpu._internal.compile.fx_passes import force_collectives_output
 from torch_tpu._internal.compile.fx_passes import mark_embedded_constants
 from torch_tpu._internal.compile.fx_passes import propagate_symints
 from torch_tpu._internal.compile.fx_passes import reorder_symints
+from torch_tpu._internal.compile.fx_passes import sink_get_attr_constants
 from torch_tpu._internal.compile.torch_tpu_compiled_executable import CompiledArtifact
 from torch_tpu._internal.distributed import spmd_util
 
@@ -242,7 +244,8 @@ class _SubmodCompiler(torch.fx.interpreter.Interpreter):
 
       # Deepcopy the submodule before compiling to prevent compiler-time
       # metadata mutation and structural corruption of nodes/inputs.
-      comp_mod = copy.deepcopy(real_mod)
+      with unset_fake_temporarily():
+        comp_mod = copy.deepcopy(real_mod)
       compiled_submod_real = self.compile_submod(comp_mod, new_args, kwargs)
 
       # Propagate fake output shapes to downstream submodules
@@ -473,6 +476,9 @@ class SplitCompiler(compiler.Compiler):
         None,  # type: ignore[arg-type]
         lambda node: partition_map[node],
     )
+    graph_transform_observer.GraphTransformObserver(
+        split_gm, "sink_get_attr_constants"
+    ).apply_gm_pass(sink_get_attr_constants.apply)
     graph_transform_observer.GraphTransformObserver(
         split_gm, "force_collectives_output"
     ).apply_gm_pass(force_collectives_output.apply)
