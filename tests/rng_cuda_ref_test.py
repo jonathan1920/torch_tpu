@@ -15,7 +15,7 @@
 import functools
 import struct
 import threading
-from typing import Any
+from typing import Any, Callable
 import unittest
 
 from absl import flags
@@ -951,6 +951,120 @@ class SingleProcessMultiDeviceTest(_BaseRngTest):
     for res1, res2 in zip(trial1, trial2):
       self.assertTrue(torch.equal(res1, res2))
     self.assertFalse(torch.equal(trial1[0], trial1[1]))
+
+
+class MultiThreadRngTest(_BaseRngTest):
+  """Tests multithreaded RNG operations on a single device."""
+
+  def _run_concurrent_threads(
+      self,
+      seed_fn: Callable[[int], None],
+      fn: Callable[[int], Any],
+      num_threads: int,
+  ) -> list[Any]:
+    """Executes fn across concurrent threads with seed and function locks.
+
+    Args:
+      seed_fn: Callable taking thread index to configure RNG seed.
+      fn: Callable taking thread index to generate outputs or read seeds.
+      num_threads: Number of concurrent threads to spawn.
+
+    Returns:
+      List of results produced by each thread, ordered by thread index.
+    """
+    results = [None] * num_threads
+    errors = []
+    seed_lock = threading.Lock()
+    fn_lock = threading.Lock()
+    barrier = threading.Barrier(num_threads)
+
+    def worker(idx: int):
+      try:
+        with seed_lock:
+          seed_fn(idx)
+        barrier.wait(timeout=30)
+        with fn_lock:
+          out = fn(idx)
+          if isinstance(out, torch.Tensor):
+            out = out.cpu()
+        results[idx] = out
+      except Exception as e:  # pylint: disable=broad-exception-caught
+        errors.append(e)
+        barrier.abort()
+
+    threads = [
+        threading.Thread(target=worker, args=(i,)) for i in range(num_threads)
+    ]
+    for t in threads:
+      t.start()
+    for t in threads:
+      t.join()
+
+    if errors:
+      raise errors[0]
+
+    return results
+
+  def test_multithread_share_same_seed(self):
+    """Verifies threads on single device share global and device seeds."""
+    outs = self._run_concurrent_threads(
+        seed_fn=lambda idx: torch.manual_seed(42 + idx),
+        fn=lambda idx: (torch.initial_seed(), self.backend_mod.initial_seed()),
+        num_threads=2,
+    )
+    self.assertEqual(outs[0], outs[1])
+    self.assertEqual(outs[0][0], outs[0][1])
+
+  def test_multithread_shared_generator_shares_state(self):
+    """Verifies threads sharing a generator consume distinct chunks."""
+    shared_g = torch.Generator(device=self.device)
+    outs = self._run_concurrent_threads(
+        seed_fn=lambda idx: shared_g.manual_seed(42),
+        fn=lambda idx: torch.rand(10, generator=shared_g, device=self.device),
+        num_threads=2,
+    )
+    self.assertFalse(torch.equal(outs[0], outs[1]))
+
+  def test_multithread_separate_generators_isolate_state(self):
+    """Verifies separate generators isolate RNG state across threads."""
+    generators = [
+        torch.Generator(device=self.device),
+        torch.Generator(device=self.device),
+    ]
+    outs = self._run_concurrent_threads(
+        seed_fn=lambda idx: generators[idx].manual_seed(42),
+        fn=lambda idx: torch.rand(
+            10, generator=generators[idx], device=self.device
+        ),
+        num_threads=2,
+    )
+    self.assertTrue(torch.equal(outs[0], outs[1]))
+    self.assertTrue(
+        torch.equal(generators[0].get_state(), generators[1].get_state())
+    )
+
+  def test_multithread_separate_generators_different_ops(self):
+    """Verifies distinct operations lead to different generator states."""
+    generators = [
+        torch.Generator(device=self.device),
+        torch.Generator(device=self.device),
+    ]
+
+    def run_ops(idx: int) -> torch.Tensor:
+      out = None
+      for _ in range(idx + 1):
+        out = torch.rand(10, generator=generators[idx], device=self.device)
+      return out
+
+    outs = self._run_concurrent_threads(
+        seed_fn=lambda idx: generators[idx].manual_seed(42),
+        fn=run_ops,
+        num_threads=2,
+    )
+    self.assertFalse(torch.equal(outs[0], outs[1]))
+    self.assertFalse(
+        torch.equal(generators[0].get_state(), generators[1].get_state())
+    )
 
 
 if __name__ == "__main__":
