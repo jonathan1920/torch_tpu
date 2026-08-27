@@ -1258,6 +1258,76 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
         self.assertIsInstance(element_size_in_bits, int)
         self.assertEqual(minor_to_major, [1, 0])
 
+  def test_storage_aware_placeholders_transpose(self):
+    x = torch.randn(16, 32)
+    y = x.t()
+    placeholders = compiler._create_storage_aware_placeholders([x, y])
+    ph_x, ph_y = placeholders[0], placeholders[1]
+    self.assertEqual(ph_x.shape, x.shape)
+    self.assertEqual(ph_x.stride(), x.stride())
+    self.assertEqual(ph_y.shape, y.shape)
+    self.assertEqual(ph_y.stride(), y.stride())
+    self.assertEqual(
+        ph_x.untyped_storage().data_ptr(),
+        ph_y.untyped_storage().data_ptr(),
+    )
+
+  def test_storage_aware_placeholders_slices(self):
+    w = torch.randn(100, 32)
+    s1 = w[0:40]
+    s2 = w[40:100]
+    placeholders = compiler._create_storage_aware_placeholders([s1, s2])
+    ph_s1, ph_s2 = placeholders[0], placeholders[1]
+    self.assertEqual(ph_s1.shape, s1.shape)
+    self.assertEqual(ph_s2.shape, s2.shape)
+    self.assertEqual(ph_s1.storage_offset(), s1.storage_offset())
+    self.assertEqual(ph_s2.storage_offset(), s2.storage_offset())
+    self.assertEqual(
+        ph_s1.untyped_storage().data_ptr(),
+        ph_s2.untyped_storage().data_ptr(),
+    )
+
+  def test_storage_aware_placeholders_mixed_dtypes_fallback(self):
+    x = torch.randn(16, 32, dtype=torch.float32)
+    y = x.view(torch.bfloat16)
+    placeholders = compiler._create_storage_aware_placeholders([x, y])
+    ph_x, ph_y = placeholders[0], placeholders[1]
+    self.assertEqual(ph_x.shape, x.shape)
+    self.assertEqual(ph_x.dtype, torch.float32)
+    self.assertEqual(ph_y.shape, y.shape)
+    self.assertEqual(ph_y.dtype, torch.bfloat16)
+
+  def test_storage_aware_placeholders_dynamic_bounds_fallback(self):
+    x = torch.randn(16, 32)
+    y = x.t()
+    bounds = [([0], [16]), None]
+    with absltest.mock.patch.object(
+        tpu_torch_compile,
+        'dynamic_placeholder',
+        wraps=tpu_torch_compile.dynamic_placeholder,
+    ) as mock_dynamic_ph:
+      placeholders = compiler._create_storage_aware_placeholders(
+          [x, y], bounds=bounds
+      )
+      mock_dynamic_ph.assert_called_once()
+    ph_x, ph_y = placeholders[0], placeholders[1]
+    self.assertEqual(ph_x.shape, x.shape)
+    self.assertEqual(ph_y.shape, y.shape)
+
+  def test_storage_aware_placeholders_disabled_fallback(self):
+    x = torch.randn(16, 32)
+    y = x.t()
+    placeholders = compiler._create_storage_aware_placeholders(
+        [x, y], enabled=False
+    )
+    ph_x, ph_y = placeholders[0], placeholders[1]
+    self.assertEqual(ph_x.shape, x.shape)
+    self.assertEqual(ph_y.shape, y.shape)
+    self.assertNotEqual(
+        ph_x.untyped_storage().data_ptr(),
+        ph_y.untyped_storage().data_ptr(),
+    )
+
 
 if __name__ == '__main__':
   absltest.main()

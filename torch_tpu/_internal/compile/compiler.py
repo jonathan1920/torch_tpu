@@ -21,9 +21,11 @@ artifacts produced during compilation.
 """
 
 import abc
+import collections
 from collections.abc import Sequence
 import concurrent.futures
 import dataclasses
+import os
 from typing import Any
 
 import torch
@@ -173,6 +175,86 @@ def _is_tracing_enabled() -> bool:
   return bool(trace_log.handlers)
 
 
+def _create_storage_aware_placeholders(
+    example_inputs: Sequence[Any],
+    bounds: Sequence[Any] | None = None,
+    enabled: bool = True,
+) -> list[Any]:
+  """Creates placeholder arguments preserving shared storage and view relationships."""
+  # Group tensor inputs by their underlying UntypedStorage identity.
+  storage_groups = collections.defaultdict(list)
+  for i, arg in enumerate(example_inputs):
+    if isinstance(arg, torch.Tensor):
+      storage_groups[arg.untyped_storage()].append((i, arg))
+
+  # Initialize with example_inputs to automatically preserve non-tensor arguments.
+  placeholders = list(example_inputs)
+
+  for storage, entries in storage_groups.items():
+    # Fall back to 1:1 placeholders if:
+    # 1. Storage-aware placeholders are disabled.
+    # 2. Only a single tensor references this storage.
+    # 3. Mixed dtypes exist in the storage group (reinterpreted views).
+    # 4. Any tensor has dynamic bounds (dynamic views on shared storage not yet supported).
+    has_mixed_dtypes = len({arg.dtype for _, arg in entries}) > 1
+    has_dynamic_bounds = bounds is not None and any(
+        bounds[i] is not None for i, _ in entries
+    )
+
+    if (
+        not enabled
+        or len(entries) == 1
+        or has_mixed_dtypes
+        or has_dynamic_bounds
+    ):
+      for i, arg in entries:
+        arg_bounds = bounds[i] if bounds is not None else None
+        if arg_bounds is not None:
+          placeholders[i] = tpu_torch_compile.dynamic_placeholder(
+              arg.shape, arg.dtype, arg_bounds, arg.requires_grad
+          )
+        else:
+          placeholders[i] = tpu_torch_compile.placeholder_like(arg)
+    else:
+      _, primary_arg = entries[0]
+      elem_size = primary_arg.element_size()
+      storage_numel = storage.size() // elem_size if elem_size > 0 else 0
+
+      # Check if one of the tensors already spans the full storage contiguously.
+      base_tensor = next(
+          (
+              arg
+              for _, arg in entries
+              if arg.is_contiguous()
+              and arg.storage_offset() == 0
+              and arg.numel() == storage_numel
+          ),
+          None,
+      )
+      if base_tensor is not None:
+        base_ph = tpu_torch_compile.placeholder_like(base_tensor)
+      else:
+        # Otherwise, synthesize a 1D flat placeholder matching total storage elements.
+        flat_meta = torch.empty(
+            (storage_numel,),
+            dtype=primary_arg.dtype,
+            device=torch.device("meta"),
+        )
+        base_ph = tpu_torch_compile.placeholder_like(flat_meta)
+
+      for i, arg in entries:
+        ph = base_ph.as_strided(
+            size=arg.shape,
+            stride=arg.stride(),
+            storage_offset=arg.storage_offset(),
+        )
+        if arg.requires_grad:
+          ph.requires_grad_(True)
+        placeholders[i] = ph
+
+  return placeholders
+
+
 class StaticCompiler(Compiler):
   """Compiler for static shapes.
 
@@ -228,22 +310,12 @@ class StaticCompiler(Compiler):
         #     placeholders will error.
         # (2) Act as TPU-compatible FakeTensors, so that tracing does not depend
         #     on tensor data.
-        placeholder_args = []
-        for i, arg in enumerate(example_inputs):
-          if isinstance(arg, torch.Tensor):
-            arg_bounds = bounds[i] if bounds is not None else None
-            if arg_bounds is not None:
-              ph = tpu_torch_compile.dynamic_placeholder(
-                  arg.shape,
-                  arg.dtype,
-                  arg_bounds,
-                  arg.requires_grad,
-              )
-            else:
-              ph = tpu_torch_compile.placeholder_like(arg)
-            placeholder_args.append(ph)
-          else:
-            placeholder_args.append(arg)
+        placeholder_args = _create_storage_aware_placeholders(
+            example_inputs,
+            bounds,
+            enabled=os.environ.get("TORCHTPU_STORAGE_AWARE_PLACEHOLDERS", "0")
+            == "1",
+        )
 
         if argument_layouts is None:
           extracted_layouts = []

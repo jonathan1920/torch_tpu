@@ -878,6 +878,37 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     # The values should be the same as well.
     utils.assert_close(actual=result.cpu(), expected=expected)
 
+  def test_shared_storage_transpose_inputs(self):
+    def fn(a, b):
+      return a.matmul(b)
+
+    old_precision = torch.get_float32_matmul_precision()
+    torch.set_float32_matmul_precision("highest")
+    try:
+      x = torch.randn(32, 32)
+      y = x.t()  # Shares storage with x
+      self._run_and_compare(fn, [x, y])
+    finally:
+      torch.set_float32_matmul_precision(old_precision)
+
+  def test_shared_storage_slice_inputs(self):
+    def fn(a, b):
+      return a + b
+
+    w = torch.randn(100, 32)
+    s1 = w[0:50]
+    s2 = w[50:100]  # Shares storage with s1
+    self._run_and_compare(fn, [s1, s2])
+
+  def test_shared_storage_overlapping_views(self):
+    def fn(a, b):
+      return a * b
+
+    w = torch.randn(64, 64)
+    v1 = w[0:32, 0:32]
+    v2 = w[16:48, 16:48]
+    self._run_and_compare(fn, [v1, v2])
+
 
 class ModuleTest(seed_test_utils.RepeatableTest):
 
