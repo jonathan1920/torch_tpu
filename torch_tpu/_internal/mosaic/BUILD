@@ -108,4 +108,24 @@ torch_tpu_cc_library(
     deps = [":torch_tpu_mosaic_ops_inc_gen"],
 )
 
+torch_tpu_cc_library(
+    name = "op_builders",
+    srcs = ["op_builders.cc"],
+    hdrs = ["op_builders.h"],
+    deps = [
+        "@com_google_absl//absl/log:absl_check",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:VectorDialect",
+        "@xla//xla/mosaic:tpu_dialect",
+        "@xla//xla/mosaic:tpu_serde_pass",
+    ],
+)
+
 torch_tpu_package_end()
