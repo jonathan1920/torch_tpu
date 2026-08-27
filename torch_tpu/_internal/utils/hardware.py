@@ -52,7 +52,15 @@ _V5P_TOPOLOGY: Final[Mapping[int, str]] = immutabledict.immutabledict({
 _V5E_TOPOLOGY: Final[Mapping[int, str]] = immutabledict.immutabledict({
     1: "1,1,1",
     4: "2,2,1",
-    8: "2,2,2",
+    # TPU v5e (8-chip) topology differs between environments:
+    # - Cloud TPU VMs: The physical hardware interconnect is wired as a 2D mesh
+    #   (2x4):
+    #   https://docs.cloud.google.com/tpu/docs/v5e#tpu-v5e-config
+    # - Internal test environments: A virtual 3D cube mapping (2x2x2) is used to
+    #   prevent coordinate collisions during local discovery in the absence of
+    #   physical wrap cabling.
+    # copybara:uncomment 8: "2,2,2",
+    8: "2,4,1",  # copybara:comment(oss-only)
 })
 
 _V6E_TOPOLOGY: Final[Mapping[int, str]] = immutabledict.immutabledict({

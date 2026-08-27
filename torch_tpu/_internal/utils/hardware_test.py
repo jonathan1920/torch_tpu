@@ -32,7 +32,7 @@ class TpuTopologyMockTest(seed_test_utils.RepeatableTest):
             {"addr": addr, "id": "0x0076", "vfio_group": f"grp_{bus}_{fn}"}
         )
 
-    self._run_mock_test(tpus, "2,2,1,2")
+    self._run_mock_test(tpus, hardware._V7_TOPOLOGY[8])
 
   def test_v5e_8_chips(self):
     tpus = []
@@ -40,7 +40,7 @@ class TpuTopologyMockTest(seed_test_utils.RepeatableTest):
       addr = f"0000:03:01.{i}"
       tpus.append({"addr": addr, "id": "0x0063", "vfio_group": str(146 + i)})
 
-    self._run_mock_test(tpus, "2,2,2")
+    self._run_mock_test(tpus, hardware._V5E_TOPOLOGY[8])
 
   def test_v5p_4_chips(self):
     tpus = []
@@ -48,7 +48,7 @@ class TpuTopologyMockTest(seed_test_utils.RepeatableTest):
       addr = f"0000:05:01.{i}"
       tpus.append({"addr": addr, "id": "0x0062", "vfio_group": str(439 + i)})
 
-    self._run_mock_test(tpus, "2,2,1")
+    self._run_mock_test(tpus, hardware._V5P_TOPOLOGY[4])
 
   def test_v6e_8_chips(self):
     tpus = []
@@ -56,7 +56,7 @@ class TpuTopologyMockTest(seed_test_utils.RepeatableTest):
       addr = f"0000:41:01.{i}"
       tpus.append({"addr": addr, "id": "0x006f", "vfio_group": str(131 + i)})
 
-    self._run_mock_test(tpus, "2,4,1")
+    self._run_mock_test(tpus, hardware._V6E_TOPOLOGY[8])
 
   def _run_mock_test(self, tpus, expected_topology):
     # Map of path strings to mock Path objects

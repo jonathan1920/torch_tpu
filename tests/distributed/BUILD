@@ -106,7 +106,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "multi_tpu_test",
     srcs = ["multi_tpu_test.py"],
-    notest_oss = "fix hang in OSS",  # TODO
     tags = if_oss(
         ["exclusive"],
         [],
@@ -628,7 +627,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "ragged_dot_test",
     srcs = ["ragged_dot_test.py"],
-    notest_oss = "fix hang in OSS",  # TODO
     tags = if_oss(
         ["exclusive"],
         [],
