@@ -19,9 +19,7 @@
 # collects artifacts for Kokoro. Everything about how the wheel is actually
 # built -- the bazel target, flags, and version-suffix handling -- lives in
 # the shared ci/build_wheels.sh, which the GitHub CI uses too, so the wheels
-# published from here are built exactly like the wheels CI smoke-tests. The
-# only Kokoro-specific bazel flag is --config=no_rbe: this environment has no
-# RBE credentials.
+# published from here are built exactly like the wheels CI smoke-tests.
 
 set -exu -o history -o allexport
 
@@ -52,7 +50,7 @@ docker run --rm \
   -v "$(pwd):/workspace" \
   -w "/workspace" \
   "${CONTAINER_IMAGE}" \
-  ci/build_wheels.sh --output-dir /workspace/dist 3.11 3.12 3.13 3.14 -- --config=no_rbe
+  ci/build_wheels.sh --output-dir /workspace/dist 3.11 3.12 3.13 3.14 -- --config=wheel_nightly
 
 # Move the built wheels from local dist back to Kokoro artifacts directory
 if [[ -d dist && -n "$(ls -A dist/*.whl 2>/dev/null)" ]]; then

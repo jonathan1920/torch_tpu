@@ -404,10 +404,19 @@ build:wheel_common --config=remote_caching_readonly
 build:wheel_common --config=remote_execution_readonly
 build:wheel_common --config=wheel_base
 
+# Nightly/postsubmit config for wheel builds. Uses a dedicated cache-silo-key
+# to isolate nightly build artifacts from PR builds and release builds,
+# preventing cross-pipeline cache contamination.
+build:wheel_nightly --config=wheel_common
+build:wheel_nightly --remote_default_exec_properties=cache-silo-key=wheel-nightly
+
 # Release-channel wheel: wheel_common without the PyTorch-nightly glue. Use this
 # for artifacts published to an index (the nightly glue is built against a
-# transient dev snapshot and does not belong in a release).
+# transient dev snapshot and does not belong in a release). Uses a dedicated
+# cache-silo-key so release artifacts are cached independently from nightly
+# snapshots and test runs.
 build:wheel_release --config=wheel_common
+build:wheel_release --remote_default_exec_properties=cache-silo-key=wheel-release
 build:wheel_release --//:include_nightly_glue=False
 
 # Build against a locally provided PyTorch instead of the pip hubs. This is

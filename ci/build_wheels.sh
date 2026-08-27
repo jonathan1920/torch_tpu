@@ -20,8 +20,7 @@
 # exercise and the wheels the Kokoro publisher uploads come from the same
 # invocation. Callers (.github/actions/build-wheel, ci/build_wheel.sh) only
 # orchestrate the environment: where the container runs, where the wheels
-# go, and environment-specific bazel flags (e.g. Kokoro passes
-# --config=no_rbe because it has no RBE credentials; presubmit does not).
+# go, and environment-specific bazel flags (e.g. presubmit vs nightly configs).
 #
 # Usage:
 #   ci/build_wheels.sh [--release] [--output-dir DIR] PY_VERSION... [-- BAZEL_ARG...]
@@ -92,9 +91,9 @@ for py_ver in "${PY_VERSIONS[@]}"; do
   # the torch_version-reset transition so pywrap factors it into the single
   # libxla_base.so. Without it every per-version common carries a full
   # backend copy and the wheel aborts on import with duplicate static
-  # registrations. Caller-supplied flags come after it, so an environment
-  # without RBE credentials can append --config=no_rbe to strip the RBE
-  # remote-cache/execution flags wheel_common pulls in.
+  # registrations. Caller-supplied flags come after it, so callers can select
+  # specific wheel configs (e.g. --config=wheel_nightly) or append
+  # --config=no_rbe to strip RBE flags in environments without RBE credentials.
   bazel build -c opt --config=wheel_common //ci/wheel:torch_tpu_wheel \
     --repo_env=WHEEL_VERSION_EXTRAS="${WHEEL_VERSION_EXTRAS}" \
     --repo_env=HERMETIC_PYTHON_VERSION="${py_ver}" \
