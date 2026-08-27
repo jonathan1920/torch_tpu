@@ -180,6 +180,11 @@ c10::Stream TpuDeviceGuardImpl::exchangeStream(c10::Stream s) const {
   ValidateDevice(s.device());
   c10::StreamId old_stream_id =
       ExchangeCurrentStreamId(s.device_index(), s.id());
+  if (s.id() == old_stream_id) {
+    // No-op, the stream is already active.
+    return s;
+  }
+
   // Explanation: CUDA users expect that work on a stream begins as soon as
   // the op or transfer is called.
   //
