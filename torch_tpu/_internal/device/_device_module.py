@@ -508,6 +508,9 @@ class _DeviceModule(abc.ABC, metaclass=_DeviceModuleMeta):
     return streams.TpuStream(device=device, priority=priority, **kwargs)
 
   @classmethod
+  @experimental(
+      "Event() is experimental and may change or be removed without notice."
+  )
   def Event(  # pylint: disable=invalid-name
       cls,
       enable_timing: bool = False,
@@ -515,7 +518,11 @@ class _DeviceModule(abc.ABC, metaclass=_DeviceModuleMeta):
       interprocess: bool = False,
       external: bool = False,
   ) -> streams.TpuEvent:
-    """Device-level wrapper for TpuEvent object."""
+    """Device-level wrapper for TpuEvent object.
+
+    .. warning::
+        This API is experimental and subject to change in future releases.
+    """
     return streams.TpuEvent(
         enable_timing=enable_timing,
         blocking=blocking,
