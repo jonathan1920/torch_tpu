@@ -811,9 +811,11 @@ torch_tpu_py_test(
         ":op_testing",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
+        "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
         "//torch_tpu",
+        "//torch_tpu/_internal/utils:test_utils",
     ],
 )
 

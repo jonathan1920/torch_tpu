@@ -19,9 +19,12 @@ from unittest import mock
 
 from absl.testing import absltest
 from absl.testing import flagsaver
+from absl.testing import parameterized
 import torch
 from torch.testing._internal import common_methods_invocations
+from torch_tpu._internal.utils import test_utils
 from tests import op_testing
+
 
 op_db = common_methods_invocations.op_db
 
@@ -95,6 +98,20 @@ class OpTestingTest(op_testing.OpInfoTestBase):
             max_samples=None,
         )
         self.assertEqual(res, fake_samples)
+
+  @parameterized.named_parameters(
+      ("coo", lambda t: t.to_sparse()),
+      ("csr", lambda t: t.to_sparse_csr()),
+      ("csc", lambda t: t.to_sparse_csc()),
+      ("bsr", lambda t: t.to_sparse_bsr(blocksize=(1, 1))),
+      ("bsc", lambda t: t.to_sparse_bsc(blocksize=(1, 1))),
+  )
+  def test_plistlib_sparse_tensor_serialization(self, to_sparse_fn):
+    dense = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+    sparse = to_sparse_fn(dense)
+    encoded = op_testing._to_plistlib_compatible(sparse)
+    restored = op_testing._from_plistlib_compatible(encoded)
+    test_utils.assert_close(restored, dense)
 
 
 if __name__ == "__main__":

@@ -2065,7 +2065,9 @@ def _to_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
             # contiguous() needs a copy kernel the sub-byte dtypes don't have.
             x.view(torch.uint8).contiguous()
         })
-      # st.save() doesn't handle non-contiguous tensors.
+      # st.save() doesn't handle non-contiguous tensors or non-strided tensors.
+      if x.layout != torch.strided:
+        x = x.to_dense()
       x = x.contiguous()
       # st.save() doesn't handle complex tensors, so encode them as real + imag.
       # The "c" key indicates that the original tensor is complex-typed.
