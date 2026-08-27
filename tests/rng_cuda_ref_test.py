@@ -1015,6 +1015,35 @@ class MultiThreadRngTest(_BaseRngTest):
     self.assertEqual(outs[0], outs[1])
     self.assertEqual(outs[0][0], outs[0][1])
 
+  def test_multithread_share_same_state_eager(self):
+    """Verifies threads on single device share RNG state in eager mode."""
+    outs = self._run_concurrent_threads(
+        seed_fn=lambda idx: self.backend_mod.manual_seed(42),
+        fn=lambda idx: torch.rand(10, device=self.device),
+        num_threads=2,
+    )
+    self.assertFalse(torch.equal(outs[0], outs[1]))
+
+  def test_multithread_share_same_state_compiled(self):
+    """Verifies threads share RNG state in compiled mode."""
+    # Limit compilation threads to avoid contention during Dynamo tracing.
+    torch._inductor.config.compile_threads = 1
+
+    def fn_to_compile(x):
+      return torch.rand_like(x) + torch.rand_like(x)
+
+    compiled_fn = torch.compile(fn_to_compile, fullgraph=True)
+    x = torch.zeros(10, device=self.device)
+    # Pre-warm compiled_fn so compilation finishes before execution.
+    _ = compiled_fn(x)
+
+    outs = self._run_concurrent_threads(
+        seed_fn=lambda idx: self.backend_mod.manual_seed(42),
+        fn=lambda idx: compiled_fn(x),
+        num_threads=2,
+    )
+    self.assertFalse(torch.equal(outs[0], outs[1]))
+
   def test_multithread_shared_generator_shares_state(self):
     """Verifies threads sharing a generator consume distinct chunks."""
     shared_g = torch.Generator(device=self.device)
