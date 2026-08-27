@@ -2514,10 +2514,15 @@ class TestOps(op_testing.OpInfoTestBase):
         # dtypes.
         exclude_inplace_dtypes=COMPLEX_DTYPES,
         check_dynamism=False,  # TODO(b/488338235): dynamism is flaky
-        # TODO(b/552441831): Remove skip_if once GPU golden files are updated
-        # with 'value' kwarg.
-        skip_if=lambda _1, _2, op_input: (
-            not oss_utils.is_oss() and "scalars" in op_input.kwargs
+        # TODO(b/552441831): Skip legacy GPU golden samples with 'scalars' in kwargs
+        # and calls where 'value' is a list of scalars (PyTorch OpInfo passes
+        # 'value' kwarg which the C++ binding rejects for list of scalars).
+        skip_if=lambda _device, _variant, op_input: (
+            "scalars" in op_input.kwargs
+            or (
+                "value" in op_input.kwargs
+                and isinstance(op_input.kwargs["value"], (list, tuple))
+            )
         ),
     )
 
@@ -2529,10 +2534,15 @@ class TestOps(op_testing.OpInfoTestBase):
         # TODO(b/485291373): fix _foreach_addcmul_() failing with complex
         # dtypes.
         exclude_inplace_dtypes=COMPLEX_DTYPES,
-        # TODO(b/552441831): Remove skip_if once GPU golden files are updated
-        # with 'value' kwarg.
-        skip_if=lambda _1, _2, op_input: (
-            not oss_utils.is_oss() and "scalars" in op_input.kwargs
+        # TODO(b/552441831): Skip legacy GPU golden samples with 'scalars' in kwargs
+        # and calls where 'value' is a list of scalars (PyTorch OpInfo passes
+        # 'value' kwarg which the C++ binding rejects for list of scalars).
+        skip_if=lambda _device, _variant, op_input: (
+            "scalars" in op_input.kwargs
+            or (
+                "value" in op_input.kwargs
+                and isinstance(op_input.kwargs["value"], (list, tuple))
+            )
         ),
     )
 
