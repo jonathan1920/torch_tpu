@@ -254,7 +254,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "alltoall_collective_test",
     srcs = ["alltoall_collective_test.py"],
-    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 4,
     tags = if_oss(
         ["exclusive"],
@@ -396,7 +395,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "scatter_test",
     srcs = ["scatter_test.py"],
-    notest_oss = "fix hang in OSS",  # TODO
     tags = if_oss(
         ["exclusive"],
         [],
@@ -512,7 +510,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "dtensor_test",
     srcs = ["dtensor_test.py"],
-    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 10,
     tags = if_oss(
         ["exclusive"],
@@ -601,7 +598,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "dcp_test",
     srcs = ["dcp_test.py"],
-    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 2,
     tags = if_oss(
         ["exclusive"],
