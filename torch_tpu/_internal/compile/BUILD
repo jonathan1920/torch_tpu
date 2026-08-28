@@ -41,18 +41,9 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
-    name = "collective_ops",
-    srcs = ["collective_ops.py"],
-    deps = [
-        "//shims/torch:pytorch",
-    ],
-)
-
-torch_tpu_py_library(
     name = "split_compiler",
     srcs = ["split_compiler.py"],
     deps = [
-        ":collective_ops",
         ":compiler",
         ":torch_tpu_compiled_executable",
         ":tpu_torch_compile",
@@ -64,6 +55,7 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/compile/fx_passes:propagate_symints",
         "//torch_tpu/_internal/compile/fx_passes:reorder_symints",
         "//torch_tpu/_internal/compile/fx_passes:sink_get_attr_constants",
+        "//torch_tpu/_internal/distributed:collective_ops",
         "//torch_tpu/_internal/distributed:handshake",
         "//torch_tpu/_internal/distributed:process_group_utils",
         "//torch_tpu/_internal/distributed:spmd_util",

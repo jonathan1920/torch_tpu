@@ -15,9 +15,9 @@
 import unittest.mock
 from absl.testing import absltest
 import torch
-from torch_tpu._internal.compile import collective_ops
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import split_compiler
+from torch_tpu._internal.distributed import collective_ops
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
 

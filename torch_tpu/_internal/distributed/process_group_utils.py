@@ -19,7 +19,7 @@ from typing import Any
 
 import torch
 import torch.distributed as dist
-from torch_tpu._internal.compile import collective_ops
+from torch_tpu._internal.distributed import collective_ops
 from torch_tpu._internal.distributed import handshake
 
 ProcessGroupId = handshake.ProcessGroupId

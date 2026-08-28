@@ -88,9 +88,9 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests:seed_test_utils",
         "//torch_tpu",
-        "//torch_tpu/_internal/compile:collective_ops",
         "//torch_tpu/_internal/compile:compiler",
         "//torch_tpu/_internal/compile:split_compiler",
+        "//torch_tpu/_internal/distributed:collective_ops",
         "//torch_tpu/_internal/utils:test_utils",
     ],
 )

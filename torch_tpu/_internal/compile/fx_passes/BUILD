@@ -41,7 +41,7 @@ torch_tpu_py_library(
     srcs = ["force_collectives_output.py"],
     deps = [
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/compile:collective_ops",
+        "//torch_tpu/_internal/distributed:collective_ops",
     ],
 )
 

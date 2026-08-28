@@ -17,7 +17,7 @@
 import operator
 
 import torch
-from torch_tpu._internal.compile import collective_ops
+from torch_tpu._internal.distributed import collective_ops
 
 
 def apply(gm: torch.fx.GraphModule) -> None:

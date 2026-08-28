@@ -92,9 +92,9 @@ torch_tpu_py_library(
     name = "process_group_utils",
     srcs = ["process_group_utils.py"],
     deps = [
+        ":collective_ops",
         ":handshake",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/compile:collective_ops",
     ],
 )
 
@@ -151,6 +151,14 @@ oss_target(
     srcs = ["multiprocessing.py"],
     deps = [
         "//shims/absl_py:app",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "collective_ops",
+    srcs = ["collective_ops.py"],
+    deps = [
+        "//shims/torch:pytorch",
     ],
 )
 
