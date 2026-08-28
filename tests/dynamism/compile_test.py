@@ -1039,6 +1039,79 @@ class DynamicSliceTest(seed_test_utils.RepeatableTest):
     expected = grid.select(-1, 1) * grid.select(-1, 2)
     utils.assert_close(out, expected)
 
+  def test_select_dynamic_dim(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.select(0, 2)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x = torch.randn(6, 8, dtype=torch.float32, device=self.device)
+    torch._dynamo.mark_dynamic(x, 0, min=4, max=16)
+
+    out = compiled(x)
+    expected = x.select(0, 2)
+    utils.assert_close(out, expected)
+
+  def test_select_negative_index(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x.select(0, -1)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    for dim_size in [6, 10]:
+      x = torch.randn(dim_size, 8, dtype=torch.float32, device=self.device)
+      torch._dynamo.mark_dynamic(x, 0, min=4, max=16)
+
+      out = compiled(x)
+      expected = x.select(0, -1)
+      utils.assert_close(out, expected)
+
+  def test_dynamic_slice_negative_start(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return x[:, -4:]
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x = torch.randn(2, 8, dtype=torch.float32, device=self.device)
+    torch._dynamo.mark_dynamic(x, 1, min=6, max=16)
+
+    out = compiled(x)
+    expected = x[:, -4:]
+    utils.assert_close(out, expected)
+
+  def test_dynamic_slice_kv_cache_sliding_window(self):
+    sliding_window = 16
+
+    class Model(torch.nn.Module):
+
+      def forward(self, cache, new_k):
+        full_k = torch.cat([cache, new_k], dim=-2)
+        return full_k[:, :, -sliding_window + 1 :, :]
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    cache = torch.randn(1, 1, 4, 16, dtype=torch.float32, device=self.device)
+    new_k = torch.randn(1, 1, 1, 16, dtype=torch.float32, device=self.device)
+    torch._dynamo.mark_dynamic(cache, 2, min=2, max=13)
+
+    out = compiled(cache, new_k)
+    expected = torch.cat([cache, new_k], dim=-2)[:, :, -sliding_window + 1 :, :]
+    utils.assert_close(out, expected)
+
 
 class DynamicErrorHandlingTest(seed_test_utils.RepeatableTest):
 
