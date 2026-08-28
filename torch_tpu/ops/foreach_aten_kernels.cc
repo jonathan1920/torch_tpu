@@ -20,6 +20,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -35,6 +36,7 @@
 #include "absl/types/span.h"
 #include "c10/core/DefaultDtype.h"
 #include "c10/core/ScalarType.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -821,6 +823,36 @@ std::vector<DeviceBufferRef> ForeachAddcmul(at::TensorList self,
   return result_buffers;
 }
 
+// Builds division with IEEE 754 NaN semantics (0.0 / 0.0 -> NaN) for promoted
+// integral inputs.
+absl::StatusOr<mlir::MlirOp> BuildSafeIntegralDivision(
+    mlir::MlirOp self_op, mlir::MlirOp other_op,
+    mlir::ElementType default_dtype, mlir::ElementType out_dtype) {
+  TT_ASSIGN_OR_RETURN((auto [promoted_self_op, promoted_other_op]),
+                      ConvertIfIntegers(self_op, other_op, default_dtype));
+  TT_ASSIGN_OR_RETURN(promoted_self_op,
+                      CastIfNeeded(promoted_self_op, out_dtype));
+  TT_ASSIGN_OR_RETURN(promoted_other_op,
+                      CastIfNeeded(promoted_other_op, out_dtype));
+  TT_ASSIGN_OR_RETURN(const mlir::MlirOp div_op,
+                      BuildDivShlo(promoted_self_op, promoted_other_op));
+
+  const mlir::MlirOp zero_const = MakeConstantLike(promoted_self_op, 0.0);
+  TT_ASSIGN_OR_RETURN(const mlir::MlirOp is_self_zero,
+                      BuildEqShlo(promoted_self_op, zero_const));
+  TT_ASSIGN_OR_RETURN(const mlir::MlirOp is_other_zero,
+                      BuildEqShlo(promoted_other_op, zero_const));
+  TT_ASSIGN_OR_RETURN(const mlir::MlirOp is_zero_div_zero,
+                      BuildBitwiseAndShlo(is_self_zero, is_other_zero));
+
+  const mlir::MlirOp nan_const = MakeConstantLike(
+      promoted_self_op, std::numeric_limits<double>::quiet_NaN());
+  TT_ASSIGN_OR_RETURN(
+      (auto [bcast_pred, bcast_nan, bcast_div]),
+      ApplyBroadcastIfNeeded(is_zero_div_zero, nan_const, div_op));
+  return mlir::stablehlo::Select(bcast_pred, bcast_nan, bcast_div);
+}
+
 std::vector<DeviceBufferRef> ForeachDiv(at::TensorList self,
                                         at::TensorList other,
                                         DtypeSpan out_dtypes) {
@@ -845,16 +877,29 @@ std::vector<DeviceBufferRef> ForeachDiv(at::TensorList self,
     mlir::SmallVector<mlir::MlirOp> results;
     results.reserve(num_tensors);
     for (size_t i = 0; i < num_tensors; ++i) {
-      TT_ASSIGN_OR_RETURN(
-          (auto [promoted_self_op, promoted_other_op]),
-          ConvertIfIntegers(self_ops[i], other_ops[i], default_dtype));
-      TT_ASSIGN_OR_RETURN(promoted_self_op,
-                          CastIfNeeded(promoted_self_op, out_dtypes[i]));
-      TT_ASSIGN_OR_RETURN(promoted_other_op,
-                          CastIfNeeded(promoted_other_op, out_dtypes[i]));
-      TT_ASSIGN_OR_RETURN(mlir::MlirOp div_op,
-                          BuildDivShlo(promoted_self_op, promoted_other_op));
-      results.push_back(div_op);
+      const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self_ops[i]);
+      const mlir::RankedTensorType other_type =
+          GetTensorTypeOrDie(other_ops[i]);
+      const bool is_integral = self_type.getElementType().isInteger() ||
+                               other_type.getElementType().isInteger();
+      if (is_integral) {
+        TT_ASSIGN_OR_RETURN(
+            const mlir::MlirOp div_op,
+            BuildSafeIntegralDivision(self_ops[i], other_ops[i], default_dtype,
+                                      out_dtypes[i]));
+        results.push_back(div_op);
+      } else {
+        TT_ASSIGN_OR_RETURN(
+            (auto [promoted_self_op, promoted_other_op]),
+            ConvertIfIntegers(self_ops[i], other_ops[i], default_dtype));
+        TT_ASSIGN_OR_RETURN(promoted_self_op,
+                            CastIfNeeded(promoted_self_op, out_dtypes[i]));
+        TT_ASSIGN_OR_RETURN(promoted_other_op,
+                            CastIfNeeded(promoted_other_op, out_dtypes[i]));
+        TT_ASSIGN_OR_RETURN(const mlir::MlirOp div_op,
+                            BuildDivShlo(promoted_self_op, promoted_other_op));
+        results.push_back(div_op);
+      }
     }
     return results;
   };
