@@ -80,6 +80,11 @@ inline constexpr char kTorchTpuInternalDetectRepeatedOpsEnvVar[] =
 // be overridden by setting this env var to "0".
 inline constexpr char kTorchTpuInternalEnableDebugChecksEnvVar[] =
     "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS";
+// Specifies the internal handshake stage mode.
+// Supported modes: OFF, COMPILE_STAGE, DISPATCH_STAGE.
+// Default is OFF.
+inline constexpr char kTorchTpuInternalHandshakeStageEnvVar[] =
+    "TORCH_TPU_INTERNAL_HANDSHAKE_STAGE";
 // If set to "0" or "false", disables forcing graph breaks for collective ops.
 // This is useful for SPMD workloads where graph differences between ranks are
 // not expected. Default is "true".
@@ -182,6 +187,7 @@ inline constexpr auto kEnvVarToStage =
         {kTorchShowCppStacktracesEnvVar, std::nullopt},
         {kTorchTpuInternalDetectRepeatedOpsEnvVar, std::nullopt},
         {kTorchTpuInternalEnableDebugChecksEnvVar, std::nullopt},
+        {kTorchTpuInternalHandshakeStageEnvVar, SymbolStage::InternalApi()},
         {kTorchTpuInternalMaterializeCollectiveTensorsEnvVar, std::nullopt},
         {kTorchTpuInternalSplitRngStateUpdate, std::nullopt},
         {kTorchTpuInternalTier3CompilationCacheLocalBackupTaskEnvVar,

@@ -22,6 +22,7 @@ from collections.abc import Callable, Sequence
 import copy
 import functools
 import operator
+import threading
 from typing import Any, List
 
 from absl import logging
@@ -29,10 +30,12 @@ import torch
 from torch._dynamo.utils import detect_fake_mode
 from torch._inductor.utils import InputType
 from torch._subclasses.fake_tensor import unset_fake_temporarily
+import torch.distributed as dist
 from torch.fx.passes import graph_transform_observer
 from torch.fx.passes.split_module import split_module
 from torch_tpu._internal.compile import collective_ops
 from torch_tpu._internal.compile import compiler
+from torch_tpu._internal.compile import torch_tpu_compiled_executable
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.fx_passes import clone_mutated_returned_placeholders
 from torch_tpu._internal.compile.fx_passes import force_collectives_output
@@ -40,8 +43,85 @@ from torch_tpu._internal.compile.fx_passes import mark_embedded_constants
 from torch_tpu._internal.compile.fx_passes import propagate_symints
 from torch_tpu._internal.compile.fx_passes import reorder_symints
 from torch_tpu._internal.compile.fx_passes import sink_get_attr_constants
-from torch_tpu._internal.compile.torch_tpu_compiled_executable import CompiledArtifact
+from torch_tpu._internal.distributed import handshake
+from torch_tpu._internal.distributed import process_group_utils
 from torch_tpu._internal.distributed import spmd_util
+
+ProcessGroupId = handshake.ProcessGroupId
+RankCollectiveCounts = handshake.RankCollectiveCounts
+AsyncCompiledArtifact = torch_tpu_compiled_executable.AsyncCompiledArtifact
+CollectiveHandshakeRequest = handshake.CollectiveHandshakeRequest
+CompiledArtifact = torch_tpu_compiled_executable.CompiledArtifact
+TorchTpuCompiledExecutable = (
+    torch_tpu_compiled_executable.TorchTpuCompiledExecutable
+)
+Handshake = handshake.Handshake
+
+_COLLECTIVE_OPS = collective_ops.COLLECTIVE_OPS
+
+
+# We define a per process global collective count to keep track of the
+# collectives that have been submitted to the split compiler. This is used to
+# determine if a handshake is needed and to submit the handshake message.
+_RANK_COLLECTIVE_COUNTS: RankCollectiveCounts = RankCollectiveCounts()
+_RANK_COLLECTIVE_COUNTS_LOCK = threading.Lock()
+
+
+def _submit_handshake(
+    executable_fingerprint: str,
+    pg_to_num_collectives: dict[ProcessGroupId, int],
+    graph_module: torch.fx.GraphModule | None = None,
+) -> bool:
+  """Submits a handshake message across participating ranks.
+
+  Args:
+    executable_fingerprint: The fingerprint of the executable.
+    pg_to_num_collectives: The mapping of ProcessGroupId to collective counts.
+    graph_module: The graph module of the executable, for logging purposes.
+
+  Returns True if all ranks match.
+  """
+  assert (
+      dist.is_initialized()
+  ), "Distributed backend must be initialized when submitting a handshake."
+
+  with _RANK_COLLECTIVE_COUNTS_LOCK:
+    _RANK_COLLECTIVE_COUNTS.increment_pg_collective_counts(
+        pg_to_num_collectives
+    )
+    pg_collective_counts = copy.deepcopy(_RANK_COLLECTIVE_COUNTS)
+
+  rank = dist.get_rank()
+
+  msg = CollectiveHandshakeRequest(
+      pg_collective_counts=pg_collective_counts,
+      executable_fingerprint=executable_fingerprint,
+      rank=rank,
+  )
+  result = Handshake().submit(msg)
+
+  if result:
+    logging.info(
+        "Handshake succeeded for rank %d with executable fingerprint %s and"
+        " pg_to_num_collectives %s",
+        rank,
+        executable_fingerprint,
+        pg_to_num_collectives,
+    )
+  else:
+    logging.warning(
+        "Handshake failed for rank %d with executable fingerprint %s and"
+        " pg_to_num_collectives %s",
+        rank,
+        executable_fingerprint,
+        pg_to_num_collectives,
+    )
+    if graph_module:
+      logging.debug(
+          "Handshake failed on rank %d for graph module: %s", rank, graph_module
+      )
+
+  return result
 
 
 def _get_unique_wait_tensor_producer(
@@ -101,7 +181,7 @@ def _get_unique_wait_tensor_producer(
     )
   if (
       getattr(producer.target, "overloadpacket", producer.target)
-      not in collective_ops.COLLECTIVE_OPS
+      not in _COLLECTIVE_OPS
   ):
     raise ValueError(
         f"Expected collective for wait_tensor producer, got {producer.target}"
@@ -131,8 +211,7 @@ def _is_getitem_of_collective(node: torch.fx.Node) -> bool:
       break
     curr = curr.args[0]
   if isinstance(curr, torch.fx.Node) and (
-      getattr(curr.target, "overloadpacket", curr.target)
-      in collective_ops.COLLECTIVE_OPS
+      getattr(curr.target, "overloadpacket", curr.target) in _COLLECTIVE_OPS
   ):
     return True
   return False
@@ -264,12 +343,59 @@ class _SubmodCompiler(torch.fx.interpreter.Interpreter):
 class _SplitCompiledExecutable(CompiledArtifact):
   """A CompiledArtifact supporting split submodules."""
 
-  def __init__(self, split_gm: torch.fx.GraphModule):
+  def __init__(
+      self,
+      split_gm: torch.fx.GraphModule,
+      recompile_fn: Callable[[], "_SplitCompiledExecutable"] | None = None,
+      pg_to_num_collectives: dict[ProcessGroupId, int] | None = None,
+  ):
+    """Initializes a _SplitCompiledExecutable.
+
+    Args:
+      split_gm: The split GraphModule containing compiled and eager submodules.
+      recompile_fn: Optional callable for recompiling the graph.
+      pg_to_num_collectives: Mapping of ProcessGroupId to collective counts for
+        this executable.
+    """
     self._split_gm = split_gm
+    self.recompile_fn = recompile_fn
+    self.pg_to_num_collectives = (
+        pg_to_num_collectives if pg_to_num_collectives else {}
+    )
+
+  def _maybe_handshake_and_recompile(self):
+    if self.recompile_fn is None:
+      return
+
+    compiled_execs = [
+        module.submod
+        for module in self._split_gm.modules()
+        if isinstance(module, _WrapperModule)
+        and isinstance(
+            module.submod, (TorchTpuCompiledExecutable, AsyncCompiledArtifact)
+        )
+    ]
+    assert len(compiled_execs) == 1, (
+        "Expected split_gm to contain exactly one TorchTpuCompiledExecutable"
+        f" or AsyncCompiledArtifact, found {len(compiled_execs)}."
+    )
+    executable_fingerprint = compiled_execs[0].fingerprint()
+    fingerprints_match = _submit_handshake(
+        executable_fingerprint,
+        self.pg_to_num_collectives,
+    )
+    if fingerprints_match:
+      return
+
+    new_exec = self.recompile_fn()
+    self.__dict__.update(new_exec.__dict__)
 
   def __call__(self, *args: Any) -> Any:
     if len(args) == 1 and isinstance(args[0], (list, tuple)):
       args = args[0]  # pyrefly: ignore[bad-assignment]
+
+    self._maybe_handshake_and_recompile()
+
     return self._split_gm(*args)
 
   def __reduce__(self) -> tuple[Callable[..., Any], tuple[Any, ...]]:
@@ -287,7 +413,11 @@ class _SplitCompiledExecutable(CompiledArtifact):
     """
     return (
         _unpickle_split_compiled_executable,
-        (self._split_gm,),
+        (
+            self._split_gm,
+            self.recompile_fn,
+            self.pg_to_num_collectives,
+        ),
     )
 
   @property
@@ -356,6 +486,8 @@ class _SplitCompiledExecutable(CompiledArtifact):
 
 def _unpickle_split_compiled_executable(
     split_gm: torch.fx.GraphModule,
+    recompile_fn: Callable[[], "_SplitCompiledExecutable"] | None = None,
+    pg_to_num_collectives: dict[ProcessGroupId, int] | None = None,
 ) -> "_SplitCompiledExecutable":
   """Reconstructs a _SplitCompiledExecutable from a split GraphModule.
 
@@ -364,11 +496,17 @@ def _unpickle_split_compiled_executable(
 
   Args:
     split_gm: The split GraphModule containing compiled and eager submodules.
+    recompile_fn: Callable for recompiling the graph.
+    pg_to_num_collectives: The mapping of process groups to collective counts.
 
   Returns:
     A deserialized _SplitCompiledExecutable instance.
   """
-  return _SplitCompiledExecutable(split_gm)
+  return _SplitCompiledExecutable(
+      split_gm,
+      recompile_fn=recompile_fn,
+      pg_to_num_collectives=pg_to_num_collectives,
+  )
 
 
 class SplitCompiler(compiler.Compiler):
@@ -386,11 +524,12 @@ class SplitCompiler(compiler.Compiler):
   ) -> None:
     self.base_compiler.execute_pre_grad_passes(graph_module)
 
-  def __call__(
+  def _compile_graph(
       self,
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[InputType],
       is_fwd: bool = True,
+      materialize_collectives: bool = True,
       **kwargs,
   ) -> _SplitCompiledExecutable:
     """Splits the graph on collectives and compiles the submodules."""
@@ -403,10 +542,6 @@ class SplitCompiler(compiler.Compiler):
     ).apply_graph_pass(clone_mutated_returned_placeholders.apply)
     graph_module.graph.lint()
     graph_module.recompile()
-
-    materialize_collectives = (
-        tpu_torch_compile.get_materialize_collective_tensors_env_value()
-    )
 
     partition_id = 0
     partition_map = {}
@@ -423,8 +558,7 @@ class SplitCompiler(compiler.Compiler):
 
       maybe_collective = getattr(node.target, "overloadpacket", node.target)
       is_collective = (
-          node.op == "call_function"
-          and maybe_collective in collective_ops.COLLECTIVE_OPS
+          node.op == "call_function" and maybe_collective in _COLLECTIVE_OPS
       )
 
       # `wait_tensor`` is a special case. It is a collective-related op, but it
@@ -505,3 +639,69 @@ class SplitCompiler(compiler.Compiler):
       submod_compiler.run(*example_inputs)
     split_gm.recompile()
     return _SplitCompiledExecutable(split_gm)
+
+  def __call__(
+      self,
+      graph_module: torch.fx.GraphModule,
+      example_inputs: Sequence[InputType],
+      is_fwd: bool = True,
+  ) -> _SplitCompiledExecutable:
+    """Splits the graph on collectives and compiles the submodules."""
+
+    handshake_stage = tpu_torch_compile.get_handshake_stage_env_var_once()
+    materialize_collectives = (
+        tpu_torch_compile.get_materialize_collective_tensors_env_value()
+    )
+
+    should_handshake = False
+    pg_to_num_collectives: dict[ProcessGroupId, int] = {}
+    if handshake_stage != tpu_torch_compile.HandshakeStage.OFF:
+      pg_to_num_collectives = process_group_utils.get_num_collectives_per_pg(
+          graph_module
+      )
+      should_handshake = handshake.should_handshake(pg_to_num_collectives)
+      if not materialize_collectives:
+        should_handshake = False
+        logging.warning(
+            "Materialize collectives is set to False. Handshake will be "
+            "skipped."
+        )
+
+    recompile_fn = None
+
+    if (
+        handshake_stage == tpu_torch_compile.HandshakeStage.COMPILE_STAGE
+        and should_handshake
+    ):
+      fingerprint = tpu_torch_compile.fingerprint64(graph_module.code)
+      fingerprints_match = _submit_handshake(
+          str(fingerprint), pg_to_num_collectives, graph_module
+      )
+      materialize_collectives = not fingerprints_match
+    elif (
+        handshake_stage == tpu_torch_compile.HandshakeStage.DISPATCH_STAGE
+        and should_handshake
+    ):
+      materialize_collectives = (
+          False  # We set this so the first compilation doesn't split the graph
+      )
+      recompile_fn = functools.partial(
+          self._compile_graph,
+          graph_module,
+          example_inputs,
+          is_fwd,
+          # Split the graph if a recompilation occurs.
+          materialize_collectives=True,
+      )
+
+    executable = self._compile_graph(
+        graph_module,
+        example_inputs,
+        is_fwd,
+        materialize_collectives=materialize_collectives,
+    )
+
+    executable.recompile_fn = recompile_fn
+    executable.pg_to_num_collectives = pg_to_num_collectives
+
+    return executable

@@ -70,6 +70,7 @@
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
+#include "torch_tpu/distributed/handshake.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -1416,6 +1417,15 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       "get_materialize_collective_tensors_env_value",
       PyGetMaterializeCollectiveTensorsEnvVarOnce,
       "Returns whether to materialize collective tensors.");
+
+  py::enum_<HandshakeStage>(m, "HandshakeStage")
+      .value("OFF", HandshakeStage::kOff)
+      .value("COMPILE_STAGE", HandshakeStage::kCompileStage)
+      .value("DISPATCH_STAGE", HandshakeStage::kDispatchStage)
+      .export_values();
+
+  m.def("get_handshake_stage_env_var_once", &GetHandshakeStageEnvVarOnce,
+        "Returns configured handshake stage.");
 
   m.def(
       "fingerprint64",

@@ -758,6 +758,32 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "handshake_e2e_test",
+    srcs = ["handshake_e2e_test.py"],
+    notest_oss = "TODO(b/537411907): Re-enable in OSS once fixed.",
+    shard_count = 8,
+    tags = [
+        "noasan",  # TODO(b/497035517)
+        "nomsan",  # TODO(b/497035517)
+        "notsan",  # TODO(b/497035517)
+        "requires-tpu-v5lite:8",  # We need 8 chips because we are running an actual e2e workflow to test handshake integration.
+    ],
+    deps = [
+        ":distributed_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/distributed:handshake",
+        "//torch_tpu/_internal/distributed:multiprocessing",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/utils:test_utils",
+    ],
+)
+
+torch_tpu_py_test(
     name = "handshake_test",
     srcs = ["handshake_test.py"],
     shard_count = 8,

@@ -275,4 +275,24 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "handshake",
+    srcs = ["handshake.cc"],
+    hdrs = ["handshake.h"],
+    deps = [
+        "//torch_tpu/common:env_vars",
+        "@com_google_absl//absl/log:absl_log",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "handshake_test",
+    srcs = ["handshake_test.cc"],
+    deps = [
+        ":handshake",
+        "//torch_tpu/common:env_vars",
+        "//torch_tpu/common:oss_test_main",
+    ],
+)
+
 torch_tpu_package_end()

@@ -30,6 +30,7 @@ from typing import Any, Coroutine, TypeVar, cast
 
 from absl import logging
 import portpicker
+from torch._subclasses import fake_tensor
 import torch.distributed as dist
 import zmq
 from zmq import error
@@ -38,6 +39,7 @@ import zmq.asyncio
 ZMQError = error.ZMQError
 Again = error.Again
 
+unset_fake_temporarily = fake_tensor.unset_fake_temporarily
 _T = TypeVar("_T")
 
 _COORDINATOR_RANK = 0  # Default coordinator rank, can be overridden.
@@ -608,7 +610,12 @@ def _select_handshake_port(current_rank: int, coordinator_rank: int) -> int:
     port_list = [port]
   else:
     port_list = [0]
-  dist.broadcast_object_list(port_list, src=coordinator_rank)
+  # Temporarily disable FakeTensorMode so that broadcast_object_list executes
+  # actual distributed communication across processes rather than attempting
+  # to trace or handle the collective with fake tensors if invoked during
+  # tracing/compilation.
+  with unset_fake_temporarily():
+    dist.broadcast_object_list(port_list, src=coordinator_rank)
   return port_list[0]
 
 
