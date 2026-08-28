@@ -27,6 +27,7 @@
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -50,6 +51,15 @@ absl::StatusOr<mlir::MlirOp> ApplyScatter(
   // Broadcast indices to the broadcast shape.
   std::vector<mlir::MlirOp> parts;
   parts.reserve(indices.size());
+
+  mlir::ElementType common_index_type = mlir::ElementType::I32;
+  for (const mlir::MlirOp& index : indices) {
+    if (GetElementTypeOrDie(index) == mlir::ElementType::I64) {
+      common_index_type = mlir::ElementType::I64;
+      break;
+    }
+  }
+
   for (int i = 0; i < indices.size(); ++i) {
     mlir::MlirOp index = indices[i];
     mlir::RankedTensorType index_type = GetTensorTypeOrDie(index);
@@ -61,6 +71,12 @@ absl::StatusOr<mlir::MlirOp> ApplyScatter(
     index_type = GetTensorTypeOrDie(index);
     ABSL_VLOG(1) << "[BuildIndexPutShlo] index " << index_start_dim + i
                  << " after broadcast: " << debugString(index_type);
+
+    // TODO: b/551808363 - Consider downcasting to i32 when we can statically
+    // determine that the indices are within range.
+    if (GetElementTypeOrDie(index) != common_index_type) {
+      index = stablehlo::ConvertElementType(index, common_index_type);
+    }
 
     // Expand the last dimension to 1 for concatenation to create
     // scatter_indices.

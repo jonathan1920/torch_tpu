@@ -19,7 +19,6 @@ import torch
 from torch_tpu._internal.utils.utils import OpTracer
 from tests import op_testing
 
-
 OpInput = op_testing.OpInput
 TorchTpuVsCpuTestBase = op_testing.TorchTpuVsCpuTestBase
 to = op_testing.to
@@ -540,11 +539,9 @@ class IndexPutTest(TorchTpuVsCpuTestBase):
       indices_dim2 = torch.tensor(
           [1, 2, 3], dtype=torch.long, device=device
       ).view(1, 3)
-      values_to_assign = (
-          torch.arange(2 * 3 * 4, dtype=tensor.dtype, device=device).view(
-              2, 3, 4
-          )
-      )
+      values_to_assign = torch.arange(
+          2 * 3 * 4, dtype=tensor.dtype, device=device
+      ).view(2, 3, 4)
       # Here indices will move to the front as non-contiguous index tensors
       # are present, so broadcast shape (B) will be (2, 3) and slice shape
       # (S_after) will be (dim1=4)
@@ -703,11 +700,9 @@ class IndexPutTest(TorchTpuVsCpuTestBase):
   def test_decompose_only_slices(self):
     def test_fn(device):
       tensor = torch.zeros(3 * 4 * 5, device=device).view(3, 4, 5)
-      values_to_assign = (
-          torch.arange(3 * 4 * 5, dtype=tensor.dtype, device=device).view(
-              3, 4, 5
-          )
-      )
+      values_to_assign = torch.arange(
+          3 * 4 * 5, dtype=tensor.dtype, device=device
+      ).view(3, 4, 5)
       # this does not decompose to index_put
       tensor[:, :, :] = values_to_assign
       return tensor
@@ -780,6 +775,51 @@ class IndexPutTest(TorchTpuVsCpuTestBase):
             accumulate=True,
         )
     )
+
+  def test_mixed_dtype_indices(self):
+    self.assert_close_tpu_vs_cpu(
+        lambda device: self._run_index_put(
+            device,
+            torch.zeros(2, 4, dtype=torch.int64),
+            (
+                torch.arange(2, dtype=torch.int64),
+                torch.tensor([1, 3], dtype=torch.int32),
+            ),
+            torch.tensor([99, 88], dtype=torch.int64),
+        )
+    )
+
+  def test_all_int32_indices(self):
+    self.assert_close_tpu_vs_cpu(
+        lambda device: self._run_index_put(
+            device,
+            torch.zeros(2, 4, dtype=torch.int64),
+            (
+                torch.tensor([0, 1], dtype=torch.int32),
+                torch.tensor([1, 3], dtype=torch.int32),
+            ),
+            torch.tensor([99, 88], dtype=torch.int64),
+        )
+    )
+
+  def test_mixed_dtype_index_put_compiled(self):
+    # Regtest for https://github.com/google-pytorch/torch_tpu/issues/3051:
+    # index_put with mixed dtype indices, need to convert to a common dtype
+    # before concatenation.
+    def fn(columns, values):
+      rows = torch.arange(2, device=columns.device)
+      out = torch.zeros(2, 4, dtype=torch.int64, device=columns.device)
+      out[rows, columns] = values
+      return out
+
+    columns = torch.tensor([1, 3], dtype=torch.int32)
+    values = torch.tensor([99, 88], dtype=torch.int64)
+    expected = fn(columns, values)
+
+    device = torch.device("tpu")
+    compiled = torch.compile(fn, fullgraph=True)
+    result = compiled(to(columns, device), to(values, device)).cpu()
+    self.assertTrue(torch.equal(result, expected))
 
 
 if __name__ == "__main__":
