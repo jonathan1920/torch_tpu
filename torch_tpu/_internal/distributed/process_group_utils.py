@@ -15,15 +15,72 @@
 """Utilities for extracting and manipulating process group information from FX graphs."""
 
 import collections
+import collections.abc
 from typing import Any
 
 import torch
 import torch.distributed as dist
 from torch_tpu._internal.distributed import collective_ops
-from torch_tpu._internal.distributed import handshake
 
-ProcessGroupId = handshake.ProcessGroupId
 _COLLECTIVE_OPS = collective_ops.COLLECTIVE_OPS
+
+
+class ProcessGroupId:
+  """Identifier for a process group consisting of sorted, unique ranks.
+
+  Attributes:
+    ranks: A tuple of non-negative rank integers representing the process group
+      members, sorted in ascending order with no duplicates.
+    world_size: Optional world size. If provided, all ranks must be in [0,
+      world_size).
+  """
+
+  def __init__(
+      self,
+      ranks: collections.abc.Sequence[int],
+      world_size: int | None = None,
+  ) -> None:
+    if not ranks:
+      raise ValueError("ranks cannot be empty.")
+
+    if any(r < 0 for r in ranks):
+      raise ValueError(f"All ranks must be non-negative, got {ranks}.")
+
+    if world_size is not None:
+      if world_size <= 0:
+        raise ValueError(
+            f"world_size must be strictly positive, got {world_size}."
+        )
+      if any(r >= world_size for r in ranks):
+        raise ValueError(
+            f"All ranks must be in [0, {world_size}), got {ranks}."
+        )
+
+    if len(ranks) != len(set(ranks)):
+      raise ValueError(f"ranks must not contain duplicates, got {ranks}.")
+
+    if list(ranks) != sorted(ranks):
+      raise ValueError(f"ranks must be sorted in ascending order, got {ranks}.")
+
+    self.ranks = tuple(ranks)
+    self.world_size = world_size
+
+  def __hash__(self) -> int:
+    return hash(self.ranks)
+
+  def __eq__(self, other: object) -> bool:
+    if isinstance(other, ProcessGroupId):
+      return self.ranks == other.ranks
+    return False
+
+  def __iter__(self) -> collections.abc.Iterator[int]:
+    return iter(self.ranks)
+
+  def __len__(self) -> int:
+    return len(self.ranks)
+
+  def __getitem__(self, index: int) -> int:
+    return self.ranks[index]
 
 
 def _get_collective_op(node: torch.fx.Node) -> Any | None:

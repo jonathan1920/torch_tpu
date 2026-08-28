@@ -65,6 +65,9 @@ inline constexpr char kTmpdirEnvVar[] = "TMPDIR";
 // https://docs.pytorch.org/docs/stable/debugging_environment_variables.html#pytorch-debug-environment-variables
 inline constexpr char kTorchShowCppStacktracesEnvVar[] =
     "TORCH_SHOW_CPP_STACKTRACES";
+// Specifies the fixed port number for the handshake server.
+inline constexpr char kTorchTpuHandshakePortEnvVar[] =
+    "TORCH_TPU_INTERNAL_HANDSHAKE_PORT";
 // Specifies the repeated op detection mode. If not set, "safe" mode is used.
 // Supported modes:
 // - "safe": Uses MaterializationMode::kSplitGraph when a repeated sequence is
@@ -185,6 +188,7 @@ inline constexpr auto kEnvVarToStage =
         {kTestWorkspaceEnvVar, std::nullopt},
         {kTmpdirEnvVar, std::nullopt},
         {kTorchShowCppStacktracesEnvVar, std::nullopt},
+        {kTorchTpuHandshakePortEnvVar, SymbolStage::InternalApi()},
         {kTorchTpuInternalDetectRepeatedOpsEnvVar, std::nullopt},
         {kTorchTpuInternalEnableDebugChecksEnvVar, std::nullopt},
         {kTorchTpuInternalHandshakeStageEnvVar, SymbolStage::InternalApi()},

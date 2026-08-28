@@ -17,6 +17,7 @@
 #include "torch_tpu/distributed/handshake.h"
 
 #include "absl/log/absl_log.h"
+#include "absl/strings/numbers.h"
 #include "torch_tpu/common/env_vars.h"
 
 namespace torch_tpu {
@@ -38,6 +39,24 @@ HandshakeStage GetHandshakeStageEnvVarOnce() {
                     << kTorchTpuInternalHandshakeStageEnvVar << ": "
                     << *raw_env_value
                     << ". Expected OFF, COMPILE_STAGE, or DISPATCH_STAGE.";
+  }();
+  return env_value;
+}
+
+int GetHandshakePortEnvVarOnce() {
+  static const int env_value = []() {
+    constexpr int kDefaultHandshakePort = 36423;
+    const auto& raw_env_value = GetEnvOnce<kTorchTpuHandshakePortEnvVar>();
+    if (!raw_env_value.has_value()) {
+      return kDefaultHandshakePort;
+    }
+    int port;
+    if (absl::SimpleAtoi(*raw_env_value, &port)) {
+      return port;
+    }
+    ABSL_LOG(FATAL) << "Invalid value for "  // CRASH_OK
+                    << kTorchTpuHandshakePortEnvVar << ": " << *raw_env_value
+                    << ". Expected an integer.";
   }();
   return env_value;
 }

@@ -19,6 +19,7 @@ from unittest import mock
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import portpicker
 import torch
 from torch import distributed as dist
 from torch_tpu._internal import compile as tpu_compile
@@ -367,7 +368,15 @@ class HandshakeE2ETest(parameterized.TestCase):  # ABSLTEST_OK=b/550338082
   @parameterized.parameters("COMPILE_STAGE", "DISPATCH_STAGE")
   def test_handshake_no_rank_divergence(self, handshake_stage):
     with mock.patch.dict(
-        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage}
+        os.environ,
+        {
+            "TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage,
+            # We patch the port with an unused one to ensure the test doesn't
+            # fail due to a port conflict with another test.
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT": str(
+                portpicker.pick_unused_port()
+            ),
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,
@@ -380,7 +389,13 @@ class HandshakeE2ETest(parameterized.TestCase):  # ABSLTEST_OK=b/550338082
   @parameterized.parameters("COMPILE_STAGE", "DISPATCH_STAGE")
   def test_handshake_rank_divergence(self, handshake_stage):
     with mock.patch.dict(
-        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage}
+        os.environ,
+        {
+            "TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage,
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT": str(
+                portpicker.pick_unused_port()
+            ),
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,
@@ -393,7 +408,13 @@ class HandshakeE2ETest(parameterized.TestCase):  # ABSLTEST_OK=b/550338082
   @parameterized.parameters("COMPILE_STAGE", "DISPATCH_STAGE")
   def test_handshake_divergence_after_iteration(self, handshake_stage):
     with mock.patch.dict(
-        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage}
+        os.environ,
+        {
+            "TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage,
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT": str(
+                portpicker.pick_unused_port()
+            ),
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,
@@ -412,7 +433,12 @@ class HandshakeE2ETest(parameterized.TestCase):  # ABSLTEST_OK=b/550338082
   ):
     with mock.patch.dict(
         os.environ,
-        {"TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage},
+        {
+            "TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage,
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT": str(
+                portpicker.pick_unused_port()
+            ),
+        },
     ):
       if handshake_stage == "COMPILE_STAGE":
         self.skipTest(
@@ -442,7 +468,12 @@ class HandshakeE2ETest(parameterized.TestCase):  # ABSLTEST_OK=b/550338082
   ):
     with mock.patch.dict(
         os.environ,
-        {"TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage},
+        {
+            "TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage,
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT": str(
+                portpicker.pick_unused_port()
+            ),
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,
@@ -462,7 +493,12 @@ class HandshakeE2ETest(parameterized.TestCase):  # ABSLTEST_OK=b/550338082
   ):
     with mock.patch.dict(
         os.environ,
-        {"TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage},
+        {
+            "TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage,
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT": str(
+                portpicker.pick_unused_port()
+            ),
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,
@@ -482,7 +518,12 @@ class HandshakeE2ETest(parameterized.TestCase):  # ABSLTEST_OK=b/550338082
   ):
     with mock.patch.dict(
         os.environ,
-        {"TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage},
+        {
+            "TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage,
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT": str(
+                portpicker.pick_unused_port()
+            ),
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,
@@ -496,7 +537,13 @@ class HandshakeE2ETest(parameterized.TestCase):  # ABSLTEST_OK=b/550338082
   @parameterized.parameters("COMPILE_STAGE", "DISPATCH_STAGE")
   def test_handshake_no_rank_divergence_async_compile(self, handshake_stage):
     with mock.patch.dict(
-        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage}
+        os.environ,
+        {
+            "TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage,
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT": str(
+                portpicker.pick_unused_port()
+            ),
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,
@@ -511,7 +558,13 @@ class HandshakeE2ETest(parameterized.TestCase):  # ABSLTEST_OK=b/550338082
       self, handshake_stage
   ):
     with mock.patch.dict(
-        os.environ, {"TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage}
+        os.environ,
+        {
+            "TORCH_TPU_INTERNAL_HANDSHAKE_STAGE": handshake_stage,
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT": str(
+                portpicker.pick_unused_port()
+            ),
+        },
     ):
       distributed_utils.dist_run(
           nproc_per_node=self._world_size,

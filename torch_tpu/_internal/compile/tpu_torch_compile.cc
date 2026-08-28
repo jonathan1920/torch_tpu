@@ -1426,6 +1426,8 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
 
   m.def("get_handshake_stage_env_var_once", &GetHandshakeStageEnvVarOnce,
         "Returns configured handshake stage.");
+  m.def("get_handshake_port_env_var_once", &GetHandshakePortEnvVarOnce,
+        "Returns configured handshake port.");
 
   m.def(
       "fingerprint64",

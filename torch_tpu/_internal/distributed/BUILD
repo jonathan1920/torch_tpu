@@ -42,8 +42,10 @@ torch_tpu_py_library(
     name = "handshake",
     srcs = ["handshake.py"],
     deps = [
+        ":process_group_utils",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:tpu_torch_compile",
         "@pypi//portpicker",
         "@pypi//pyzmq",
     ],
@@ -93,7 +95,6 @@ torch_tpu_py_library(
     srcs = ["process_group_utils.py"],
     deps = [
         ":collective_ops",
-        ":handshake",
         "//shims/torch:pytorch",
     ],
 )

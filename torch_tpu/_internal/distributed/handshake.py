@@ -32,6 +32,8 @@ from absl import logging
 import portpicker
 from torch._subclasses import fake_tensor
 import torch.distributed as dist
+from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.distributed import process_group_utils
 import zmq
 from zmq import error
 import zmq.asyncio
@@ -140,62 +142,7 @@ class ProcessGroupCollectiveCount:
     )
 
 
-class ProcessGroupId:
-  """Identifier for a process group consisting of sorted, unique ranks.
-
-  Attributes:
-    ranks: A tuple of non-negative rank integers representing the process group
-      members, sorted in ascending order with no duplicates.
-    world_size: Optional world size. If provided, all ranks must be in [0,
-      world_size).
-  """
-
-  def __init__(
-      self,
-      ranks: collections.abc.Sequence[int],
-      world_size: int | None = None,
-  ) -> None:
-    if not ranks:
-      raise ValueError("ranks cannot be empty.")
-
-    if any(r < 0 for r in ranks):
-      raise ValueError(f"All ranks must be non-negative, got {ranks}.")
-
-    if world_size is not None:
-      if world_size <= 0:
-        raise ValueError(
-            f"world_size must be strictly positive, got {world_size}."
-        )
-      if any(r >= world_size for r in ranks):
-        raise ValueError(
-            f"All ranks must be in [0, {world_size}), got {ranks}."
-        )
-
-    if len(ranks) != len(set(ranks)):
-      raise ValueError(f"ranks must not contain duplicates, got {ranks}.")
-
-    if list(ranks) != sorted(ranks):
-      raise ValueError(f"ranks must be sorted in ascending order, got {ranks}.")
-
-    self.ranks = tuple(ranks)
-    self.world_size = world_size
-
-  def __hash__(self) -> int:
-    return hash(self.ranks)
-
-  def __eq__(self, other: object) -> bool:
-    if isinstance(other, ProcessGroupId):
-      return self.ranks == other.ranks
-    return False
-
-  def __iter__(self) -> collections.abc.Iterator[int]:
-    return iter(self.ranks)
-
-  def __len__(self) -> int:
-    return len(self.ranks)
-
-  def __getitem__(self, index: int) -> int:
-    return self.ranks[index]
+ProcessGroupId = process_group_utils.ProcessGroupId
 
 
 class RankCollectiveCounts:
@@ -579,44 +526,25 @@ class CollectiveHandshakeResponse:
     return cls(success=(data == CollectiveHandshakeResponse._TRUE_BYTES))
 
 
-def _select_handshake_port(current_rank: int, coordinator_rank: int) -> int:
-  """Selects the port for the Handshake server.
-
-  Port selection strategy:
-  1. If the default process group is initialized, the coordinator rank
-     dynamically finds a free local port using portpicker. The coordinator rank
-     broadcasts the chosen port.
-  2. Otherwise, we raise a `RuntimeError`.
-
-  Args:
-    current_rank: The rank of the current process.
-    coordinator_rank: The rank of the coordinator process.
+def _get_validated_port(is_coordinator: bool) -> int:
+  """Returns and validates the port for the Handshake server.
 
   Returns:
     The selected port for the Handshake server.
 
   Raises:
-    RuntimeError: If no port can be selected.
+    RuntimeError: If the selected port is not available for usage.
+    ValueError: If the port number is not valid.
   """
-  if not dist.is_initialized():
+  port = tpu_torch_compile.get_handshake_port_env_var_once()
+  _validate_port_number(port)
+  if is_coordinator and not portpicker.is_port_free(port):
     raise RuntimeError(
-        "the default process group is not initialized when a collective"
-        " operation was invoked, please initialize the distributed process"
-        " group by calling `torch.distributed.dist.init_process_group()`."
+        f"handshake port {port} is not available for usage. You can set the"
+        " 'TORCH_TPU_INTERNAL_HANDSHAKE_PORT' environment variable to use a"
+        " different port."
     )
-
-  if current_rank == coordinator_rank:
-    port = portpicker.pick_unused_port()
-    port_list = [port]
-  else:
-    port_list = [0]
-  # Temporarily disable FakeTensorMode so that broadcast_object_list executes
-  # actual distributed communication across processes rather than attempting
-  # to trace or handle the collective with fake tensors if invoked during
-  # tracing/compilation.
-  with unset_fake_temporarily():
-    dist.broadcast_object_list(port_list, src=coordinator_rank)
-  return port_list[0]
+  return port
 
 
 @dataclasses.dataclass
@@ -1524,7 +1452,7 @@ class Handshake:
       if coordinator_rank in self._port_cache:
         port = self._port_cache[coordinator_rank]
       else:
-        port = _select_handshake_port(current_rank, coordinator_rank)
+        port = _get_validated_port(current_rank == coordinator_rank)
         self._port_cache[coordinator_rank] = port
 
     if self._current_rank == self._coordinator_rank:

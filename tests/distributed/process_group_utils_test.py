@@ -22,13 +22,12 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
 from torch.fx.experimental import proxy_tensor
 from torch.testing._internal.distributed import fake_pg
-from torch_tpu._internal.distributed import handshake
 from torch_tpu._internal.distributed import process_group_utils
 from tests import seed_test_utils
 
 FakeStore = fake_pg.FakeStore
 make_fx = proxy_tensor.make_fx
-ProcessGroupId = handshake.ProcessGroupId
+ProcessGroupId = process_group_utils.ProcessGroupId
 
 
 class ProcessGroupUtilsTest(seed_test_utils.RepeatableTest):
@@ -297,6 +296,77 @@ class ProcessGroupUtilsTest(seed_test_utils.RepeatableTest):
         range(self.world_size), world_size=self.world_size
     )
     self.assertEqual(counts, {global_pg: 2})
+
+
+class ProcessGroupIdTest(seed_test_utils.RepeatableTest):
+  """Unit tests for ProcessGroupId."""
+
+  def test_valid_process_group_id(self) -> None:
+    pg = ProcessGroupId([0, 1, 2])
+    self.assertEqual(pg.ranks, (0, 1, 2))
+    self.assertIsNone(pg.world_size)
+
+  def test_valid_with_world_size(self) -> None:
+    pg = ProcessGroupId([0, 2, 3], world_size=4)
+    self.assertEqual(pg.ranks, (0, 2, 3))
+    self.assertEqual(pg.world_size, 4)
+
+  def test_empty_ranks_raises_value_error(self) -> None:
+    with self.assertRaisesRegex(ValueError, "ranks cannot be empty"):
+      ProcessGroupId([])
+
+  def test_negative_rank_raises_value_error(self) -> None:
+    with self.assertRaisesRegex(ValueError, "All ranks must be non-negative"):
+      ProcessGroupId([-1, 0])
+
+  def test_invalid_world_size_raises_value_error(self) -> None:
+    with self.assertRaisesRegex(
+        ValueError, "world_size must be strictly positive"
+    ):
+      ProcessGroupId([0, 1], world_size=0)
+    with self.assertRaisesRegex(
+        ValueError, "world_size must be strictly positive"
+    ):
+      ProcessGroupId([0, 1], world_size=-2)
+
+  def test_rank_out_of_world_size_raises_value_error(self) -> None:
+    with self.assertRaisesRegex(ValueError, r"All ranks must be in \[0, 4\)"):
+      ProcessGroupId([0, 4], world_size=4)
+    with self.assertRaisesRegex(ValueError, r"All ranks must be in \[0, 2\)"):
+      ProcessGroupId([0, 2], world_size=2)
+
+  def test_duplicate_ranks_raises_value_error(self) -> None:
+    with self.assertRaisesRegex(
+        ValueError, "ranks must not contain duplicates"
+    ):
+      ProcessGroupId([0, 1, 1])
+
+  def test_unsorted_ranks_raises_value_error(self) -> None:
+    with self.assertRaisesRegex(
+        ValueError, "ranks must be sorted in ascending order"
+    ):
+      ProcessGroupId([1, 0])
+    with self.assertRaisesRegex(
+        ValueError, "ranks must be sorted in ascending order"
+    ):
+      ProcessGroupId([0, 3, 2])
+
+  def test_hash_and_equality(self) -> None:
+    pg1 = ProcessGroupId([0, 1])
+    pg2 = ProcessGroupId([0, 1])
+    pg3 = ProcessGroupId([0, 2])
+    self.assertEqual(pg1, pg2)
+    self.assertNotEqual(pg1, pg3)
+    self.assertEqual(hash(pg1), hash(pg2))
+    self.assertEqual({pg1: "val"}[pg2], "val")
+
+  def test_iteration_len_indexing(self) -> None:
+    pg = ProcessGroupId([0, 1, 3])
+    self.assertLen(pg, 3)
+    self.assertEqual(list(pg), [0, 1, 3])
+    self.assertEqual(pg[0], 0)
+    self.assertEqual(pg[1], 1)
+    self.assertEqual(pg[2], 3)
 
 
 if __name__ == "__main__":
