@@ -28,6 +28,12 @@ package(
     default_applicable_licenses = ["//:license"],
 )
 
+# Certain ops like torch._scaled_mm_v2 require CUDA devices with
+# compute capability 8.9 or >= 9.0.
+# Both golden generation and GPU error tests must stay in sync with the same GPU
+# architecture tag.
+_REQUIRES_GPU_SM90 = "requires-gpu-sm90"
+
 torch_tpu_py_library(
     name = "oss_utils",
     testonly = True,
@@ -734,9 +740,7 @@ torch_tpu_py_test(
     # ops_test_vs_gpu target.
     shard_count = 3,
     tags = [
-        # Certain ops like torch._scaled_mm_v2 require CUDA devices with
-        # compute capability 8.9 or >= 9.0
-        "requires-gpu-sm90",
+        _REQUIRES_GPU_SM90,
     ],
     deps = [
         ":dynamism_test_utils",
@@ -766,9 +770,7 @@ torch_tpu_py_test(
     nolocal = "slow test",
     shard_count = 3,
     tags = [
-        # Certain ops like torch._scaled_mm_v2 require CUDA devices with
-        # compute capability 8.9 or >= 9.0
-        "requires-gpu-sm90",
+        _REQUIRES_GPU_SM90,
     ],
     deps = [
         ":dynamism_test_utils",
@@ -1320,7 +1322,7 @@ torch_tpu_py_test(
     shard_count = 4,
     tags = [
         "nosan",  # *san builds are low-value for error tests.
-        "requires-gpu-nvidia",
+        _REQUIRES_GPU_SM90,
         "wheel_test_excluded",
     ],
     deps = [

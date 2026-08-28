@@ -7707,7 +7707,7 @@ Device-side assertion tracking was not enabled by user.""",
         err_type,
         tpu="""scaled_mm(): expected the self argument to be a 2D tensor (matrix), got 1D of shape [16]""",
         gpu=re.compile(
-            r".*(mat1 must be a matrix|mat_a must be a matrix|self must be a 2D"
+            r".*(mat1 must be a matrix|mat_a must be a matrix|self must be a"
             r" matrix|torch\._scaled_mm.*is only supported on CUDA devices).*",
             re.DOTALL,
         ),
