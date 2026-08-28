@@ -93,7 +93,6 @@ SDPA_CONFIGS = (
         qk_head_dim=64,
         v_head_dim=64,
         is_causal=True,
-        backend=torch.nn.attention.SDPBackend.OVERRIDEABLE,
     ),
     # Cross-Attention.
     SdpaConfig(
@@ -228,7 +227,27 @@ SDPA_CONFIGS = (
         v_head_dim=64,
         is_causal=False,
         requires_grad=False,
-        backend=torch.nn.attention.SDPBackend.OVERRIDEABLE,
+    ),
+    SdpaConfig(
+        q_seq_len=123,
+        kv_seq_len=123,
+        q_num_heads=8,
+        kv_num_heads=8,
+        qk_head_dim=64,
+        v_head_dim=64,
+        is_causal=True,
+        requires_grad=True,
+    ),
+    SdpaConfig(
+        q_seq_len=1000,
+        kv_seq_len=1000,
+        q_num_heads=8,
+        kv_num_heads=8,
+        qk_head_dim=64,
+        v_head_dim=64,
+        is_causal=False,
+        attn_bias_type=torch.bfloat16,
+        requires_grad=True,
     ),
 )
 

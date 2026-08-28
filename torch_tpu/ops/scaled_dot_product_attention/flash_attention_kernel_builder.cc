@@ -40,6 +40,7 @@
 #include "c10/core/ScalarType.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -84,10 +85,65 @@ absl::Status CheckDtype(at::ScalarType dtype) {
          << "unsupported dtype for sdpa custom kernel";
 }
 
+mlir::MlirOp PadSequenceDim(mlir::MlirOp input, int64_t seq_dim,
+                            int64_t target_len) {
+  auto input_type = GetTensorTypeOrDie(input);
+  int64_t current_len = input_type.getShape()[seq_dim];
+  if (current_len == target_len) {
+    return input;
+  }
+  int64_t rank = input_type.getRank();
+  Dimensions low_padding(rank, 0);
+  Dimensions high_padding(rank, 0);
+  high_padding[seq_dim] = target_len - current_len;
+  Dimensions interior_padding(rank, 0);
+  auto zero_pad_value =
+      MakeScalarConstant(input.getBuilder(), 0.0, input_type.getElementType());
+  return mlir::stablehlo::Pad(input, zero_pad_value, low_padding, high_padding,
+                              interior_padding);
+}
+
+mlir::MlirOp SliceSequenceDim(mlir::MlirOp input, int64_t seq_dim,
+                              int64_t target_len) {
+  auto input_type = GetTensorTypeOrDie(input);
+  int64_t current_len = input_type.getShape()[seq_dim];
+  if (current_len == target_len) {
+    return input;
+  }
+  int64_t rank = input_type.getRank();
+  Dimensions start_indices(rank, 0);
+  Dimensions limit_indices(input_type.getShape().begin(),
+                           input_type.getShape().end());
+  limit_indices[seq_dim] = target_len;
+  Strides strides(rank, 1);
+  return mlir::stablehlo::Slice(input, start_indices, limit_indices, strides);
+}
+
+// Pad the mask if the sequence lengths are not the same as the padded sequence
+// lengths.
+// Note: it can be padded with 0 as the bias will be combined with the
+// structured bias within the kernel.
+mlir::MlirOp PadBias(mlir::MlirOp bias, int64_t padded_q_len,
+                     int64_t padded_kv_len) {
+  auto bias_type = GetTensorTypeOrDie(bias);
+  if (bias_type.getShape()[2] != 1) {
+    bias = PadSequenceDim(bias, 2, padded_q_len);
+  }
+  if (bias_type.getShape()[3] != 1) {
+    bias = PadSequenceDim(bias, 3, padded_kv_len);
+  }
+  return bias;
+}
+
+int64_t RoundUpToTileSize(int64_t seq_len, int64_t tile_size) {
+  return llvm::divideCeil(seq_len, tile_size) * tile_size;
+}
+
 absl::StatusOr<mlir::torch_tpu::FlashAttnConfig> CreateFlashAttnConfig(
     const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
     const std::optional<at::Tensor>& attn_bias, bool is_causal,
-    std::optional<double> scale, bool return_lse) {
+    std::optional<double> scale, bool return_lse,
+    mlir::torch_tpu::Tiling tiling) {
   if (is_causal && IsDefined(attn_bias)) {
     return TT_ERROR(error::kInvalidArgument)
            << "Causal mask and attn bias are mutually exclusive.";
@@ -124,6 +180,8 @@ absl::StatusOr<mlir::torch_tpu::FlashAttnConfig> CreateFlashAttnConfig(
   config.vo_head_dim = vo_head_dim;
   config.q_sequence_length = q_seq_len;
   config.kv_sequence_length = kv_seq_len;
+  config.padded_q_sequence_length = RoundUpToTileSize(q_seq_len, tiling.qt);
+  config.padded_kv_sequence_length = RoundUpToTileSize(kv_seq_len, tiling.kt);
   config.is_causal = is_causal;
   config.scale = scale.value_or(1.0 / std::sqrt(head_dim));
   config.has_attn_bias = IsDefined(attn_bias);
@@ -150,9 +208,14 @@ absl::StatusOr<mlir::torch_tpu::FlashAttnConfig> CreateFlashAttnConfig(
 }
 
 mlir::torch_tpu::Tiling CreateTiling(int64_t q_seq_len, int64_t k_seq_len) {
+  constexpr int64_t kMinTileSize = 128;
+  int64_t qt = std::min(mlir::torch_tpu::kDefaultQTileSize,
+                        RoundUpToTileSize(q_seq_len, kMinTileSize));
+  int64_t kt = std::min(mlir::torch_tpu::kDefaultKTileSize,
+                        RoundUpToTileSize(k_seq_len, kMinTileSize));
   return {
-      .qt = std::min(mlir::torch_tpu::kDefaultQTileSize, q_seq_len),
-      .kt = std::min(mlir::torch_tpu::kDefaultKTileSize, k_seq_len),
+      .qt = std::max(kMinTileSize, qt),
+      .kt = std::max(kMinTileSize, kt),
   };
 }
 
@@ -237,9 +300,10 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
   int64_t k_seq_len = key.size(key.ndimension() - 2);
   const auto tiling = CreateTiling(q_seq_len, k_seq_len);
 
-  TT_ASSIGN_OR_RETURN(auto config_init,
-                      CreateFlashAttnConfig(query, key, value, attn_bias,
-                                            is_causal, scale, return_lse));
+  TT_ASSIGN_OR_RETURN(
+      auto config_init,
+      CreateFlashAttnConfig(query, key, value, attn_bias, is_causal, scale,
+                            return_lse, tiling));
 
   int rank = query.ndimension();
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
@@ -272,8 +336,18 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
         ReplicateKV(key_4d, value_4d, config.num_heads, config.kv_num_heads);
     config.kv_num_heads = config.num_heads;
 
+    query_4d = PadSequenceDim(query_4d, 2, config.padded_q_sequence_length);
+    key_4d = PadSequenceDim(key_4d, 2, config.padded_kv_sequence_length);
+    value_4d = PadSequenceDim(value_4d, 2, config.padded_kv_sequence_length);
+
+    if (mask_mlir.isValid()) {
+      mask_mlir = PadBias(mask_mlir, config.padded_q_sequence_length,
+                          config.padded_kv_sequence_length);
+    }
+
     Dimensions out_dims_4d = {config.batch_size, config.num_heads,
-                              config.q_sequence_length, config.vo_head_dim};
+                              config.padded_q_sequence_length,
+                              config.vo_head_dim};
     auto out_type = mlir::RankedTensorType::get(
         out_dims_4d, GetTensorTypeOrDie(query_mlir).getElementType());
 
@@ -288,7 +362,7 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
     Dimensions lse_dims(query_type.getShape().begin(),
                         query_type.getShape().end() - 1);
     Dimensions lse_dims_4d = {config.batch_size, config.num_heads, 1,
-                              config.q_sequence_length};
+                              config.padded_q_sequence_length};
 
     if (config.return_lse) {
       // LSE is 4D [B, N, 1, S]
@@ -304,13 +378,18 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
         builder.getOpBuilder(), builder.getLoc(), kernel_mlir, operands,
         result_types);
 
+    mlir::MlirOp out_padded(builder, custom_call.getResult(0));
+    mlir::MlirOp out_sliced =
+        SliceSequenceDim(out_padded, 2, config.q_sequence_length);
+
     DynamicMlirOpResults results;
-    results.push_back(unflatten_batch_dims(
-        mlir::MlirOp(builder, custom_call.getResult(0)), out_dims));
+    results.push_back(unflatten_batch_dims(out_sliced, out_dims));
 
     if (config.return_lse) {
-      results.push_back(unflatten_batch_dims(
-          mlir::MlirOp(builder, custom_call.getResult(1)), lse_dims));
+      mlir::MlirOp lse_padded(builder, custom_call.getResult(1));
+      mlir::MlirOp lse_sliced =
+          SliceSequenceDim(lse_padded, 3, config.q_sequence_length);
+      results.push_back(unflatten_batch_dims(lse_sliced, lse_dims));
     }
 
     return results;
@@ -383,7 +462,7 @@ CreateFlashAttentionBackwardKernel(
 
   TT_ASSIGN_OR_RETURN(auto config_init,
                       CreateFlashAttnConfig(query, key, value, attn_bias,
-                                            is_causal, scale, false));
+                                            is_causal, scale, false, tiling));
 
   int rank = query.ndimension();
 
@@ -441,6 +520,22 @@ CreateFlashAttentionBackwardKernel(
     mlir::MlirOp logsumexp_4d =
         mlir::stablehlo::Reshape(logsumexp_mlir, aux_dims_4d);
 
+    query_batch =
+        PadSequenceDim(query_batch, 2, config.padded_q_sequence_length);
+    grad_out_batch =
+        PadSequenceDim(grad_out_batch, 2, config.padded_q_sequence_length);
+    key_batch = PadSequenceDim(key_batch, 2, config.padded_kv_sequence_length);
+    value_batch =
+        PadSequenceDim(value_batch, 2, config.padded_kv_sequence_length);
+    logsumexp_4d =
+        PadSequenceDim(logsumexp_4d, 3, config.padded_q_sequence_length);
+    di_4d = PadSequenceDim(di_4d, 3, config.padded_q_sequence_length);
+
+    if (mask_mlir.isValid()) {
+      mask_mlir = PadBias(mask_mlir, config.padded_q_sequence_length,
+                          config.padded_kv_sequence_length);
+    }
+
     std::vector<mlir::Value> dkv_inputs = {
         query_batch.getValue(),  key_batch.getValue(),
         value_batch.getValue(),  grad_out_batch.getValue(),
@@ -460,6 +555,8 @@ CreateFlashAttentionBackwardKernel(
     mlir::MlirOp out_batch =
         flatten_batch_dims(out_mlir, config.batch_size, rank - 3);
 
+    out_batch = PadSequenceDim(out_batch, 2, config.padded_q_sequence_length);
+
     std::vector<mlir::Value> dq_inputs = {
         query_batch.getValue(),  key_batch.getValue(),
         value_batch.getValue(),  grad_out_batch.getValue(),
@@ -478,9 +575,16 @@ CreateFlashAttentionBackwardKernel(
         builder.getOpBuilder(), builder.getLoc(), dq_kernel_mlir, dq_inputs,
         {query_batch.getType()});
 
-    mlir::MlirOp grad_key_batch(builder, dkv_custom_call.getResult(0));
-    mlir::MlirOp grad_value_batch(builder, dkv_custom_call.getResult(1));
-    mlir::MlirOp grad_query_batch(builder, dq_custom_call.getResult(0));
+    mlir::MlirOp grad_key_batch_padded(builder, dkv_custom_call.getResult(0));
+    mlir::MlirOp grad_value_batch_padded(builder, dkv_custom_call.getResult(1));
+    mlir::MlirOp grad_query_batch_padded(builder, dq_custom_call.getResult(0));
+
+    mlir::MlirOp grad_key_batch =
+        SliceSequenceDim(grad_key_batch_padded, 2, config.kv_sequence_length);
+    mlir::MlirOp grad_value_batch =
+        SliceSequenceDim(grad_value_batch_padded, 2, config.kv_sequence_length);
+    mlir::MlirOp grad_query_batch =
+        SliceSequenceDim(grad_query_batch_padded, 2, config.q_sequence_length);
 
     TT_ASSIGN_OR_RETURN(
         std::tie(grad_key_batch, grad_value_batch),

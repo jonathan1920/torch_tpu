@@ -146,12 +146,18 @@ void NInfTile(ImplicitLocOpBuilder& b, Value arg) {
   StoreTile(b, ninf_vector, arg);
 }
 
-Value GetCausalBias(ImplicitLocOpBuilder& b, Value row_block_idx,
-                    Value col_block_idx, int64_t qt, int64_t kt) {
+Value GetStructuredBias(ImplicitLocOpBuilder& b, Value row_block_idx,
+                        Value col_block_idx, int64_t qt, int64_t kt,
+                        int64_t q_seq_len, int64_t kv_seq_len, bool is_causal) {
+  bool mask_q_seq_len = (q_seq_len % qt) != 0;
+  bool mask_kv_seq_len = (kv_seq_len % kt) != 0;
+
+  if (!is_causal && !mask_q_seq_len && !mask_kv_seq_len) {
+    return nullptr;
+  }
+
   Type i32 = b.getI32Type();
-  Type f32 = b.getF32Type();
   VectorType mask_shape_i32 = VectorType::get({qt, kt}, i32);
-  VectorType mask_shape_f32 = VectorType::get({qt, kt}, f32);
 
   Value row_iota = CreateIotaOp(b, mask_shape_i32, 0);
   Value col_iota = CreateIotaOp(b, mask_shape_i32, 1);
@@ -169,14 +175,39 @@ Value GetCausalBias(ImplicitLocOpBuilder& b, Value row_block_idx,
   Value row_indices = arith::AddIOp::create(b, row_iota, row_offset_vec);
   Value col_indices = arith::AddIOp::create(b, col_iota, col_offset_vec);
 
-  Value causal_mask = arith::CmpIOp::create(b, arith::CmpIPredicate::sge,
-                                            row_indices, col_indices);
+  Value valid_mask = nullptr;
+  if (is_causal) {
+    valid_mask = arith::CmpIOp::create(b, arith::CmpIPredicate::sge,
+                                       row_indices, col_indices);
+  }
 
-  Value zero_vector = SplatConstant(b, mask_shape_f32, 0.0f);
-  Value mask_vector = SplatConstant(b, mask_shape_f32, kLogitsMin);
-  Value select_op =
-      arith::SelectOp::create(b, causal_mask, zero_vector, mask_vector);
-  return arith::MaximumFOp::create(b, select_op, mask_vector);
+  if (mask_q_seq_len) {
+    auto q_seq_len_const =
+        arith::ConstantOp::create(b, b.getI32IntegerAttr(q_seq_len));
+    Value q_seq_len_vec =
+        vector::BroadcastOp::create(b, mask_shape_i32, q_seq_len_const);
+    Value row_valid = arith::CmpIOp::create(b, arith::CmpIPredicate::slt,
+                                            row_indices, q_seq_len_vec);
+    valid_mask = valid_mask ? arith::AndIOp::create(b, valid_mask, row_valid)
+                            : row_valid;
+  }
+
+  if (mask_kv_seq_len) {
+    auto kv_seq_len_const =
+        arith::ConstantOp::create(b, b.getI32IntegerAttr(kv_seq_len));
+    Value kv_seq_len_vec =
+        vector::BroadcastOp::create(b, mask_shape_i32, kv_seq_len_const);
+    Value col_valid = arith::CmpIOp::create(b, arith::CmpIPredicate::slt,
+                                            col_indices, kv_seq_len_vec);
+    valid_mask = valid_mask ? arith::AndIOp::create(b, valid_mask, col_valid)
+                            : col_valid;
+  }
+
+  VectorType bias_shape = VectorType::get({qt, kt}, b.getF32Type());
+  Value zero_vector = SplatConstant(b, bias_shape, 0.0f);
+  Value masking_vector = SplatConstant(b, bias_shape, kLogitsMin);
+
+  return arith::SelectOp::create(b, valid_mask, zero_vector, masking_vector);
 }
 
 Value ReduceBroadcastLane(ImplicitLocOpBuilder& b, Value input,

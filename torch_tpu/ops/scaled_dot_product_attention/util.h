@@ -43,9 +43,11 @@ void ZeroTile(ImplicitLocOpBuilder& b, Value arg);
 // Initialize a 2D tile with -inf.
 void NInfTile(ImplicitLocOpBuilder& b, Value arg);
 
-// Get the causal bias for the given block indices.
-Value GetCausalBias(ImplicitLocOpBuilder& b, Value row_block_idx,
-                    Value col_block_idx, int64_t qt, int64_t kt);
+// Get the bias vector (causal and/or sequence length bounds check)
+// for the given block indices. Returns nullptr if no bias is needed.
+Value GetStructuredBias(ImplicitLocOpBuilder& b, Value row_block_idx,
+                        Value col_block_idx, int64_t qt, int64_t kt,
+                        int64_t q_seq_len, int64_t kv_seq_len, bool is_causal);
 
 // Reduce the 2D input to a 1D across the lane dimension and then broadcast the
 // results lane dimension to the given size.

@@ -82,7 +82,7 @@ struct SharedBwdResult {
 SharedBwdResult ComputeSharedBackwardLogic(
     ImplicitLocOpBuilder& fn_builder, const FlashAttnConfig& config, int64_t qt,
     int64_t kt, Value q_2d, Value k_2d, Value v_2d, Value do_2d, Value lse_tile,
-    Value di_tile, Value bias, Value row_block_idx, Value col_block_idx,
+    Value di_tile, Value user_bias, Value row_block_idx, Value col_block_idx,
     Type oty, Type ity, IntegerType i32, MLIRContext* context) {
   Type vector_type_qt_kt = VectorType::get({qt, kt}, oty);
   Value unscaled_sij = CreateMatmul(fn_builder, q_2d, k_2d,
@@ -90,8 +90,17 @@ SharedBwdResult ComputeSharedBackwardLogic(
 
   Value sij = ScaleValue(fn_builder, unscaled_sij, config.scale);
 
-  if (config.is_causal) {
-    bias = GetCausalBias(fn_builder, row_block_idx, col_block_idx, qt, kt);
+  Value bias = GetStructuredBias(fn_builder, row_block_idx, col_block_idx, qt,
+                                 kt, config.q_sequence_length,
+                                 config.kv_sequence_length, config.is_causal);
+
+  if (user_bias) {
+    user_bias = ConvertElementType(fn_builder, oty, user_bias);
+    if (bias) {
+      bias = AddFOp::create(fn_builder, user_bias, bias);
+    } else {
+      bias = user_bias;
+    }
   }
 
   if (bias) {
@@ -311,8 +320,9 @@ void SetBackwardKernelAttributes(const FlashAttnConfig& config,
   MLIRContext* context = builder.getContext();
 
   SmallVector<int64_t> iteration_bounds = {
-      config.batch_size, config.num_heads, config.q_sequence_length / tiling.qt,
-      config.kv_sequence_length / tiling.kt};
+      config.batch_size, config.num_heads,
+      config.padded_q_sequence_length / tiling.qt,
+      config.padded_kv_sequence_length / tiling.kt};
 
   int batch_idx = 0;
   int heads_idx = 1;
@@ -407,10 +417,10 @@ absl::StatusOr<std::string> CreateBackwardDkvKernel(
   ImplicitLocOpBuilder module_builder(module->getLoc(),
                                       module->getBodyRegion());
 
-  if (config.q_sequence_length % tiling.qt != 0 ||
-      config.kv_sequence_length % tiling.kt != 0) {
+  if (config.padded_q_sequence_length % tiling.qt != 0 ||
+      config.padded_kv_sequence_length % tiling.kt != 0) {
     return TT_ERROR(::torch_tpu::error::kInvalidArgument)
-           << "padding not supported";
+           << "Padded sequence lengths must be divisible by tile sizes.";
   }
 
   auto fn = buildBackwardDkvModule(module_builder, config, tiling);
@@ -541,10 +551,10 @@ absl::StatusOr<std::string> CreateBackwardDqKernel(
   ImplicitLocOpBuilder module_builder(module->getLoc(),
                                       module->getBodyRegion());
 
-  if (config.q_sequence_length % tiling.qt != 0 ||
-      config.kv_sequence_length % tiling.kt != 0) {
+  if (config.padded_q_sequence_length % tiling.qt != 0 ||
+      config.padded_kv_sequence_length % tiling.kt != 0) {
     return TT_ERROR(::torch_tpu::error::kInvalidArgument)
-           << "padding not supported";
+           << "Padded sequence lengths must be divisible by tile sizes.";
   }
 
   auto fn = buildBackwardDqModule(module_builder, config, tiling);

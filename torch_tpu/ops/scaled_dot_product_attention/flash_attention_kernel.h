@@ -35,8 +35,14 @@ struct FlashAttnConfig {
   int64_t kv_num_heads;
   int64_t qk_head_dim;
   int64_t vo_head_dim;
+  // Unpadded sequence lengths for the kernel.
+  // These are the actual input sequence lengths used for masking.
   int64_t q_sequence_length;
   int64_t kv_sequence_length;
+  // Padded sequence lengths for the kernel, these must be a multiple of the
+  // tiling sizes.
+  int64_t padded_q_sequence_length;
+  int64_t padded_kv_sequence_length;
   bool is_causal;
   float scale;
   // Broadcast dimensions of the mask.

@@ -97,9 +97,9 @@ void SetKernelAttributes(llvm::ArrayRef<const int64_t> qk_dimensions,
   absl::InlinedVector<int64_t, 4> iteration_bounds = {qk_dimensions.begin(),
                                                       qk_dimensions.end()};
   iteration_bounds[iteration_bounds.size() - 1] =
-      config.kv_sequence_length / tiling.kt;
+      config.padded_kv_sequence_length / tiling.kt;
   iteration_bounds[iteration_bounds.size() - 2] =
-      config.q_sequence_length / tiling.qt;
+      config.padded_q_sequence_length / tiling.qt;
   fn->setAttr("iteration_bounds",
               builder.getDenseI64ArrayAttr(
                   {iteration_bounds.begin(), iteration_bounds.end()}));
@@ -264,15 +264,20 @@ func::FuncOp buildModule(ImplicitLocOpBuilder& module_builder,
 
   sij = ScaleValue(fn_builder, sij, config.scale);
 
-  Value bias = nullptr;
-  if (config.is_causal) {
-    Value row_block_idx = fn.getArgument(2);
-    Value col_block_idx = fn.getArgument(3);
-    bias = GetCausalBias(fn_builder, row_block_idx, col_block_idx, qt, kt);
-  }
+  Value row_block_idx = fn.getArgument(2);
+  Value col_block_idx = fn.getArgument(3);
+  Value bias = GetStructuredBias(fn_builder, row_block_idx, col_block_idx, qt,
+                                 kt, config.q_sequence_length,
+                                 config.kv_sequence_length, config.is_causal);
 
   if (mask_arg) {
-    bias = LoadTile(fn_builder, mask_arg);
+    Value user_bias = LoadTile(fn_builder, mask_arg);
+    user_bias = ConvertElementType(fn_builder, f32, user_bias);
+    if (bias) {
+      bias = AddFOp::create(fn_builder, bias, user_bias);
+    } else {
+      bias = user_bias;
+    }
   }
 
   if (bias) {
@@ -358,10 +363,10 @@ absl::StatusOr<std::string> CreateKernel(const FlashAttnConfig& config,
       ModuleOp::create(builder, builder.getUnknownLoc());
   ImplicitLocOpBuilder module_builder(module->getLoc(),
                                       module->getBodyRegion());
-  if (config.q_sequence_length % tiling.qt != 0 ||
-      config.kv_sequence_length % tiling.kt != 0) {
+  if (config.padded_q_sequence_length % tiling.qt != 0 ||
+      config.padded_kv_sequence_length % tiling.kt != 0) {
     return TT_ERROR(::torch_tpu::error::kInvalidArgument)
-           << "padding not supported";
+           << "Padded sequence lengths must be divisible by tile sizes.";
   }
   auto fn = buildModule(module_builder, config, tiling);
 

@@ -19,6 +19,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -32,11 +33,14 @@
 #include "absl/types/span.h"
 #include "c10/core/DeviceType.h"
 #include "c10/core/ScalarType.h"
+#include "c10/core/SymInt.h"
 #include "c10/util/Exception.h"
 #include "c10/util/Optional.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_names.h"
@@ -60,29 +64,35 @@ struct SdpaKernelKey {
   bool operator==(const SdpaKernelKey& other) const = default;
 };
 
-bool IsSupportedFlashAttentionShape(const at::Tensor& query,
-                                    const at::Tensor& key,
-                                    const at::Tensor& value) {
+bool HasDynamicShape(const at::Tensor& tensor) {
+  if (!tensor.defined()) {
+    return false;
+  }
+  return tensor.unsafeGetTensorImpl()->has_symbolic_sizes_strides();
+}
+
+bool IsSupportedFlashAttentionShape(
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+    const std::optional<at::Tensor>& attn_mask = std::nullopt) {
+  // Flash attention (Mosaic) does not support dynamic shapes / bounded
+  // dynamism.
+  if (HasDynamicShape(query) || HasDynamicShape(key) ||
+      HasDynamicShape(value) ||
+      (attn_mask.has_value() && HasDynamicShape(*attn_mask))) {
+    return false;
+  }
+
   // TODO(elliotenglish): Add support for attn_mask and attributes.
   constexpr int min_block_size = 128;
-  constexpr int config_block_size = 512;
   constexpr int min_batch_size = 1;
 
-  // TODO(b/483131156): Support all shapes.
-  // We don't support all shapes because the kernel is specialized to
-  // block_size 512 and we don't want to generate a new kernel for every
-  // possible sequence length and head dim.
   bool has_batch = query.ndimension() >= 4 &&
                    get_batch_size(query.sizes()) >= min_batch_size;
-  bool valid_seq_lens =
-      query.size(query.ndimension() - 2) % config_block_size == 0 &&
-      key.size(key.ndimension() - 2) % config_block_size == 0 &&
-      value.size(value.ndimension() - 2) % config_block_size == 0;
   bool valid_head_dim =
       (query.size(query.ndimension() - 1) < min_block_size ||
        query.size(query.ndimension() - 1) % min_block_size == 0);
 
-  return has_batch && valid_seq_lens && valid_head_dim;
+  return has_batch && valid_head_dim;
 }
 
 }  // namespace
@@ -132,7 +142,7 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
               (query.scalar_type() == at::ScalarType::Float ||
                query.scalar_type() == at::ScalarType::BFloat16);
           if (supported_flash_dtype &&
-              IsSupportedFlashAttentionShape(query, key, value) &&
+              IsSupportedFlashAttentionShape(query, key, value, attn_mask) &&
               consistent_ranks && !has_dropout) {
             return static_cast<int64_t>(at::SDPBackend::flash_attention);
           } else {
@@ -142,6 +152,7 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
                 "TorchTPU only supports FLASH_ATTENTION SDPBackend "
                 "for scaled_dot_product_attention when these conditions are "
                 "met:\n"
+                "- inputs have static shapes\n"
                 "- dropout_p is 0.0 (current: ",
                 dropout_p,
                 ")\n"
@@ -157,11 +168,6 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
                 ")\n"
                 "- batch size is at least 1 (current: ",
                 get_batch_size(query.sizes()),
-                ")\n"
-                "- Sequence lengths (dim - 2) are divisible by 512 (query: ",
-                query.size(query.ndimension() - 2),
-                ", key: ", key.size(key.ndimension() - 2),
-                ", value: ", value.size(value.ndimension() - 2),
                 ")\n"
                 "- Head dimension (dim - 1) is less than 128 or divisible by "
                 "128 "
