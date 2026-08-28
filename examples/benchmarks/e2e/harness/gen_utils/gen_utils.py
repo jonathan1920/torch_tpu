@@ -192,7 +192,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "all_mpnet_base_v2_inference_gen": {
+    "all_mpnet_base_v2_forward_gen": {
         "skipped_run_modes": {
             "compiled",
         },
@@ -202,7 +202,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "compiled",
         },
     },
-    "altclip_inference_gen": {
+    "altclip_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -215,7 +215,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "aristo_roberta_inference_gen": {
+    "aristo_roberta_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -229,7 +229,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "ast_finetuned_audioset_10_10_0_4593_inference_gen": {
+    "ast_finetuned_audioset_10_10_0_4593_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -243,7 +243,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "audio_flamingo_3_hf_inference_gen": {
+    "audio_flamingo_3_hf_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -257,7 +257,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "awesome_fb_model_inference_gen": {
+    "awesome_fb_model_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -271,7 +271,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "bark_small_inference_gen": {
+    "bark_small_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -285,7 +285,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "bart_large_mnli_inference_gen": {
+    "bart_large_mnli_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -299,7 +299,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "beit_base_finetuned_ade_640_640_inference_gen": {
+    "beit_base_finetuned_ade_640_640_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -320,7 +320,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "bert_base_uncased_finetuned_semeval2020_task4a_append_e2_b32_l5e5_inference_gen": {
+    "bert_base_uncased_finetuned_semeval2020_task4a_append_e2_b32_l5e5_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -334,7 +334,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "bert_base_uncased_finetuned_semeval2020_task4b_base_e2_b32_l3e5_inference_gen": {
+    "bert_base_uncased_finetuned_semeval2020_task4b_base_e2_b32_l3e5_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -348,7 +348,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "bert_base_uncased_finetuned_swag_e1_b16_l5e5_inference_gen": {
+    "bert_base_uncased_finetuned_swag_e1_b16_l5e5_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -398,7 +398,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "clap_htsat_fused_inference_gen": {
+    "clap_htsat_fused_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -412,7 +412,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "clip_vit_base_patch32_inference_gen": {
+    "clip_vit_base_patch32_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -426,7 +426,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "clipseg_rd64_refined_inference_gen": {
+    "clipseg_rd64_refined_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -440,7 +440,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "coco_panoptic_eomt_large_640_inference_gen": {
+    "coco_panoptic_eomt_large_640_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -475,7 +475,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "convnextv2_tiny_1k_224_inference_gen": {
+    "convnextv2_tiny_1k_224_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -489,7 +489,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "cosmos3_nano_gptq_4bit_inference_gen": {
+    "cosmos3_nano_gptq_4bit_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -503,7 +503,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "csm_1b_inference_gen": {
+    "csm_1b_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -516,7 +516,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "cuneiformbase_400m_inference_gen": {
+    "cuneiformbase_400m_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -530,7 +530,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "ddpm_cifar10_32_inference_gen": {
+    "ddpm_cifar10_32_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -556,7 +556,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "compute_loss": dummy_compute_loss,
         },
     },
-    "decision_transformer_gym_hopper_medium_inference_gen": {
+    "decision_transformer_gym_hopper_medium_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -570,7 +570,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "deformable_detr_doclaynet_inference_gen": {
+    "deformable_detr_doclaynet_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -584,7 +584,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "deplot_inference_gen": {
+    "deplot_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -598,7 +598,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "depth_anything_v2_small_hf_inference_gen": {
+    "depth_anything_v2_small_hf_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -612,7 +612,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "depthpro_hf_inference_gen": {
+    "depthpro_hf_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -626,7 +626,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "detr_resnet_50_inference_gen": {
+    "detr_resnet_50_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -645,7 +645,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "compute_loss": dummy_compute_loss,
         },
     },
-    "dinov2_with_registers_base_inference_gen": {
+    "dinov2_with_registers_base_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -661,7 +661,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "compute_loss": dummy_compute_loss,
         },
     },
-    "dinov3_vitl16_pretrain_lvd1689m_inference_gen": {
+    "dinov3_vitl16_pretrain_lvd1689m_forward_gen": {
         "skipped_run_modes": {
             "compiled",
         },
@@ -680,7 +680,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "docling_layout_heron_inference_gen": {
+    "docling_layout_heron_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -694,7 +694,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "dpt_hybrid_midas_inference_gen": {
+    "dpt_hybrid_midas_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -708,7 +708,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "e5_omni_7b_inference_gen": {
+    "e5_omni_7b_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -722,7 +722,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "edgetam_hf_inference_gen": {
+    "edgetam_hf_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -736,7 +736,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "fastspeech2_conformer_inference_gen": {
+    "fastspeech2_conformer_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -750,7 +750,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "fastspeech2_conformer_with_hifigan_inference_gen": {
+    "fastspeech2_conformer_with_hifigan_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -778,7 +778,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "gemma_4_12b_it_assistant_inference_gen": {
+    "gemma_4_12b_it_assistant_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -792,7 +792,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "gemma_4_12b_it_inference_gen": {
+    "gemma_4_12b_it_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -806,7 +806,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "gemma_4_31b_it_assistant_inference_gen": {
+    "gemma_4_31b_it_assistant_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -834,7 +834,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "glm_image_sdnq_4bit_dynamic_inference_gen": {
+    "glm_image_sdnq_4bit_dynamic_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -854,7 +854,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "glpn_kitti_inference_gen": {
+    "glpn_kitti_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -873,7 +873,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "compute_loss": dummy_compute_loss,
         },
     },
-    "granite_embedding_small_english_r2_inference_gen": {
+    "granite_embedding_small_english_r2_forward_gen": {
         "skipped_run_modes": {
             "compiled",
         },
@@ -885,7 +885,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "granite_speech_3_3_2b_inference_gen": {
+    "granite_speech_3_3_2b_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -899,7 +899,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "granite_timeseries_patchtsmixer_inference_gen": {
+    "granite_timeseries_patchtsmixer_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -913,7 +913,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "granite_timeseries_patchtst_inference_gen": {
+    "granite_timeseries_patchtst_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -927,7 +927,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "grounding_dino_base_inference_gen": {
+    "grounding_dino_base_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -941,7 +941,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "grounding_dino_tiny_inference_gen": {
+    "grounding_dino_tiny_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -955,7 +955,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "gte_modernbert_base_inference_gen": {
+    "gte_modernbert_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
         },
@@ -974,7 +974,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "higgs_tts_2_3b_base_inference_gen": {
+    "higgs_tts_2_3b_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -995,7 +995,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "janus_pro_1b_inference_gen": {
+    "janus_pro_1b_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -1008,7 +1008,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "klue_roberta_large_copa_finetuned_v1_inference_gen": {
+    "klue_roberta_large_copa_finetuned_v1_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1022,7 +1022,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "kosmos_2_patch14_224_inference_gen": {
+    "kosmos_2_patch14_224_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1036,7 +1036,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "lahja_sa_ahmad_v1_inference_gen": {
+    "lahja_sa_ahmad_v1_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1057,7 +1057,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "lightglue_superpoint_inference_gen": {
+    "lightglue_superpoint_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1071,7 +1071,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "llava_1_5_7b_hf_inference_gen": {
+    "llava_1_5_7b_hf_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1085,7 +1085,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "llava_next_video_7b_hf_inference_gen": {
+    "llava_next_video_7b_hf_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1099,7 +1099,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "llmdet_base_inference_gen": {
+    "llmdet_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1113,14 +1113,14 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "manga_ocr_base_inference_gen": {
+    "manga_ocr_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
             "eager_optimized",
         },
     },
-    "mask2former_swin_large_ade_semantic_inference_gen": {
+    "mask2former_swin_large_ade_semantic_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1141,7 +1141,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "metaclip_2_worldwide_giant_378_inference_gen": {
+    "metaclip_2_worldwide_giant_378_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1155,7 +1155,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "mgp_str_base_inference_gen": {
+    "mgp_str_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1169,7 +1169,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "minit2i_inference_gen": {
+    "minit2i_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1183,7 +1183,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "mmarco_mminilmv2_l12_h384_v1_inference_gen": {
+    "mmarco_mminilmv2_l12_h384_v1_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1197,7 +1197,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "modernbert_base_inference_gen": {
+    "modernbert_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
         },
@@ -1207,7 +1207,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "compiled",
         },
     },
-    "ms_marco_minilm_l6_v2_inference_gen": {
+    "ms_marco_minilm_l6_v2_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1242,7 +1242,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "music_flamingo_2601_hf_inference_gen": {
+    "music_flamingo_2601_hf_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -1255,7 +1255,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "musicgen_medium_inference_gen": {
+    "musicgen_medium_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1269,7 +1269,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "musicgen_melody_bella_ciao_inference_gen": {
+    "musicgen_melody_bella_ciao_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1283,7 +1283,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "musicgen_melody_inference_gen": {
+    "musicgen_melody_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1297,7 +1297,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "musicgen_small_inference_gen": {
+    "musicgen_small_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1318,7 +1318,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "nemotron_3_5_asr_streaming_0_6b_inference_gen": {
+    "nemotron_3_5_asr_streaming_0_6b_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1332,7 +1332,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "nemotron_3_embed_1b_bf16_inference_gen": {
+    "nemotron_3_embed_1b_bf16_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1353,7 +1353,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "nsfw_gen_anime_inference_gen": {
+    "nsfw_gen_anime_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1367,7 +1367,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "nsfw_image_detection_large_inference_gen": {
+    "nsfw_image_detection_large_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1388,7 +1388,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "nsfw_image_detector_inference_gen": {
+    "nsfw_image_detector_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1402,7 +1402,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "omdet_turbo_swin_tiny_hf_inference_gen": {
+    "omdet_turbo_swin_tiny_hf_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1416,7 +1416,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "oneformer_ade20k_swin_large_inference_gen": {
+    "oneformer_ade20k_swin_large_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1437,7 +1437,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "owlv2_base_patch16_ensemble_inference_gen": {
+    "owlv2_base_patch16_ensemble_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1451,7 +1451,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "owlvit_base_patch32_inference_gen": {
+    "owlvit_base_patch32_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1465,7 +1465,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "parakeet_ctc_1_1b_inference_gen": {
+    "parakeet_ctc_1_1b_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1486,7 +1486,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "pix2struct_tiny_random_inference_gen": {
+    "pix2struct_tiny_random_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1500,7 +1500,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "pp_doclayoutv3_safetensors_inference_gen": {
+    "pp_doclayoutv3_safetensors_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1514,7 +1514,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "privacy_filter_inference_gen": {
+    "privacy_filter_forward_gen": {
         "skipped_run_modes": {
             "compiled",
         },
@@ -1524,7 +1524,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "compiled",
         },
     },
-    "prompt_depth_anything_vits_hf_inference_gen": {
+    "prompt_depth_anything_vits_hf_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1552,7 +1552,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "qwen2_5_omni_3b_inference_gen": {
+    "qwen2_5_omni_3b_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1566,7 +1566,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "qwen2_5_vl_7b_instruct_inference_gen": {
+    "qwen2_5_vl_7b_instruct_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -1579,7 +1579,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "qwen2_audio_7b_instruct_inference_gen": {
+    "qwen2_audio_7b_instruct_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1600,7 +1600,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "qwen3_5_9b_inference_gen": {
+    "qwen3_5_9b_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1621,7 +1621,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "qwen3_vl_8b_instruct_inference_gen": {
+    "qwen3_vl_8b_instruct_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -1635,7 +1635,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "resnet_50_inference_gen": {
+    "resnet_50_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1656,7 +1656,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "roberta_large_finetuned_race_inference_gen": {
+    "roberta_large_finetuned_race_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1670,7 +1670,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "rtdetr_r101vd_coco_o365_inference_gen": {
+    "rtdetr_r101vd_coco_o365_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1691,7 +1691,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "sam2_hiera_base_plus_inference_gen": {
+    "sam2_hiera_base_plus_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1705,14 +1705,14 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "sam3_inference_gen": {
+    "sam3_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
             "eager_optimized",
         },
     },
-    "sam3_litetext_s0_inference_gen": {
+    "sam3_litetext_s0_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1733,7 +1733,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "sam_hq_vit_base_inference_gen": {
+    "sam_hq_vit_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1747,7 +1747,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "sam_vit_base_inference_gen": {
+    "sam_vit_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1768,7 +1768,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "sdxl_detector_inference_gen": {
+    "sdxl_detector_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1782,7 +1782,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "segformer_b0_finetuned_ade_512_512_inference_gen": {
+    "segformer_b0_finetuned_ade_512_512_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1796,7 +1796,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "siglip2_base_patch16_naflex_inference_gen": {
+    "siglip2_base_patch16_naflex_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1810,7 +1810,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "siglip_so400m_patch14_384_inference_gen": {
+    "siglip_so400m_patch14_384_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1824,7 +1824,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "splinter_base_inference_gen": {
+    "splinter_base_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -1837,7 +1837,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "superpoint_inference_gen": {
+    "superpoint_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1851,7 +1851,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "swin2sr_classical_sr_x2_64_inference_gen": {
+    "swin2sr_classical_sr_x2_64_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1865,7 +1865,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "swinv2_tiny_patch4_window16_256_inference_gen": {
+    "swinv2_tiny_patch4_window16_256_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1886,7 +1886,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "table_transformer_structure_recognition_inference_gen": {
+    "table_transformer_structure_recognition_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1900,7 +1900,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "tapas_large_finetuned_sqa_inference_gen": {
+    "tapas_large_finetuned_sqa_forward_gen": {
         "skipped_run_modes": {
             "compiled",
         },
@@ -1919,7 +1919,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "textnet_base_inference_gen": {
+    "textnet_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
         },
@@ -1931,7 +1931,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "time_anchor_modernbert_32m_inference_gen": {
+    "time_anchor_modernbert_32m_forward_gen": {
         "skipped_run_modes": {
             "compiled",
         },
@@ -1943,7 +1943,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "time_series_transformer_tourism_monthly_inference_gen": {
+    "time_series_transformer_tourism_monthly_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1957,7 +1957,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "timesfm_2_5_200m_transformers_inference_gen": {
+    "timesfm_2_5_200m_transformers_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1971,7 +1971,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "timesformer_base_finetuned_k600_inference_gen": {
+    "timesformer_base_finetuned_k600_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -1992,7 +1992,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "vibevoice_asr_hf_inference_gen": {
+    "vibevoice_asr_hf_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -2005,7 +2005,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "videomae_base_finetuned_kinetics_inference_gen": {
+    "videomae_base_finetuned_kinetics_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2019,7 +2019,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "videomae_base_inference_gen": {
+    "videomae_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2040,7 +2040,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "vilt_b32_finetuned_vqa_inference_gen": {
+    "vilt_b32_finetuned_vqa_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2061,7 +2061,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "vitpose_plus_base_inference_gen": {
+    "vitpose_plus_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2075,7 +2075,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "vivit_b_16x2_kinetics400_inference_gen": {
+    "vivit_b_16x2_kinetics400_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2089,7 +2089,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "vjepa2_vitl_fpc64_256_inference_gen": {
+    "vjepa2_vitl_fpc64_256_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2103,7 +2103,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "w2v_bert_2_0_inference_gen": {
+    "w2v_bert_2_0_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2117,7 +2117,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "wav2vec2_base_960h_inference_gen": {
+    "wav2vec2_base_960h_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2131,7 +2131,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "wav2vec2_base_inference_gen": {
+    "wav2vec2_base_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2145,7 +2145,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "wav2vec2_large_robust_12_ft_emotion_msp_dim_inference_gen": {
+    "wav2vec2_large_robust_12_ft_emotion_msp_dim_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2159,7 +2159,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "wav2vec2_lg_xlsr_en_speech_emotion_recognition_inference_gen": {
+    "wav2vec2_lg_xlsr_en_speech_emotion_recognition_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2173,7 +2173,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "wav2vec2_xlsr_greek_speech_emotion_recognition_inference_gen": {
+    "wav2vec2_xlsr_greek_speech_emotion_recognition_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2187,7 +2187,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "wav2vec2_xlsr_japanese_speech_emotion_recognition_inference_gen": {
+    "wav2vec2_xlsr_japanese_speech_emotion_recognition_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2201,7 +2201,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "wavlm_base_plus_inference_gen": {
+    "wavlm_base_plus_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2215,7 +2215,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "whisper_large_v3_turbo_inference_gen": {
+    "whisper_large_v3_turbo_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2229,7 +2229,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "xclip_base_patch32_inference_gen": {
+    "xclip_base_patch32_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2243,7 +2243,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "xcodec2_inference_gen": {
+    "xcodec2_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2264,7 +2264,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "xlm_roberta_large_ner_hrl_inference_gen": {
+    "xlm_roberta_large_ner_hrl_forward_gen": {
         "skipped_run_modes": {
             "eager_default",
             "eager_optimized",
@@ -2282,7 +2282,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "yolos_small_inference_gen": {
+    "yolos_small_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
@@ -2303,7 +2303,7 @@ _GEN_MODEL_CONFIGS_RAW: dict[str, dict[str, Any]] = {
             "eager_optimized",
         },
     },
-    "zoedepth_nyu_kitti_inference_gen": {
+    "zoedepth_nyu_kitti_forward_gen": {
         "skipped_run_modes": {
             "compiled",
             "eager_default",
