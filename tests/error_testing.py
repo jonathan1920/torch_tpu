@@ -14,6 +14,7 @@
 
 """Utilities for testing error messages."""
 
+from collections.abc import Callable
 import contextlib
 import enum
 import functools
@@ -679,3 +680,31 @@ def get_scaled_mm_v2_default_inputs():
       recipe_b,
       swizzle_b,
   )
+
+
+def skip_if(predicate: Callable[[], bool], reason: str):
+  """Decorator to skip a test if a condition is true.
+
+  Drop-in replacement for `unittest` implementation `skipIf()`. It takes a
+  boolean predicate instead of a boolean condition. This allows us to use
+  conditions on absl flags, which are only loaded after `absltest.main()` is
+  called.
+
+  Args:
+    predicate: a callable that should return `True` if this test should be
+      skipped, and `False` otherwise.
+    reason: the reason this test is being skipped.
+  """
+
+  def decorator(func):
+
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+      if predicate():
+        self.skipTest(reason)
+      else:
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
+  return decorator

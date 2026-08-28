@@ -21,12 +21,10 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Scalar.h"
 #include "ATen/core/TensorBody.h"
-#include "ATen/ops/scalar_tensor.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
@@ -62,10 +60,10 @@ absl::StatusOr<mlir::MlirOp> BuildThresholdBackwardShlo(
 }
 
 absl::Status CheckThresholdInputs(const at::Tensor& self) {
-  TT_RET_CHECK(!IsBool(self), error::kPythonNotImplementedError)
-      << "threshold is not implemented for bool type";
-  TT_RET_CHECK(!IsComplex(self), error::kPythonNotImplementedError)
-      << "threshold is not implemented for complex types";
+  TT_RET_CHECK(!IsBool(self) && !IsComplex(self),
+               error::kPythonNotImplementedError)
+      << "expected the input dtype to be non-bool and non-complex, got "
+      << ToString(self.scalar_type());
   return absl::OkStatus();
 }
 
