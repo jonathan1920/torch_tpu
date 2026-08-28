@@ -21,10 +21,12 @@ import builtins
 import collections
 from collections.abc import Callable, Iterable, Mapping, MutableMapping, MutableSequence, Sequence
 import copy
+import dataclasses
 import enum
 import functools
 import gzip
 import importlib
+import itertools
 import logging  # PYTHON_LOGGING_OK=Setting module log level for compile testing
 import os
 import pathlib
@@ -286,6 +288,179 @@ class OpVariant(enum.Enum):
   BASE = "base"  # op(...)
   INPLACE = "inplace"  # op_(...)
   OUT = "out"  # op(..., out=...)
+
+
+@dataclasses.dataclass(frozen=True)
+class CastPairs:
+  """Container for a pair of dtypes representing an illegal cast and an allowed cast.
+
+  Attributes:
+    illegal_pair: A tuple `(src_dtype, dst_dtype)` where casting `src_dtype` to
+      `dst_dtype` is illegal according to `torch.can_cast()`, or `None` if no
+      such pair exists in the provided dtypes.
+    allowed_pair: A tuple `(src_dtype, dst_dtype)` where casting `src_dtype` to
+      `dst_dtype` is allowed according to `torch.can_cast()`, or `None` if no
+      such pair exists in the provided dtypes.
+  """
+
+  illegal_pair: tuple[torch.dtype, torch.dtype] | None = None
+  allowed_pair: tuple[torch.dtype, torch.dtype] | None = None
+
+
+def find_cast_pairs(
+    dtypes: Iterable[torch.dtype],
+) -> CastPairs:
+  """Finds one allowed cast pair and one illegal cast pair from a set of dtypes.
+
+  Args:
+    dtypes: An iterable of `torch.dtype`s to be tested. The function considers
+      all ordered pairs `(src, dst)` of distinct dtypes from this iterable.
+
+  Returns:
+    A `CastPairs` instance containing `illegal_pair` and `allowed_pair`.
+
+    `illegal_pair` or `allowed_pair` (or both) will be `None` in the following
+    cases:
+    - `dtypes` contains fewer than 2 distinct dtypes (no pairs can be formed).
+    - `dtypes` contains only dtypes where all pairs are allowed casts (e.g.,
+      `[float32, float64]` has no illegal cast, so `illegal_pair` is `None`).
+    - `dtypes` contains only dtypes where all pairs are illegal casts (e.g.,
+      `[float32, int32]` has no allowed cast, so `allowed_pair` is `None`).
+  """
+  dtypes_list = list(dict.fromkeys(dtypes))
+
+  illegal_pair = None
+  allowed_pair = None
+
+  # permutations considers ordered pairs, so (a, b) and (b, a)
+  # are tested separately.
+  for src, dst in itertools.permutations(dtypes_list, 2):
+    if torch.can_cast(src, dst):
+      allowed_pair = allowed_pair or (src, dst)
+    else:
+      illegal_pair = illegal_pair or (src, dst)
+
+    if illegal_pair is not None and allowed_pair is not None:
+      break
+
+  return CastPairs(illegal_pair=illegal_pair, allowed_pair=allowed_pair)
+
+
+# Operators known to fail out-variant dtype casting (either by rejecting valid
+# promotional casts or permitting illegal downcasts without throwing an exception).
+# We skip out-variant mismatched dtype testing for these ops until their C++
+# out-kernels are updated with proper ATen type checking.
+_OUT_DTYPE_CAST_KNOWN_FAILURES: Final[set[str]] = {
+    # go/keep-sorted start
+    "_thnn_fused_gru_cell",
+    "_thnn_fused_lstm_cell",
+    "abs",
+    "acos",
+    "acosh",
+    "add",
+    "addcdiv",
+    "addcmul",
+    "addmm",
+    "all",
+    "aminmax",
+    "any",
+    "asin",
+    "asinh",
+    "atan",
+    "atanh",
+    "baddbmm",
+    "bernoulli",
+    "bmm",
+    "bucketize",
+    "ceil",
+    "clamp_max",
+    "clamp_min",
+    "complex",
+    "conj_physical",
+    "cos",
+    "cosh",
+    "cumprod",
+    "cumsum",
+    "div",
+    "erf",
+    "erfinv",
+    "exp",
+    "exp2",
+    "expm1",
+    "fft.fft",
+    "fft.ifft",
+    "fft.irfft",
+    "fft.rfft",
+    "floor",
+    "gather",
+    "geqrf",
+    "histc",
+    "index_add",
+    "index_copy",
+    "isin",
+    "ldexp",
+    "lerp",
+    "lgamma",
+    "linalg.inv",
+    "linalg.lu",
+    "linalg.lu_factor_ex",
+    "linalg.lu_solve",
+    "linalg.norm",
+    "linalg.qr",
+    "linalg.solve_ex",
+    "linalg.solve_triangular",
+    "linalg.vector_norm",
+    "log",
+    "log10",
+    "log1p",
+    "log2",
+    "log_softmax",
+    "logcumsumexp",
+    "logit",
+    "lu_unpack",
+    "matmul",
+    "max",
+    "min",
+    "mul",
+    "multinomial",
+    "nan_to_num",
+    "neg",
+    "nn.functional.avg_pool2d",
+    "nn.functional.avg_pool3d",
+    "nn.functional.gelu",
+    "nn.functional.logsigmoid",
+    "nn.functional.softplus",
+    "norm",
+    "polar",
+    "pow",
+    "reciprocal",
+    "round",
+    "rsqrt",
+    "scatter",
+    "scatter_add",
+    "scatter_reduce",
+    "searchsorted",
+    "sgn",
+    "sigmoid",
+    "sign",
+    "signbit",
+    "sin",
+    "sinh",
+    "softmax",
+    "sort",
+    "split_with_sizes_copy",
+    "sqrt",
+    "sub",
+    "take",
+    "tan",
+    "tanh",
+    "topk",
+    "torch._scaled_mm_v2",
+    "tril",
+    "triu",
+    "trunc",
+    # go/keep-sorted end
+}
 
 
 def _sample_inputs_thnn_fused_rnn_cell(
@@ -1228,35 +1403,71 @@ for _op_info in _ADDITIONAL_TORCH_TPU_OPS:
     _op_info.use_ref_for_cpu_golden = True
 
 
+def _dtype_str(dtype: torch.dtype) -> str:
+  """Returns a string representation of the dtype without the "torch." prefix."""
+  return str(dtype).removeprefix("torch.")
+
+
+def _golden_dtype_key(
+    dtype: torch.dtype, out_dtype_override: torch.dtype | None = None
+) -> str:
+  """Returns the dictionary key for golden results in `_GOLDEN_GPU_DATA`.
+
+  For standard tests, returns the string representation of `dtype` (e.g.,
+  `"float32"`). For out-variant tests with an overridden out dtype, returns a
+  composite key formatted as `"{input_dtype}_out_{out_dtype}"` (e.g.,
+  `"float32_out_float64"`).
+
+  In out-variant tests, "override" means the `out=` tensor is allocated with a
+  different dtype (`out_dtype_override`) than the input tensor's dtype (`dtype`)
+  to test out-variant dtype casting (e.g., `at::can_cast` upcasting or
+  exception parity on illegal downcasting).
+
+  Example:
+    `_golden_dtype_key(torch.float32, torch.float64)` returns
+    `"float32_out_float64"`, indicating an out-variant test where the input has
+    `float32` dtype but the `out=` tensor is allocated with `float64` dtype.
+  """
+  if out_dtype_override is not None:
+    return f"{_dtype_str(dtype)}_out_{_dtype_str(out_dtype_override)}"
+  return _dtype_str(dtype)
+
+
 class GoldenGpuData:
   """Golden GPU input/output samples collected per op test.
 
   The samples are organized in a three-level structure keyed by the test case
-  name, the op variant (e.g. BASE, INPLACE, or OUT), and the dtype:
+  name, the op variant (e.g. BASE, INPLACE, or OUT), and the dtype_key:
 
-    test_case_name -> op variant -> dtype -> [(OpInput, OpOutput), ...]
+    test_case_name -> op variant -> dtype_key -> [(OpInput, OpOutput), ...]
+
+  The `dtype_key` is a string:
+    - For standard tests: the dtype name without "torch." prefix (e.g.,
+    "float32").
+    - For out-variant tests with overridden out dtypes: a composite key
+      formatted as `"{input_dtype}_out_{out_dtype}"` (e.g.,
+      "float32_out_float64").
 
   Because each test case can contain at most one `do_test_op()` (which is
-  enforced), a `(test_case_name, variant, dtype)` triple uniquely identifies a
-  list of golden input/output samples.
+  enforced), a `(test_case_name, variant, dtype_key)` triple uniquely identifies
+  a list of golden input/output samples.
 
   Usage:
     * In the gen_gpu_golden mode, `add()` collects the golden results as they
       are computed, and `to_plistlib_pytree()` serializes them to a golden file.
     * In the torch_tpu_vs_gpu mode, `merge_plistlib_pytree()` populates this
-    from
-      the GPU golden files and `get_samples()` reads the results back to compare
-      TorchTPU results against the GPU results.
+      from the GPU golden files and `get_samples()` reads the results back to
+      compare TorchTPU results against the GPU results.
 
   This class stores only plain built-in containers (no function objects), so
   instances remain picklable.
   """
 
   def __init__(self) -> None:
-    # Maps test_case_name -> OpVariant value -> dtype -> input/output pairs.
+    # Maps test_case_name -> OpVariant value -> dtype_key -> input/output pairs.
     self._data: dict[
         str,
-        dict[str, dict[torch.dtype, list[tuple["OpInput", "OpOutput"]]]],
+        dict[str, dict[str, list[tuple["OpInput", "OpOutput"]]]],
     ] = {}
 
   def add(
@@ -1266,9 +1477,11 @@ class GoldenGpuData:
       dtype: torch.dtype,
       op_input: "OpInput",
       op_output: "OpOutput",
+      out_dtype_override: torch.dtype | None = None,
   ) -> None:
     """Records a single golden (input, output) sample."""
-    self._samples_for(test_case_name, variant.value, dtype).append(
+    key = _golden_dtype_key(dtype, out_dtype_override)
+    self._samples_for(test_case_name, variant.value, key).append(
         (op_input, op_output)
     )
 
@@ -1277,10 +1490,12 @@ class GoldenGpuData:
       test_case_name: str,
       variant: "OpVariant",
       dtype: torch.dtype,
+      out_dtype_override: torch.dtype | None = None,
   ) -> Sequence[tuple["OpInput", "OpOutput"]]:
     """Returns the recorded samples for the key, or an empty list if absent."""
+    key = _golden_dtype_key(dtype, out_dtype_override)
     return (
-        self._data.get(test_case_name, {}).get(variant.value, {}).get(dtype, [])
+        self._data.get(test_case_name, {}).get(variant.value, {}).get(key, [])
     )
 
   def clear(self) -> None:
@@ -1288,21 +1503,17 @@ class GoldenGpuData:
     self._data.clear()
 
   def _samples_for(
-      self, test_case_name: str, variant_name: str, dtype: torch.dtype
+      self, test_case_name: str, variant_name: str, dtype_key: str
   ) -> list[tuple["OpInput", "OpOutput"]]:
     """Returns the mutable sample list for the key, creating it if needed."""
     return (
         self._data.setdefault(test_case_name, {})
         .setdefault(variant_name, {})
-        .setdefault(dtype, [])
+        .setdefault(dtype_key, [])
     )
 
   def to_plistlib_pytree(self) -> _pytree.PyTree:
-    """Encodes the golden data into a plistlib-compatible pytree.
-
-    dtypes (used as dict keys) are converted to their string names because
-    plistlib only supports string keys.
-    """
+    """Encodes the golden data into a plistlib-compatible pytree."""
 
     def leaf_func(x: "OpInput | OpOutput") -> _pytree.PyTree:
       return x.to_plistlib_pytree()
@@ -1310,26 +1521,14 @@ class GoldenGpuData:
     def is_leaf(x: Any) -> bool:
       return isinstance(x, (OpInput, OpOutput))
 
-    # tree_map() never translates dict keys (doing so may break the structure of
-    # the dict), so we translate the dtype keys separately first.
-    data_with_str_dtypes = {
-        test_case_name: {
-            variant_name: {
-                _dtype_str(dt): samples for dt, samples in dt_to_samples.items()
-            }
-            for variant_name, dt_to_samples in variant_to_dtype.items()
-        }
-        for test_case_name, variant_to_dtype in self._data.items()
-    }
-    return _pytree.tree_map(leaf_func, data_with_str_dtypes, is_leaf=is_leaf)
+    return _pytree.tree_map(leaf_func, self._data, is_leaf=is_leaf)
 
   def merge_plistlib_pytree(self, encoded_data: _pytree.PyTree) -> None:
     """Decodes a plistlib-compatible pytree and merges it into this data."""
     for test_case_name, variant_to_dt in encoded_data.items():
       for variant_name, dt_to_encoded_samples in variant_to_dt.items():
         for dtype_name, encoded_samples in dt_to_encoded_samples.items():
-          dtype = getattr(torch, dtype_name)
-          samples = self._samples_for(test_case_name, variant_name, dtype)
+          samples = self._samples_for(test_case_name, variant_name, dtype_name)
           for encoded_op_input, encoded_op_output in encoded_samples:
             op_input = OpInput.from_plistlib_pytree(encoded_op_input)
             op_output = OpOutput.from_plistlib_pytree(encoded_op_output)
@@ -1764,6 +1963,20 @@ def _get_op(op_name: str, *, variant_test_name: str | None = None) -> OpInfo:
     raise ValueError(f"Unknown op: {op_name}") from e
 
 
+def _supports_out(op: OpInfo) -> bool:
+  """Returns whether the op supports out-variant testing.
+
+  Foreach operations in PyTorch (`ForeachFuncInfo`) do not accept an `out`
+  keyword argument in Python or in TorchTPU C++ kernels. In `ForeachFuncInfo`,
+  PyTorch overloads `supports_out` to denote functional (out-of-place) execution
+  rather than out-argument support (see
+  `third_party/py/torch/testing/_internal/opinfo/core.py:ForeachFuncInfo.__post_init__`).
+  """
+  if isinstance(op, core.ForeachFuncInfo):
+    return False
+  return op.supports_out
+
+
 def _op_name_for_logging(op: OpInfo, variant: OpVariant) -> str:
   """Returns the name of the op with the given variant.
 
@@ -1968,12 +2181,32 @@ def _sample_to_device(sample: SampleInput, device: torch.device) -> SampleInput:
   return sample
 
 
-def _make_tensors_zero_element(x: _pytree.PyTree) -> _pytree.PyTree:
-  """Makes all torch.Tensors in x zero-element tensors (shape (0,))."""
+def _prepare_zero_element_out_tensors(
+    x: _pytree.PyTree,
+    out_dtype_override: torch.dtype | None = None,
+) -> _pytree.PyTree:
+  """Prepares zero-element out tensors (shape (0,)) from the base computation result.
+
+  We use zero-element tensors to force and verify out-variant shape resizing
+  compliance. When testing out-variant dtype casting, out_dtype_override is
+  provided to override the out tensor's dtype.
+  """
+  override_applied = False
 
   def transform_leaf(obj: Any) -> Any:
+    nonlocal override_applied
     if isinstance(obj, torch.Tensor):
-      return torch.empty((0,), dtype=obj.dtype, device=obj.device)
+      dtype = obj.dtype
+      if out_dtype_override is not None and not override_applied:
+        # For multi-output operators (e.g., max() returning (values, indices)),
+        # only override the primary result tensor to prevent corrupting auxiliary
+        # index tensors (which must remain integer dtypes).
+        # Note: This relies on `_tensor_tree_map` traversing the PyTree in a
+        # deterministic, depth-first order so that the first `torch.Tensor`
+        # encountered is always the primary result tensor.
+        dtype = out_dtype_override
+        override_applied = True
+      return torch.empty((0,), dtype=dtype, device=obj.device)
     return obj
 
   return _tensor_tree_map(transform_leaf, x)
@@ -2380,11 +2613,6 @@ class OpOutput:
     """Converts a PyTree to an OpOutput."""
     decoded_ptree = _from_plistlib_compatible(ptree)
     return cls(decoded_ptree)
-
-
-def _dtype_str(dtype: torch.dtype) -> str:
-  """Returns a string representation of the dtype without the "torch." prefix."""
-  return str(dtype).removeprefix("torch.")
 
 
 def _to_tuple(x: Any) -> tuple[Any, ...]:
@@ -2908,6 +3136,7 @@ class OpInfoTestBase(
       use_compiled: bool = False,
       verbose: bool = True,
       set_seed: bool = True,
+      out_dtype_override: torch.dtype | None = None,
   ) -> Sequence[tuple[OpInput, OpOutput]]:
     """Returns a list of (input, output) pairs for the op.
 
@@ -2932,6 +3161,8 @@ class OpInfoTestBase(
         results.
       set_seed: If True, reset the RNG seed before generating samples. Set to
         False to allow RNG to advance across multiple calls.
+      out_dtype_override: The data type of the out tensor to use when testing
+        out-variant dtype casting.
     """
 
     op_name = _op_name_for_logging(op, variant)
@@ -2943,7 +3174,10 @@ class OpInfoTestBase(
 
     if _torch_tpu_vs_gpu_mode():
       samples = _GOLDEN_GPU_DATA.get_samples(
-          self._testMethodName, variant, dtype
+          self._testMethodName,
+          variant,
+          dtype,
+          out_dtype_override=out_dtype_override,
       )
       # TODO(b/540887166): Enable this check for compiled mode too when the bug
       # is fixed.
@@ -3013,12 +3247,18 @@ class OpInfoTestBase(
             check_device=False,
             # No need to mark inputs as dynamic when computing golden results.
             check_dynamism=False,
+            out_dtype_override=out_dtype_override,
         )
       golden_output = OpOutput(golden_result)
       pairs.append((golden_input, golden_output))
       if _gen_gpu_golden_mode():
         _GOLDEN_GPU_DATA.add(
-            self._testMethodName, variant, dtype, golden_input, golden_output
+            self._testMethodName,
+            variant,
+            dtype,
+            golden_input,
+            golden_output,
+            out_dtype_override=out_dtype_override,
         )
     return pairs
 
@@ -3037,6 +3277,7 @@ class OpInfoTestBase(
       compute_grad: bool = False,
       use_compiled: bool = False,
       measure_perf: bool = True,
+      out_dtype_override: torch.dtype | None = None,
   ) -> Any:
     """Run the op on the given device.
 
@@ -3063,6 +3304,8 @@ class OpInfoTestBase(
         input instead of the op outputs.
       use_compiled: If True, use torch.compile to compile the op before running.
       measure_perf: If True, measure the performance of the op in the perf mode.
+      out_dtype_override: The data type of the out tensor to use when testing
+        out-variant dtype casting.
 
     Returns:
       When compute_grad is false: the result of the op, transferred to the CPU
@@ -3090,9 +3333,12 @@ class OpInfoTestBase(
       target_device = torch.device("cpu")
 
     if variant == OpVariant.OUT and out is None:
-      # We need to create the out tensor ourselves.
+      # We must construct the out argument container ourselves.
       #
-      # First, run the base variant to get the output's dtype and size.
+      # First, execute the base variant to dynamically determine the output
+      # PyTree structure (e.g., single tensor vs. tuple of tensors) and natural
+      # dtypes (e.g., bool for comparison ops or int64 for auxiliary index
+      # outputs).
       base_result = self._run_op(
           op=op,
           variant=OpVariant.BASE,
@@ -3104,17 +3350,21 @@ class OpInfoTestBase(
           subtest_name=subtest_name,
           check_device=check_device,
           check_dynamism=check_dynamism,
-          # This _run_op() call is for preparing the test data, not part of
-          # the test itself, so we don't want to measure its performance
-          # (otherwise it would skew the performance results).
+          # This _run_op() call is for preparing test data, not part of the test
+          # itself, so disable performance measurement to avoid skewing metrics.
           measure_perf=False,
       )
       if isinstance(base_result, Exception):
-        # The base variant failed, so we cannot generate the out tensor.
         return base_result
-      # Next, create the out argument. We always use a zero-element tensor
-      # (shape (0,)) to force and verify out-variant shape resizing compliance.
-      out = to(_make_tensors_zero_element(base_result), target_device)
+      # Next, generate zero-element out tensors (shape (0,)) matching the
+      # discovered structure to verify out-variant shape resizing compliance.
+      out = to(
+          _prepare_zero_element_out_tensors(
+              base_result,
+              out_dtype_override=out_dtype_override,
+          ),
+          target_device,
+      )
 
     op_func = op.inplace_variant if variant == OpVariant.INPLACE else op
     # For operators that lack a native PyTorch CPU kernel (e.g. internal CUDA
@@ -3465,6 +3715,7 @@ class OpInfoTestBase(
       skip_output_indices: Sequence[int],
       compute_grad: bool,
       use_compiled: bool,
+      out_dtype_override: torch.dtype | None = None,
   ) -> None:
 
     if check_value == CheckValueMode.LOOSE:
@@ -3516,6 +3767,7 @@ class OpInfoTestBase(
           subtest_name=subtest_name,
           check_device=check_device,
           check_dynamism=check_dynamism,
+          out_dtype_override=out_dtype_override,
       )
     if _perf_mode():
       # In perf mode, performance measurement is completed during self._run_op
@@ -3565,6 +3817,7 @@ class OpInfoTestBase(
       skip_output_indices: Sequence[int],
       skip_if: Callable[[str, OpVariant, OpInput], bool] | None,
       max_samples_per_op_dtype: int | None,
+      out_dtype_override: torch.dtype | None = None,
   ) -> None:
     """Tests that the op produces similar results on TorchTPU and the golden device.
 
@@ -3642,6 +3895,7 @@ class OpInfoTestBase(
           verbose=(acc_run_idx == 0),
           # If we are in exploration mode, we never reset seed during the loop.
           set_seed=not use_random_exploration,
+          out_dtype_override=out_dtype_override,
       )
       for i, [golden_input, golden_output] in enumerate(golden_pairs):
         golden_result = golden_output.output_value
@@ -3695,6 +3949,7 @@ class OpInfoTestBase(
                     skip_output_indices=skip_output_indices,
                     compute_grad=compute_grad,
                     use_compiled=use_compiled,
+                    out_dtype_override=out_dtype_override,
                 )
             )
 
@@ -3808,6 +4063,7 @@ class OpInfoTestBase(
           "LOOSE mode is the default. Please omit the check_value argument."
       )
 
+    raw_exclude_dtypes = exclude_dtypes
     exclude_dtypes = self._resolve_exclude_dtypes(exclude_dtypes)
     exclude_inplace_dtypes = self._resolve_exclude_dtypes(
         exclude_inplace_dtypes
@@ -3856,8 +4112,23 @@ class OpInfoTestBase(
             max_samples_per_op_dtype=max_samples_per_op_dtype,
         )
 
-      if check_out_variant and op.supports_out:
+      # Test the out variant.
+      if check_out_variant and _supports_out(op):
         print(f"Testing {op_name}(out=...).", flush=True)
+
+        op_exclude_dtypes = _get_dtype_exclusions(
+            raw_exclude_dtypes, self.golden_device_type
+        )
+        # Select one valid promotional upcast pair (allowed_pair, e.g., float32 -> float64)
+        # and one invalid downcast pair (illegal_pair, e.g., float32 -> int32) from the
+        # dtypes to be tested. These will be used below to test out-variant dtype casting
+        # and exception parity between TorchTPU and GPU.
+        cast_pairs = find_cast_pairs([
+            d
+            for d in dtypes_to_test
+            if not _should_skip_dtype(d, exclude_dtypes=op_exclude_dtypes)
+        ])
+        test_out_casting = op.name not in _OUT_DTYPE_CAST_KNOWN_FAILURES
 
         for dtype in dtypes_to_test:
           if _should_skip_dtype(dtype, exclude_dtypes=exclude_dtypes):
@@ -3878,6 +4149,56 @@ class OpInfoTestBase(
               skip_if=skip_if,
               max_samples_per_op_dtype=max_samples_per_op_dtype,
           )
+
+          # If this dtype is the input dtype of the allowed cast pair, run an additional
+          # out-variant test with out_dtype_override set to the target upcast dtype to verify
+          # that TorchTPU correctly supports out-variant promotional upcasting.
+          if (
+              test_out_casting
+              and cast_pairs.allowed_pair is not None
+              and dtype == cast_pairs.allowed_pair[0]
+          ):
+            self._test_torch_tpu_vs_golden(
+                op,
+                dtype,
+                OpVariant.OUT,
+                compute_grad=compute_grad,
+                use_compiled=use_compiled,
+                check_value=check_value,
+                check_dtype=check_dtype,
+                check_device=check_device,
+                check_dynamism=check_dynamism,
+                check_op_failures=check_op_failures,
+                skip_output_indices=skip_output_indices,
+                skip_if=skip_if,
+                max_samples_per_op_dtype=1,
+                out_dtype_override=cast_pairs.allowed_pair[1],
+            )
+
+          # If this dtype is the input dtype of the illegal cast pair, run an additional
+          # out-variant test with out_dtype_override set to the target downcast dtype to verify
+          # that TorchTPU raises the same RuntimeError (exception parity) as PyTorch/GPU.
+          if (
+              test_out_casting
+              and cast_pairs.illegal_pair is not None
+              and dtype == cast_pairs.illegal_pair[0]
+          ):
+            self._test_torch_tpu_vs_golden(
+                op,
+                dtype,
+                OpVariant.OUT,
+                compute_grad=compute_grad,
+                use_compiled=use_compiled,
+                check_value=check_value,
+                check_dtype=check_dtype,
+                check_device=check_device,
+                check_dynamism=check_dynamism,
+                check_op_failures=True,
+                skip_output_indices=skip_output_indices,
+                skip_if=skip_if,
+                max_samples_per_op_dtype=1,
+                out_dtype_override=cast_pairs.illegal_pair[1],
+            )
 
       if not op.inplace_variant:
         return

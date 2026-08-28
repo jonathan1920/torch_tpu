@@ -113,6 +113,47 @@ class OpTestingTest(op_testing.OpInfoTestBase):
     restored = op_testing._from_plistlib_compatible(encoded)
     test_utils.assert_close(restored, dense)
 
+  def test_supports_out(self):
+    add_op = next(op for op in op_db if op.name == "add")
+    self.assertTrue(op_testing._supports_out(add_op))
+
+    foreach_abs_op = op_testing._get_op("_foreach_abs")
+    self.assertFalse(op_testing._supports_out(foreach_abs_op))
+
+  def test_find_cast_pairs(self):
+    # Distinct dtypes with both allowed upcast (int32 -> float32) and illegal downcast (float32 -> int32).
+    pairs = op_testing.find_cast_pairs([torch.float32, torch.int32])
+    self.assertEqual(pairs.allowed_pair, (torch.int32, torch.float32))
+    self.assertEqual(pairs.illegal_pair, (torch.float32, torch.int32))
+
+    # All pairs allowed (e.g. float32 <-> float64).
+    pairs = op_testing.find_cast_pairs([torch.float32, torch.float64])
+    self.assertEqual(pairs.allowed_pair, (torch.float32, torch.float64))
+    self.assertIsNone(pairs.illegal_pair)
+
+  def test_find_cast_pairs_duplicate_dtypes(self):
+    # Duplicate entries of the same dtype should not yield identical pairs (e.g. float32 -> float32).
+    pairs = op_testing.find_cast_pairs([torch.float32, torch.float32])
+    self.assertIsNone(pairs.allowed_pair)
+    self.assertIsNone(pairs.illegal_pair)
+
+    # Duplicates mixed with other dtypes should yield distinct pairs.
+    pairs = op_testing.find_cast_pairs(
+        [torch.float32, torch.float32, torch.int32]
+    )
+    self.assertEqual(pairs.allowed_pair, (torch.int32, torch.float32))
+    self.assertEqual(pairs.illegal_pair, (torch.float32, torch.int32))
+
+  def test_find_cast_pairs_insufficient_dtypes(self):
+    self.assertEqual(
+        op_testing.find_cast_pairs([]),
+        op_testing.CastPairs(illegal_pair=None, allowed_pair=None),
+    )
+    self.assertEqual(
+        op_testing.find_cast_pairs([torch.float32]),
+        op_testing.CastPairs(illegal_pair=None, allowed_pair=None),
+    )
+
 
 if __name__ == "__main__":
   absltest.main()
