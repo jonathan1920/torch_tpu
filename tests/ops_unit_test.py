@@ -8620,6 +8620,41 @@ module {
     )
 
   @parameterized.product(
+      index_dtype=[torch.int32, torch.int64],
+  )
+  def test_dynamic_slice_1d(self, index_dtype):
+    """Tests torch.ops.tpu.dynamic_slice on 1D tensor."""
+    device = torch.device("tpu")
+    x = torch.arange(10, device=device, dtype=torch.float32)
+    start_indices = [torch.tensor(3, device=device, dtype=index_dtype)]
+    slice_sizes = [4]
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      out = torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
+
+    expected = x.cpu()[3:7]
+    self.assert_close(golden_result=expected, torch_tpu_result=out.cpu())
+
+  @parameterized.product(
+      index_dtype=[torch.int32, torch.int64],
+  )
+  def test_dynamic_slice_2d(self, index_dtype):
+    """Tests torch.ops.tpu.dynamic_slice on 2D tensor."""
+    device = torch.device("tpu")
+    x = torch.arange(20, device=device, dtype=torch.float32).reshape(4, 5)
+    start_indices = [
+        torch.tensor(1, device=device, dtype=index_dtype),
+        torch.tensor(2, device=device, dtype=index_dtype),
+    ]
+    slice_sizes = [2, 3]
+
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE):
+      out = torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
+
+    expected = x.cpu()[1:3, 2:5]
+    self.assert_close(golden_result=expected, torch_tpu_result=out.cpu())
+
+  @parameterized.product(
       dtype=[torch.float32, torch.bfloat16],
   )
   def test_grouped_mm_2d_3d(self, dtype):

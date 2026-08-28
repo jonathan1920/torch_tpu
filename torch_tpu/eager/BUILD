@@ -550,6 +550,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/dynamic/dynamic_arange",
         "//torch_tpu/ops/dynamic/dynamic_broadcast",
         "//torch_tpu/ops/dynamic/dynamic_reshape",
+        "//torch_tpu/ops/dynamic/dynamic_slice",
         "//torch_tpu/ops/dynamic/set_dimension_logical_size",
         "//torch_tpu/ops/elu:elu_aten_kernels",
         "//torch_tpu/ops/embedding:embedding_aten_kernels",

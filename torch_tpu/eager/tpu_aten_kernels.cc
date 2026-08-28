@@ -78,6 +78,7 @@
 #include "torch_tpu/ops/dynamic/dynamic_arange/dynamic_arange.h"
 #include "torch_tpu/ops/dynamic/dynamic_broadcast/dynamic_broadcast.h"
 #include "torch_tpu/ops/dynamic/dynamic_reshape/dynamic_reshape.h"
+#include "torch_tpu/ops/dynamic/dynamic_slice/dynamic_slice.h"
 #include "torch_tpu/ops/dynamic/set_dimension_logical_size/set_dimension_logical_size.h"
 #include "torch_tpu/ops/elu/elu_aten_kernels.h"
 #include "torch_tpu/ops/embedding/embedding_aten_kernels.h"
@@ -1219,6 +1220,20 @@ TORCH_LIBRARY(tpu, m) {
       "dynamic_reshape(Tensor input, Tensor[] shape, int[] static_shape, "
       "bool[] is_dynamic) -> Tensor");
 
+  // This op is a torch_tpu custom op for use in torch.compile() mode to handle
+  // dynamic slice operations on TPU. It slices the input tensor from the
+  // specified start indices with the specified slice sizes.
+  // Args:
+  //   input: The input tensor to slice.
+  //   start_indices: List of 0-D (scalar) tensors containing the runtime
+  //     start indices of the slice.
+  //   slice_sizes: Integer array containing the slice sizes for each dimension.
+  // Returns:
+  //   The sliced tensor.
+  m.def(
+      "dynamic_slice(Tensor input, Tensor[] start_indices, int[] slice_sizes) "
+      "-> Tensor");
+
   // Experimental P2P communication ops for ProcessGroupTpu.
   // Isolated from the public torch.distributed API to safely prototype new
   // behaviors.
@@ -1408,6 +1423,7 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
   ImplExperimental<OpName::kDynamicArange>(m, DynamicArange);
   ImplExperimental<OpName::kDynamicBroadcast>(m, DynamicBroadcast);
   ImplExperimental<OpName::kDynamicReshape>(m, DynamicReshape);
+  ImplExperimental<OpName::kDynamicSlice>(m, DynamicSlice);
   ImplExperimental<OpName::kSparseDenseMatmul>(m, AtenSparseDenseMatmul);
   ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
       m, AtenSparseDenseMatmulGradWithSgd);

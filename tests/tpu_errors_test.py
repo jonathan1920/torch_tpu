@@ -510,6 +510,122 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           x, shape, broadcast_dims, static_shape, is_dynamic
       )
 
+  @et.why_tpu_only(
+      "The op dynamic_slice is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_slice_start_indices_size_mismatch(self):
+    device = et.device()
+    x = torch.ones((2, 3), device=device)
+    start_indices = [torch.tensor(0, device=device, dtype=torch.int32)]
+    slice_sizes = [1, 2]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_slice(): start_indices list size must match input rank, got start_indices size 1 and input rank 2""",
+    ):
+      torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
+
+  @et.why_tpu_only(
+      "The op dynamic_slice is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_slice_slice_sizes_size_mismatch(self):
+    device = et.device()
+    x = torch.ones((2, 3), device=device)
+    start_indices = [
+        torch.tensor(0, device=device, dtype=torch.int32),
+        torch.tensor(0, device=device, dtype=torch.int32),
+    ]
+    slice_sizes = [1]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_slice(): slice_sizes size must match input rank, got slice_sizes size 1 and input rank 2""",
+    ):
+      torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
+
+  @et.why_tpu_only(
+      "The op dynamic_slice is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_slice_start_indices_not_0d(self):
+    device = et.device()
+    x = torch.ones((2, 3), device=device)
+    start_indices = [
+        torch.tensor([0], device=device, dtype=torch.int32),
+        torch.tensor(0, device=device, dtype=torch.int32),
+    ]
+    slice_sizes = [1, 2]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_slice(): start_indices tensor at index 0 must be a 0-D (scalar) tensor, got 1-D tensor""",
+    ):
+      torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
+
+  @et.why_tpu_only(
+      "The op dynamic_slice is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_slice_start_indices_not_int32_or_int64(self):
+    device = et.device()
+    x = torch.ones((2, 3), device=device)
+    start_indices = [
+        torch.tensor(0.0, device=device, dtype=torch.float32),
+        torch.tensor(0, device=device, dtype=torch.int32),
+    ]
+    slice_sizes = [1, 2]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_slice(): start_indices must be a list of int32 or int64 tensors, got float32 tensor at index 0""",
+    ):
+      torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
+
+  @et.why_tpu_only(
+      "The op dynamic_slice is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_slice_start_indices_mixed_dtypes(self):
+    device = et.device()
+    x = torch.ones((2, 3), device=device)
+    start_indices = [
+        torch.tensor(0, device=device, dtype=torch.int32),
+        torch.tensor(0, device=device, dtype=torch.int64),
+    ]
+    slice_sizes = [1, 2]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_slice(): all start_indices must have the same dtype, got int32 at index 0 but int64 at index 1""",
+    ):
+      torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
+
+  @et.why_tpu_only(
+      "The op dynamic_slice is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_slice_slice_sizes_negative(self):
+    device = et.device()
+    x = torch.ones((2, 3), device=device)
+    start_indices = [
+        torch.tensor(0, device=device, dtype=torch.int32),
+        torch.tensor(0, device=device, dtype=torch.int32),
+    ]
+    slice_sizes = [-1, 2]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_slice(): slice_sizes at index 0 must be in range [0, 2], got -1""",
+    ):
+      torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
+
+  @et.why_tpu_only(
+      "The op dynamic_slice is TPU only for internal use in torch.compile()."
+  )
+  def test_dynamic_slice_slice_sizes_exceeds_input_size(self):
+    device = et.device()
+    x = torch.ones((2, 3), device=device)
+    start_indices = [
+        torch.tensor(0, device=device, dtype=torch.int32),
+        torch.tensor(0, device=device, dtype=torch.int32),
+    ]
+    slice_sizes = [5, 2]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_slice(): slice_sizes at index 0 must be in range [0, 2], got 5""",
+    ):
+      torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
+
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_set_invalid_metadata(self):
     t = torch.zeros(1, device="tpu", dtype=torch.float32)
