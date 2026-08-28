@@ -140,7 +140,10 @@ torch_tpu_cc_library(
     hdrs = ["util.h"],
     deps = [
         "//torch_tpu/_internal/mosaic:op_builders",
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
@@ -196,7 +199,6 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",

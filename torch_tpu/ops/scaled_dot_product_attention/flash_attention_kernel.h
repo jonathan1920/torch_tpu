@@ -18,10 +18,12 @@
 #define TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_KERNELS_FLASH_ATTENTION_KERNEL_H_
 
 #include <cstdint>
-#include <string>
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
 
@@ -61,16 +63,16 @@ constexpr int64_t kDefaultQTileSize = 512;
 constexpr int64_t kDefaultKTileSize = 512;
 
 // Creates the flash attention kernel for the given configuration.
-absl::StatusOr<std::string> CreateKernel(const FlashAttnConfig& config,
-                                         const Tiling& tiling);
+absl::StatusOr<OwningOpRef<ModuleOp>> CreateKernel(
+    MLIRContext* context, const FlashAttnConfig& config, const Tiling& tiling);
 
 // Creates the flash attention backward DKV kernel for the given configuration.
-absl::StatusOr<std::string> CreateBackwardDkvKernel(
-    const FlashAttnConfig& config, const Tiling& tiling);
+absl::StatusOr<OwningOpRef<ModuleOp>> CreateBackwardDkvKernel(
+    MLIRContext* context, const FlashAttnConfig& config, const Tiling& tiling);
 
 // Creates the flash attention backward DQ kernel for the given configuration.
-absl::StatusOr<std::string> CreateBackwardDqKernel(
-    const FlashAttnConfig& config, const Tiling& tiling);
+absl::StatusOr<OwningOpRef<ModuleOp>> CreateBackwardDqKernel(
+    MLIRContext* context, const FlashAttnConfig& config, const Tiling& tiling);
 
 }  // namespace mlir::torch_tpu
 

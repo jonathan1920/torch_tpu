@@ -18,18 +18,24 @@
 #define TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_UTIL_H_
 
 #include <cstdint>
-#include <string_view>
+#include <string>
 
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir::torch_tpu {
+
+// Get the string representation of an MLIR operation.
+std::string GetOpString(Operation* op);
 
 // Load a 2D tile from the given argument.
 TypedValue<VectorType> LoadTile(ImplicitLocOpBuilder& b, Value arg);
@@ -84,10 +90,10 @@ Value NormalizeLaneDim(ImplicitLocOpBuilder& builder, Value input,
                        int64_t target_lane_size);
 
 // Helper to create a stablehlo::CustomCallOp with mosaic kernel.
-stablehlo::CustomCallOp CreateCustomCallOp(OpBuilder& builder, Location loc,
-                                           std::string_view kernel_mlir,
-                                           ValueRange inputs,
-                                           TypeRange output_types);
+// Note: This method consumes the provided module.
+absl::StatusOr<stablehlo::CustomCallOp> CreateCustomCallOp(
+    OpBuilder& builder, Location loc, mlir::OwningOpRef<mlir::ModuleOp> module,
+    ValueRange inputs, TypeRange output_types);
 
 }  // namespace mlir::torch_tpu
 

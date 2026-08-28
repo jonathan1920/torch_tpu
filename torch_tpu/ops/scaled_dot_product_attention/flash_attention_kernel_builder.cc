@@ -43,7 +43,9 @@
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -53,6 +55,7 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/_internal/mosaic/op_builders.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
@@ -371,12 +374,15 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
       result_types.push_back(ml_type);
     }
 
-    TT_ASSIGN_OR_RETURN(std::string kernel_mlir,
-                        mlir::torch_tpu::CreateKernel(config, tiling));
+    auto context = mlir::torch_tpu::CreateMlirContextWithDialects();
+    TT_ASSIGN_OR_RETURN(
+        mlir::OwningOpRef<mlir::ModuleOp> kernel,
+        mlir::torch_tpu::CreateKernel(context.get(), config, tiling));
 
-    auto custom_call = mlir::torch_tpu::CreateCustomCallOp(
-        builder.getOpBuilder(), builder.getLoc(), kernel_mlir, operands,
-        result_types);
+    TT_ASSIGN_OR_RETURN(auto custom_call,
+                        mlir::torch_tpu::CreateCustomCallOp(
+                            builder.getOpBuilder(), builder.getLoc(),
+                            std::move(kernel), operands, result_types));
 
     mlir::MlirOp out_padded(builder, custom_call.getResult(0));
     mlir::MlirOp out_sliced =
@@ -545,12 +551,16 @@ CreateFlashAttentionBackwardKernel(
       dkv_inputs.push_back(mask_mlir.getValue());
     }
 
+    auto context = mlir::torch_tpu::CreateMlirContextWithDialects();
+
+    TT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> dkv_kernel,
+                        mlir::torch_tpu::CreateBackwardDkvKernel(
+                            context.get(), config, tiling));
     TT_ASSIGN_OR_RETURN(
-        std::string dkv_kernel_mlir,
-        mlir::torch_tpu::CreateBackwardDkvKernel(config, tiling));
-    auto dkv_custom_call = mlir::torch_tpu::CreateCustomCallOp(
-        builder.getOpBuilder(), builder.getLoc(), dkv_kernel_mlir, dkv_inputs,
-        {key_batch.getType(), value_batch.getType()});
+        auto dkv_custom_call,
+        mlir::torch_tpu::CreateCustomCallOp(
+            builder.getOpBuilder(), builder.getLoc(), std::move(dkv_kernel),
+            dkv_inputs, {key_batch.getType(), value_batch.getType()}));
 
     mlir::MlirOp out_batch =
         flatten_batch_dims(out_mlir, config.batch_size, rank - 3);
@@ -569,11 +579,13 @@ CreateFlashAttentionBackwardKernel(
     dq_inputs.push_back(out_batch.getValue());
 
     TT_ASSIGN_OR_RETURN(
-        std::string dq_kernel_mlir,
-        mlir::torch_tpu::CreateBackwardDqKernel(config, tiling));
-    auto dq_custom_call = mlir::torch_tpu::CreateCustomCallOp(
-        builder.getOpBuilder(), builder.getLoc(), dq_kernel_mlir, dq_inputs,
-        {query_batch.getType()});
+        mlir::OwningOpRef<mlir::ModuleOp> dq_kernel,
+        mlir::torch_tpu::CreateBackwardDqKernel(context.get(), config, tiling));
+    TT_ASSIGN_OR_RETURN(
+        auto dq_custom_call,
+        mlir::torch_tpu::CreateCustomCallOp(
+            builder.getOpBuilder(), builder.getLoc(), std::move(dq_kernel),
+            dq_inputs, {query_batch.getType()}));
 
     mlir::MlirOp grad_key_batch_padded(builder, dkv_custom_call.getResult(0));
     mlir::MlirOp grad_value_batch_padded(builder, dkv_custom_call.getResult(1));

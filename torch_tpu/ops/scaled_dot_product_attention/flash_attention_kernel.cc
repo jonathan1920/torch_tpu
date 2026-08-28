@@ -19,9 +19,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <initializer_list>
-#include <memory>
 #include <optional>
-#include <string>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
@@ -29,7 +27,6 @@
 #include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -355,10 +352,9 @@ func::FuncOp buildModule(ImplicitLocOpBuilder& module_builder,
 }
 }  // namespace
 
-absl::StatusOr<std::string> CreateKernel(const FlashAttnConfig& config,
-                                         const Tiling& tiling) {
-  auto context = CreateMlirContextWithDialects();
-  OpBuilder builder(context.get());
+absl::StatusOr<OwningOpRef<ModuleOp>> CreateKernel(
+    MLIRContext* context, const FlashAttnConfig& config, const Tiling& tiling) {
+  OpBuilder builder(context);
   OwningOpRef<ModuleOp> module =
       ModuleOp::create(builder, builder.getUnknownLoc());
   ImplicitLocOpBuilder module_builder(module->getLoc(),
@@ -376,17 +372,9 @@ absl::StatusOr<std::string> CreateKernel(const FlashAttnConfig& config,
 
   SetKernelAttributes(q_shape, config, tiling, fn, builder);
 
-  if (failed(SerializeMosaicKernel(module.get()))) {
-    return TT_ERROR(::torch_tpu::error::kInternal)
-           << "failed to serialize mosaic kernel";
-  }
+  ABSL_VLOG(1) << "Forward kernel:\n" << GetOpString(module.get());
 
-  std::string output;
-  llvm::raw_string_ostream os(output);
-  module->print(os, OpPrintingFlags().useLocalScope());
-  os.flush();
-  ABSL_VLOG(1) << "Forward kernel:\n" << output;
-  return output;
+  return module;
 }
 
 }  // namespace mlir::torch_tpu

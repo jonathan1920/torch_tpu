@@ -18,21 +18,24 @@
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 
 #include "absl/log/absl_check.h"
+#include "absl/log/log.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -40,6 +43,7 @@
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "torch_tpu/_internal/mosaic/op_builders.h"
+#include "torch_tpu/common/error_utils.h"
 
 namespace mlir::torch_tpu {
 
@@ -81,6 +85,14 @@ Value CreateReductionInitValue(ImplicitLocOpBuilder& b, FloatType element_type,
 }
 
 }  // namespace
+
+std::string GetOpString(Operation* op) {
+  ABSL_CHECK(op != nullptr) << "Input op is null.";  // CRASH_OK
+  std::string op_string;
+  llvm::raw_string_ostream os(op_string);
+  op->print(os, OpPrintingFlags().useLocalScope());
+  return op_string;
+}
 
 TypedValue<VectorType> LoadTile(ImplicitLocOpBuilder& b, Value arg) {
   MemRefType arg_type = cast<MemRefType>(arg.getType());
@@ -314,11 +326,14 @@ Value NormalizeLaneDim(ImplicitLocOpBuilder& builder, Value input,
   return CreateRepeatOp(builder, input, rank - 1, target_lane_size);
 }
 
-stablehlo::CustomCallOp CreateCustomCallOp(OpBuilder& builder, Location loc,
-                                           std::string_view kernel_mlir,
-                                           ValueRange inputs,
-                                           TypeRange output_types) {
-  std::string base64_kernel = absl::Base64Escape(kernel_mlir);
+absl::StatusOr<stablehlo::CustomCallOp> CreateCustomCallOp(
+    OpBuilder& builder, Location loc, mlir::OwningOpRef<mlir::ModuleOp> module,
+    ValueRange inputs, TypeRange output_types) {
+  if (failed(SerializeMosaicKernel(module.get()))) {
+    return TT_ERROR(::torch_tpu::error::kInternal)
+           << "failed to serialize mosaic kernel";
+  }
+
   std::string backend_config_json = absl::StrFormat(
       R"({
         "custom_call_config": {
@@ -328,7 +343,7 @@ stablehlo::CustomCallOp CreateCustomCallOp(OpBuilder& builder, Location loc,
         },
         "device_type": "DEVICE_TYPE_TENSORCORE",
       })",
-      base64_kernel);
+      absl::Base64Escape(GetOpString(module.get())));
 
   auto get_default_layout = [&builder](Type type) {
     int64_t rank = cast<RankedTensorType>(type).getRank();

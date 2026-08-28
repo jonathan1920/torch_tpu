@@ -18,13 +18,10 @@
 #include <cstdint>
 #include <initializer_list>
 #include <optional>
-#include <string>
 
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -408,10 +405,9 @@ void SetBackwardKernelAttributes(const FlashAttnConfig& config,
   }
 }
 
-absl::StatusOr<std::string> CreateBackwardDkvKernel(
-    const FlashAttnConfig& config, const Tiling& tiling) {
-  auto context = CreateMlirContextWithDialects();
-  OpBuilder builder(context.get());
+absl::StatusOr<OwningOpRef<ModuleOp>> CreateBackwardDkvKernel(
+    MLIRContext* context, const FlashAttnConfig& config, const Tiling& tiling) {
+  OpBuilder builder(context);
   OwningOpRef<ModuleOp> module =
       ModuleOp::create(builder, builder.getUnknownLoc());
   ImplicitLocOpBuilder module_builder(module->getLoc(),
@@ -426,17 +422,9 @@ absl::StatusOr<std::string> CreateBackwardDkvKernel(
   auto fn = buildBackwardDkvModule(module_builder, config, tiling);
   SetBackwardKernelAttributes(config, tiling, fn, builder);
 
-  if (failed(SerializeMosaicKernel(module.get()))) {
-    return TT_ERROR(::torch_tpu::error::kInternal)
-           << "failed to serialize mosaic kernel";
-  }
+  ABSL_VLOG(1) << "Backward dKV kernel:\n" << GetOpString(module.get());
 
-  std::string output;
-  llvm::raw_string_ostream os(output);
-  module->print(os, OpPrintingFlags().useLocalScope());
-  os.flush();
-  ABSL_VLOG(1) << "Backward dKV kernel:\n" << output;
-  return output;
+  return module;
 }
 
 func::FuncOp buildBackwardDqModule(ImplicitLocOpBuilder& module_builder,
@@ -542,10 +530,9 @@ func::FuncOp buildBackwardDqModule(ImplicitLocOpBuilder& module_builder,
   return fn;
 }
 
-absl::StatusOr<std::string> CreateBackwardDqKernel(
-    const FlashAttnConfig& config, const Tiling& tiling) {
-  auto context = CreateMlirContextWithDialects();
-  OpBuilder builder(context.get());
+absl::StatusOr<OwningOpRef<ModuleOp>> CreateBackwardDqKernel(
+    MLIRContext* context, const FlashAttnConfig& config, const Tiling& tiling) {
+  OpBuilder builder(context);
   OwningOpRef<ModuleOp> module =
       ModuleOp::create(builder, builder.getUnknownLoc());
   ImplicitLocOpBuilder module_builder(module->getLoc(),
@@ -560,17 +547,9 @@ absl::StatusOr<std::string> CreateBackwardDqKernel(
   auto fn = buildBackwardDqModule(module_builder, config, tiling);
   SetBackwardKernelAttributes(config, tiling, fn, builder, /*is_dq=*/true);
 
-  if (failed(SerializeMosaicKernel(module.get()))) {
-    return TT_ERROR(::torch_tpu::error::kInternal)
-           << "failed to serialize mosaic kernel";
-  }
+  ABSL_VLOG(1) << "Backward dQ kernel:\n" << GetOpString(module.get());
 
-  std::string output;
-  llvm::raw_string_ostream os(output);
-  module->print(os, OpPrintingFlags().useLocalScope());
-  os.flush();
-  ABSL_VLOG(1) << "Backward dQ kernel:\n" << output;
-  return output;
+  return module;
 }
 
 }  // namespace mlir::torch_tpu
