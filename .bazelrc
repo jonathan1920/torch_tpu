@@ -256,7 +256,8 @@ common:tpu_envvars --test_env=VBAR_CONTROL_SERVICE_URL
 common:remote_caching_readonly --remote_upload_local_results=false
 common:remote_caching_readonly --remote_cache=grpcs://remotebuildexecution.googleapis.com
 common:remote_caching_readonly --remote_instance_name=projects/ml-oss-rbe-testing/instances/default_instance
-common:remote_caching_readonly --remote_default_exec_properties=cache-silo-key=FirstCachedBuild
+# Default platform cache silo key for standard readonly RBE remote caching.
+common:remote_caching_readonly --extra_execution_platforms="//bazel/platforms:rbe_default_platform"
 common:remote_caching_readonly --google_default_credentials
 
 # Allow creation of resultstore URLs for ci bazel invocation, must be used in
@@ -378,7 +379,10 @@ common:remote_execution_readonly --test_timeout=3600
 # Revisit removing this with Bazel 9.
 common:remote_execution_readonly --define=EXECUTOR=remote
 common:remote_execution_readonly --remote_executor=grpcs://remotebuildexecution.googleapis.com
-common:remote_execution_readonly --extra_execution_platforms="@ml_build_config_platform//:platform"
+# Use a custom platform to define the default `cache-silo-key` rather than
+# --remote_default_exec_properties to prevent ImmutableMap duplicate-key crashes
+# when configs are chained.
+common:remote_execution_readonly --extra_execution_platforms="//bazel/platforms:rbe_default_platform"
 
 # Allow per-user, project-specific bazelrc.
 # Do this last so it takes precedence.
@@ -405,18 +409,18 @@ build:wheel_common --config=remote_execution_readonly
 build:wheel_common --config=wheel_base
 
 # Nightly/postsubmit config for wheel builds. Uses a dedicated cache-silo-key
-# to isolate nightly build artifacts from PR builds and release builds,
-# preventing cross-pipeline cache contamination.
+# platform to isolate nightly build artifacts from PR builds and release builds,
+# preventing cross-pipeline cache contamination without command-line flag conflicts.
 build:wheel_nightly --config=wheel_common
-build:wheel_nightly --remote_default_exec_properties=cache-silo-key=wheel-nightly
+build:wheel_nightly --extra_execution_platforms="//bazel/platforms:rbe_wheel_nightly_platform"
 
 # Release-channel wheel: wheel_common without the PyTorch-nightly glue. Use this
 # for artifacts published to an index (the nightly glue is built against a
 # transient dev snapshot and does not belong in a release). Uses a dedicated
-# cache-silo-key so release artifacts are cached independently from nightly
-# snapshots and test runs.
+# cache-silo-key platform so release artifacts are cached independently from
+# nightly snapshots and test runs.
 build:wheel_release --config=wheel_common
-build:wheel_release --remote_default_exec_properties=cache-silo-key=wheel-release
+build:wheel_release --extra_execution_platforms="//bazel/platforms:rbe_wheel_release_platform"
 build:wheel_release --//:include_nightly_glue=False
 
 # Build against a locally provided PyTorch instead of the pip hubs. This is

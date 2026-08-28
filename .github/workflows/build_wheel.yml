@@ -115,11 +115,8 @@ jobs:
           # The oldest Python version builds the release wheel flavor (no
           # PyTorch-nightly glue), so both flavors are exercised in
           # presubmit; the nightly smoke tests only run against the default
-          # Python's wheel, which keeps the nightly glue. Spelled as the raw
-          # flag rather than --config=wheel_release: the shared script
-          # already applies wheel_common, which wheel_release would expand a
-          # second time (see the extra_bazel_args input).
-          extra_bazel_args: ${{ matrix.python_version == '3.11' && '--//:include_nightly_glue=False' || '' }}
+          # Python's wheel, which keeps the nightly glue.
+          extra_bazel_args: ${{ matrix.python_version == '3.11' && '--config=wheel_release' || '' }}
 
   test_wheels_cpu:
     name: "Test wheel on ${{ matrix.custom_name || 'CPU' }} (Python ${{ matrix.python_version }})"

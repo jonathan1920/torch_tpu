@@ -22,12 +22,8 @@ inputs:
   extra_bazel_args:
     description: >-
       Extra bazel arguments appended to the shared build script's invocation
-      (e.g. --//:include_nightly_glue=False for the release wheel flavor
-      without the PyTorch-nightly glue). Raw flags only -- do not pass
-      --config=wheel_common or --config=wheel_release here: the script
-      already applies wheel_common, and expanding it a second time repeats
-      its --remote_default_exec_properties entries, which crashes bazel with
-      a duplicate-key error.
+      (e.g. --config=wheel_release for the release wheel flavor without the
+      PyTorch-nightly glue).
     required: false
     default: ""
 outputs:
