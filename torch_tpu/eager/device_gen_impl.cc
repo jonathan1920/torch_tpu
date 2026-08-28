@@ -62,6 +62,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
 
 namespace torch_tpu {
@@ -467,6 +468,9 @@ DeviceGeneratorImpl* DeviceGeneratorImpl::clone_impl() const {
 }
 
 at::Generator& GetDefaultDeviceGenerator(c10::DeviceIndex idx) {
+  // Fail early with an actionable error (e.g., VFIO collision) rather than
+  // crashing later on an uninitialized device dereference.
+  TT_THROW_IF_ERROR(PjrtBackend::GetInstance().EnsureInitialized());
   return DeviceGenerators::GetDefaultInstance().GetDefaultGenerator(idx);
 }
 

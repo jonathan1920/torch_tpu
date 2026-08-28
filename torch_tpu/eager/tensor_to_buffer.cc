@@ -361,11 +361,17 @@ class TpuAllocator final : public c10::DeviceAllocator {
 
   c10::DataPtr allocate(size_t nbytes) override {
     ScopedPythonContextCapturer _(OpName::kTorchTpuStorageAllocate);
-    c10::DeviceIndex device_idx = 0;
-    if (const auto* device = PjrtBackend::GetInstance().GetDevice()) {
-      device_idx =
-          static_cast<c10::DeviceIndex>(device->local_hardware_id().value());
-    }
+    // GetDevice() calls EnsureInitialized() internally (returns nullptr on
+    // failure). Fail early with an actionable error (e.g., VFIO collision)
+    // rather than crashing later on a null device dereference.
+    const auto* device = PjrtBackend::GetInstance().GetDevice();
+    TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PjrtBackend is always initialized
+                     // in the test environment.
+        device != nullptr, error::kFailedPrecondition)
+        << "failed to initialize PjRt backend or acquire a TPU device";
+    ABSL_CHECK(device != nullptr);  // CRASH_OK=satisfying ClangTidy
+    c10::DeviceIndex device_idx =
+        static_cast<c10::DeviceIndex>(device->local_hardware_id().value());
     // Check that the size_t does not overflow an int64_t.
     // This function is only ever called from PyTorch so safe to throw an
     // exception on failure.

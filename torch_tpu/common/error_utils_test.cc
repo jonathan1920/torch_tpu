@@ -1287,6 +1287,64 @@ TEST(SafeWrapDim, ReturnsZeroOnValidDimForZeroDimBound) {
   EXPECT_EQ(*result1, 0);
 }
 
+// Tests for AdaptVfioDeviceCollisionError.
+
+TEST(VfioDeviceCollisionTest, AdaptDetectsAllCollisionPatterns) {
+  // "iommu group" substring with INTERNAL code.
+  {
+    const absl::Status s(
+        error::kInternal,
+        "Couldn't open iommu group /dev/vfio/0: Device or resource busy "
+        "(os error 16)");
+    const absl::Status adapted = AdaptVfioDeviceCollisionError(s);
+    EXPECT_EQ(adapted.code(), error::kInternal);
+    EXPECT_THAT(std::string(adapted.message()),
+                HasSubstr("TPU_VISIBLE_DEVICES"));
+  }
+  // "vfio container" substring with INTERNAL code.
+  {
+    const absl::Status s(
+        error::kInternal,
+        "Couldn't open vfio container /dev/vfio/vfio: Device or resource "
+        "busy");
+    const absl::Status adapted = AdaptVfioDeviceCollisionError(s);
+    EXPECT_EQ(adapted.code(), error::kInternal);
+    EXPECT_THAT(std::string(adapted.message()),
+                HasSubstr("TPU_VISIBLE_DEVICES"));
+  }
+}
+
+TEST(VfioDeviceCollisionTest, AdaptRewritesMessagePreservesCode) {
+  // EACCES + FAILED_PRECONDITION (real-hardware shape).
+  const absl::Status s(
+      error::kFailedPrecondition,
+      "Couldn't open iommu group /dev/vfio/0: Device or resource busy");
+  const absl::Status adapted = AdaptVfioDeviceCollisionError(s);
+  // Status code preserved.
+  EXPECT_EQ(adapted.code(), error::kFailedPrecondition);
+  EXPECT_THAT(std::string(adapted.message()), HasSubstr("TPU_VISIBLE_DEVICES"));
+}
+
+TEST(VfioDeviceCollisionTest, AdaptIgnoresNonCollisionErrors) {
+  // Unrelated INTERNAL error.
+  {
+    const absl::Status s(error::kInternal, "some other failure");
+    EXPECT_EQ(AdaptVfioDeviceCollisionError(s), s);
+  }
+  // PERMISSION_DENIED on a non-VFIO path.
+  {
+    const absl::Status s(error::kPermissionDenied,
+                         "open(/some/other/file): Permission denied");
+    EXPECT_EQ(AdaptVfioDeviceCollisionError(s), s);
+  }
+}
+
+TEST(VfioDeviceCollisionTest, AdaptLeavesOkAndUnrelatedErrorsUnchanged) {
+  EXPECT_TRUE(AdaptVfioDeviceCollisionError(absl::OkStatus()).ok());
+  const absl::Status s(error::kInternal, "unrelated");
+  EXPECT_EQ(AdaptVfioDeviceCollisionError(s), s);
+}
+
 #if TT_CHECKS_ERROR_FORMAT
 
 // Throws a c10::Error with `message` as its error message.

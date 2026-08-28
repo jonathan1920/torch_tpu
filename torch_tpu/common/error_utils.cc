@@ -670,6 +670,41 @@ absl::Status AdaptXlaError(const absl::Status& status,
          << absl::StrCat(context, kXlaCompilerFailedWith, adapted);
 }
 
+namespace {
+
+// Returns true if `status` is a VFIO device-collision error, i.e. libtpu
+// couldn't open a device node because another process holds it.
+bool IsVfioDeviceCollisionError(const absl::Status& status) {
+  if (status.ok()) {
+    return false;
+  }
+  // The status code varies (INTERNAL / FAILED_PRECONDITION), so match on the
+  // message text emitted by VfioDeviceAccess::Open().
+  const std::string_view message = status.message();
+  return absl::StrContains(message, "Couldn't open iommu group") ||
+         absl::StrContains(message, "Couldn't open vfio container");
+}
+
+}  // namespace
+
+absl::Status AdaptVfioDeviceCollisionError(absl::Status status) {
+  if (!IsVfioDeviceCollisionError(status)) {
+    return status;
+  }
+  // TODO(b/544962846): Add PID reporting for improved debuggability.
+  return StatusBuilder(std::move(status)).SetOverride()
+         << "[TorchTPU] Failed to acquire a TPU device node because it is "
+            "already opened by another process on this host.\n\n"
+            "Remediation:\n"
+            "When running multiple processes on a single TPU host, each "
+            "process must be allocated a distinct device. Please set the "
+         << kTpuVisibleDevicesEnvVar
+         << " environment variable for each process, e.g.:\n"
+            "  Process 0: export "
+         << kTpuVisibleDevicesEnvVar << "=0\n  Process 1: export "
+         << kTpuVisibleDevicesEnvVar << "=1";
+}
+
 enum class ExceptionType {
   kTtError,
   kC10Error,

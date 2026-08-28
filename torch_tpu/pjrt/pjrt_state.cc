@@ -188,7 +188,9 @@ absl::Status PjrtBackend::EnsureInitialized() {
     return init_status_;
   }
 
-  init_status_ = InitializeInternal();
+  // Early check for VFIO collisions during initialization to yield actionable
+  // errors instead of low-level crashes.
+  init_status_ = AdaptVfioDeviceCollisionError(InitializeInternal());
   init_attempted_ = true;
   return init_status_;
 }

@@ -369,7 +369,8 @@ struct TORCH_API TpuHooksInterface : public at::PrivateUse1HooksInterface {
   }
 
   bool isAvailable() const override {
-    return PjrtBackend::GetInstance().GetClient() != nullptr;
+    TT_THROW_IF_ERROR(PjrtBackend::GetInstance().EnsureInitialized());
+    return true;
   }
 };
 

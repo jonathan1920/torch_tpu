@@ -186,6 +186,11 @@ absl::StatusOr<T> AdaptXlaError(absl::StatusOr<T> status_or,
   return AdaptXlaError(std::move(status_or).status(), context);
 }
 
+// Rewrites a VFIO device-collision error into an actionable message instructing
+// the user to set TPU_VISIBLE_DEVICES. Preserves the original status code and
+// payloads. If `status` is OK, returns it unchanged.
+absl::Status AdaptVfioDeviceCollisionError(absl::Status status);
+
 // Adapts an external error message to conform to guidelines.
 [[nodiscard]] std::string AdaptExternalErrorMessage(std::string_view message);
 
