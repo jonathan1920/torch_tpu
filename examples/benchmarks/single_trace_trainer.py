@@ -128,7 +128,6 @@ class SingleTraceTrainer:
   def _update(self, new_pg, updated_bufs):
     self.buffers = updated_bufs
     self.param_group = new_pg
-    self.model.load_state_dict(self.params, strict=False)
     self.model.load_state_dict(self.bufs, strict=False)
 
   @property

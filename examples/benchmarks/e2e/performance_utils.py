@@ -352,12 +352,13 @@ def run_single_process_benchmark(
   fullgraph = FORCE_FULLGRAPH.value or config.fullgraph
   if use_torch_compile:
     if config.is_training:
-      func = device_utils.torch_compile(
-          func,
-          device.type,
-          dynamic=BOUNDED_DYNAMIC.value,
-          fullgraph=fullgraph,
-      )
+      if not getattr(func, "is_pre_compiled", False):
+        func = device_utils.torch_compile(
+            func,
+            device.type,
+            dynamic=BOUNDED_DYNAMIC.value,
+            fullgraph=fullgraph,
+        )
     else:
       model_and_input.model = device_utils.torch_compile(
           model_and_input.model,
