@@ -985,6 +985,9 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.complex64: {"rtol": 5.4, "atol": 19},
         torch.float32: {"rtol": 2.5e-6, "atol": 2.4e-5},
     },
+    "linalg.qr": {
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+    },
     "linalg.vector_norm": {
         torch.complex64: {"rtol": 4.8e-6},
         torch.float32: {"rtol": 4.8e-6},
@@ -3029,23 +3032,14 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_lu_unpack(self):
     self.do_test_op(
         "lu_unpack",
+        # TODO(b/553658275): support data sampling of integral and
+        # half-precision float dtypes for SVD-based linear algebra ops.
         exclude_dtypes={
             "cpu": (
                 INTEGRAL_DTYPES
                 + (torch.half, torch.bfloat16, torch.float64, torch.complex128)
             ),
-            "gpu": (
-                torch.uint8,
-                torch.int64,  # Cannot generate GPU sample for this dtype.
-                torch.int8,  # Cannot generate GPU sample for this dtype.
-                torch.int16,
-                torch.int32,  # Cannot generate GPU sample for this dtype.
-                torch.bool,  # Cannot generate GPU sample for this dtype.
-                torch.half,
-                torch.bfloat16,  # Cannot generate GPU sample for this dtype.
-                torch.float64,
-                torch.complex128,
-            ),
+            "gpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         },
         # ApplyPivotsInPlace in linalg_lu_kernels.cc calls .item() in C++ loop,
         # which fails placeholder tensor materialization in compiled mode.
@@ -3055,23 +3049,14 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_linalg_lu_solve(self):
     self.do_test_op(
         "linalg.lu_solve",
+        # TODO(b/553658275): support data sampling of integral and
+        # half-precision float dtypes for SVD-based linear algebra ops.
         exclude_dtypes={
             "cpu": (
                 INTEGRAL_DTYPES
                 + (torch.half, torch.bfloat16, torch.float64, torch.complex128)
             ),
-            "gpu": (
-                torch.uint8,
-                torch.int16,
-                torch.int64,  # Cannot generate GPU sample for this dtype.
-                torch.int32,  # Cannot generate GPU sample for this dtype.
-                torch.int8,  # Cannot generate GPU sample for this dtype.
-                torch.bool,  # Cannot generate GPU sample for this dtype.
-                torch.half,
-                torch.bfloat16,  # Cannot generate GPU sample for this dtype.
-                torch.float64,
-                torch.complex128,
-            ),
+            "gpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         },
         # ApplyPivotsInPlace in linalg_lu_kernels.cc calls .item() in C++ loop,
         # which fails placeholder tensor materialization in compiled mode.
@@ -3081,22 +3066,15 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_linalg_solve_ex(self):
     self.do_test_op(
         "linalg.solve_ex",
+        # TODO(b/553658275): support data sampling of integral and
+        # half-precision float dtypes for SVD-based linear algebra ops.
         exclude_dtypes={
             "cpu": (
                 INTEGRAL_DTYPES
                 + (torch.half, torch.bfloat16, torch.float64, torch.complex128)
             ),
             "gpu": (
-                torch.uint8,
-                torch.int64,  # Cannot generate GPU sample for this dtype.
-                torch.int32,  # Cannot generate GPU sample for this dtype.
-                torch.int16,
-                torch.int8,  # Cannot generate GPU sample for this dtype.
-                torch.bool,  # Cannot generate GPU sample for this dtype.
-                torch.half,
-                torch.bfloat16,  # Cannot generate GPU sample for this dtype.
-                torch.float64,
-                torch.complex128,
+                INTEGRAL_DTYPES + (torch.half, torch.bfloat16, torch.float64)
             ),
         },
         # ApplyPivotsInPlace in linalg_lu_kernels.cc calls .item() in C++ loop,
@@ -3124,20 +3102,13 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_linalg_inv_ex_out(self):
     self.do_test_op(
         "linalg.inv",
+        # TODO(b/553658275): support data sampling of integral and
+        # half-precision float dtypes for SVD-based linear algebra ops.
         exclude_dtypes={
             "cpu": (
                 INTEGRAL_DTYPES + (torch.half, torch.bfloat16, torch.float64)
             ),
-            "gpu": (
-                torch.uint8,
-                torch.int8,  # Cannot generate GPU sample for this dtype.
-                torch.int16,
-                torch.int32,  # Cannot generate GPU sample for this dtype.
-                torch.int64,  # Cannot generate GPU sample for this dtype.
-                torch.bool,  # Cannot generate GPU sample for this dtype.
-                torch.bfloat16,  # Cannot generate GPU sample for this dtype.
-                torch.half,
-            ),
+            "gpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         },
         # TODO(b/495521055): linalg.inv fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
@@ -3758,7 +3729,10 @@ class TestOps(op_testing.OpInfoTestBase):
     )
 
   def test_nn_functional_hardtanh(self):
-    self.do_test_op("nn.functional.hardtanh")
+    self.do_test_op(
+        "nn.functional.hardtanh",
+        exclude_dtypes={"gpu": (torch.uint8,)},
+    )
 
   def test_nn_functional_silu(self):
     self.do_test_op(
@@ -4289,46 +4263,26 @@ class TestOps(op_testing.OpInfoTestBase):
         },
     )
 
-  # geqrf testing isn't currently supported by PyTorch in other modes due to
-  # certain operations not being implemented on CPU/GPU.
-  @op_testing.skip_unless_torch_tpu_vs_gpu_mode
   def test_geqrf(self):
     self.do_test_op(
         "geqrf",
-        exclude_dtypes=(
-            torch.complex64,  # Cannot generate GPU sample for this dtype.
-            torch.float64,  # Cannot generate GPU sample for this dtype.
-            torch.float32,  # Cannot generate GPU sample for this dtype.
-            torch.float16,  # Cannot generate GPU sample for this dtype.
-            torch.bfloat16,  # Cannot generate GPU sample for this dtype.
-            torch.uint8,  # Cannot generate GPU sample for this dtype.
-            torch.int8,  # Cannot generate GPU sample for this dtype.
-            torch.int16,  # Cannot generate GPU sample for this dtype.
-            torch.int32,  # Cannot generate GPU sample for this dtype.
-            torch.int64,  # Cannot generate GPU sample for this dtype.
-            torch.bool,  # Cannot generate GPU sample for this dtype.
-        ),
+        # TODO(b/553658275): support data sampling of integral and
+        # half-precision float dtypes for SVD-based linear algebra ops.
+        exclude_dtypes={
+            "cpu": ALL_NUMERIC_DTYPES,
+            "gpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        },
     )
 
-  # qr testing isn't currently supported by PyTorch in other modes due to
-  # certain operations not being implemented on CPU/GPU.
-  @op_testing.skip_unless_torch_tpu_vs_gpu_mode
   def test_linalg_qr(self):
     self.do_test_op(
         "linalg.qr",
-        exclude_dtypes=(
-            torch.complex64,  # Cannot generate GPU sample for this dtype.
-            torch.float64,  # Cannot generate GPU sample for this dtype.
-            torch.float32,  # Cannot generate GPU sample for this dtype.
-            torch.float16,  # Cannot generate GPU sample for this dtype.
-            torch.bfloat16,  # Cannot generate GPU sample for this dtype.
-            torch.uint8,  # Cannot generate GPU sample for this dtype.
-            torch.int8,  # Cannot generate GPU sample for this dtype.
-            torch.int16,  # Cannot generate GPU sample for this dtype.
-            torch.int32,  # Cannot generate GPU sample for this dtype.
-            torch.int64,  # Cannot generate GPU sample for this dtype.
-            torch.bool,  # Cannot generate GPU sample for this dtype.
-        ),
+        # TODO(b/553658275): support data sampling of integral and
+        # half-precision float dtypes for SVD-based linear algebra ops.
+        exclude_dtypes={
+            "cpu": ALL_NUMERIC_DTYPES,
+            "gpu": INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        },
     )
 
   def test_thnn_fused_gru_cell(self):

@@ -101,7 +101,7 @@ absl::StatusOr<MlirOpResults<2>> BuildEmptyQrShlo(
   // matrix with shape (m, k) broadcasted to the batch dimensions.
   mlir::MlirOp q;
   if (mode == "r") {
-    const Dimensions empty_q_dims = ConcatBatchAndMatrixDims(batch_dims, 0, 0);
+    const Dimensions empty_q_dims = {0};
     TT_ASSIGN_OR_RETURN(
         q, MakeConstant(builder, at::Scalar(0), element_type, empty_q_dims));
   } else {
@@ -226,7 +226,7 @@ absl::StatusOr<MlirOpResults<2>> BuildQrShlo(mlir::MlirOp input,
 
   mlir::MlirOp q;
   if (mode == "r") {
-    const Dimensions empty_q_dims = ConcatBatchAndMatrixDims(batch_dims, 0, 0);
+    const Dimensions empty_q_dims = {0};
     TT_ASSIGN_OR_RETURN(
         q, MakeConstant(builder, at::Scalar(0), element_type, empty_q_dims));
   } else {

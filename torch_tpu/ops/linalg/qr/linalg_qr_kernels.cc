@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -41,6 +42,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -123,8 +125,7 @@ absl::StatusOr<QrDims> ComputeQrDims(const at::Tensor& self,
     r_dims.push_back(m);
     r_dims.push_back(n);
   } else if (mode == "r") {
-    q_dims.push_back(0);
-    q_dims.push_back(0);
+    q_dims = {0};
     r_dims.push_back(k);
     r_dims.push_back(n);
   } else {
@@ -172,7 +173,12 @@ std::tuple<at::Tensor&, at::Tensor&> AtenGeqrfA(const at::Tensor& self,
   TT_KERNEL(OpName::kGeqrfA, param_keys, (self, a, tau), {
     TT_ASSIGN_OR_THROW(const DeviceBufferRefArray<2> result_buffers,
                        Geqrf(self, std::move(param_keys)));
+    TT_THROW_IF_ERROR(
+        ResizeTensorIfShapeDiffers(a, result_buffers[0].dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], a));
+
+    TT_THROW_IF_ERROR(
+        ResizeTensorIfShapeDiffers(tau, result_buffers[1].dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[1], tau));
     return {a, tau};
   });
@@ -185,7 +191,12 @@ std::tuple<at::Tensor&, at::Tensor&> AtenLinalgQrOut(const at::Tensor& self,
   TT_KERNEL(OpName::kLinalgQrOut, param_keys, (self, mode, q, r), {
     TT_ASSIGN_OR_THROW(const DeviceBufferRefArray<2> result_buffers,
                        Qr(self, mode, std::move(param_keys)));
+    TT_THROW_IF_ERROR(
+        ResizeTensorIfShapeDiffers(q, result_buffers[0].dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], q));
+
+    TT_THROW_IF_ERROR(
+        ResizeTensorIfShapeDiffers(r, result_buffers[1].dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[1], r));
     return {q, r};
   });

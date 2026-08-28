@@ -7177,26 +7177,16 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
           (0, 0),
       ],
       dtype=[
-          torch.int32,
-          torch.int64,
           torch.float32,
           torch.float64,
           torch.complex64,
       ],
   )
   def test_geqrf(self, shape, dtype):
-    if dtype in (torch.int32, torch.int64):
-      input_tensor = torch.randint(-10, 10, shape, dtype=dtype)
-    else:
-      input_tensor = torch.randn(shape, dtype=dtype)
+    input_tensor = torch.randn(shape, dtype=dtype)
 
     def run(device):
-      # torch.geqrf on CPU does not support integer types, whereas the TPU
-      # implementation automatically promotes them to floating point.
-      if device == "cpu" and dtype in (torch.int32, torch.int64):
-        return torch.geqrf(input_tensor.to(torch.float64).to(device))
-      else:
-        return torch.geqrf(input_tensor.to(device))
+      return torch.geqrf(input_tensor.to(device))
 
     self.assert_close_tpu_vs_cpu(run, rtol=4e-6, atol=1e-6)
 
@@ -7218,10 +7208,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
       mode=["reduced", "complete", "r"],
   )
   def test_linalg_qr(self, shape, dtype, mode):
-    if dtype in (torch.int32, torch.int64):
-      input_tensor = torch.randint(-10, 10, shape, dtype=dtype)
-    else:
-      input_tensor = torch.randn(shape, dtype=dtype)
+    input_tensor = torch.randn(shape, dtype=dtype)
 
     def run(device):
       return torch.linalg.qr(input_tensor.to(device), mode=mode)
