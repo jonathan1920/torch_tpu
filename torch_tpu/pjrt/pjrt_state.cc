@@ -40,6 +40,7 @@
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/environment.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/pjrt/pjrt_client.h"
 #include "tsl/profiler/lib/profiler_factory.h"
@@ -58,11 +59,6 @@
 namespace torch_tpu {
 namespace {
 
-bool IsRunningInTest() {
-  return GetEnvOnce<kTestWorkspaceEnvVar>().has_value() ||
-         GetEnvOnce<kTestTargetEnvVar>().has_value();
-}
-
 template <const char* env_var_name>
 void TryExpandRankInEnvVar(std::string_view rank) {
   const char* env_val = std::getenv(env_var_name);  // GETENV_OK=Expanding rank.
@@ -73,37 +69,41 @@ void TryExpandRankInEnvVar(std::string_view rank) {
 }
 
 // Creates a PluginTracer instance to collect TPU profile metrics.
-// Returns nullptr in statically-linked test environments to prevent TSL global
-// mutex deadlocks.
+// Returns nullptr in environments where libtpu is statically linked to prevent
+// TSL global mutex deadlocks.
 std::unique_ptr<tsl::profiler::ProfilerInterface> absl_nullable
 CreateTpuProfiler(const PLUGIN_Profiler_Api* absl_nonnull profiler_api,
                   const tensorflow::ProfileOptions& opts) {
-  // In test environments (e.g. running on simulators with shared symbols),
-  // the mock libtpu plugin is often linked statically into the framework
-  // binary.
-  //
-  // When the framework starts tracing, it calls
+#if TT_IS_INTERNAL_TORCH_TPU
+  // In Google-internal TorchTPU builds, libtpu is linked statically into the
+  // torch_tpu binary. When the framework starts tracing, it calls
   // `tsl::profiler::CreateProfilers`, which acquires a global non-recursive
   // mutex in TSL.
   //
   // 1. Framework acquires Global Mutex A.
   // 2. Calls this factory lambda to create `PluginTracer`.
-  // 3. `PluginTracer` constructor calls the plugin (mock libtpu).
-  // 4. The mock plugin attempts to initialize its own profilers by calling
+  // 3. `PluginTracer` constructor calls libtpu.
+  // 4. libtpu attempts to initialize its own profilers by calling
   //    `tsl::profiler::CreateProfilers` again (nested call).
   // 5. The nested call tries to acquire Global Mutex A and deadlocks!
   //
+  // This is not a problem when libtpu is linked dynamically, in which case
+  // the dynamic library has its own copy of the TSL global mutex.
+  //
   // Since we cannot modify TSL (to make it re-entrant safe or using
-  // recursive mutexes) and we cannot modify the mock plugin (to stop it
+  // recursive mutexes) and we cannot modify libtpu (to stop it
   // from calling out), the only safe solution in this statically-linked
-  // environment is to SKIP creating the `PluginTracer` in tests.
-  if (IsRunningInTest()) {
-    ABSL_LOG(WARNING)
-        << "Skipping PluginTracer in test environment to avoid shared "
-           "TSL mutex deadlock.";
-    return nullptr;
-  }
+  // environment is to SKIP creating the `PluginTracer`.
+  //
+  // TODO(b/549484939): Remove this workaround when libtpu is no longer linked
+  // statically.
+  ABSL_LOG(WARNING)
+      << "Skipping PluginTracer when libtpu is statically linked to avoid "
+         "shared TSL mutex deadlock.";
+  return nullptr;
+#else
   return std::make_unique<xla::profiler::PluginTracer>(profiler_api, opts);
+#endif
 }
 
 // Dynamically discovers the PJRT Profiler Extension within the given plugin

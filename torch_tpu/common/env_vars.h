@@ -53,11 +53,6 @@ inline constexpr char kMasterPortEnvVar[] = "MASTER_PORT";  // Set by launchers.
 // running on the same host.
 inline constexpr char kNprocEnvVar[] = "NPROC";
 inline constexpr char kRankEnvVar[] = "RANK";  // Set by launchers.
-// Set by the Bazel build system during unit test execution.
-inline constexpr char kTestTargetEnvVar[] = "TEST_TARGET";
-// Set by Bazel test runner.
-inline constexpr char kTestTmpdirEnvVar[] = "TEST_TMPDIR";
-inline constexpr char kTestWorkspaceEnvVar[] = "TEST_WORKSPACE";
 // Standard temporary directory.
 inline constexpr char kTmpdirEnvVar[] = "TMPDIR";
 // If set to "1", C++ stack traces are appended to error messages.
@@ -183,9 +178,6 @@ inline constexpr auto kEnvVarToStage =
         {kMasterPortEnvVar, std::nullopt},
         {kNprocEnvVar, std::nullopt},
         {kRankEnvVar, std::nullopt},
-        {kTestTargetEnvVar, std::nullopt},
-        {kTestTmpdirEnvVar, std::nullopt},
-        {kTestWorkspaceEnvVar, std::nullopt},
         {kTmpdirEnvVar, std::nullopt},
         {kTorchShowCppStacktracesEnvVar, std::nullopt},
         {kTorchTpuHandshakePortEnvVar, SymbolStage::InternalApi()},

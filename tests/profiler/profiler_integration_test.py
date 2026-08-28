@@ -34,6 +34,11 @@ from tsl.profiler.protobuf import xplane_pb2
 
 # pylint: enable=g-direct-tensorflow-import
 
+# Set TMPDIR to TEST_TMPDIR so TorchTPU's profiler writes artifacts into the
+# test's temporary directory instead of falling back to system /tmp.
+if "TEST_TMPDIR" in os.environ:
+  os.environ["TMPDIR"] = os.environ["TEST_TMPDIR"]
+
 
 def _get_profile_dir() -> pathlib.Path:
   tmpdir = os.environ.get("TEST_TMPDIR") or os.environ.get("TMPDIR") or "/tmp"

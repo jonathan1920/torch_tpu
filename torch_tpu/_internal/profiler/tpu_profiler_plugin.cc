@@ -338,14 +338,9 @@ std::string GetBaseOutputDir(std::string_view run_dir) {
   }
 
   std::string base_dir = std::string(run_dir);
-
-  const auto& env_test_tmpdir_opt = GetEnvOnce<kTestTmpdirEnvVar>();
   const auto& env_tmpdir_opt = GetEnvOnce<kTmpdirEnvVar>();
-
   std::string env_tmp;
-  if (env_test_tmpdir_opt.has_value() && !env_test_tmpdir_opt->empty()) {
-    env_tmp = *env_test_tmpdir_opt;
-  } else if (env_tmpdir_opt.has_value() && !env_tmpdir_opt->empty()) {
+  if (env_tmpdir_opt.has_value() && !env_tmpdir_opt->empty()) {
     env_tmp = *env_tmpdir_opt;
   }
 
@@ -364,9 +359,8 @@ std::string GetBaseOutputDir(std::string_view run_dir) {
 // The base directory is determined in order of priority:
 // 1. TPU_PROFILER_OUTPUT_DIR environment variable (if set and non-empty).
 // 2. The provided `run_dir` (if not empty and not "/tmp").
-// 3. TEST_TMPDIR environment variable (if set).
-// 4. TMPDIR environment variable (if set).
-// 5. Default to "/tmp".
+// 3. TMPDIR environment variable (if set).
+// 4. Default to "/tmp".
 absl::StatusOr<std::string> GetXPlaneOutputPath(
     std::string_view run_dir, std::optional<std::string_view> worker_rank) {
   std::string base_dir = GetBaseOutputDir(run_dir);
