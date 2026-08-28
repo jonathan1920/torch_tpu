@@ -32,7 +32,6 @@ def _make_factory(
 
   def factory(ctx: context_lib.Context):
     model, inputs = model_load_fn(ctx, model_id, is_training)
-    opt = None
     if is_training:
       opt = torch.optim.AdamW(
           model.parameters(),
@@ -40,7 +39,8 @@ def _make_factory(
           capturable=True,
           fused=True,
       )
-    return model, (), inputs, opt
+      return model, (), inputs, opt
+    return model, (), inputs
 
   return factory
 
