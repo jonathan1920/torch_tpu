@@ -1,0 +1,84 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: RBE Hardware TPU Tests (Opt-In)
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  run_tests:
+    name: "${{ matrix.job_info.name }}"
+    if: contains(github.event.pull_request.labels.*.name, 'run-rbe') || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        job_info: [
+          {
+            name: "CPU Presubmit Tests",
+            runner: "ubuntu-latest",
+            config: "ci_cpu_presubmit",
+            extra_flags: '--config=remote_execution_readonly --bes_backend=""',
+          },
+          {
+            name: "TPU v5e Tests",
+            runner: ["self-hosted", "tpu-v5"],
+            config: "ci_tpu_v5_presubmit",
+            extra_flags: '--bes_backend="" --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" --local_test_jobs=4 --test_env=ALLOW_MULTIPLE_LIBTPU_LOAD=true --test_env=TORCH_TPU_ACCELERATOR_COUNT=4 --test_tag_filters=presubmit-v5,presubmit-v7,-fails-on-tpu-v5,-requires-tpu-v7x,-requires-tpu-v5lite:8,-nopresubmit,-notest,-nobuild',
+          },
+        ]
+    runs-on: ${{ matrix.job_info.runner }}
+    env:
+      RBE_KEY: ${{ secrets.GCP_RBE_SERVICE_ACCOUNT_KEY }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+
+      - name: Fix Git Workspace Ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Authenticate to GCP RBE
+        if: env.RBE_KEY != ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_RBE_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Bazel
+        if: matrix.job_info.runner == 'ubuntu-latest'
+        run: |
+          sudo npm install -g @bazel/bazelisk
+          sudo ln -sf $(which bazelisk) /usr/local/bin/bazel || true
+
+      - name: Run Test Suite
+        run: |
+          bazel test \
+            --config=${{ matrix.job_info.config }} \
+            --nocache_test_results \
+            --test_output=errors \
+            ${{ matrix.job_info.extra_flags }} \
+            -- //tests/... \
+               -//tests:fp4_test \
+               -//tests:ops_unit_test \
+               -//tests:async_transfer_test \
+               -//tests/compile:activation_checkpointing_mem_test \
+               -//tests/distributed:single_tpu_pg_test \
+               -//tests:ops_unit_test_tier3_cache \
+               -//tests:ops_unit_test_tier3_cache_no_backup

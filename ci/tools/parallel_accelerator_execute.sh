@@ -31,38 +31,40 @@
 
 TORCH_TPU_ACCELERATOR_COUNT=${TORCH_TPU_ACCELERATOR_COUNT:-8}
 TORCH_TPU_TESTS_PER_ACCELERATOR=${TORCH_TPU_TESTS_PER_ACCELERATOR:-1}
+LOCK_DIR="${TORCH_TPU_LOCK_DIR:-/tmp/torch_tpu_locks}"
+MAX_WAIT_SECONDS=${TORCH_TPU_LOCK_TIMEOUT_SECONDS:-600}
 
-# rlocation is needed to find the test binary when running with bazel 8+
-set -uo pipefail
-f=bazel_tools/tools/bash/runfiles/runfiles.bash
-# Source the runfiles library. We use a flexible grep to handle both WORKSPACE and Bzlmod prefixes.
-source "${RUNFILES_DIR:-/dev/null}/$f" 2>/dev/null || \
-  source "$(grep -m1 "$f " "${RUNFILES_MANIFEST_FILE:-/dev/null}" | cut -f2- -d' ')" 2>/dev/null || \
-  source "$0.runfiles/$f" 2>/dev/null || true
+mkdir -p -m 777 "$LOCK_DIR" 2>/dev/null || true
 
-if command -v rlocation >/dev/null; then
-  TEST_BINARY="$(rlocation "${TEST_WORKSPACE:-_main}/${1#./}")"
-else
-  TEST_BINARY="$1"
+TEST_BINARY="$1"
+if [ ! -f "$TEST_BINARY" ]; then
+  f=bazel_tools/tools/bash/runfiles/runfiles.bash
+  source "${RUNFILES_DIR:-/dev/null}/$f" 2>/dev/null || \
+    source "$(grep -m1 "$f " "${RUNFILES_MANIFEST_FILE:-/dev/null}" | cut -f2- -d' ')" 2>/dev/null || \
+    source "$0.runfiles/$f" 2>/dev/null || true
+
+  if command -v rlocation >/dev/null 2>&1; then
+    resolved="$(rlocation "${TEST_WORKSPACE:-_main}/${1#./}" 2>/dev/null || true)"
+    [ -n "$resolved" ] && [ -f "$resolved" ] && TEST_BINARY="$resolved"
+  fi
 fi
-shift; set +uo pipefail
-
+shift
 
 # *******************************************************************
-
-mkdir -p /var/lock
 
 # Multi-accelerator/distributed tests require exclusive access across all slots.
 if [ "${TORCH_TPU_EXCLUSIVE_TEST:-0}" = "1" ]; then
   echo "Acquiring ALL accelerator locks for exclusive test $TEST_BINARY..."
   for j in $(seq 0 $((TORCH_TPU_TESTS_PER_ACCELERATOR-1))); do
     for i in $(seq 0 $((TORCH_TPU_ACCELERATOR_COUNT-1))); do
-      exec {fd}>/var/lock/torch_tpu_accelerator_lock_${i}_${j} || exit 1
+      exec {fd}>"${LOCK_DIR}/lock_${i}_${j}" || exit 1
       flock "$fd" || exit 1
     done
   done
   (
     export TPU_VISIBLE_CHIPS="$(seq -s, 0 $((TORCH_TPU_ACCELERATOR_COUNT-1)))"
+    export TPU_VISIBLE_DEVICES="$(seq -s, 0 $((TORCH_TPU_ACCELERATOR_COUNT-1)))"
+    unset TPU_ACCELERATOR_TYPE TPU_CHIPS_PER_HOST_BOUNDS TPU_HOST_BOUNDS TPU_TOPOLOGY CHIPS_PER_HOST_BOUNDS HOST_BOUNDS
     "$TEST_BINARY" "$@"
   )
   return_code=$?
@@ -78,25 +80,34 @@ fi
 # first (j) then accelerators (i).
 #
 # If all slots are busy, we loop and retry until one is free.
+start_time=$(date +%s)
 while true; do
-  for j in `seq 0 $((TORCH_TPU_TESTS_PER_ACCELERATOR-1))`; do
-    for i in `seq 0 $((TORCH_TPU_ACCELERATOR_COUNT-1))`; do
-      exec {lock_fd}>/var/lock/torch_tpu_accelerator_lock_${i}_${j} || exit 1
-      if flock -n "$lock_fd";
-      then
+  for j in $(seq 0 $((TORCH_TPU_TESTS_PER_ACCELERATOR-1))); do
+    for i in $(seq 0 $((TORCH_TPU_ACCELERATOR_COUNT-1))); do
+      exec {lock_fd}>"${LOCK_DIR}/lock_${i}_${j}" || exit 1
+      if flock -n "$lock_fd"; then
         (
-          # This export only works within the brackets, so it is isolated to one
-          # single command.
           export TPU_VISIBLE_CHIPS=$i
+          export TPU_VISIBLE_DEVICES=$i
+          unset TPU_ACCELERATOR_TYPE TPU_CHIPS_PER_HOST_BOUNDS TPU_HOST_BOUNDS TPU_TOPOLOGY CHIPS_PER_HOST_BOUNDS HOST_BOUNDS
           echo "Running test $TEST_BINARY $* on accelerator $i"
-          "$TEST_BINARY" $@
+          "$TEST_BINARY" "$@"
         )
         return_code=$?
         # flock locks are automatically released when the FD is closed.
+        exec {lock_fd}>&-
         exit $return_code
+      else
+        exec {lock_fd}>&-
       fi
     done
   done
+
+  current_time=$(date +%s)
+  if [ $((current_time - start_time)) -ge "$MAX_WAIT_SECONDS" ]; then
+    echo "ERROR: Timed out waiting for an accelerator slot after ${MAX_WAIT_SECONDS}s." >&2
+    exit 1
+  fi
   echo "All accelerator slots are busy, retrying in 1s..."
   sleep 1
 done
