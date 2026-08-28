@@ -129,6 +129,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="meta-llama/Llama-3.2-1B",
             sequence_length=1024,
             batch_size=batch_size,
+            custom_kwargs={
+                "precompute_attention_mask": True,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=benchmark_function_db.get_train_factory(
@@ -297,6 +300,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="meta-llama/Llama-3.2-3B",
             sequence_length=512,
             batch_size=1,
+            custom_kwargs={
+                "precompute_attention_mask": True,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=benchmark_function_db.get_train_factory(
@@ -350,6 +356,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="google/gemma-3-270m",
             sequence_length=512,
             batch_size=1,
+            custom_kwargs={
+                "precompute_attention_mask": True,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=benchmark_function_db.get_train_factory(
@@ -442,6 +451,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="google/gemma-2-2b",
             sequence_length=512,
             batch_size=1,
+            custom_kwargs={
+                "precompute_attention_mask": True,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=benchmark_function_db.get_train_factory(
@@ -1076,6 +1088,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="Qwen/Qwen3-1.7B",
             sequence_length=4096,
             batch_size=1,
+            custom_kwargs={
+                "precompute_attention_mask": True,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=benchmark_function_db.get_train_factory(
@@ -1201,6 +1216,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="Qwen/Qwen3-0.6B",
             sequence_length=512,
             batch_size=1,
+            custom_kwargs={
+                "precompute_attention_mask": True,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=benchmark_function_db.get_train_factory(
@@ -1246,6 +1264,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="Qwen/Qwen3-4B",
             sequence_length=512,
             batch_size=1,
+            custom_kwargs={
+                "precompute_attention_mask": True,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=benchmark_function_db.get_train_factory(
@@ -1484,6 +1505,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="microsoft/Phi-3-mini-4k-instruct",
             sequence_length=512,
             batch_size=1,
+            custom_kwargs={
+                "precompute_attention_mask": True,
+            },
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         train_factory=benchmark_function_db.get_train_factory(

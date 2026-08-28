@@ -38,8 +38,11 @@ from tests import module_registry
 import transformers
 from transformers import activations
 from transformers.configuration_utils import PreTrainedConfig
+from transformers.masking_utils import ALL_MASK_ATTENTION_FUNCTIONS
+from transformers.masking_utils import causal_mask_function
 from transformers.masking_utils import create_causal_mask
 from transformers.masking_utils import create_sliding_window_causal_mask
+from transformers.masking_utils import sliding_window_causal_mask_function
 from transformers.models.bert import modeling_bert
 from transformers.models.mamba2 import configuration_mamba2
 from transformers.models.mamba2 import modeling_mamba2
@@ -349,6 +352,20 @@ def _precompute_attention_mask(
           position_ids=position_ids,
           layer_idx=None,
       )
+      if mask is None:
+        attn_impl = getattr(effective_config, "_attn_implementation", "sdpa")
+        if attn_impl in ALL_MASK_ATTENTION_FUNCTIONS:
+          mask_interface = ALL_MASK_ATTENTION_FUNCTIONS[attn_impl]
+          mask = mask_interface(
+              batch_size=batch_size,
+              q_length=seq_len,
+              kv_length=seq_len,
+              mask_function=causal_mask_function,
+              allow_is_causal_skip=False,
+              dtype=weights_dtype,
+              config=effective_config,
+              device=masking_device,
+          )
       if mask is not None:
         mask = mask.to(device)
       precomputed_masks["full_attention"] = mask
@@ -362,6 +379,25 @@ def _precompute_attention_mask(
           position_ids=position_ids,
           layer_idx=None,
       )
+      if mask is None:
+        sliding_window = getattr(effective_config, "sliding_window", None)
+        attn_impl = getattr(effective_config, "_attn_implementation", "sdpa")
+        if (
+            sliding_window is not None
+            and attn_impl in ALL_MASK_ATTENTION_FUNCTIONS
+        ):
+          mask_interface = ALL_MASK_ATTENTION_FUNCTIONS[attn_impl]
+          mask = mask_interface(
+              batch_size=batch_size,
+              q_length=seq_len,
+              kv_length=seq_len,
+              mask_function=sliding_window_causal_mask_function(sliding_window),
+              local_size=sliding_window,
+              allow_is_causal_skip=False,
+              dtype=weights_dtype,
+              config=effective_config,
+              device=masking_device,
+          )
       if mask is not None:
         mask = mask.to(device)
       precomputed_masks["sliding_attention"] = mask
@@ -376,6 +412,30 @@ def _precompute_attention_mask(
         position_ids=position_ids,
         layer_idx=None,
     )
+
+    if precomputed_4d_mask is None:
+      attn_impl = getattr(config, "_attn_implementation", "sdpa")
+      if attn_impl in ALL_MASK_ATTENTION_FUNCTIONS:
+        mask_interface = ALL_MASK_ATTENTION_FUNCTIONS[attn_impl]
+        precomputed_4d_mask = mask_interface(
+            batch_size=batch_size,
+            q_length=seq_len,
+            kv_length=seq_len,
+            mask_function=causal_mask_function,
+            allow_is_causal_skip=False,
+            dtype=weights_dtype,
+            config=config,
+            device=masking_device,
+        )
+      if precomputed_4d_mask is None:
+        q_idx = torch.arange(seq_len, device=masking_device)[:, None]
+        kv_idx = torch.arange(seq_len, device=masking_device)[None, :]
+        precomputed_4d_mask = (
+            (kv_idx <= q_idx)
+            .unsqueeze(0)
+            .unsqueeze(0)
+            .expand(batch_size, 1, seq_len, seq_len)
+        )
 
     if precomputed_4d_mask is not None:
       precomputed_4d_mask = precomputed_4d_mask.to(device)
@@ -410,9 +470,13 @@ def huggingface_llm_model_builder(
   batch_size = model_and_input_args.batch_size
   dist_strat_str = model_and_input_args.custom_kwargs.get("dist_strat", "none")
   dist_strat = DistStrat(dist_strat_str)
-  modify_config_hook = model_and_input_args.custom_kwargs.get(
-      "modify_config_hook", None
+  user_modify_config_hook = model_and_input_args.custom_kwargs.get(
+      "modify_config_hook", lambda cfg: cfg
   )
+
+  def modify_config_hook(cfg):
+    setattr(cfg, "use_cache", False)
+    return user_modify_config_hook(cfg)
 
   registry = get_module_registry()
   module_spec = registry.get_module_spec(
@@ -488,7 +552,6 @@ def huggingface_llm_model_builder(
     )
   else:
     raise ValueError(f"Distributed strategy {dist_strat} unrecognized")
-
   if is_training:
     model.train()
   else:
