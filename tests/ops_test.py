@@ -3729,10 +3729,7 @@ class TestOps(op_testing.OpInfoTestBase):
     )
 
   def test_nn_functional_hardtanh(self):
-    self.do_test_op(
-        "nn.functional.hardtanh",
-        exclude_dtypes={"gpu": (torch.uint8,)},
-    )
+    self.do_test_op("nn.functional.hardtanh")
 
   def test_nn_functional_silu(self):
     self.do_test_op(

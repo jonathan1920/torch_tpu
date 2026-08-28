@@ -14,8 +14,6 @@
 
 """Tests error handling on TPU vs on GPU."""
 
-from tests import oss_utils
-
 import re
 from typing import Any
 import unittest
@@ -26,6 +24,7 @@ import torch
 from torch_tpu._internal import env  # pylint: disable=unused-import
 from torch_tpu._internal.distributed import multiprocessing
 from tests import error_testing as et
+from tests import oss_utils  # pylint: disable=unused-import  # noqa: F401
 
 _TEST_MODE = et.TEST_MODE
 
@@ -6655,22 +6654,23 @@ Supported combinations for non-constant padding:
     ):
       torch.ops.aten.hardtanh_backward(t_int32, t_int32, min_val=0, max_val=1)
 
-  def test_hardtanh_unsupported_unsigned_negative_limits(self):
+  def test_hardtanh_unsupported_out_of_range_min(self):
     t = torch.ones(2, device=et.device(), dtype=torch.uint8)
-
-    # TODO: make the behavior of hardtanh() on TPU match the latest PyTorch
-    # CUDA behavior, which allows negative limits for unsigned types.
-    # The internal build uses a newer version of PyTorch than the OSS build,
-    # so we only need to skip this test in internal builds.
-    if et.is_on_gpu() and oss_utils.is_internal():
-      self.skipTest("TPU behavior different from latest torch CUDA.")
-
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""hardtanh(): expected positive limit values when executing on an unsigned tensor, got min_val=-1 and max_val=1""",
-        gpu="""cannot do hardtanh on an unsigned type with negative limits""",
+        tpu="""hardtanh(): expected clamp min value to be representable as uint8, got 256""",
+        gpu="""Clamp min value 256 is outside the representable range of Byte""",
     ):
-      torch.nn.functional.hardtanh(t, min_val=-1, max_val=1)
+      torch.nn.functional.hardtanh(t, min_val=256, max_val=256)
+
+  def test_hardtanh_unsupported_out_of_range_max(self):
+    t = torch.ones(2, device=et.device(), dtype=torch.uint8)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""hardtanh(): expected clamp max value to be representable as uint8, got -1""",
+        gpu="""Clamp max value -1 is outside the representable range of Byte""",
+    ):
+      torch.nn.functional.hardtanh(t, min_val=-2, max_val=-1)
 
   def test_prelu_kernel_unsupported_self_dtype(self):
     self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
