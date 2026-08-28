@@ -97,6 +97,30 @@ class CompileConfigTest(seed_test_utils.RepeatableTest):
       compile_lib.CompileConfig().apply(nn.Linear(2, 2), target)
     self.assertEqual(tc.call_args.kwargs["backend"], "TPU_BACKEND")
 
+  def test_tpu_backend_dynamism_default(self):
+    target = target_lib.make_target(target_lib.Platform.V5E_1X1)
+    with mock.patch("torch.compile"), mock.patch(
+        "torch_tpu._internal.compile.TpuBackend"
+    ) as mock_backend:
+      compile_lib.CompileConfig().apply(nn.Linear(2, 2), target)
+    mock_backend.assert_called_once_with(dynamism=True)
+
+  def test_tpu_backend_dynamism_explicitly_enabled(self):
+    target = target_lib.make_target(target_lib.Platform.V5E_1X1)
+    with mock.patch("torch.compile"), mock.patch(
+        "torch_tpu._internal.compile.TpuBackend"
+    ) as mock_backend:
+      compile_lib.CompileConfig(dynamic=True).apply(nn.Linear(2, 2), target)
+    mock_backend.assert_called_once_with(dynamism=True)
+
+  def test_tpu_backend_dynamism_disabled(self):
+    target = target_lib.make_target(target_lib.Platform.V5E_1X1)
+    with mock.patch("torch.compile"), mock.patch(
+        "torch_tpu._internal.compile.TpuBackend"
+    ) as mock_backend:
+      compile_lib.CompileConfig(dynamic=False).apply(nn.Linear(2, 2), target)
+    mock_backend.assert_called_once_with(dynamism=False)
+
   def test_config_applies_to_a_callable(self):
     def step(model, args, kwargs, optim):  # pylint: disable=unused-argument
       return None

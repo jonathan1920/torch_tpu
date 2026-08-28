@@ -66,7 +66,7 @@ class CompileConfig:
     if target.device_kind is target_lib.DeviceKind.TPU:
       from torch_tpu._internal import compile as torch_tpu_compile  # pylint: disable=g-import-not-at-top
 
-      backend = torch_tpu_compile.TpuBackend()
+      backend = torch_tpu_compile.TpuBackend(dynamism=self.dynamic is not False)
 
     return torch.compile(
         obj,
