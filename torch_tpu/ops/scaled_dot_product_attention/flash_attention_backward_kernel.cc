@@ -399,7 +399,7 @@ void SetBackwardKernelAttributes(const FlashAttnConfig& config,
 }
 
 absl::StatusOr<std::string> CreateBackwardDkvKernel(
-    const FlashAttnConfig& config) {
+    const FlashAttnConfig& config, const Tiling& tiling) {
   auto context = CreateMlirContextWithDialects();
   OpBuilder builder(context.get());
   OwningOpRef<ModuleOp> module =
@@ -407,10 +407,6 @@ absl::StatusOr<std::string> CreateBackwardDkvKernel(
   ImplicitLocOpBuilder module_builder(module->getLoc(),
                                       module->getBodyRegion());
 
-  Tiling tiling = {
-      .qt = std::min(kDefaultQTileSize, config.q_sequence_length),
-      .kt = std::min(kDefaultKTileSize, config.kv_sequence_length),
-  };
   if (config.q_sequence_length % tiling.qt != 0 ||
       config.kv_sequence_length % tiling.kt != 0) {
     return TT_ERROR(::torch_tpu::error::kInvalidArgument)
@@ -537,7 +533,7 @@ func::FuncOp buildBackwardDqModule(ImplicitLocOpBuilder& module_builder,
 }
 
 absl::StatusOr<std::string> CreateBackwardDqKernel(
-    const FlashAttnConfig& config) {
+    const FlashAttnConfig& config, const Tiling& tiling) {
   auto context = CreateMlirContextWithDialects();
   OpBuilder builder(context.get());
   OwningOpRef<ModuleOp> module =
@@ -545,10 +541,6 @@ absl::StatusOr<std::string> CreateBackwardDqKernel(
   ImplicitLocOpBuilder module_builder(module->getLoc(),
                                       module->getBodyRegion());
 
-  Tiling tiling = {
-      .qt = std::min(kDefaultQTileSize, config.q_sequence_length),
-      .kt = std::min(kDefaultKTileSize, config.kv_sequence_length),
-  };
   if (config.q_sequence_length % tiling.qt != 0 ||
       config.kv_sequence_length % tiling.kt != 0) {
     return TT_ERROR(::torch_tpu::error::kInvalidArgument)

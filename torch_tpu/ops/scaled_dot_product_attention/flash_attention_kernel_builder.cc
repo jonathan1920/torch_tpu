@@ -16,6 +16,7 @@
 
 #include "torch_tpu/ops/scaled_dot_product_attention/flash_attention_kernel_builder.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -148,6 +149,13 @@ absl::StatusOr<mlir::torch_tpu::FlashAttnConfig> CreateFlashAttnConfig(
   return config;
 }
 
+mlir::torch_tpu::Tiling CreateTiling(int64_t q_seq_len, int64_t k_seq_len) {
+  return {
+      .qt = std::min(mlir::torch_tpu::kDefaultQTileSize, q_seq_len),
+      .kt = std::min(mlir::torch_tpu::kDefaultKTileSize, k_seq_len),
+  };
+}
+
 mlir::MlirOp ReshapeMask(mlir::MlirOp mask_mlir, int batch_size) {
   mlir::RankedTensorType mask_type = GetTensorTypeOrDie(mask_mlir);
   int rank = mask_type.getRank();
@@ -224,6 +232,11 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
                                bool is_causal, std::optional<double> scale,
                                bool return_lse) {
   TT_RETURN_IF_ERROR(CheckDtype(query.scalar_type()));
+
+  int64_t q_seq_len = query.size(query.ndimension() - 2);
+  int64_t k_seq_len = key.size(key.ndimension() - 2);
+  const auto tiling = CreateTiling(q_seq_len, k_seq_len);
+
   TT_ASSIGN_OR_RETURN(auto config_init,
                       CreateFlashAttnConfig(query, key, value, attn_bias,
                                             is_causal, scale, return_lse));
@@ -236,7 +249,7 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
   out_dims[rank - 1] = value.size(rank - 1);
 
   auto op_builder =
-      [rank, out_dims, config_init](
+      [rank, out_dims, config_init, tiling](
           absl::Span<mlir::MlirOp> inputs,
           mlir::MlirBuilder& builder) -> absl::StatusOr<DynamicMlirOpResults> {
     mlir::torch_tpu::FlashAttnConfig config = config_init;
@@ -285,7 +298,7 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
     }
 
     TT_ASSIGN_OR_RETURN(std::string kernel_mlir,
-                        mlir::torch_tpu::CreateKernel(config));
+                        mlir::torch_tpu::CreateKernel(config, tiling));
 
     auto custom_call = mlir::torch_tpu::CreateCustomCallOp(
         builder.getOpBuilder(), builder.getLoc(), kernel_mlir, operands,
@@ -364,6 +377,10 @@ CreateFlashAttentionBackwardKernel(
     bool is_causal) {
   TT_RETURN_IF_ERROR(CheckDtype(query.scalar_type()));
 
+  int64_t q_seq_len = query.size(query.ndimension() - 2);
+  int64_t k_seq_len = key.size(key.ndimension() - 2);
+  const auto tiling = CreateTiling(q_seq_len, k_seq_len);
+
   TT_ASSIGN_OR_RETURN(auto config_init,
                       CreateFlashAttnConfig(query, key, value, attn_bias,
                                             is_causal, scale, false));
@@ -374,7 +391,7 @@ CreateFlashAttentionBackwardKernel(
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
   auto op_builder =
-      [rank, config_init](
+      [rank, config_init, tiling](
           absl::Span<mlir::MlirOp> inputs,
           mlir::MlirBuilder& builder) -> absl::StatusOr<MlirOpResults<3>> {
     mlir::torch_tpu::FlashAttnConfig config = config_init;
@@ -433,8 +450,9 @@ CreateFlashAttentionBackwardKernel(
       dkv_inputs.push_back(mask_mlir.getValue());
     }
 
-    TT_ASSIGN_OR_RETURN(std::string dkv_kernel_mlir,
-                        mlir::torch_tpu::CreateBackwardDkvKernel(config));
+    TT_ASSIGN_OR_RETURN(
+        std::string dkv_kernel_mlir,
+        mlir::torch_tpu::CreateBackwardDkvKernel(config, tiling));
     auto dkv_custom_call = mlir::torch_tpu::CreateCustomCallOp(
         builder.getOpBuilder(), builder.getLoc(), dkv_kernel_mlir, dkv_inputs,
         {key_batch.getType(), value_batch.getType()});
@@ -453,8 +471,9 @@ CreateFlashAttentionBackwardKernel(
 
     dq_inputs.push_back(out_batch.getValue());
 
-    TT_ASSIGN_OR_RETURN(std::string dq_kernel_mlir,
-                        mlir::torch_tpu::CreateBackwardDqKernel(config));
+    TT_ASSIGN_OR_RETURN(
+        std::string dq_kernel_mlir,
+        mlir::torch_tpu::CreateBackwardDqKernel(config, tiling));
     auto dq_custom_call = mlir::torch_tpu::CreateCustomCallOp(
         builder.getOpBuilder(), builder.getLoc(), dq_kernel_mlir, dq_inputs,
         {query_batch.getType()});

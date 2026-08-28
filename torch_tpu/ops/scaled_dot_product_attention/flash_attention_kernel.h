@@ -55,15 +55,16 @@ constexpr int64_t kDefaultQTileSize = 512;
 constexpr int64_t kDefaultKTileSize = 512;
 
 // Creates the flash attention kernel for the given configuration.
-absl::StatusOr<std::string> CreateKernel(const FlashAttnConfig& config);
+absl::StatusOr<std::string> CreateKernel(const FlashAttnConfig& config,
+                                         const Tiling& tiling);
 
 // Creates the flash attention backward DKV kernel for the given configuration.
 absl::StatusOr<std::string> CreateBackwardDkvKernel(
-    const FlashAttnConfig& config);
+    const FlashAttnConfig& config, const Tiling& tiling);
 
 // Creates the flash attention backward DQ kernel for the given configuration.
 absl::StatusOr<std::string> CreateBackwardDqKernel(
-    const FlashAttnConfig& config);
+    const FlashAttnConfig& config, const Tiling& tiling);
 
 }  // namespace mlir::torch_tpu
 

@@ -350,18 +350,14 @@ func::FuncOp buildModule(ImplicitLocOpBuilder& module_builder,
 }
 }  // namespace
 
-absl::StatusOr<std::string> CreateKernel(const FlashAttnConfig& config) {
+absl::StatusOr<std::string> CreateKernel(const FlashAttnConfig& config,
+                                         const Tiling& tiling) {
   auto context = CreateMlirContextWithDialects();
   OpBuilder builder(context.get());
   OwningOpRef<ModuleOp> module =
       ModuleOp::create(builder, builder.getUnknownLoc());
   ImplicitLocOpBuilder module_builder(module->getLoc(),
                                       module->getBodyRegion());
-  // Use default tiling for now.
-  Tiling tiling = {
-      .qt = std::min(kDefaultQTileSize, config.q_sequence_length),
-      .kt = std::min(kDefaultKTileSize, config.kv_sequence_length),
-  };
   if (config.q_sequence_length % tiling.qt != 0 ||
       config.kv_sequence_length % tiling.kt != 0) {
     return TT_ERROR(::torch_tpu::error::kInvalidArgument)
