@@ -45,12 +45,13 @@ docker pull "${CONTAINER_IMAGE}"
 echo "===> Compiling wheel via Bazel inside ml-build container..."
 # We map the checked out directory into /workspace and run the shared build
 # script for every supported Python version.
+# RBE is disabled because Kokoro doesn't yet have permissions to run RBE.
 mkdir -p dist
 docker run --rm \
   -v "$(pwd):/workspace" \
   -w "/workspace" \
   "${CONTAINER_IMAGE}" \
-  ci/build_wheels.sh --output-dir /workspace/dist 3.11 3.12 3.13 3.14 -- --config=wheel_nightly
+  ci/build_wheels.sh --output-dir /workspace/dist 3.11 3.12 3.13 3.14 -- --config=wheel_nightly --config=no_rbe
 
 # Move the built wheels from local dist back to Kokoro artifacts directory
 if [[ -d dist && -n "$(ls -A dist/*.whl 2>/dev/null)" ]]; then
