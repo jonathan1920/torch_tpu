@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any
 import torch
 from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import step_lib
@@ -52,17 +53,35 @@ class DecodeStepper(common.BaseStepper):
     model_config = getattr(self._model, "config")  # pytype: disable=attribute-error
     cfg = getattr(model_config, "text_config", None) or model_config
 
-    head_dim = getattr(cfg, "head_dim", None)
-    if head_dim is None:
-      num_attn_heads = getattr(cfg, "num_attention_heads", 1) or 1
-      hidden_size = getattr(cfg, "hidden_size", 0) or 0
+    num_attn_heads = (
+        getattr(cfg, "num_attention_heads", None)
+        or getattr(cfg, "n_head", None)
+        or getattr(cfg, "num_heads", None)
+        or 1
+    )
+    hidden_size = (
+        getattr(cfg, "hidden_size", None)
+        or getattr(cfg, "n_embd", None)
+        or getattr(cfg, "d_model", None)
+        or 0
+    )
+    head_dim = (
+        getattr(cfg, "head_dim", None)
+        or getattr(cfg, "head_size", None)
+        or getattr(cfg, "d_kv", None)
+    )
+    if head_dim is None and num_attn_heads > 0:
       head_dim = hidden_size // num_attn_heads
-    self.head_dim = head_dim
+    self.head_dim = head_dim or 1
 
-    num_heads = getattr(cfg, "num_key_value_heads", None)
+    num_heads = (
+        getattr(cfg, "num_key_value_heads", None)
+        or getattr(cfg, "num_kv_heads", None)
+        or getattr(cfg, "n_head_kv", None)
+    )
     if num_heads is None:
-      num_heads = getattr(cfg, "num_attention_heads", 1) or 1
-    self.num_heads = num_heads
+      num_heads = num_attn_heads
+    self.num_heads = num_heads or 1
     self.device = self.input_ids.device
     self.dtype = (
         self._model.dtype if hasattr(self._model, "dtype") else torch.bfloat16
@@ -113,6 +132,21 @@ class DecodeStepper(common.BaseStepper):
         **step_kwargs,
     )
 
+  def _unpack_output_and_update_cache(self, output: Any) -> torch.Tensor:
+    """Extracts logits and updates self.cache from model output."""
+    if isinstance(output, (tuple, list)):
+      logits = output[0]
+      if len(output) > 1 and isinstance(output[1], cache_utils.Cache):
+        self.cache = output[1]
+    else:
+      self.cache = getattr(output, "past_key_values", self.cache)
+      logits = getattr(output, "logits", None)
+
+    assert (
+        logits is not None
+    ), f"Could not extract logits from model output of type {type(output)}"
+    return logits
+
   # Always eager prefill and save state for future decode.
   def pre_warmup_init(self):
     assert self._model is not None
@@ -122,8 +156,7 @@ class DecodeStepper(common.BaseStepper):
           past_key_values=self.cache,
           use_cache=True,
       )
-    self.cache = prefill_output.past_key_values
-    prefill_logits = prefill_output.logits
+    prefill_logits = self._unpack_output_and_update_cache(prefill_output)
     self.next_token = torch.argmax(prefill_logits[:, -1, :], dim=-1).unsqueeze(
         -1
     )
@@ -174,8 +207,7 @@ class DecodeStepper(common.BaseStepper):
               {"use_cache": True, "cache_position": cache_position},
               self.cache,
           )
-          self.cache = getattr(decode_output, "past_key_values", self.cache)
-          logits = decode_output.logits
+          logits = self._unpack_output_and_update_cache(decode_output)
           self.next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
           assert self.current_pos is not None
           self.current_pos += 1
