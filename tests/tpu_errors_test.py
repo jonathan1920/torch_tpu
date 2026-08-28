@@ -394,7 +394,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     is_dynamic = [True, False]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_broadcast(): shape list size must match static_shape size, got shape list size 1 and static_shape size 2""",
+        tpu="""dynamic_broadcast(): expected shape list size to match static_shape size, got shape list size 1 and static_shape size 2""",
     ):
       torch.ops.tpu.dynamic_broadcast(
           x, shape, broadcast_dims, static_shape, is_dynamic
@@ -416,7 +416,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     is_dynamic = [True]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_broadcast(): is_dynamic size must match static_shape size, got is_dynamic size 1 and static_shape size 2""",
+        tpu="""dynamic_broadcast(): expected is_dynamic size to match static_shape size, got is_dynamic size 1 and static_shape size 2""",
     ):
       torch.ops.tpu.dynamic_broadcast(
           x, shape, broadcast_dims, static_shape, is_dynamic
@@ -438,7 +438,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     is_dynamic = [True, False]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_broadcast(): shape tensor at index 0 must be a 0-D (scalar) tensor, got 1-D tensor""",
+        tpu="""dynamic_broadcast(): expected shape tensor at index 0 to be a 0-D (scalar) tensor, got 1-D tensor""",
     ):
       torch.ops.tpu.dynamic_broadcast(
           x, shape, broadcast_dims, static_shape, is_dynamic
@@ -460,7 +460,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     is_dynamic = [True, False]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_broadcast(): shape must be a list of int32 tensors, got float32 tensor at index 0""",
+        tpu="""dynamic_broadcast(): expected shape to be a list of int32 tensors, got float32 tensor at index 0""",
     ):
       torch.ops.tpu.dynamic_broadcast(
           x, shape, broadcast_dims, static_shape, is_dynamic
@@ -482,7 +482,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     is_dynamic = [True, False]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_broadcast(): broadcast_dims size must match input rank, got broadcast_dims size 2 and input rank 1""",
+        tpu="""dynamic_broadcast(): expected broadcast_dims size to match input rank, got broadcast_dims size 2 and input rank 1""",
     ):
       torch.ops.tpu.dynamic_broadcast(
           x, shape, broadcast_dims, static_shape, is_dynamic
@@ -504,7 +504,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     is_dynamic = [True, False]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_broadcast(): broadcast_dims must be in range [0, 2), got 2 for broadcast dim at index 0""",
+        tpu="""dynamic_broadcast(): expected broadcast_dims to be in range [0, 2), got 2 for broadcast dim at index 0""",
     ):
       torch.ops.tpu.dynamic_broadcast(
           x, shape, broadcast_dims, static_shape, is_dynamic
@@ -520,7 +520,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     slice_sizes = [1, 2]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_slice(): start_indices list size must match input rank, got start_indices size 1 and input rank 2""",
+        tpu="""dynamic_slice(): expected start_indices list size to match input number of dimensions, got start_indices size 1 and input number of dimensions 2""",
     ):
       torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
 
@@ -537,7 +537,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     slice_sizes = [1]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_slice(): slice_sizes size must match input rank, got slice_sizes size 1 and input rank 2""",
+        tpu="""dynamic_slice(): expected slice_sizes size to match input number of dimensions, got slice_sizes size 1 and input number of dimensions 2""",
     ):
       torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
 
@@ -554,7 +554,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     slice_sizes = [1, 2]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_slice(): start_indices tensor at index 0 must be a 0-D (scalar) tensor, got 1-D tensor""",
+        tpu="""dynamic_slice(): expected start_indices tensor at index 0 to be a 0-D (scalar) tensor, got 1-D tensor""",
     ):
       torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
 
@@ -571,7 +571,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     slice_sizes = [1, 2]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_slice(): start_indices must be a list of int32 or int64 tensors, got float32 tensor at index 0""",
+        tpu="""dynamic_slice(): expected start_indices to be a list of int32 or int64 tensors, got float32 tensor at index 0""",
     ):
       torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
 
@@ -588,7 +588,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     slice_sizes = [1, 2]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_slice(): all start_indices must have the same dtype, got int32 at index 0 but int64 at index 1""",
+        tpu="""dynamic_slice(): expected all start_indices to have the same dtype, got int32 at index 0 but int64 at index 1""",
     ):
       torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
 
@@ -605,7 +605,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     slice_sizes = [-1, 2]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_slice(): slice_sizes at index 0 must be in range [0, 2], got -1""",
+        tpu="""dynamic_slice(): expected slice_sizes at index 0 to be in range [0, 2], got -1""",
     ):
       torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
 
@@ -622,7 +622,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     slice_sizes = [5, 2]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_slice(): slice_sizes at index 0 must be in range [0, 2], got 5""",
+        tpu="""dynamic_slice(): expected slice_sizes at index 0 to be in range [0, 2], got 5""",
     ):
       torch.ops.tpu.dynamic_slice(x, start_indices, slice_sizes)
 
@@ -720,7 +720,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     with et.assert_raises_message(
         RuntimeError,
         tpu=re.compile(
-            r""".*tpu doesn't support max_pool2d_with_indices on inputs with more than 2147483647 spatial elements due to int32 indices limitation for now, got 2147483648.*""",
+            r""".*expected max_pool2d_with_indices input to have at most 2147483647 spatial elements due to int32 indices limitation \(for now\), got 2147483648.*""",
             re.DOTALL,
         ),
     ):
@@ -837,7 +837,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""linalg_lu_solve(): the rank of b must be equal to the rank of lu, got rank(b) = 3 and rank(lu) = 2""",
+        tpu="""linalg_lu_solve(): expected b to have the same number of dimensions as lu (2), got 3""",
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
 
@@ -1111,7 +1111,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""native_group_norm_backward(): grad_out and input must have the same dimensions, got grad_out size [125], input size [5, 5, 5]""",
+        tpu="""native_group_norm_backward(): expected grad_out and input to have the same dimensions, got grad_out size [125], input size [5, 5, 5]""",
     ):
       torch.ops.aten.native_group_norm_backward(
           grad_out, inp, mean, rstd, weight, n, c, h_w, group, output_mask
@@ -1126,7 +1126,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""mse_loss(): input and target must have the same dtype""",
+        tpu="""mse_loss(): expected input and target to have the same dtype, got float32 and float64""",
     ):
       torch.nn.functional.mse_loss(inp, target)
 
@@ -1185,7 +1185,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     is_dynamic = [False, False]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_reshape(): shape list size must match static_shape size, got shape list size 1 and static_shape size 2""",
+        tpu="""dynamic_reshape(): expected shape list size to match static_shape size, got shape list size 1 and static_shape size 2""",
     ):
       torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
 
@@ -1202,7 +1202,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     is_dynamic = [False]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_reshape(): is_dynamic size must match static_shape size, got is_dynamic size 1 and static_shape size 2""",
+        tpu="""dynamic_reshape(): expected is_dynamic size to match static_shape size, got is_dynamic size 1 and static_shape size 2""",
     ):
       torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
 
@@ -1219,7 +1219,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     is_dynamic = [False, False]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_reshape(): shape tensor at index 0 must be a 0-D (scalar) tensor, got 1-D tensor""",
+        tpu="""dynamic_reshape(): expected shape tensor at index 0 to be a 0-D (scalar) tensor, got 1-D tensor""",
     ):
       torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
 
@@ -1236,7 +1236,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     is_dynamic = [False, False]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""dynamic_reshape(): shape must be a list of int32 tensors, got float32 tensor at index 0""",
+        tpu="""dynamic_reshape(): expected shape to be a list of int32 tensors, got float32 tensor at index 0""",
     ):
       torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
 
@@ -1272,7 +1272,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""get_or_compile_pad_module(): dimension indices and upper bounds must have the same size, got 1 and 2""",
+        tpu="""get_or_compile_pad_module(): expected dimension indices and upper bounds to have the same size, got 1 and 2""",
     ):
       tpu_torch_compile.get_or_compile_pad_module(
           tensor_info,
@@ -1286,7 +1286,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""get_or_compile_pad_module(): dimension index must be within bounds [0, 1], got 2 for input tensor 0 with shape [1, 4]""",
+        tpu="""get_or_compile_pad_module(): expected dimension index to be within bounds [0, 1], got 2 for input tensor 0 with shape [1, 4]""",
     ):
       tpu_torch_compile.get_or_compile_pad_module(
           tensor_info,
@@ -1300,7 +1300,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""get_or_compile_pad_module(): upper bound must be greater than or equal to the static shape's dimension size, got upper bound 2 for dimension 1 for input tensor 0 with shape [1, 4]""",
+        tpu="""get_or_compile_pad_module(): expected upper bound to be >= the static shape's dimension size, got upper bound 2 for dimension 1 for input tensor 0 with shape [1, 4]""",
     ):
       tpu_torch_compile.get_or_compile_pad_module(
           tensor_info,
@@ -1326,8 +1326,8 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           padded_shapes=[[1, 8], [1, 16]],
           input_scalar_types=[torch.float32],
           expected_error_message=(
-              "get_or_compile_slice_module(): target shapes and padded shapes"
-              " must have the same size, got 1 and 2"
+              "get_or_compile_slice_module(): expected target shapes and padded"
+              " shapes to have the same size, got 1 and 2"
           ),
       ),
       dict(
@@ -1336,8 +1336,8 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           padded_shapes=[[1, 8]],
           input_scalar_types=[torch.float32, torch.float32],
           expected_error_message=(
-              "get_or_compile_slice_module(): target shapes and input scalar"
-              " types must have the same size, got 1 and 2"
+              "get_or_compile_slice_module(): expected target shapes and input"
+              " scalar types to have the same size, got 1 and 2"
           ),
       ),
       dict(
@@ -1356,9 +1356,9 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           padded_shapes=[[1, 8, 16]],
           input_scalar_types=[torch.float32],
           expected_error_message=(
-              "get_or_compile_slice_module(): target shape and padded shape"
-              " must have the same number of dimensions, got 2 and 3 for tensor"
-              " index 0"
+              "get_or_compile_slice_module(): expected target shape and padded"
+              " shape to have the same number of dimensions, got 2 and 3 for"
+              " tensor index 0"
           ),
       ),
       dict(
@@ -1367,9 +1367,10 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           padded_shapes=[[1, 2]],
           input_scalar_types=[torch.float32],
           expected_error_message=(
-              "get_or_compile_slice_module(): padded shape dimension size must"
-              " be greater than or equal to target shape dimension size, got"
-              " padded shape [1, 2] and target shape [1, 4] for tensor index 0"
+              "get_or_compile_slice_module(): expected padded shape dimension"
+              " sizes to be >= target shape dimension"
+              " sizes, got padded shape [1, 2] and target shape [1, 4] for"
+              " tensor index 0"
           ),
       ),
   )
@@ -1404,7 +1405,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""execute(): output shapes must be specified for all outputs or none, got 2 output shapes for 1 output tensors""",
+        tpu="""execute(): expected output shapes to be specified for all outputs or none, got 2 output shapes for 1 output tensors""",
     ):
       tpu_torch_compile.execute(
           executable,
@@ -1427,7 +1428,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""execute(): output shape number of dimensions must match the statically inferred dimensions, got output shape dimensions 2 and inferred dimensions 1 for output tensor 0""",
+        tpu="""execute(): expected output shape number of dimensions to match the statically inferred dimensions, got output shape dimensions 2 and inferred dimensions 1 for output tensor 0""",
     ):
       tpu_torch_compile.execute(
           executable, [x, y], [tpu_torch_compile.OutputShape([5, 2])]
@@ -1445,7 +1446,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""execute(): output shape dimension must not exceed the statically inferred bound, got output shape [15] and inferred shape [10]""",
+        tpu="""execute(): expected output shape dimension not to exceed the statically inferred bound, got output shape [15] and inferred shape [10]""",
     ):
       tpu_torch_compile.execute(
           executable, [x, y], [tpu_torch_compile.OutputShape([15])]
@@ -1460,7 +1461,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # 1 argument, but 2 layouts provided. Should fail.
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""traverse_and_compile(): number of argument_layouts must match with the number of argument_tensors, got number of argument_layouts 2 and number of argument_tensors 1""",
+        tpu="""traverse_and_compile(): expected number of argument_layouts to match the number of argument_tensors, got number of argument_layouts 2 and number of argument_tensors 1""",
     ):
       tpu_torch_compile.traverse_and_compile(
           [z], [x], argument_layouts=[[1, 0], [0, 1]]
@@ -1475,14 +1476,14 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # Rank mismatch: shape [2, 3] (rank 2), layout [0] (rank 1)
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""traverse_and_compile(): invalid layout for argument 0, got layout [0] for shape [2, 3]""",
+        tpu="""traverse_and_compile(): expected valid layout for argument 0, got layout [0] for shape [2, 3]""",
     ):
       tpu_torch_compile.traverse_and_compile([z], [x], argument_layouts=[[0]])
 
     # Out of bounds index: shape [2, 3], layout [2, 0]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""traverse_and_compile(): invalid layout for argument 0, got layout [2, 0] for shape [2, 3]""",
+        tpu="""traverse_and_compile(): expected valid layout for argument 0, got layout [2, 0] for shape [2, 3]""",
     ):
       tpu_torch_compile.traverse_and_compile(
           [z], [x], argument_layouts=[[2, 0]]
@@ -1491,7 +1492,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # Duplicate index: shape [2, 3], layout [0, 0]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""traverse_and_compile(): invalid layout for argument 0, got layout [0, 0] for shape [2, 3]""",
+        tpu="""traverse_and_compile(): expected valid layout for argument 0, got layout [0, 0] for shape [2, 3]""",
     ):
       tpu_torch_compile.traverse_and_compile(
           [z], [x], argument_layouts=[[0, 0]]
@@ -1535,21 +1536,21 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # Rank mismatch: shape [2, 3] (rank 2), layout [0] (rank 1)
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""compile_mlir(): invalid layout for argument 0, got layout [0] for shape [2, 3]""",
+        tpu="""compile_mlir(): expected valid layout for argument 0, got layout [0] for shape [2, 3]""",
     ):
       tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[0]])
 
     # Out of bounds index: shape [2, 3], layout [2, 0]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""compile_mlir(): invalid layout for argument 0, got layout [2, 0] for shape [2, 3]""",
+        tpu="""compile_mlir(): expected valid layout for argument 0, got layout [2, 0] for shape [2, 3]""",
     ):
       tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[2, 0]])
 
     # Duplicate index: shape [2, 3], layout [0, 0]
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""compile_mlir(): invalid layout for argument 0, got layout [0, 0] for shape [2, 3]""",
+        tpu="""compile_mlir(): expected valid layout for argument 0, got layout [0, 0] for shape [2, 3]""",
     ):
       tpu_torch_compile.compile_mlir(mlir, argument_layouts=[[0, 0]])
 
@@ -2512,7 +2513,7 @@ module {
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""sparse_dense_matmul_grad_with_adagrad(): materialization failed with: Accumulator must be 1D (row-wise) or 2D (standard)""",
+        tpu="""sparse_dense_matmul_grad_with_adagrad(): materialization failed with: expected accumulator to be 1D (row-wise) or 2D (standard), got 3D""",
     ):
       torch.ops.tpu.sparse_dense_matmul_grad_with_adagrad(
           row_pointers,
@@ -2535,7 +2536,7 @@ module {
     )
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""sparse_dense_matmul_grad_with_adagrad(): materialization failed with: Accumulator dimension 1 must match embedding dimension; expected 8, got 4""",
+        tpu="""sparse_dense_matmul_grad_with_adagrad(): materialization failed with: expected accumulator dimension 1 to match embedding dimension (8), got 4""",
     ):
       torch.ops.tpu.sparse_dense_matmul_grad_with_adagrad(
           row_pointers,
@@ -2685,7 +2686,7 @@ module {
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""sparse_gather(): row_pointers must be 1D tensor, got rank 2""",
+        tpu="""sparse_gather(): expected row_pointers to be a 1D tensor, got a 2D tensor of shape [1, 2]""",
     ):
       torch.ops.tpu.sparse_gather(row_pointers_2d, indices, operand, 8)
 
@@ -2698,7 +2699,7 @@ module {
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""sparse_gather(): indices must be 1D tensor, got rank 2""",
+        tpu="""sparse_gather(): expected indices to be a 1D tensor, got a 2D tensor of shape [1, 8]""",
     ):
       torch.ops.tpu.sparse_gather(row_pointers, indices_2d, operand, 8)
 
@@ -2711,7 +2712,7 @@ module {
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""sparse_gather(): operand must be 2D tensor, got rank 1""",
+        tpu="""sparse_gather(): expected operand to be a 2D tensor, got a 1D tensor of shape [10]""",
     ):
       torch.ops.tpu.sparse_gather(row_pointers, indices, operand_1d, 8)
 
@@ -2724,7 +2725,7 @@ module {
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""sparse_gather(): indices length (7) must equal row_pointers size (2) * max_non_zeroes_per_row (8)""",
+        tpu="""sparse_gather(): expected indices length to match the maximum number of non-zeroes, i.e. row_pointers length * maximum number of non-zeroes per row (2 * 8 = 16), got 7""",
     ):
       torch.ops.tpu.sparse_gather(row_pointers, indices_wrong_len, operand, 8)
 
@@ -2855,7 +2856,7 @@ module {
     offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""scaled_grouped_mm(): scale_a must be 1D or scalar, but got 2D""",
+        tpu="""scaled_grouped_mm(): expected scale_a to be 1D or scalar, got 2D""",
     ):
       torch._scaled_grouped_mm(a, b, scale_a, scale_b, offs=offs)
 
@@ -2868,7 +2869,7 @@ module {
     offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""scaled_grouped_mm(): scale_b must be 1D or scalar, but got 2D""",
+        tpu="""scaled_grouped_mm(): expected scale_b to be 1D or scalar, got 2D""",
     ):
       torch._scaled_grouped_mm(a, b, scale_a, scale_b, offs=offs)
 
@@ -2882,7 +2883,7 @@ module {
     offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""scaled_grouped_mm(): bias must be 1D or scalar, but got 2D""",
+        tpu="""scaled_grouped_mm(): expected bias to be 1D or scalar, got 2D""",
     ):
       torch._scaled_grouped_mm(a, b, scale_a, scale_b, bias=bias, offs=offs)
 
@@ -2896,7 +2897,7 @@ module {
     offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""scaled_grouped_mm(): scale_result must be 1D or scalar, but got 2D""",
+        tpu="""scaled_grouped_mm(): expected scale_result to be 1D or scalar, got 2D""",
     ):
       torch._scaled_grouped_mm(
           a, b, scale_a, scale_b, scale_result=scale_result, offs=offs
@@ -3064,7 +3065,7 @@ module {
     o2 = torch.tensor([0, 3, 5], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         NotImplementedError,
-        tpu="""jagged_to_padded_dense_forward(): only a single jagged dim is supported for now, but got offsets.size() == 2""",
+        tpu="""jagged_to_padded_dense_forward(): expected only 1 offset tensor (only 1 jagged dim is supported for now), got 2 offset tensors""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(values, [o1, o2], [3], 0.0)
 
@@ -3074,7 +3075,7 @@ module {
     offsets = torch.tensor([[0, 2, 5]], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): expected 1D offsets, but got offsets.dim() == 2""",
+        tpu="""jagged_to_padded_dense_forward(): expected offsets to have only 1 dimension, got 2""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(
           values, [offsets], [3], 0.0
@@ -3086,7 +3087,7 @@ module {
     offsets = torch.tensor([], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): offsets must have size >= 1, but got 0""",
+        tpu="""jagged_to_padded_dense_forward(): expected offsets tensors to have size >= 1, got 0""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(
           values, [offsets], [3], 0.0
@@ -3098,7 +3099,7 @@ module {
     offsets = torch.tensor([0, 2, 5], dtype=torch.int32, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): expected offsets to be of dtype int64, but got Int""",
+        tpu="""jagged_to_padded_dense_forward(): expected offsets to be of dtype int64, got int32""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(
           values, [offsets], [3], 0.0
@@ -3110,7 +3111,7 @@ module {
     offsets = torch.tensor([1, 3, 5], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): offsets must start with 0, but got 1""",
+        tpu="""jagged_to_padded_dense_forward(): expected the first offset to be 0, got 1""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(
           values, [offsets], [3], 0.0
@@ -3122,7 +3123,7 @@ module {
     offsets = torch.tensor([0, 3, 2], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): offsets must be non-decreasing, but found offsets[1] (3) > offsets[2] (2)""",
+        tpu="""jagged_to_padded_dense_forward(): expected offsets to be non-decreasing, got offsets[1] (3) > offsets[2] (2)""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(
           values, [offsets], [3], 0.0
@@ -3134,7 +3135,7 @@ module {
     offsets = torch.tensor([0], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): expected values dim >= 1, got 0""",
+        tpu="""jagged_to_padded_dense_forward(): expected values to have >= 1 dimensions, got 0""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(
           values, [offsets], [3], 0.0
@@ -3146,7 +3147,7 @@ module {
     offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): expected max_lengths.size() == 1, but got 2""",
+        tpu="""jagged_to_padded_dense_forward(): expected max_lengths to have only 1 element, got 2""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(
           values, [offsets], [3, 4], 0.0
@@ -3158,7 +3159,7 @@ module {
     offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): max_length must be non-negative, got -1""",
+        tpu="""jagged_to_padded_dense_forward(): expected max_lengths[0] to be >= 0, got -1""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(
           values, [offsets], [-1], 0.0
@@ -3170,7 +3171,7 @@ module {
     offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): offsets specifies more elements (5) than available in values (3)""",
+        tpu="""jagged_to_padded_dense_forward(): expected the last offset to be <= the number of values (3), got 5""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(
           values, [offsets], [3], 0.0
@@ -3182,7 +3183,7 @@ module {
     offsets = torch.tensor([0, 5, 10], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""padded_dense_to_jagged_forward(): expected dense dim >= 2, but dense.dim() == 1""",
+        tpu="""padded_dense_to_jagged_forward(): expected dense to have >= 2 dimensions, got 1""",
     ):
       torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 10)
 
@@ -3192,7 +3193,7 @@ module {
     offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""padded_dense_to_jagged_forward(): final offset (5) should match total_L value (6)""",
+        tpu="""padded_dense_to_jagged_forward(): expected the last offset to match total_L (6), got 5""",
     ):
       torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 6)
 
@@ -3202,7 +3203,7 @@ module {
     offsets = torch.tensor([0, 2, 3, 5], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""padded_dense_to_jagged_forward(): offsets batch size (3) must match dense batch size (2)""",
+        tpu="""padded_dense_to_jagged_forward(): expected dense first dimension size to match the batch size inferred from the offsets (3), got 2""",
     ):
       torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 5)
 
@@ -3212,7 +3213,7 @@ module {
     offsets = torch.tensor([0, 5, 7], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""padded_dense_to_jagged_forward(): found batch item of length 5 when max length specified by padded input is 4""",
+        tpu="""padded_dense_to_jagged_forward(): expected all batch items to have length <= 4 (max length specified by padded input), got 5""",
     ):
       torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 7)
 

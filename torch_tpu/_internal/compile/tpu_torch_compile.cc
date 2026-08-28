@@ -482,7 +482,7 @@ SharedLoadedExecutableWithMetadata PyCompileMlir(
         int64_t rank = shape.dimensions().size();
         TT_CHECK_THROW(IsValidLayout(layout_indices, rank),
                        error::kInvalidArgument)
-            << "invalid layout for argument " << i << ", got layout "
+            << "expected valid layout for argument " << i << ", got layout "
             << ToString(layout_indices) << " for shape "
             << ToString(shape.dimensions());
         shape.clear_layout();
@@ -518,7 +518,7 @@ CompileResult PyTraverseAndCompile(
   if (!argument_layouts.empty()) {
     TT_CHECK_THROW(argument_layouts.size() == argument_tensors.size(),
                    error::kInvalidArgument)
-        << "number of argument_layouts must match with the number of "
+        << "expected number of argument_layouts to match the number of "
            "argument_tensors, got number of argument_layouts "
         << argument_layouts.size() << " and number of argument_tensors "
         << argument_tensors.size();
@@ -528,7 +528,7 @@ CompileResult PyTraverseAndCompile(
       if (!layout.empty()) {
         int64_t rank = argument_tensors[i].dim();
         TT_CHECK_THROW(IsValidLayout(layout, rank), error::kInvalidArgument)
-            << "invalid layout for argument " << i << ", got layout "
+            << "expected valid layout for argument " << i << ", got layout "
             << ToString(layout) << " for shape "
             << ToString(argument_tensors[i].sizes());
       }
@@ -609,7 +609,8 @@ std::vector<Shape> MakePadDynamicShapes(
 
     TT_CHECK_THROW(dynamic_dims.size() == upper_bounds.size(),
                    error::kInvalidArgument)
-        << "dimension indices and upper bounds must have the same size, got "
+        << "expected dimension indices and upper bounds to have the same size, "
+           "got "
         << dynamic_dims.size() << " and " << upper_bounds.size();
 
     for (int j = 0; j < dynamic_dims.size(); ++j) {
@@ -618,14 +619,14 @@ std::vector<Shape> MakePadDynamicShapes(
 
       TT_CHECK_THROW(dim_index >= 0 && dim_index < dims.size(),
                      error::kInvalidArgument)
-          << "dimension index must be within bounds [0, " << dims.size() - 1
-          << "], got " << dim_index << " for input tensor " << i
-          << " with shape " << ToString(dims);
+          << "expected dimension index to be within bounds [0, "
+          << dims.size() - 1 << "], got " << dim_index << " for input tensor "
+          << i << " with shape " << ToString(dims);
 
       const int64_t dim_size = dims[dim_index];
       TT_CHECK_THROW(dim_upper_bound >= dim_size, error::kInvalidArgument)
-          << "upper bound must be greater than or equal to the static shape's "
-             "dimension size, got upper bound "
+          << "expected upper bound to be >= the static shape's dimension size, "
+             "got upper bound "
           << dim_upper_bound << " for dimension " << dim_index
           << " for input tensor " << i << " with shape " << ToString(dims);
 
@@ -681,11 +682,12 @@ SliceSubgraphInputs UnpackSliceInputs(
       << "expected at least one target shape, got none";
   TT_CHECK_THROW(target_shapes.size() == padded_shapes.size(),
                  error::kInvalidArgument)
-      << "target shapes and padded shapes must have the same size, got "
+      << "expected target shapes and padded shapes to have the same size, got "
       << target_shapes.size() << " and " << padded_shapes.size();
   TT_CHECK_THROW(target_shapes.size() == input_scalar_types.size(),
                  error::kInvalidArgument)
-      << "target shapes and input scalar types must have the same size, got "
+      << "expected target shapes and input scalar types to have the same size, "
+         "got "
       << target_shapes.size() << " and " << input_scalar_types.size();
 
   SliceSubgraphInputs inputs;
@@ -700,7 +702,7 @@ SliceSubgraphInputs UnpackSliceInputs(
     const auto& target = target_shapes[i];
     const auto& padded = padded_shapes[i];
     TT_CHECK_THROW(target.size() == padded.size(), error::kInvalidArgument)
-        << "target shape and padded shape must have the same number of "
+        << "expected target shape and padded shape to have the same number of "
            "dimensions, got "
         << target.size() << " and " << padded.size() << " for tensor index "
         << i;
@@ -710,8 +712,8 @@ SliceSubgraphInputs UnpackSliceInputs(
 
     for (size_t j = 0; j < target.size(); ++j) {
       TT_CHECK_THROW(padded[j] >= target[j], error::kInvalidArgument)
-          << "padded shape dimension size must be greater than or equal to "
-             "target shape dimension size, got padded shape "
+          << "expected padded shape dimension sizes to be >= target shape "
+             "dimension sizes, got padded shape "
           << ToString(padded_dims) << " and target shape "
           << ToString(target_dims) << " for tensor index " << i;
     }

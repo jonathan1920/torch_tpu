@@ -367,7 +367,7 @@ absl::StatusOr<std::vector<Shape>> GetOutputShapes(
 
   TT_RET_CHECK(output_shapes.size() == inferred_shapes.size(),
                error::kInvalidArgument)
-      << "output shapes must be specified for all outputs or none, "
+      << "expected output shapes to be specified for all outputs or none, "
       << "got " << output_shapes.size() << " output shapes for "
       << inferred_shapes.size() << " output tensors";
 
@@ -382,15 +382,15 @@ absl::StatusOr<std::vector<Shape>> GetOutputShapes(
     if (!dimensions.empty()) {
       TT_RET_CHECK(dimensions.size() == result_shape.dimensions().size(),
                    error::kInvalidArgument)
-          << "output shape number of dimensions must match the statically "
-             "inferred dimensions, got output shape dimensions "
+          << "expected output shape number of dimensions to match the "
+             "statically inferred dimensions, got output shape dimensions "
           << dimensions.size() << " and inferred dimensions "
           << result_shape.dimensions().size() << " for output tensor " << i;
 
       for (size_t j = 0; j < dimensions.size(); ++j) {
         TT_RET_CHECK(dimensions[j] <= result_shape.dimensions()[j],
                      error::kInvalidArgument)
-            << "output shape dimension must not exceed the statically "
+            << "expected output shape dimension not to exceed the statically "
                "inferred bound, got output shape "
             << ToString(dimensions) << " and inferred shape "
             << ToString(result_shape.dimensions());

@@ -333,9 +333,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeGroupNormBackward(
             << ", got " << input.numel();
         TT_CHECK_THROW(grad_out.sizes() == input.sizes(),
                        error::kInvalidArgument)
-            << "grad_out and input must have the same dimensions"
-            << ", got grad_out size " << grad_out.sizes() << ", input size "
-            << input.sizes();
+            << "expected grad_out and input to have the same dimensions, "
+               "got grad_out size "
+            << grad_out.sizes() << ", input size " << input.sizes();
         TT_CHECK_THROW(mean.sizes() == at::IntArrayRef({n, group}),
                        error::kInvalidArgument)
             << "expected mean to have shape [" << n << ", " << group << "]"

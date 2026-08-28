@@ -202,7 +202,7 @@ std::tuple<at::Tensor, at::Tensor> AtenNllLoss2dForward(
                            self.size(0) == target.size(0) &&
                            self.sizes().slice(2) == target.sizes().slice(1),
                        error::kInvalidArgument)
-            << "expect the shapes of the input [N, C, d1, ..., dk] and the "
+            << "expected the shapes of the input [N, C, d1, ..., dk] and the "
                "target [N, d1, ..., dk] (k >= 1) to match, got input: "
             << self.sizes() << ", target: " << target.sizes();
 

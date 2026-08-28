@@ -48,8 +48,8 @@ def run_all_gather_wrong_num_tensors() -> None:
   output_tensors = [torch.empty((1, 2), dtype=torch.float32, device="tpu")]
   # This message comes from native PyTorch.
   expected_msg = re.compile(
-      r"distributed\.all_gather\(\): output tensor list must have one tensor"
-      r" per process, got 1 tensor and 8 processes.*"
+      r"distributed\.all_gather\(\): expected output tensor list to have one"
+      r" tensor per process, got 1 tensor and 8 processes.*"
   )
   with et.assert_raises_message(RuntimeError, tpu=expected_msg):
     dist.all_gather(output_tensors, input_tensor)

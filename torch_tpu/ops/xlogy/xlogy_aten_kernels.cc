@@ -79,7 +79,7 @@ at::Tensor& AtenXlogyOutTensor(const at::Tensor& self, const at::Tensor& other,
   TT_KERNEL(OpName::kXlogyOutTensor, _, (self, other, out), {
     TT_CHECK_THROW(!self.is_complex() && !other.is_complex(),
                    error::kInvalidArgument)
-        << "complex dtypes are not supported, got x dtype "
+        << "expected non-complex dtypes, got x dtype "
         << ToString(self.scalar_type()) << " and y dtype "
         << ToString(other.scalar_type());
 

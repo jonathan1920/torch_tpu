@@ -53,29 +53,28 @@ at::Tensor DynamicBroadcast(const at::Tensor& input, at::TensorList shape,
       (input, shape, broadcast_dims, static_shape, is_dynamic), {
         const size_t rank = static_shape.size();
         TT_CHECK_THROW(shape.size() == rank, error::kInvalidArgument)
-            << "shape list size must match static_shape size, got "
+            << "expected shape list size to match static_shape size, got "
             << "shape list size " << shape.size() << " and static_shape size "
             << rank;
         TT_CHECK_THROW(is_dynamic.size() == rank, error::kInvalidArgument)
-            << "is_dynamic size must match static_shape size, got "
+            << "expected is_dynamic size to match static_shape size, got "
             << "is_dynamic size " << is_dynamic.size()
             << " and static_shape size " << rank;
 
         for (size_t i = 0; i < shape.size(); ++i) {
           const auto& t = shape[i];
           TT_CHECK_THROW(t.dim() == 0, error::kInvalidArgument)
-              << "shape tensor at index " << i
-              << " must be a 0-D (scalar) tensor, got " << t.dim()
-              << "-D tensor";
+              << "expected shape tensor at index " << i
+              << " to be a 0-D (scalar) tensor, got " << t.dim() << "-D tensor";
           TT_CHECK_THROW(t.scalar_type() == at::kInt, error::kInvalidArgument)
-              << "shape must be a list of int32 tensors, got "
+              << "expected shape to be a list of int32 tensors, got "
               << ToString(t.scalar_type()) << " tensor at index " << i;
         }
 
         const int64_t input_rank = input.dim();
         TT_CHECK_THROW(broadcast_dims.size() == input_rank,
                        error::kInvalidArgument)
-            << "broadcast_dims size must match input rank, got "
+            << "expected broadcast_dims size to match input rank, got "
             << "broadcast_dims size " << broadcast_dims.size()
             << " and input rank " << input_rank;
 
@@ -83,8 +82,8 @@ at::Tensor DynamicBroadcast(const at::Tensor& input, at::TensorList shape,
           const int64_t dim = broadcast_dims[i];
           TT_CHECK_THROW(dim >= 0 && dim < static_cast<int64_t>(rank),
                          error::kInvalidArgument)
-              << "broadcast_dims must be in range [0, " << rank << "), got "
-              << dim << " for broadcast dim at index " << i;
+              << "expected broadcast_dims to be in range [0, " << rank
+              << "), got " << dim << " for broadcast dim at index " << i;
         }
 
         TT_ASSIGN_OR_THROW(const mlir::ElementType mlir_dtype,

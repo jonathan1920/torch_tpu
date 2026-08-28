@@ -543,8 +543,8 @@ absl::StatusOr<DeviceBufferRef> AdaptiveAvgPool2dHelper(
                    self.scalar_type() != at::ScalarType::Long &&
                    self.scalar_type() != at::ScalarType::ComplexFloat,
                error::kInvalidArgument)
-      << "not yet implemented for uint8, int8, int16, int32, int64,"
-      << " and complex64 dtypes, got "
+      << "expected input dtype to be none of (uint8, int8, int16, int32, "
+         "int64, complex64), got "
       << torch_tpu::ToString(self.scalar_type());
 
   const int64_t spatial_dim_count = 2;
@@ -555,9 +555,8 @@ absl::StatusOr<DeviceBufferRef> AdaptiveAvgPool2dHelper(
   TT_RET_CHECK(
       num_dims == spatial_dim_count + 1 || num_dims == spatial_dim_count + 2,
       error::kInvalidArgument)
-      << "input must be a " << spatial_dim_count + 1 << "-D or "
-      << spatial_dim_count + 2 << "-D tensor"
-      << ", got " << num_dims << "-D tensor";
+      << "expected input to be a " << spatial_dim_count + 1 << "-D or "
+      << spatial_dim_count + 2 << "-D tensor, got " << num_dims << "-D tensor";
 
   const int64_t in_h = self.size(num_dims - 2);
   const int64_t in_w = self.size(num_dims - 1);
@@ -654,8 +653,8 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
                            self.scalar_type() != at::ScalarType::Long &&
                            self.scalar_type() != at::ScalarType::ComplexFloat,
                        error::kInvalidArgument)
-            << "not yet implemented for bool, uint8, int8, int16, int32, int64,"
-            << " and complex64 dtypes, got "
+            << "expected input dtype to be none of (bool, uint8, int8, "
+               "int16, int32, int64, complex64), got "
             << torch_tpu::ToString(self.scalar_type());
 
         const int64_t spatial_dim_count = 3;
@@ -666,9 +665,9 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
         TT_CHECK_THROW(num_dims == spatial_dim_count + 1 ||
                            num_dims == spatial_dim_count + 2,
                        error::kInvalidArgument)
-            << "input must be a " << spatial_dim_count + 1 << "-D or "
-            << spatial_dim_count + 2 << "-D tensor"
-            << ", got " << num_dims << "-D tensor";
+            << "expected input to be a " << spatial_dim_count + 1 << "-D or "
+            << spatial_dim_count + 2 << "-D tensor, got " << num_dims
+            << "-D tensor";
 
         const int64_t in_d = self.size(num_dims - 3);
         const int64_t in_h = self.size(num_dims - 2);

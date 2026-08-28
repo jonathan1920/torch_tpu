@@ -48,6 +48,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
@@ -96,28 +97,29 @@ absl::StatusOr<Indices> GetCpuOffsets(const at::Tensor& offsets_tensor) {
 absl::StatusOr<Indices> ValidateAndGetOffsets(at::TensorList offsets,
                                               OpParamCacheKeys& param_keys) {
   TT_RET_CHECK(offsets.size() == 1, error::kPythonNotImplementedError)
-      << "only a single jagged dim is supported for now, but got "
-         "offsets.size() == "
-      << offsets.size();
+      << "expected only 1 offset tensor (only 1 jagged dim is supported for "
+         "now), got "
+      << offsets.size() << " offset tensors";
 
   const at::Tensor& offsets_tensor = offsets[0];
   TT_RET_CHECK(offsets_tensor.dim() == 1, error::kInvalidArgument)
-      << "expected 1D offsets, but got offsets.dim() == "
+      << "expected offsets to have only 1 dimension, got "
       << offsets_tensor.dim();
   TT_RET_CHECK(offsets_tensor.size(0) >= 1, error::kInvalidArgument)
-      << "offsets must have size >= 1, but got " << offsets_tensor.size(0);
+      << "expected offsets tensors to have size >= 1, got "
+      << offsets_tensor.size(0);
   TT_RET_CHECK(offsets_tensor.scalar_type() == at::kLong,
                error::kInvalidArgument)
-      << "expected offsets to be of dtype int64, but got "
-      << offsets_tensor.scalar_type();
+      << "expected offsets to be of dtype int64, got "
+      << ToString(offsets_tensor.scalar_type());
 
   TT_ASSIGN_OR_RETURN(Indices offsets_vec, GetCpuOffsets(offsets_tensor));
 
   TT_RET_CHECK(offsets_vec[0] == 0, error::kInvalidArgument)
-      << "offsets must start with 0, but got " << offsets_vec[0];
+      << "expected the first offset to be 0, got " << offsets_vec[0];
   for (size_t i = 0; i + 1 < offsets_vec.size(); ++i) {
     TT_RET_CHECK(offsets_vec[i] <= offsets_vec[i + 1], error::kInvalidArgument)
-        << "offsets must be non-decreasing, but found offsets[" << i << "] ("
+        << "expected offsets to be non-decreasing, got offsets[" << i << "] ("
         << offsets_vec[i] << ") > offsets[" << i + 1 << "] ("
         << offsets_vec[i + 1] << ")";
   }
@@ -307,21 +309,22 @@ absl::StatusOr<DeviceBufferRef> JaggedToPaddedDense(
     c10::SymIntArrayRef max_lengths, double padding_value,
     OpParamCacheKeys param_keys) {
   TT_RET_CHECK(values.dim() >= 1, error::kInvalidArgument)
-      << "expected values dim >= 1, got " << values.dim();
+      << "expected values to have >= 1 dimensions, got " << values.dim();
 
   TT_RET_CHECK(max_lengths.size() == 1, error::kInvalidArgument)
-      << "expected max_lengths.size() == 1, but got " << max_lengths.size();
+      << "expected max_lengths to have only 1 element, got "
+      << max_lengths.size();
 
   const int64_t max_length = max_lengths[0].expect_int();
   TT_RET_CHECK(max_length >= 0, error::kInvalidArgument)
-      << "max_length must be non-negative, got " << max_length;
+      << "expected max_lengths[0] to be >= 0, got " << max_length;
 
   TT_ASSIGN_OR_RETURN(const Indices offsets_vec,
                       ValidateAndGetOffsets(offsets, param_keys));
 
   TT_RET_CHECK(offsets_vec.back() <= values.size(0), error::kInvalidArgument)
-      << "offsets specifies more elements (" << offsets_vec.back()
-      << ") than available in values (" << values.size(0) << ")";
+      << "expected the last offset to be <= the number of values ("
+      << values.size(0) << "), got " << offsets_vec.back();
 
   const int64_t batch_size = offsets_vec.size() - 1;
   const auto values_shape_ref = values.sizes();
@@ -383,24 +386,33 @@ absl::StatusOr<Indices> ComputePaddedToJaggedIndices(
   Indices gather_indices;
   gather_indices.reserve(total_L_computed);
 
+  // Length of each batch item.
+  // Used for showing the length of each batch item in the error message.
+  SmallInt64Vector lengths;
+  lengths.reserve(batch_size);
+
   for (int64_t i = 0; i < batch_size; ++i) {
     const int64_t start = offsets_vec[i];
     const int64_t end = offsets_vec[i + 1];
     const int64_t len = end - start;
+
     TT_RET_CHECK(len <= max_length, error::kInvalidArgument)
-        << "found batch item of length " << len
-        << " when max length specified by padded input is " << max_length;
+        << "expected all batch items to have length <= " << max_length
+        << " (max length specified by padded input), got " << len;
     for (int64_t j = 0; j < len; ++j) {
       gather_indices.push_back(i * max_length + j);
     }
+
+    lengths.push_back(len);
   }
 
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Invariant: sum of segments matches
                  // total_L
       gather_indices.size() == total_L_computed, error::kInvalidArgument)
-      << "sum of computed batch item lengths (" << gather_indices.size()
-      << ") does not match expected total_L (" << total_L_computed
-      << "). Ensure offsets starts at 0 and is non-decreasing.";
+      << "expected the sum of the computed batch item lengths to match total_L "
+         "("
+      << total_L_computed << "), got " << batch_size << " batches of sizes "
+      << SequenceToReadableStr(absl::MakeConstSpan(lengths));
   return gather_indices;
 }
 
@@ -447,7 +459,7 @@ absl::StatusOr<DeviceBufferRef> PaddedDenseToJagged(
     const at::Tensor& dense, at::TensorList offsets, int64_t total_L_val,
     OpParamCacheKeys param_keys) {
   TT_RET_CHECK(dense.dim() >= 2, error::kInvalidArgument)
-      << "expected dense dim >= 2, but dense.dim() == " << dense.dim();
+      << "expected dense to have >= 2 dimensions, got " << dense.dim();
 
   TT_ASSIGN_OR_RETURN(const Indices offsets_vec,
                       ValidateAndGetOffsets(offsets, param_keys));
@@ -459,8 +471,8 @@ absl::StatusOr<DeviceBufferRef> PaddedDenseToJagged(
       total_L_val >= 0 ? total_L_val : final_offset;
   if (total_L_val >= 0) {
     TT_RET_CHECK(final_offset == total_L_val, error::kInvalidArgument)
-        << "final offset (" << final_offset << ") should match total_L value ("
-        << total_L_val << ")";
+        << "expected the last offset to match total_L (" << total_L_val
+        << "), got " << final_offset;
   }
 
   const auto dense_shape_ref = dense.sizes();
@@ -468,8 +480,9 @@ absl::StatusOr<DeviceBufferRef> PaddedDenseToJagged(
 
   const int64_t batch_size = num_offsets - 1;
   TT_RET_CHECK(batch_size == dense_shape[0], error::kInvalidArgument)
-      << "offsets batch size (" << batch_size
-      << ") must match dense batch size (" << dense_shape[0] << ")";
+      << "expected dense first dimension size to match the batch size inferred "
+         "from the offsets ("
+      << batch_size << "), got " << dense_shape[0];
 
   Dimensions flat_dense_shape;
   flat_dense_shape.reserve(dense.dim() - 1);

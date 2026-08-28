@@ -84,7 +84,7 @@ absl::StatusOr<IndicesInfo> CheckedGetIndicesInfo(
   }
 
   TT_RET_CHECK(!info.indices.empty(), error::kInvalidArgument)
-      << "at least one index tensor must be defined";
+      << "expected at least one index tensor to be defined, got 0";
 
   return info;
 }

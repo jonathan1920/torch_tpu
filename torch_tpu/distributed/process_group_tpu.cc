@@ -177,7 +177,7 @@ absl::Status CheckTensorsUniformShape(const std::vector<at::Tensor>& tensors) {
   for (int i = 1; i < tensors.size(); ++i) {
     TT_RET_CHECK(tensors[i].sizes() == first_tensor_size,
                  error::kInvalidArgument)
-        << "tensors in the list must have the same shape, got "
+        << "expected all input tensors to have the same shape, got "
         << first_tensor_size << " at index 0 and " << tensors[i].sizes()
         << " at index " << i;
   }
@@ -224,8 +224,9 @@ absl::StatusOr<ReduceScatterShapeMode> CheckReduceScatterInputTensorShape(
     return ReduceScatterShapeMode::kStack;
   } else {
     return TT_ERROR(error::kInvalidArgument)
-           << "input tensor shape must be either " << ToString(concat_mode_dims)
-           << " or " << ToString(stack_mode_dims) << ", but got "
+           << "expected the input tensor to be either of shape "
+           << ToString(concat_mode_dims) << " or of shape "
+           << ToString(stack_mode_dims) << ", got "
            << ToString(actual_input_dims);
   }
 }
@@ -236,20 +237,19 @@ absl::Status CheckSplitSizesForAllToAllSingle(
   auto dim0 = tensor.sizes()[0];
   if (split_sizes.empty()) {
     TT_RET_CHECK(dim0 % group_size == 0, error::kInvalidArgument)
-        << "tensor first dimension must be divisible by process group "
-        << "size, got " << group_size << " for process group size" << " and "
-        << dim0 << " for tensor shape " << tensor.sizes() << " dim 0";
+        << "expected tensor first dimension to be divisible by process group "
+        << "size, got " << dim0 << " is not divisible by " << group_size;
   } else {
     TT_RET_CHECK(split_sizes.size() == group_size, error::kInvalidArgument)
-        << "split sizes must have the same size as process group size, got "
-        << group_size << " for process group size and " << split_sizes.size()
-        << " for split sizes [" << split_sizes << "]";
+        << "expected split sizes to have the same size as process group size, "
+        << "got " << split_sizes.size() << " for split sizes and " << group_size
+        << " for process group size";
 
     const int64_t split_sizes_sum = absl::c_accumulate(split_sizes, 0L);
     TT_RET_CHECK(split_sizes_sum == dim0, error::kInvalidArgument)
-        << "split sizes sum must be equal to tensor first dimension, got "
-        << split_sizes_sum << " for split sizes [" << split_sizes << "] and "
-        << dim0 << " for tensor shape " << tensor.sizes() << " dim 0";
+        << "expected split sizes sum to be equal to tensor first dimension, "
+        << "got " << split_sizes_sum << " for split sizes sum and " << dim0
+        << " for tensor shape " << tensor.sizes() << " dim 0";
   }
   return absl::OkStatus();
 }
@@ -281,11 +281,12 @@ absl::Status CheckAllToAllShapeConsistency(
     auto input_tensor_sizes = input_tensors[i].sizes();
     TT_RET_CHECK(first_tensor_sizes == input_tensor_sizes,
                  error::kInvalidArgument)
-        << "all input tensors must be of same shape, got " << input_tensor_sizes
-        << " at index " << i << " and " << first_tensor_sizes << " at index 0";
+        << "expected all input tensors to be of same shape, got "
+        << input_tensor_sizes << " at index " << i << " and "
+        << first_tensor_sizes << " at index 0";
     TT_RET_CHECK(output_tensor_sizes == input_tensor_sizes,
                  error::kInvalidArgument)
-        << "output and input tensors must have the same shape, got "
+        << "expected output and input tensors to have the same shape, got "
         << output_tensor_sizes << " for output and " << input_tensor_sizes
         << " for input at index " << i;
   }
@@ -625,7 +626,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::broadcast(
               // python-side of the API doesn't actually directly expose
               // multi-tensor variant. Revisit this later.
               TT_CHECK_THROW(tensors.size() == 1, error::kInvalidArgument)
-                  << "single tensor expected, but got multiple tensors";
+                  << "expected a single tensor, got " << tensors.size();
               auto& tensor = tensors[0];
 
               if (src_dev_id != cur_dev_id) {
@@ -756,7 +757,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
         std::vector<at::Tensor>& output_tensor_list = output_tensors[0];
         TT_CHECK_THROW(output_tensor_list.size() == group_size,
                        error::kInvalidArgument)
-            << "output tensor list must have one tensor per process, got "
+            << "expected output tensor list to have one tensor per process, "
+            << "got "
             << FormatCount(output_tensor_list.size(), "tensor", "tensors")
             << " and " << FormatCount(group_size, "process", "processes");
 
@@ -847,52 +849,49 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::_allgather_base(
           TT_CHECK_THROW(
               output_tensor.dim() == 1 && output_sizes[0] == world_size,
               error::kInvalidArgument)
-              << "for scalar input, output tensor must be 1-dimensional "
-                 "with size equal to world size. Got output shape "
-              << output_sizes << ", world size " << world_size;
+              << "expected output for scalar inputs to be a 1D tensor with "
+                 "size equal to the world size, got output shape "
+              << output_sizes << " and world size " << world_size;
         } else if (output_tensor.dim() == input_tensor.dim() + 1) {
           // Stacks tensors.
           output_mode = AllGatherOutputMode::kStack;
           TT_CHECK_THROW(output_sizes[0] == world_size, error::kInvalidArgument)
-              << "for stacking, output tensor size "
-                 "at dimension 0 must be world size. Got output shape "
+              << "expected output for stacking to be a tensor with size equal "
+                 "to the world size at dimension 0, got output shape "
               << output_sizes << ", input shape " << input_sizes
-              << ", world size " << world_size;
+              << ", and world size " << world_size;
           for (int i = 0; i < input_sizes.size(); ++i) {
             TT_CHECK_THROW(output_sizes[i + 1] == input_sizes[i],
                            error::kInvalidArgument)
-                << "for stacking, output tensor shape must match input tensor "
-                   "shape along all other dimensions. Got output shape "
-                << output_sizes << ", input shape " << input_sizes;
+                << "expected output for stacking to match the input tensor "
+                   "shape along all other dimensions, got output shape "
+                << output_sizes << " and input shape " << input_sizes;
           }
         } else if (output_tensor.dim() == input_tensor.dim()) {
           // Concatenates tensors.
           output_mode = AllGatherOutputMode::kConcat;
           TT_CHECK_THROW(output_sizes[0] == input_sizes[0] * world_size,
                          error::kInvalidArgument)
-              << "for concatenation, output tensor size at "
-                 "dimension 0 must be world size * input tensor size at "
-                 "dimension 0. Got output shape "
+              << "expected output for concatenation to be a tensor with size "
+                 "equal to world size * input size at dimension 0, got output "
+                 "shape "
               << output_sizes << ", input shape " << input_sizes
-              << ", world size " << world_size;
+              << ", and world size " << world_size;
           for (int i = 1; i < input_sizes.size(); ++i) {
             TT_CHECK_THROW(output_sizes[i] == input_sizes[i],
                            error::kInvalidArgument)
-                << "for concatenation, output "
-                   "tensor shape must match input tensor shape along all other "
-                   "dimensions. Got output shape "
-                << output_sizes << ", input shape " << input_sizes;
+                << "expected output for concatenation to match the input "
+                   "tensor shape along all other dimensions, got output shape "
+                << output_sizes << " and input shape " << input_sizes;
           }
         } else {
           // Arbitrary value to make compiler happy.
           output_mode = AllGatherOutputMode::kConcat;
           TT_CHECK_THROW(false, error::kInvalidArgument)
-              << "invalid output tensor shape. "
-                 "Number of output dimensions must equal number of input "
-                 "dimensions (concatenation) or input dimensions + 1 "
-                 "(stacking)."
-                 " Got output shape "
-              << output_sizes << ", input shape " << input_sizes;
+              << "expected number of output dimensions to be equal the number "
+                 "of input dimensions (concatenation) or input dimensions + 1 "
+                 "(stacking), got output shape "
+              << output_sizes << " and input shape " << input_sizes;
         }
 
         ABSL_VLOG(1) << OpDebugString("_allgather_base") << "DeviceBufferRef: "
@@ -973,20 +972,19 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::gather(
         const int64_t rank = getRank();
         const int64_t root_rank = opts.rootRank;
         TT_CHECK_THROW(input_tensors.size() == 1, error::kInvalidArgument)
-            << "a single input tensor must be provided, got "
-            << input_tensors.size();
+            << "expected a single input tensor, got " << input_tensors.size();
         auto& input = input_tensors[0];
 
         if (rank == root_rank) {
           TT_CHECK_THROW(output_tensors.size() == 1, error::kInvalidArgument)
-              << "there must be a single list of output tensors on the root "
-                 "rank, got "
+              << "expected a single list of output tensors on the root rank, "
+                 "got "
               << output_tensors.size();
           const auto& output_tensor_list = output_tensors[0];
           TT_CHECK_THROW(output_tensor_list.size() == getSize(),
                          error::kInvalidArgument)
-              << "the number of output tensors on the root rank must be equal "
-                 "to the group size, got "
+              << "expected the number of output tensors on the root rank to be "
+                 "equal to the group size, got "
               << output_tensor_list.size() << " tensors and " << getSize()
               << " processes";
           TT_THROW_IF_ERROR(CheckTensorsUniformShape(output_tensor_list))
@@ -1048,30 +1046,31 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::scatter(
         const int64_t rank = getRank();
         const int64_t root_rank = opts.rootRank;
         TT_CHECK_THROW(outputs.size() == 1, error::kInvalidArgument)
-            << "a single output tensor must be provided, got "
-            << outputs.size();
+            << "expected a single output tensor, got " << outputs.size();
         auto& output = outputs[0];
         bool is_scalar = output.dim() == 0;
 
         at::Tensor scatter_input;  // UNINITIALIZED_TENSOR_OK
         if (rank == root_rank) {
           TT_CHECK_THROW(inputs.size() == 1, error::kInvalidArgument)
-              << "there must be a single list of input tensors on the root "
-                 "rank, got "
+              << "expected a single list of input tensors on the root rank, "
+                 "got "
               << inputs.size();
           const auto& input_tensors = inputs[0];
           TT_CHECK_THROW(input_tensors.size() == getSize(),
                          error::kInvalidArgument)
-              << "the number of input tensors on the root rank must be equal to"
-              << " the group size, got " << input_tensors.size()
-              << " tensors and " << getSize() << " processes";
+              << "expected the number of input tensors on the root rank to be "
+                 "equal to the group size, got "
+              << input_tensors.size() << " tensors and " << getSize()
+              << " processes";
 
           TT_THROW_IF_ERROR(CheckTensorsUniformShape(input_tensors))
                   .SetPrepend()
               << "input tensors on the root rank: ";
           TT_CHECK_THROW(output.sizes() == input_tensors[0].sizes(),
                          error::kInvalidArgument)
-              << "output tensor shape must match input tensor shape, got "
+              << "expected output tensor shape to match input tensor shape, "
+                 "got "
               << output.sizes() << " and " << input_tensors[0].sizes();
           if (is_scalar) {
             scatter_input = at::stack(input_tensors);
@@ -1130,9 +1129,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
         at::Tensor& output = output_tensors[0];
 
         TT_CHECK_THROW(inputs.size() == getSize(), error::kInvalidArgument)
-            << "length of input tensors list must match "
-            << "world size, got " << inputs.size() << " input tensors and "
-            << getSize() << " processes";
+            << "expected 1 input tensor for each process, got " << inputs.size()
+            << " input tensors and " << getSize() << " processes";
 
         // NOTE: NCCL does support this case, but is doing that by running a
         // sequence of world_size separate reduce calls (coalesced). Revisit
@@ -1303,8 +1301,8 @@ absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseEqualSplits(
     at::Tensor& output, at::Tensor& input) {
   auto& maybe_materialized_input_tensor = input;
   TT_RET_CHECK(output.sizes() == input.sizes(), error::kInvalidArgument)
-      << "for equal splits, shape of input and output must be the same,"
-      << " got " << input.sizes() << " and " << output.sizes();
+      << "expected shape of input and output to be the same for equal splits, "
+      << "got " << input.sizes() << " and " << output.sizes();
 
   TT_ASSIGN_OR_RETURN(auto param_keys,
                       TT_MAKE_OP_PARAM_CACHE_KEYS(subgroup_device_ids_));
@@ -1348,8 +1346,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(
         TT_SET_SUBGROUPS_FINGERPRINT(param_keys);
         TT_CHECK_THROW(output_tensors.size() == input_tensors.size(),
                        error::kInvalidArgument)
-            << "output and input tensors must have the same number of tensors, "
-               "got "
+            << "expected output and input tensors to have the same number of "
+               "tensors, got "
             << output_tensors.size() << " for output and "
             << input_tensors.size() << " for input";
 
@@ -1357,9 +1355,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(
 
         TT_CHECK_THROW(input_tensors.size() == group_size,
                        error::kInvalidArgument)
-            << "input tensors must have the same number of tensors as the "
-               "process "
-               "group size, got "
+            << "expected input tensors to have the same number of tensors as "
+               "the process group size, got "
             << input_tensors.size() << " for input and " << group_size
             << " for process group size";
 

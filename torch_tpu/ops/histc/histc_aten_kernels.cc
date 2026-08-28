@@ -123,7 +123,7 @@ absl::Status ValidateBounds(
     TT_ASSIGN_OR_RETURN(const bool max_lt_min, lt(max, min));
     TT_RET_CHECK(min_prev_lt_max_prev && max_lt_min, error::kInvalidArgument)
         << "expected min and max to be within the range of their data "
-           "types, but got min = "
+           "types, got min = "
         << min << " and max = " << max << ". "
         << "This happened because min and max were adjusted by one (due to min "
            "== max), which resulted in an overflow";

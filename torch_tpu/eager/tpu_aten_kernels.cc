@@ -41,6 +41,7 @@
 #include "c10/util/Exception.h"
 #include "torch/library.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/a_min_max/a_min_max_aten_kernels.h"
 #include "torch_tpu/ops/addcdiv/addcdiv_aten_kernels.h"
 #include "torch_tpu/ops/addcmul/addcmul_aten_kernels.h"
@@ -1301,7 +1302,9 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
           int64_t max_ids_per_partition,
           int64_t max_unique_ids_per_partition) -> at::Tensor {
         TT_CHECK_THROW(embedding_table.dim() == 2, error::kInvalidArgument)
-            << "embedding_table must be 2D";
+            << "expected embedding_table to be a 2D tensor, got a "
+            << embedding_table.dim() << "D tensor of shape "
+            << ToString(embedding_table.sizes());
         return at::empty({device_batch_size, embedding_table.size(1)},
                          embedding_table.options());
       });
@@ -1310,19 +1313,8 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
       +[](const at::Tensor& row_pointers, const at::Tensor& indices,
           const at::Tensor& operand,
           int64_t max_non_zeroes_per_row) -> at::Tensor {
-        TT_CHECK_THROW(row_pointers.dim() == 1, error::kInvalidArgument)
-            << "row_pointers must be 1D tensor, got rank "
-            << row_pointers.dim();
-        TT_CHECK_THROW(indices.dim() == 1, error::kInvalidArgument)
-            << "indices must be 1D tensor, got rank " << indices.dim();
-        TT_CHECK_THROW(operand.dim() == 2, error::kInvalidArgument)
-            << "operand must be 2D tensor, got rank " << operand.dim();
-        TT_CHECK_THROW(
-            indices.size(0) == row_pointers.size(0) * max_non_zeroes_per_row,
-            error::kInvalidArgument)
-            << "indices length (" << indices.size(0)
-            << ") must equal row_pointers size (" << row_pointers.size(0)
-            << ") * max_non_zeroes_per_row (" << max_non_zeroes_per_row << ")";
+        TT_THROW_IF_ERROR(ValidateSparseGatherInputs(
+            row_pointers, indices, operand, max_non_zeroes_per_row));
         return at::empty({indices.size(0), operand.size(1)}, operand.options());
       });
   ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(

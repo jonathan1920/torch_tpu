@@ -653,8 +653,9 @@ absl::StatusOr<int64_t> ValidateTensorByteSize(at::IntArrayRef size,
       << " is not supported as a tensor element type";
   const auto negative_dims = GetNegativeValuesIn(size);
   TT_RET_CHECK(negative_dims.empty(), error::kInvalidArgument)
-      << "dimension sizes must be >= 0, got [" << absl::StrJoin(size, ", ")
-      << "], which contains " << JoinBySerialComma(negative_dims);
+      << "expected dimension sizes to be >= 0, got ["
+      << absl::StrJoin(size, ", ") << "], which contains "
+      << JoinBySerialComma(negative_dims);
   TT_ASSIGN_OR_RETURN(const int64_t extent_product, NumElements(size));
   const auto xla_primitive_type = ConvertTo<xla::PrimitiveType>(element_type);
   TT_ASSIGN_OR_RETURN(

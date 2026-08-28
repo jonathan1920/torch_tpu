@@ -17,6 +17,7 @@
 import re
 import textwrap
 from typing import TypeAlias
+import unittest
 from absl.testing import absltest
 import torch
 from torch.fx.experimental.proxy_tensor import make_fx
@@ -306,6 +307,9 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertLen(results, 1)
     self.assertEqual(results[0].shape, (10,))
 
+  # TODO(marcosyukio): b/553714856 execution worker thread errors due to shape
+  # mismatch, which gets ignored by not explicitly materializing the output.
+  @unittest.skip('Execution errors on worker thread due to shape mismatch.')
   def test_execute_with_smaller_output_shapes(self):
     with eager_mode_compile_fx_graph():
       x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))

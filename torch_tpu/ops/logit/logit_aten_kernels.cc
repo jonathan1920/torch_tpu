@@ -117,7 +117,7 @@ absl::StatusOr<DeviceBufferRef> BuildLogitBuffer(const at::Tensor& self,
   const c10::ScalarType self_dtype = self.scalar_type();
   TT_RET_CHECK(!c10::isComplexType(self_dtype),
                error::kPythonNotImplementedError)
-      << "complex dtypes are not supported, got " << ToString(self_dtype);
+      << "expected non-complex dtype, got " << ToString(self_dtype);
 
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(out_type));
@@ -262,7 +262,7 @@ at::Tensor& AtenLogitBackwardGradInput(const at::Tensor& grad_output,
         const c10::ScalarType self_dtype = self.scalar_type();
         TT_CHECK_THROW(!c10::isComplexType(self_dtype),
                        error::kPythonNotImplementedError)
-            << "complex dtypes are not supported, got " << ToString(self_dtype);
+            << "expected non-complex dtype, got " << ToString(self_dtype);
 
         TT_ASSIGN_OR_THROW(const auto out_dtype,
                            ConvertTo<mlir::ElementType>(out_type));

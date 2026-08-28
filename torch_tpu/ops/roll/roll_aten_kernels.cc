@@ -108,8 +108,8 @@ at::Tensor AtenRoll(const at::Tensor& self, at::IntArrayRef shifts,
     TT_CHECK_THROW(
         shifts.size() == dims.size() || (dims.empty() && shifts.size() <= 1),
         error::kInvalidArgument)
-        << "shifts and dims must align, got shifts: " << shifts.size()
-        << ", dims: " << dims.size();
+        << "expected shifts to have the same size as dims (" << dims.size()
+        << "), got " << shifts.size();
 
     TT_ASSIGN_OR_THROW(auto element_type,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));

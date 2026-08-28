@@ -54,22 +54,23 @@ at::Tensor DynamicReshape(const at::Tensor& input, at::TensorList shape,
       (input, shape, static_shape, is_dynamic), {
         const size_t rank = static_shape.size();
         TT_CHECK_THROW(shape.size() == rank, error::kInvalidArgument)
-            << "shape list size must match static_shape size, got shape list "
+            << "expected shape list size to match static_shape size, got shape "
+               "list "
                "size "
             << shape.size() << " and static_shape size " << rank;
         TT_CHECK_THROW(is_dynamic.size() == rank, error::kInvalidArgument)
-            << "is_dynamic size must match static_shape size, got is_dynamic "
+            << "expected is_dynamic size to match static_shape size, got "
+               "is_dynamic "
                "size "
             << is_dynamic.size() << " and static_shape size " << rank;
 
         for (size_t i = 0; i < shape.size(); ++i) {
           const auto& t = shape[i];
           TT_CHECK_THROW(t.dim() == 0, error::kInvalidArgument)
-              << "shape tensor at index " << i
-              << " must be a 0-D (scalar) tensor, got " << t.dim()
-              << "-D tensor";
+              << "expected shape tensor at index " << i
+              << " to be a 0-D (scalar) tensor, got " << t.dim() << "-D tensor";
           TT_CHECK_THROW(t.scalar_type() == at::kInt, error::kInvalidArgument)
-              << "shape must be a list of int32 tensors, got "
+              << "expected shape to be a list of int32 tensors, got "
               << ToString(t.scalar_type()) << " tensor at index " << i;
         }
 

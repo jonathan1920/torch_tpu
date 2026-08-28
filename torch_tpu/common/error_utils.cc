@@ -289,7 +289,6 @@ absl::Status EndsWithAlphaNumAndAllowedCharacters(
 //        actual value. We do that by looking for the presence of the following
 //        words:
 //         - "expected ..."
-//         - "... must ..."
 //         - "..., got ..." (or ". Got")
 //         - "..., but got ..." (or ". But got")
 //
@@ -301,15 +300,15 @@ absl::Status HasValidFormat(const std::string_view message) {
       << kPreconditionViolatedError;
 
   static LazyRE2 kExpectedConditionOrActualValuePattern = {
-      R"((.*\bexpected\b.*|.*\bmust\b.*|.*[.,]\s*\b(?i:got|but got)\b.*))"};
-  static LazyRE2 kExpectedGotPattern = {R"(.*\bexpected\b.*,\s*\bgot\b.*)"};
+      R"((.*\bexpected\b.*|.*[.,]\s*\b(?i:got|but got)\b.*))"};
+  static LazyRE2 kExpectedGotPattern = {R"(.*\bexpected\b.*, got\b.*)"};
 
   if (RE2::FullMatch(message, *kExpectedConditionOrActualValuePattern)) {
     TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error message checks crash and are
                    // unreachable from Python.
         RE2::FullMatch(message, *kExpectedGotPattern), error::kInternal)
         << "The error message states an expected condition or the actual "
-           "value (i.e. contains \"expected\", \"must\", or \", (but) got\" "
+           "value (i.e. contains \"expected\", or \", (but) got\" "
            "strings). Therefore, it should be in the following format: "
            "\"expected ..., got ...\".";
   }
@@ -473,13 +472,7 @@ ErrorMessageChecksResult GetErrorMessageChecksResult(
   handle_check(HasNoLeadingWhitespace(message), CheckKind::kEnforce);
   handle_check(HasNoTrailingWhitespace(message), CheckKind::kEnforce);
   handle_check(HasNoSpacesSurroundingSentinel(message), CheckKind::kEnforce);
-
-  // TODO(marcosyukio): enforce the other error message checks.
-  //
-  // We shall enforce these errors one-by-one, since enforcing each of them
-  // might end up breaking our CI due to various errors.
-
-  handle_check(HasValidFormat(message), CheckKind::kWarn);
+  handle_check(HasValidFormat(message), CheckKind::kEnforce);
 
   for (const auto& pair : type_name_pairs) {
     handle_check(DoesNotContainStableHloTypeName(message, pair),
@@ -635,6 +628,29 @@ absl::StatusOr<int64_t> NumElements(const at::Tensor& tensor) {
 }
 
 absl::StatusOr<int64_t> SafeWrapDim(int64_t dim, int64_t dim_bound) {
+  // These `TT_RET_CHECK()` calls mirror `maybe_wrap_dim()` checks. They are
+  // needed so that we can emit error messages that follow the TorchTPU
+  // guidelines.
+
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Guaranteed by the origin of the value.
+      dim_bound >= 0, error::kIndexError)
+      << "expected the dimension upper bound to be >= 0, got " << dim_bound;
+
+  if (dim_bound == 0) {
+    // 0-D tensor, i.e. scalar.
+    //
+    // Internally, `maybe_wrap_dim()` calls itself, but setting the upper
+    // bound to 1. Therefore, in this case, `dim` should be either 0 or -1.
+    TT_RET_CHECK(dim == 0 || dim == -1, error::kIndexError)
+        << "expected dimension to be either 0 or -1 for a shape with 0 "
+           "dimensions, got "
+        << dim;
+  } else {
+    TT_RET_CHECK(dim >= -dim_bound && dim < dim_bound, error::kIndexError)
+        << "expected dimension to be in range [" << -dim_bound << ", "
+        << dim_bound - 1 << "], got " << dim;
+  }
+
   try {
     return at::maybe_wrap_dim(  // MAYBE_WRAP_DIM_OK=implementing SafeWrapDim.
         dim, dim_bound);

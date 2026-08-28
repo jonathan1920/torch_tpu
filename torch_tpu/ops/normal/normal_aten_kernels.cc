@@ -252,7 +252,7 @@ absl::Status CheckNormalPreconditions(const at::Tensor& tensor,
 
 absl::Status CheckNormalStdPreconditions(double std) {
   TT_RET_CHECK(std >= 0.0, error::kInvalidArgument)
-      << "expected std >= 0.0, but found std " << std;
+      << "expected std >= 0.0, got " << std;
   return absl::OkStatus();
 }
 

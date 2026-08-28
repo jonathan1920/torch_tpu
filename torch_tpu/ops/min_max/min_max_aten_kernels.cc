@@ -122,7 +122,7 @@ absl::StatusOr<std::tuple<at::Tensor, at::Tensor>> AtenMinMaxDim(
 
 absl::Status CheckNotZeroElementTensor(const at::Tensor& tensor) {
   TT_RET_CHECK(tensor.numel() > 0, error::kInvalidArgument)
-      << "expected the dim argument to be specified when the input tensor has "
+      << "the dim argument must be specified when the input tensor has "
          "0 elements";
 
   return absl::OkStatus();

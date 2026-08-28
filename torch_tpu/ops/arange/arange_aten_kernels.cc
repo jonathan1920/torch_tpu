@@ -67,7 +67,8 @@ namespace {
 template <typename RangeBound>
 absl::Status CheckArangeInputs(const RangeBound start, const RangeBound end,
                                const double step) {
-  TT_RET_CHECK(step != 0, error::kInvalidArgument) << "step must be non-zero";
+  TT_RET_CHECK(step != 0, error::kInvalidArgument)
+      << "expected step to be non-zero, got " << step;
 
   if constexpr (std::is_same_v<RangeBound, double>) {
     TT_RET_CHECK(std::isfinite(start) && std::isfinite(end),

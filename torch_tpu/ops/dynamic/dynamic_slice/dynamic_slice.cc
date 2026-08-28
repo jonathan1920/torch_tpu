@@ -45,30 +45,34 @@ at::Tensor DynamicSlice(const at::Tensor& input, at::TensorList start_indices,
                         at::IntArrayRef slice_sizes) {
   TT_KERNEL(
       OpName::kDynamicSlice, param_keys, (input, start_indices, slice_sizes), {
-        const size_t rank = input.dim();
-        TT_CHECK_THROW(start_indices.size() == rank, error::kInvalidArgument)
-            << "start_indices list size must match input rank, got "
-            << "start_indices size " << start_indices.size()
-            << " and input rank " << rank;
-        TT_CHECK_THROW(slice_sizes.size() == rank, error::kInvalidArgument)
-            << "slice_sizes size must match input rank, got "
-            << "slice_sizes size " << slice_sizes.size() << " and input rank "
-            << rank;
+        const size_t input_dims = input.dim();
+        TT_CHECK_THROW(start_indices.size() == input_dims,
+                       error::kInvalidArgument)
+            << "expected start_indices list size to match input number of "
+               "dimensions, got start_indices size "
+            << start_indices.size() << " and input number of dimensions "
+            << input_dims;
+        TT_CHECK_THROW(slice_sizes.size() == input_dims,
+                       error::kInvalidArgument)
+            << "expected slice_sizes size to match input number of dimensions, "
+               "got slice_sizes size "
+            << slice_sizes.size() << " and input number of dimensions "
+            << input_dims;
 
         for (size_t i = 0; i < start_indices.size(); ++i) {
           const auto& t = start_indices[i];
           TT_CHECK_THROW(t.dim() == 0, error::kInvalidArgument)
-              << "start_indices tensor at index " << i
-              << " must be a 0-D (scalar) tensor, got " << t.dim()
-              << "-D tensor";
+              << "expected start_indices tensor at index " << i
+              << " to be a 0-D (scalar) tensor, got " << t.dim() << "-D tensor";
           TT_CHECK_THROW(
               t.scalar_type() == at::kInt || t.scalar_type() == at::kLong,
               error::kInvalidArgument)
-              << "start_indices must be a list of int32 or int64 tensors, got "
+              << "expected start_indices to be a list of int32 or int64 "
+                 "tensors, got "
               << ToString(t.scalar_type()) << " tensor at index " << i;
           TT_CHECK_THROW(t.scalar_type() == start_indices[0].scalar_type(),
                          error::kInvalidArgument)
-              << "all start_indices must have the same dtype, got "
+              << "expected all start_indices to have the same dtype, got "
               << ToString(start_indices[0].scalar_type()) << " at index 0 but "
               << ToString(t.scalar_type()) << " at index " << i;
         }
@@ -76,7 +80,7 @@ at::Tensor DynamicSlice(const at::Tensor& input, at::TensorList start_indices,
         for (size_t i = 0; i < slice_sizes.size(); ++i) {
           TT_CHECK_THROW(slice_sizes[i] >= 0 && slice_sizes[i] <= input.size(i),
                          error::kInvalidArgument)
-              << "slice_sizes at index " << i << " must be in range [0, "
+              << "expected slice_sizes at index " << i << " to be in range [0, "
               << input.size(i) << "], got " << slice_sizes[i];
         }
 
@@ -93,12 +97,12 @@ at::Tensor DynamicSlice(const at::Tensor& input, at::TensorList start_indices,
           all_inputs.push_back(t);
         }
 
-        auto builder = [rank, out_dims](absl::Span<mlir::MlirOp> inputs,
-                                        mlir::MlirBuilder& mlir_builder)
+        auto builder = [input_dims, out_dims](absl::Span<mlir::MlirOp> inputs,
+                                              mlir::MlirBuilder& mlir_builder)
             -> absl::StatusOr<mlir::MlirOp> {
           std::vector<mlir::MlirOp> start_ops;
-          start_ops.reserve(rank);
-          for (size_t i = 0; i < rank; ++i) {
+          start_ops.reserve(input_dims);
+          for (size_t i = 0; i < input_dims; ++i) {
             start_ops.push_back(inputs[1 + i]);
           }
 

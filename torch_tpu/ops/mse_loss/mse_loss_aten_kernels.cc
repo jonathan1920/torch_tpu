@@ -49,12 +49,14 @@ at::Tensor& AtenMseLossOut(const at::Tensor& self, const at::Tensor& target,
                            self.scalar_type() != at::ScalarType::Long &&
                            self.scalar_type() != at::ScalarType::ComplexFloat,
                        error::kInvalidArgument)
-            << "uint8, int8, int16, int32, int64, and complex64 dtypes"
-            << " are not supported, got: "
+            << "expected the input dtype to be none of (uint8, int8, int16, "
+               "int32, int64, complex64), got "
             << torch_tpu::ToString(self.scalar_type());
         TT_CHECK_THROW(self.scalar_type() == target.scalar_type(),
                        error::kInvalidArgument)
-            << "input and target must have the same dtype";
+            << "expected input and target to have the same dtype, got "
+            << torch_tpu::ToString(self.scalar_type()) << " and "
+            << torch_tpu::ToString(target.scalar_type());
 
         {
           // All compositional ATen calls must be within a guard to prevent

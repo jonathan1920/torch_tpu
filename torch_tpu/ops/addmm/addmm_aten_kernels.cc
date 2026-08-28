@@ -105,7 +105,7 @@ absl::Status CheckInputBroadcast(const at::Tensor& self,
     return absl::OkStatus();
   }
   TT_RET_CHECK(self.dim() <= output_dims_vec.size(), error::kInvalidArgument)
-      << "input tensor should not have more dimensions than the"
+      << "expected input tensor to have at most as many dimensions as the"
       << " product of mat1 @ mat2, got " << self.dim() << "-D input and "
       << output_dims_vec.size() << "-D product of mat1 @ mat2";
   absl::StatusOr<Dimensions> broadcast_shape =
@@ -145,14 +145,14 @@ absl::StatusOr<mlir::ElementType> ValidateAddmmInputsAndGetOutputDtype(
       << "complex dtypes are not yet supported";
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch prevents non-matrix mat1.
       mat1.dim() == 2, error::kInvalidArgument)
-      << "mat1 must be a matrix, got " << mat1.dim() << "-D tensor";
+      << "expected mat1 to be a matrix, got " << mat1.dim() << "-D tensor";
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch prevents non-matrix mat2.
       mat2.dim() == 2, error::kInvalidArgument)
-      << "mat2 must be a matrix, got " << mat2.dim() << "-D tensor";
+      << "expected mat2 to be a matrix, got " << mat2.dim() << "-D tensor";
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch prevents mismatch.
       mat1.size(1) == mat2.size(0), error::kInvalidArgument)
-      << "size 1 of mat1 must be same as size 0 of mat2, got " << mat1.size(1)
-      << " and " << mat2.size(0) << " respectively";
+      << "expected size 1 of mat1 to be same as size 0 of mat2, got "
+      << mat1.size(1) << " and " << mat2.size(0) << " respectively";
 
   Dimensions output_dims_vec = {mat1.size(0), mat2.size(1)};
   TT_RETURN_IF_ERROR(CheckInputBroadcast(self, output_dims_vec));
@@ -367,7 +367,7 @@ at::Tensor& AtenAddmmDtypeOut(const at::Tensor& self, const at::Tensor& mat1,
       OpName::kAddmmDtypeOut, param_keys,
       (self, mat1, mat2, out_dtype, promoted_beta, promoted_alpha, out), {
         TT_CHECK_THROW(out.scalar_type() == out_dtype, error::kInvalidArgument)
-            << "out dtype should match out_dtype, got out dtype "
+            << "expected out dtype to match out_dtype, got out dtype "
             << torch_tpu::ToString(out.scalar_type()) << " and out_dtype "
             << torch_tpu::ToString(out_dtype);
         TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=errors from addmm

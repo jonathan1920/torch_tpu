@@ -23,6 +23,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "mlir/IR/Attributes.h"
@@ -35,6 +36,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -99,6 +101,34 @@ auto SparseGatherBuilder(int64_t max_non_zeroes_per_row) {
 
 }  // namespace
 
+absl::Status ValidateSparseGatherInputs(const at::Tensor& row_pointers,
+                                        const at::Tensor& indices,
+                                        const at::Tensor& operand,
+                                        int64_t max_non_zeroes_per_row) {
+  TT_RET_CHECK(row_pointers.dim() == 1, error::kInvalidArgument)
+      << "expected row_pointers to be a 1D tensor, got a " << row_pointers.dim()
+      << "D tensor of shape " << ToString(row_pointers.sizes());
+
+  TT_RET_CHECK(indices.dim() == 1, error::kInvalidArgument)
+      << "expected indices to be a 1D tensor, got a " << indices.dim()
+      << "D tensor of shape " << ToString(indices.sizes());
+
+  TT_RET_CHECK(operand.dim() == 2, error::kInvalidArgument)
+      << "expected operand to be a 2D tensor, got a " << operand.dim()
+      << "D tensor of shape " << ToString(operand.sizes());
+
+  TT_RET_CHECK(indices.size(0) == row_pointers.size(0) * max_non_zeroes_per_row,
+               error::kInvalidArgument)
+      << "expected indices length to match the maximum number of "
+         "non-zeroes, i.e. row_pointers length * maximum number of "
+         "non-zeroes per row ("
+      << row_pointers.size(0) << " * " << max_non_zeroes_per_row << " = "
+      << row_pointers.size(0) * max_non_zeroes_per_row << "), got "
+      << indices.size(0);
+
+  return absl::OkStatus();
+}
+
 at::Tensor AtenSparseGather(const at::Tensor& row_pointers,
                             const at::Tensor& indices,
                             const at::Tensor& operand,
@@ -106,19 +136,8 @@ at::Tensor AtenSparseGather(const at::Tensor& row_pointers,
   TT_KERNEL(
       torch_tpu::OpName::kSparseGather, param_keys,
       (row_pointers, indices, operand, max_non_zeroes_per_row), {
-        TT_CHECK_THROW(row_pointers.dim() == 1, error::kInvalidArgument)
-            << "row_pointers must be 1D tensor, got rank "
-            << row_pointers.dim();
-        TT_CHECK_THROW(indices.dim() == 1, error::kInvalidArgument)
-            << "indices must be 1D tensor, got rank " << indices.dim();
-        TT_CHECK_THROW(operand.dim() == 2, error::kInvalidArgument)
-            << "operand must be 2D tensor, got rank " << operand.dim();
-        TT_CHECK_THROW(
-            indices.size(0) == row_pointers.size(0) * max_non_zeroes_per_row,
-            error::kInvalidArgument)
-            << "indices length (" << indices.size(0)
-            << ") must equal row_pointers size (" << row_pointers.size(0)
-            << ") * max_non_zeroes_per_row (" << max_non_zeroes_per_row << ")";
+        TT_THROW_IF_ERROR(ValidateSparseGatherInputs(
+            row_pointers, indices, operand, max_non_zeroes_per_row));
 
         std::array<torch_tpu::TensorHolder, 3> inputs = {row_pointers, indices,
                                                          operand};

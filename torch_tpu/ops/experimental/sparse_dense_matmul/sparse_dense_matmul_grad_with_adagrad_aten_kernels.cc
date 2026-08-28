@@ -88,11 +88,12 @@ auto SparseDenseMatmulGradWithAdagradBuilder(
     bool is_rowwise = (accumulator_shape.size() == 1);
     if (!is_rowwise) {
       TT_RET_CHECK(accumulator_shape.size() == 2, error::kInvalidArgument)
-          << "Accumulator must be 1D (row-wise) or 2D (standard)";
+          << "expected accumulator to be 1D (row-wise) or 2D (standard), got "
+          << accumulator_shape.size() << "D";
       TT_RET_CHECK(accumulator_shape[1] == embedding_dim,
                    error::kInvalidArgument)
-          << "Accumulator dimension 1 must match embedding dimension; expected "
-          << embedding_dim << ", got " << accumulator_shape[1];
+          << "expected accumulator dimension 1 to match embedding dimension ("
+          << embedding_dim << "), got " << accumulator_shape[1];
     }
 
     // Define the optimizer update function.

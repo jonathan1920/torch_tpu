@@ -91,8 +91,9 @@ class ScatterErrorsTest(seed_test_utils.MultiProcessRepeatableTest):
   def test_scatter_wrong_number_inputs(self):
     with et.assert_subprocess_raises_message(
         RuntimeError,
-        "distributed.scatter(): the number of input tensors on the root rank"
-        " must be equal to the group size, got 9 tensors and 8 processes",
+        "distributed.scatter(): expected the number of input tensors on the"
+        " root rank to be equal to the group size, got 9 tensors and 8"
+        " processes",
     ):
       distributed_utils.dist_run(
           nproc_per_node=8,
@@ -107,8 +108,8 @@ class ScatterErrorsTest(seed_test_utils.MultiProcessRepeatableTest):
     output_shape = [3, 3]
     with et.assert_subprocess_raises_message(
         RuntimeError,
-        "distributed.scatter(): output tensor shape must match input tensor"
-        " shape, got [3, 3] and [2, 3]",
+        "distributed.scatter(): expected output tensor shape to match input"
+        " tensor shape, got [3, 3] and [2, 3]",
     ):
       distributed_utils.dist_run(
           nproc_per_node=8,
@@ -122,9 +123,9 @@ class ScatterErrorsTest(seed_test_utils.MultiProcessRepeatableTest):
     mismatch_shape = [8, 6, 2]
     with et.assert_subprocess_raises_message(
         RuntimeError,
-        "distributed.scatter(): input tensors on the root rank: tensors in the"
-        " list must have the same shape, got [8, 6, 2] at index 0 and [6,"
-        " 2] at index 1",
+        "distributed.scatter(): input tensors on the root rank: expected all"
+        " input tensors to have the same shape, got [8, 6, 2] at index 0 and"
+        " [6, 2] at index 1",
     ):
       distributed_utils.dist_run(
           nproc_per_node=8,

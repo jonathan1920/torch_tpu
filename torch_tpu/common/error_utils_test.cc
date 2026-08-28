@@ -1234,8 +1234,7 @@ TEST(SafeWrapDim, ReturnsErrorOnInvalidNegativeDim) {
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), error::kPythonIndexError);
   EXPECT_EQ(result.status().message(),
-            "dimension out of range (expected to be in range of [-1, 0], but "
-            "got -2)");
+            "expected dimension to be in range [-1, 0], got -2");
 }
 
 TEST(SafeWrapDim, ReturnsErrorOnInvalidPositiveDim) {
@@ -1243,8 +1242,7 @@ TEST(SafeWrapDim, ReturnsErrorOnInvalidPositiveDim) {
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), error::kPythonIndexError);
   EXPECT_EQ(result.status().message(),
-            "dimension out of range (expected to be in range of [-1, 0], but "
-            "got 1)");
+            "expected dimension to be in range [-1, 0], got 1");
 }
 
 TEST(SafeWrapDim, ReturnsErrorOnNegativeDimBound) {
@@ -1252,7 +1250,8 @@ TEST(SafeWrapDim, ReturnsErrorOnNegativeDimBound) {
   const auto result = SafeWrapDim(/*dim=*/0, /*dim_bound=*/-1);
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), error::kPythonIndexError);
-  EXPECT_EQ(result.status().message(), "rank cannot be negative but got -1");
+  EXPECT_EQ(result.status().message(),
+            "expected the dimension upper bound to be >= 0, got -1");
 }
 
 TEST(SafeWrapDim, ReturnsErrorOnInvalidDimForZeroDimBound) {
@@ -1260,8 +1259,8 @@ TEST(SafeWrapDim, ReturnsErrorOnInvalidDimForZeroDimBound) {
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), error::kPythonIndexError);
   EXPECT_EQ(result.status().message(),
-            "dimension out of range (expected to be in range of [-1, 0], but "
-            "got 1)");
+            "expected dimension to be either 0 or -1 for a shape with 0 "
+            "dimensions, got 1");
 }
 
 TEST(SafeWrapDim, WrapsValidNegativeDim) {
@@ -1426,15 +1425,9 @@ TEST(ErrorMessageGuidelinesDeathTest, NonAlphaNumTrailingMultiChar) {
                HasSubstr("end with either an alpha-numeric"));
 }
 
-TEST(ErrorMessageGuidelinesWarningTest, InvalidExpectedGotFormat) {
-  TestLogSink sink;
-  ScopedLogSink scoped_sink(&sink);
-
-  EXPECT_THROW(ThrowWithMessage("must be a 3D tensor but it is 2D"),
-               c10::Error);
-
-  ASSERT_EQ(sink.warnings.size(), 1);
-  EXPECT_THAT(sink.warnings[0], HasSubstr("expected ..., got ..."));
+TEST(ErrorMessageGuidelinesDeathTest, InvalidExpectedGotFormat) {
+  EXPECT_DEATH(ThrowWithMessage("expected a 3D tensor"),
+               HasSubstr("expected ..., got ..."));
 }
 
 void ThrowWithContextForXlaError(const std::string_view context,

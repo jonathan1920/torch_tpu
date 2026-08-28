@@ -340,9 +340,16 @@ absl::StatusOr<c10::SmallVector<int64_t, 3>> GetGroupedMmOutputSize(
       << "expected self to be 2D or 3D, got " << self.dim() << "D";
   TT_RET_CHECK(mat2.dim() == 2 || mat2.dim() == 3, error::kInvalidArgument)
       << "expected mat2 to be 2D or 3D, got " << mat2.dim() << "D";
-  TT_RET_CHECK(has_offs == (a_is_2d || b_is_2d), error::kInvalidArgument)
-      << "expected offs to be provided if and only if either self or mat2 is "
-         "2D";
+
+  if (a_is_2d || b_is_2d) {
+    TT_RET_CHECK(has_offs, error::kInvalidArgument)
+        << "offsets must be provided when at least one of self or mat2 is a 2D "
+           "tensor";
+  } else {
+    TT_RET_CHECK(!has_offs, error::kInvalidArgument)
+        << "offsets must not be provided when both self and mat2 are 3D "
+           "tensors";
+  }
 
   c10::SmallVector<int64_t, 3> out_size;
   if (a_is_2d) {
@@ -439,19 +446,18 @@ absl::StatusOr<DeviceBufferRef> ScaledGroupedMm(
   const bool has_scale_result =
       scale_result.has_value() && scale_result->defined();
 
-  // Per-group scales not yet supported.
   TT_RET_CHECK(IsScalar(scale_a), error::kPythonNotImplementedError)
-      << "scale_a must be 1D or scalar, but got " << scale_a.dim() << "D";
+      << "expected scale_a to be 1D or scalar, got " << scale_a.dim() << "D";
   TT_RET_CHECK(IsScalar(scale_b), error::kPythonNotImplementedError)
-      << "scale_b must be 1D or scalar, but got " << scale_b.dim() << "D";
+      << "expected scale_b to be 1D or scalar, got " << scale_b.dim() << "D";
   if (has_bias) {
     TT_RET_CHECK(IsScalar(*bias), error::kPythonNotImplementedError)
-        << "bias must be 1D or scalar, but got " << bias->dim() << "D";
+        << "expected bias to be 1D or scalar, got " << bias->dim() << "D";
   }
   if (has_scale_result) {
     TT_RET_CHECK(IsScalar(*scale_result), error::kPythonNotImplementedError)
-        << "scale_result must be 1D or scalar, but got " << scale_result->dim()
-        << "D";
+        << "expected scale_result to be 1D or scalar, got "
+        << scale_result->dim() << "D";
   }
 
   TT_ASSIGN_OR_RETURN(auto out_size, GetGroupedMmOutputSize(self, mat2, offs));

@@ -72,8 +72,8 @@ absl::Status ValidateIndicesType(
                      index_tensor.scalar_type() == c10::ScalarType::Byte ||
                      index_tensor.scalar_type() == c10::ScalarType::Bool,
                  error::kInvalidArgument)
-        << "tensors used as indices must be "
-        << "long, int, byte or bool tensors, got "
+        << "expected index tensors to have dtype bool, byte, int32, or int64, "
+           "got "
         << ToString(index_tensor.scalar_type()) << " at index " << i;
   }
   return absl::OkStatus();
@@ -130,9 +130,9 @@ absl::StatusOr<std::vector<at::Tensor>> ConvertBooleanIndicesToPositional(
         TT_RET_CHECK(self_dim < self.dim() && index_tensor.sizes()[mask_dim] ==
                                                   self.sizes()[self_dim],
                      error::kInvalidArgument)
-            << "the shape of the mask at index " << mask_dim
-            << " must match the shape of the indexed tensor at index "
-            << self_dim << ", got mask shape " << index_tensor.sizes()
+            << "expected the shape of the mask at index " << mask_dim
+            << " to match the shape of the indexed tensor at index " << self_dim
+            << ", got mask shape " << index_tensor.sizes()
             << " and indexed tensor shape " << self.sizes();
         self_dim++;
       }
@@ -231,7 +231,7 @@ absl::StatusOr<Dimensions> GetIndexBroadcastShape(
     } else {
       TT_ASSIGN_OR_RETURN(
           broadcast_shape, InferSize(broadcast_shape, index_tensor.sizes()),
-          _.SetPrepend() << "index tensors not broadcastable, got "
+          _.SetPrepend() << "expected index tensors to be broadcastable, got "
                          << "index tensor shape " << index_tensor.sizes()
                          << " and broadcast shape ["
                          << absl::StrJoin(broadcast_shape, ", ") << "]: ");
@@ -357,8 +357,8 @@ absl::StatusOr<DeviceBufferRef> IndexPutWithBooleanMask(
     TT_RET_CHECK(self_dim < self.dim() &&
                      mask.sizes()[mask_dim] == self.sizes()[self_dim],
                  error::kInvalidArgument)
-        << "the shape of the mask at index " << mask_dim
-        << " must match the shape of the indexed tensor at index " << self_dim
+        << "expected the shape of the mask at index " << mask_dim
+        << " to match the shape of the indexed tensor at index " << self_dim
         << ", got mask shape " << mask.sizes() << " and indexed tensor shape "
         << self.sizes();
     self_dim++;
@@ -404,7 +404,8 @@ absl::StatusOr<DeviceBufferRef> IndexPut(
       << "indices must be specified";
 
   TT_RET_CHECK(index_tensors.size() <= self.dim(), error::kInvalidArgument)
-      << "too many indices for tensor of dimension " << self.dim() << ", got "
+      << "expected at most " << self.dim()
+      << " indices for tensor of dimension " << self.dim() << ", got "
       << index_tensors.size()
       << " index tensors after expanding boolean indices";
 
@@ -482,13 +483,14 @@ absl::StatusOr<DeviceBufferRef> IndexPutHelper(
   ABSL_VLOG(1) << "[IndexPut] indices_list_opt: " << indices_list_opt.size();
 
   TT_RET_CHECK(indices_list_opt.size() <= self.dim(), error::kInvalidArgument)
-      << "too many indices for tensor of dimension " << self.dim() << ", got "
+      << "expected at most " << self.dim()
+      << " indices for tensor of dimension " << self.dim() << ", got "
       << indices_list_opt.size();
 
   TT_RET_CHECK(values.scalar_type() == self.scalar_type(),
                error::kInvalidArgument)
-      << "dtypes of values and destination must be the same,"
-      << " got " << ToString(values.scalar_type()) << " and "
+      << "expected dtypes of values and destination to be the same, got "
+      << ToString(values.scalar_type()) << " and "
       << ToString(self.scalar_type());
 
   TT_RETURN_IF_ERROR(ValidateIndicesType(indices_list_opt));

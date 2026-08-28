@@ -81,16 +81,16 @@ static absl::StatusOr<DeviceBufferRef> RaggedDotCommon(
     OpParamCacheKeys& param_keys) {
   // ragged_dot(mk, gkn, g) -> mn
   TT_RET_CHECK(lhs.dim() == 2, error::kInvalidArgument)
-      << "lhs must be 2D, got dim: " << lhs.dim();
+      << "expected lhs to be 2D, got dim: " << lhs.dim();
   TT_RET_CHECK(rhs.dim() == 3, error::kInvalidArgument)
-      << "rhs must be 3D, got dim: " << rhs.dim();
+      << "expected rhs to be 3D, got dim: " << rhs.dim();
   TT_RET_CHECK(group_sizes.dim() == 1, error::kInvalidArgument)
-      << "group_sizes must be 1D, got dim: " << group_sizes.dim();
+      << "expected group_sizes to be 1D, got dim: " << group_sizes.dim();
   TT_RET_CHECK(lhs.size(1) == rhs.size(1), error::kInvalidArgument)
-      << "contracting dimension should be the same, got: " << lhs.size(1)
+      << "expected contracting dimension to be the same, got " << lhs.size(1)
       << " vs " << rhs.size(1);
   TT_RET_CHECK(rhs.size(0) == group_sizes.size(0), error::kInvalidArgument)
-      << "lhs and group_sizes should have the same number of groups, got: "
+      << "expected lhs and group_sizes to have the same number of groups, got "
       << rhs.size(0) << " vs " << group_sizes.size(0);
 
   at::ScalarType out_scalar_type = at::result_type(lhs, rhs);

@@ -29,6 +29,7 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/error_utils.h"
@@ -77,11 +78,10 @@ absl::Status ValidateReductionOp(c10d::ReduceOp reduce_op,
                error::kInvalidArgument)
       << "reduce option not supported: " << ToString(reduce_op);
   if (is_valid_bitwise_op) {
-    TT_RET_CHECK(c10::isIntegralType(scalar_type, true),
-                 error::kInvalidArgument)
-        << "bitwise reduction ops (BAND, BOR, BXOR) are only supported for "
-           "integer tensors, got "
-        << scalar_type;
+    TT_RET_CHECK(IsIntegral(scalar_type), error::kInvalidArgument)
+        << "expected the tensors dtype to be integer on bitwise reduction ops "
+           "(BAND, BOR, BXOR), got "
+        << ToString(scalar_type);
   }
   return absl::OkStatus();
 }

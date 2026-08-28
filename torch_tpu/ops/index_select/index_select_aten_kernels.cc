@@ -47,14 +47,14 @@ absl::StatusOr<DeviceBufferRef> IndexSelect(const at::Tensor& self, int64_t dim,
                                             const at::Tensor& index,
                                             OpParamCacheKeys param_keys) {
   TT_RET_CHECK(index.dim() == 1, error::kInvalidArgument)
-      << "index must be 1D, got shape " << index.sizes();
+      << "expected index to be 1D, got shape " << index.sizes();
 
   Dimensions output_dims;
   if (self.dim() == 0) {
     TT_RET_CHECK(dim == 0, error::kInvalidArgument)
-        << "dim must be 0 for scalar input, got " << dim;
+        << "expected dim to be 0 for scalar input, got " << dim;
     TT_RET_CHECK(index.size(0) == 1, error::kInvalidArgument)
-        << "index must be 1D of size 1 for scalar input, got shape "
+        << "expected index to be 1D of size 1 for scalar input, got shape "
         << index.sizes();
     output_dims = {};
   } else {

@@ -398,73 +398,84 @@ absl::Status DeviceBufferList::SetAsPendingMaterialization() {
 
 namespace {
 
-// Verify that the requested `at_shape` that a deferred op expects is valid for
+// Checks that the requested `at_shape` that a deferred op expects is valid for
 // the given `buffer_shape` that is on device.
 //
 // For static dimensions the buffer and op shape must match exactly, for bounded
 // dimensions, only check upper bounds. We could get the real on-device shape
 // from `buffers[i]->logical_dimensions()`, but this is a device syncing
 // operation (blocking), so we want to avoid it.
-absl::Status ValidateBufferShape(const Shape& at_shape,
-                                 const xla::Shape& buffer_shape) {
+//
+// This function will crash if `at_shape` is not valid for the given
+// `buffer_shape`.
+void CheckBufferShape(const Shape& at_shape, const xla::Shape& buffer_shape) {
   // Ranks must match
   absl::Span<const int64_t> buffer_dims = buffer_shape.dimensions();
-  TT_RET_CHECK(at_shape.dimensions().size() == buffer_dims.size(),
-               error::kInvalidArgument)
-      << "unexpected rank for buffer; expected: "
-      << ToString(at_shape.dimensions().size())
-      << " but got: " << ToString(buffer_dims.size());
+  ABSL_CHECK_EQ(at_shape.dimensions().size(), buffer_dims.size())  // CRASH_OK
+      << "Expected the PjRtBuffer to have the same number of dimensions as "
+         "this DeviceBufferList ("
+      << ToString(at_shape.dimensions().size()) << "), got "
+      << ToString(buffer_dims.size()) << ".";
 
   // Static dims must match and dynamic dims must be LTE the upper bound.
   for (int64_t d = 0; d < at_shape.dimensions().size(); ++d) {
-    TT_RET_CHECK(at_shape.dimensions()[d] == buffer_dims[d] ||
-                     (buffer_shape.is_dynamic_dimension(d) &&
-                      at_shape.dimensions()[d] <= buffer_dims[d]),
-                 error::kInvalidArgument)
-        << "incompatible buffer shapes at dimension " << d << "; for op shape "
-        << ToString(at_shape.dimensions()) << " and buffer shape "
-        << buffer_shape.ToString();
+    if (buffer_shape.is_dynamic_dimension(d)) {
+      ABSL_CHECK_LE(at_shape.dimensions()[d], buffer_dims[d])  // CRASH_OK
+          << "Expected the size of dimension " << d
+          << " of the PjRtBuffer (marked as dynamic in this buffer) of shape "
+          << ToString(buffer_dims)
+          << " to be >= the size of the same dimension of this "
+             "DeviceBufferList of shape "
+          << ToString(at_shape.dimensions()) << ", got " << buffer_dims[d]
+          << ".";
+    } else {
+      ABSL_CHECK_EQ(at_shape.dimensions()[d], buffer_dims[d])  // CRASH_OK
+          << "Expected the size of dimension " << d
+          << " of the PjRtBuffer of shape " << ToString(buffer_dims)
+          << " to match the size of the same dimension of this "
+             "DeviceBufferList of shape "
+          << ToString(at_shape.dimensions()) << ", got " << buffer_dims[d]
+          << ".";
+    }
   }
-  return absl::OkStatus();
 }
 
 }  // namespace
 
-absl::Status DeviceBufferList::VerifyMaterialization(
+void DeviceBufferList::CheckMaterialization(
     absl::Span<const absl_nonnull std::unique_ptr<xla::PjRtBuffer>> buffers)
     const {
-  TT_RET_CHECK(shapes_.size() == buffers.size(), error::kInvalidArgument)
-      << "unexpected number of buffers; expected: " << shapes_.size()
-      << " but got: " << buffers.size();
+  ABSL_CHECK_EQ(shapes_.size(), buffers.size())  // CRASH_OK
+      << "Expected " << shapes_.size()
+      << " materialized PjRtBuffers for this DeviceBufferList, got "
+      << buffers.size() << ".";
+
   for (size_t i = 0; i < shapes_.size(); ++i) {
-    TT_RET_CHECK(!buffers[i]->IsDeleted(), error::kInvalidArgument)
-        << "buffer " << i << " is deleted";
-    TT_RETURN_IF_ERROR(
-        ValidateBufferShape(shapes_[i], buffers[i]->on_device_shape()))
-            .SetPrepend()
-        << "buffer " << i << ": ";
-    TT_ASSIGN_OR_RETURN(
+    ABSL_CHECK(!buffers[i]->IsDeleted())  // CRASH_OK
+        << "Buffer " << i << " is deleted.";
+
+    CheckBufferShape(shapes_[i], buffers[i]->on_device_shape());
+
+    TT_ASSIGN_OR_CRASH(  // CRASH_OK
         mlir::ElementType actual_element_type,
         ConvertTo<mlir::ElementType>(buffers[i]->element_type()),
-        _.SetOverride() << "buffer " << i
+        _.SetOverride() << "Buffer " << i
                         << " has an unsupported element type: "
                         << xla::primitive_util::LowercasePrimitiveTypeName(
-                               buffers[i]->element_type()));
-    TT_RET_CHECK(actual_element_type == shapes_[i].dtype(),
-                 error::kInvalidArgument)
-        << "unexpected element type for buffer " << i
-        << "; expected: " << ToString(shapes_[i].dtype())
-        << " but got: " << ToString(actual_element_type);
+                               buffers[i]->element_type())
+                        << ".");
+
+    ABSL_CHECK_EQ(actual_element_type, shapes_[i].dtype())  // CRASH_OK
+        << "Expected the PjRtBuffer element type to match the element type of "
+           "this DeviceBufferList ("
+        << ToString(shapes_[i].dtype()) << ") for buffer " << i << ", got "
+        << ToString(actual_element_type) << ".";
   }
-  return absl::OkStatus();
 }
 
 absl::Status DeviceBufferList::SetAsMaterialized(
     std::vector<absl_nonnull std::unique_ptr<xla::PjRtBuffer>> buffers) {
-  if (auto status = VerifyMaterialization(buffers); !status.ok()) {
-    TT_RETURN_IF_ERROR(data_.SetMaterializationError(status));
-    return status;
-  }
+  CheckMaterialization(buffers);
   ABSL_VLOG(1) << "[SetAsMaterialized] Setting as materialized";
   return data_.SetMaterializationStarted(std::move(buffers));
 }

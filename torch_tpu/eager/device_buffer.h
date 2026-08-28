@@ -813,9 +813,13 @@ class DeviceBufferList {
         << ", Type: " << ToString(shapes_[0].dtype());
   }
 
-  // Helper function to verify that the given buffers are valid for this
+  // Helper function to check that the given buffers are valid for this
   // DeviceBufferList.
-  absl::Status VerifyMaterialization(
+  //
+  // This function will crash if the given buffers are invalid for this
+  // DeviceBufferList, e.g. the buffers' shapes and dtypes match this
+  // DeviceBufferList's shapes and dtypes.
+  void CheckMaterialization(
       absl::Span<const absl_nonnull std::unique_ptr<xla::PjRtBuffer>> buffers)
       const;
 

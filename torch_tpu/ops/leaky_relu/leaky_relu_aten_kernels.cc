@@ -90,12 +90,12 @@ absl::StatusOr<DeviceBufferRef> AtenLeakyReluTensorHelper(
   TT_ASSIGN_OR_RETURN(const auto dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   TT_RET_CHECK(!IsBoolean(dtype), error::kInvalidArgument)
-      << "boolean dtypes are not supported, got " << self.scalar_type();
+      << "expected non-bool dtype, got " << self.scalar_type();
   TT_RET_CHECK(!IsInteger(dtype, /*includeBool=*/false),
                error::kInvalidArgument)
-      << "integer dtypes are not supported, got " << self.scalar_type();
+      << "expected non-integer dtype, got " << self.scalar_type();
   TT_RET_CHECK(!IsComplex(dtype), error::kInvalidArgument)
-      << "complex dtypes are not supported, got " << self.scalar_type();
+      << "expected non-complex dtype, got " << self.scalar_type();
 
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));

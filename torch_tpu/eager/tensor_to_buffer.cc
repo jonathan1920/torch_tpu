@@ -649,8 +649,8 @@ absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch catches other layouts first.
       layout == at::Layout::Strided || layout == at::Layout::Jagged,
       error::kPythonNotImplementedError)
-      << "only layout=torch.strided or layout=torch.jagged is supported by "
-         "TorchTPU for now, got "
+      << "expected layout to be either torch.strided or torch.jagged (other "
+         "layouts are not yet supported), got "
       << LayoutToString(layout_opt);
 
   // If device_opt is unspecified, we use the global default dtype.

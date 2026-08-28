@@ -69,8 +69,8 @@ absl::Status CheckNativeMultiHeadAttentionInputs(
       << "expected 3-D query, got " << query.dim() << "-D tensor";
 
   TT_RET_CHECK(query.size(2) == embed_dim, error::kInvalidArgument)
-      << "expected embed_dim (" << embed_dim << ") to match last dim of query ("
-      << query.size(2) << ")";
+      << "expected embed_dim to match the last dim of query (" << query.size(2)
+      << "), got " << embed_dim;
 
   TT_RET_CHECK(key.dim() == 3, error::kInvalidArgument)
       << "expected 3-D key, got " << key.dim() << "-D tensor";
@@ -80,7 +80,9 @@ absl::Status CheckNativeMultiHeadAttentionInputs(
 
   TT_RET_CHECK(query.sizes() == key.sizes() && key.sizes() == value.sizes(),
                error::kInvalidArgument)
-      << "expected query, key, and value shapes to match";
+      << "expected query, key, and value shapes to match, got "
+      << ToString(query.sizes()) << ", " << ToString(key.sizes()) << ", and "
+      << ToString(value.sizes());
 
   TT_RET_CHECK(qkv_weight.dim() == 2, error::kInvalidArgument)
       << "expected 2-D qkv_weight, got " << qkv_weight.dim() << "-D tensor";
@@ -104,8 +106,8 @@ absl::Status CheckNativeMultiHeadAttentionInputs(
       << "expected num_head to be positive, got " << num_head;
 
   TT_RET_CHECK(embed_dim % num_head == 0, error::kInvalidArgument)
-      << "expected embed_dim (" << embed_dim
-      << ") to be divisible by num_head (" << num_head << ")";
+      << "expected embed_dim to be divisible by num_head, got " << embed_dim
+      << ", which is not divisible by " << num_head;
 
   TT_RET_CHECK(proj_weight.dim() == 2, error::kInvalidArgument)
       << "expected 2-D proj_weight, got " << proj_weight.dim() << "-D tensor";

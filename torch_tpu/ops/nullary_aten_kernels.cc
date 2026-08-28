@@ -154,7 +154,7 @@ at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,
             << "TorchTPU does not yet support dtype complex32";
         TT_CHECK_THROW(final_sizes_vec.size() == final_strides_vec.size(),
                        error::kInvalidArgument)
-            << "the dimensionality of sizes must be the same as "
+            << "expected the dimensionality of sizes to be the same as "
             << "strides, got size [" << final_sizes_vec.size()
             << "] and stride [" << final_strides_vec.size() << "]";
 
@@ -164,12 +164,11 @@ at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,
         bool is_zero_sized = false;
         for (int64_t i = 0; i < final_sizes_vec.size(); ++i) {
           TT_CHECK_THROW(final_sizes_vec[i] >= 0, error::kInvalidArgument)
-              << "size must be nonnegative, got sizes ["
+              << "expected sizes to be >= 0, got sizes ["
               << absl::StrJoin(final_sizes_vec, ", ") << "]";
           TT_CHECK_THROW(final_strides_vec[i] >= 0, error::kInvalidArgument)
-              << "stride must be nonnegative, got strides ["
+              << "expected strides to be >= 0, got strides ["
               << absl::StrJoin(final_strides_vec, ", ") << "]";
-          ;
           is_zero_sized |= final_sizes_vec[i] == 0;
           max_index += (final_sizes_vec[i] - 1) * final_strides_vec[i];
         }
