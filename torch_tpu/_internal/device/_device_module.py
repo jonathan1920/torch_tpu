@@ -503,8 +503,15 @@ class _DeviceModule(abc.ABC, metaclass=_DeviceModuleMeta):
     return TpuStreamContext(stream)
 
   @classmethod
+  @experimental(
+      "Stream() is experimental and may change or be removed without notice."
+  )
   def Stream(cls, device=None, priority=0, **kwargs):  # pylint: disable=invalid-name
-    """Device-level wrapper for TpuStream object."""
+    """Device-level wrapper for TpuStream object.
+
+    .. warning::
+        This API is experimental and subject to change in future releases.
+    """
     return streams.TpuStream(device=device, priority=priority, **kwargs)
 
   @classmethod

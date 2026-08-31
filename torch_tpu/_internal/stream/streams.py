@@ -18,6 +18,9 @@ from typing import Optional, Self, TypeAlias
 
 import torch
 from torch_tpu._internal.device import _device_ops_backend
+from torch_tpu._internal.utils import annotations
+
+experimental = annotations.experimental
 
 _NOT_IMPLEMENTED_STREAMS_MSG = (
     'Streams and Events are not fully implemented in TorchTPU. Please file a'
@@ -126,14 +129,26 @@ class TpuStream:
           self.device_index, self.stream_id, self.pinned
       )
 
+  @experimental(
+      'wait_event() is experimental and may change or be removed without'
+      ' notice.'
+  )
   def wait_event(self, event: 'TpuEvent') -> None:  # pylint: disable=unused-argument
     """Makes all future work submitted to the stream wait for an event."""
     event.wait()
 
+  @experimental(
+      'wait_stream() is experimental and may change or be removed without'
+      ' notice.'
+  )
   def wait_stream(self, stream: Self) -> None:  # pylint: disable=unused-argument
     """Synchronizes with another stream."""
     self.wait_event(stream.record_event())
 
+  @experimental(
+      'record_event() is experimental and may change or be removed without'
+      ' notice.'
+  )
   def record_event(self, event: Optional['TpuEvent'] = None) -> 'TpuEvent':
     """Records an event on this stream."""
     if event is None:
@@ -141,26 +156,44 @@ class TpuStream:
     event.record(self)
     return event
 
+  @experimental(
+      'query() is experimental and may change or be removed without notice.'
+  )
   def query(self) -> bool:
     """Checks if all work submitted on this stream has been completed."""
     raise NotImplementedError(_NOT_IMPLEMENTED_STREAMS_MSG)
 
+  @experimental(
+      'synchronize() is experimental and may change or be removed without'
+      ' notice.'
+  )
   def synchronize(self) -> None:
     """Waits for all work submitted on this stream to complete."""
     # pylint: disable=protected-access
     _device_ops_backend._synchronize_stream(self.stream_id, self.device_index)
 
+  @experimental(
+      'priority_range() is experimental and may change or be removed without'
+      ' notice.'
+  )
   def priority_range(self):
+    """Returns the priority range for streams."""
     raise NotImplementedError(_NOT_IMPLEMENTED_STREAMS_MSG)
 
   def __repr__(self):
     return '<torch.tpu.TpuStream>'
 
   @property
+  @experimental(
+      'is_sparse is experimental and may change or be removed without notice.'
+  )
   def is_sparse(self) -> bool:
     return self.pinned == CorePinningMode.SPARSE_CORE
 
   @property
+  @experimental(
+      'is_dense is experimental and may change or be removed without notice.'
+  )
   def is_dense(self) -> bool:
     return self.pinned == CorePinningMode.TENSOR_CORE
 
