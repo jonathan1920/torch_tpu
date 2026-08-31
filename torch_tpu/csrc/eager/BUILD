@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -57,6 +57,13 @@ torch_tpu_cc_test(
         "cpp_link.mem": "16g",  # Needed for asan.
     },
     requires_libtpu = True,
+    # Route to OSS TPU runners and exclude from OSS CPU runners
+    # (running on CPU took 600+ sec due to emulated device init).
+    tags = if_oss([
+        "presubmit-v5",
+        "presubmit-v7",
+        "requires-tpu",
+    ]),
     deps = [
         ":device_buffer",
         ":structured_log_buffer",
