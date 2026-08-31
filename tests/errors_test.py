@@ -6851,6 +6851,7 @@ Supported combinations for non-constant padding:
       torch.empty(2, device=device).normal_(mean=0.0, std=-1.0)
 
   def test_normal_errors_negative_std_tensor(self):
+    self.synchronize_tensors_in_tear_down = False  # CUDA device-side assert triggers an unrecoverable error state on GPU, preventing synchronization.
     device = et.device()
     out = torch.empty(2, device=device)
     with et.assert_raises_message(

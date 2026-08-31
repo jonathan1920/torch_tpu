@@ -46,6 +46,13 @@ class SeededTest(parameterized.TestCase):  # ABSLTEST_OK=base seed class
   test_random_seed: int = DEFAULT_RANDOM_SEED
   seed_in_setup: bool = True
 
+  def __init__(self, *args, **kwargs) -> None:
+    super().__init__(*args, **kwargs)
+    # Controls whether to synchronize tensors in tearDown(). A subclass or test
+    # case may bypass synchronization by setting this instance variable to
+    # False.
+    self.synchronize_tensors_in_tear_down: bool = True
+
   @classmethod
   def setUpClass(cls) -> None:
     """Picks the RNG seed for the test class and remembers it."""
@@ -60,6 +67,16 @@ class SeededTest(parameterized.TestCase):  # ABSLTEST_OK=base seed class
     if self.seed_in_setup:
       # Set the random seed for Python and Torch.
       seed_rngs(self.test_random_seed)
+
+  def tearDown(self) -> None:
+    if (
+        self.synchronize_tensors_in_tear_down
+        and torch.accelerator.is_available()
+    ):
+      # Synchronize all tensors on the current device to catch bugs that only
+      # show up during tensor materialization.
+      torch.accelerator.synchronize()
+    super().tearDown()
 
 
 class RepeatableTest(SeededTest):
@@ -105,6 +122,13 @@ class MultiProcessRepeatableTest(RepeatableTest):
   """
 
   seed_in_setup = False
+
+  def __init__(self, *args, **kwargs) -> None:
+    super().__init__(*args, **kwargs)
+    # The main process in multi-process tests must not synchronize TPU tensors,
+    # as doing so initializes and locks the TPU device before or between child
+    # process spawns.
+    self.synchronize_tensors_in_tear_down = False
 
 
 class VaryingSeedInPostsubmitTest(SeededTest):

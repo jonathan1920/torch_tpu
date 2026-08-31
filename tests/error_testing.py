@@ -645,16 +645,14 @@ class TpuOnlyErrorTestBase(TpuOnlyErrorTestBaseNoCheckingWhy):
       )
 
 
-class TpuOnlyDistributedErrorTestBase(TpuOnlyErrorTestBaseNoCheckingWhy):
+class TpuOnlyDistributedErrorTestBase(
+    TpuOnlyErrorTestBaseNoCheckingWhy,
+    seed_test_utils.MultiProcessRepeatableTest,
+):
   """Base class for distributed error tests that are only relevant for TPU.
 
   This class does not enforce the @why_tpu_only decorator on test methods.
-  Disables seeding in setUp() in the main process to prevent torch.manual_seed
-  from initializing and locking the TPU device before child processes are
-  spawned.
   """
-
-  seed_in_setup = False
 
 
 def get_scaled_mm_v2_default_inputs():

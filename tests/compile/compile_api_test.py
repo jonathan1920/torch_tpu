@@ -311,6 +311,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
   # mismatch, which gets ignored by not explicitly materializing the output.
   @unittest.skip('Execution errors on worker thread due to shape mismatch.')
   def test_execute_with_smaller_output_shapes(self):
+    self.synchronize_tensors_in_tear_down = False  # Output shape [5] intentionally mismatches compiled op buffer shape [10], which fails during buffer materialization.
     with eager_mode_compile_fx_graph():
       x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
       y = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
