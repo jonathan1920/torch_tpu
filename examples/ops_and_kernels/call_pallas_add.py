@@ -16,6 +16,7 @@
 
 from absl.testing import absltest
 import torch
+from torch_tpu._internal.utils import test_utils
 from examples.ops_and_kernels import torch_pallas_add
 from tests import seed_test_utils
 
@@ -31,7 +32,7 @@ class CallPallasAddTest(seed_test_utils.RepeatableTest):
     b = torch.tensor([4.0, 5.0, 6.0], device=self.device)
     result = torch_pallas_add.pallas_add_vectors(a, b)
     expected = torch.tensor([5.0, 7.0, 9.0], device=self.device)
-    torch.testing.assert_close(result, expected)
+    test_utils.assert_close(result, expected)
 
   def test_compiled_execution(self):
     @torch.compile(backend="tpu")
@@ -42,7 +43,7 @@ class CallPallasAddTest(seed_test_utils.RepeatableTest):
     b = torch.tensor([4.0, 5.0, 6.0], device=self.device)
     result = my_model(a, b)
     expected = torch.tensor([10.0, 14.0, 18.0], device=self.device)
-    torch.testing.assert_close(result, expected)
+    test_utils.assert_close(result, expected)
 
 
 if __name__ == "__main__":

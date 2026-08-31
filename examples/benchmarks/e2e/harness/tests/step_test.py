@@ -20,6 +20,7 @@ from absl.testing import absltest
 from absl.testing import flagsaver
 import torch
 import torch.nn as nn
+from torch_tpu._internal.utils import test_utils
 from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import discovery as discovery_lib
 from examples.benchmarks.e2e.harness import measure as measure_lib
@@ -130,7 +131,7 @@ class StepperTypeTest(seed_test_utils.RepeatableTest):
     )
 
     for grad_full, grad_micro in zip(full, micro):
-      torch.testing.assert_close(grad_full, grad_micro, rtol=1e-5, atol=1e-6)
+      test_utils.assert_close(grad_full, grad_micro, rtol=1e-5, atol=1e-6)
       self.assertGreater(torch.norm(grad_full).item(), 0.0)
       self.assertGreater(torch.norm(grad_micro).item(), 0.0)
 
@@ -193,7 +194,7 @@ class StepperTypeTest(seed_test_utils.RepeatableTest):
     stepper.get_step_fn()()
     second = [p.grad.clone() for p in model.parameters()]
     for a, b in zip(first, second):
-      torch.testing.assert_close(a, b, rtol=1e-5, atol=1e-6)
+      test_utils.assert_close(a, b, rtol=1e-5, atol=1e-6)
 
   def test_training_requires_optimizer(self):
     stepper = step_lib.resolve_stepper(step_lib.StepperType.TRAINING)

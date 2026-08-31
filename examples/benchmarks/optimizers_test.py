@@ -20,6 +20,7 @@ import torch
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils import _pytree
 from torch_tpu._internal.compile.compiler import StaticCompiler
+from torch_tpu._internal.utils import test_utils
 from examples.benchmarks import optimizers
 from torch_tpu._internal.profiler import xprof_adapter
 
@@ -134,28 +135,28 @@ class AdamWOptimizersTest(parameterized.TestCase):
     ref_opt.step()
 
     for k in params_ref:
-      torch.testing.assert_close(
+      test_utils.assert_close(
           new_pg.params[k],
           ref_params[k].detach(),
           rtol=1e-4,
           atol=1e-4,
-          msg=f"Mismatch in param {k}",
+          preamble=f"Mismatch in param {k}",
       )
       ref_m = ref_opt.state[ref_params[k]]["exp_avg"]
-      torch.testing.assert_close(
+      test_utils.assert_close(
           new_pg.opt_state_m[k],
           ref_m,
           rtol=1e-4,
           atol=1e-4,
-          msg=f"Mismatch in opt_state_m for {k}",
+          preamble=f"Mismatch in opt_state_m for {k}",
       )
       ref_v = ref_opt.state[ref_params[k]]["exp_avg_sq"]
-      torch.testing.assert_close(
+      test_utils.assert_close(
           new_pg.opt_state_v[k],
           ref_v,
           rtol=1e-4,
           atol=1e-4,
-          msg=f"Mismatch in opt_state_v for {k}",
+          preamble=f"Mismatch in opt_state_v for {k}",
       )
       ref_step = ref_opt.state[ref_params[k]]["step"]
       ref_step_t = (
@@ -163,12 +164,12 @@ class AdamWOptimizersTest(parameterized.TestCase):
           if isinstance(ref_step, torch.Tensor)
           else torch.tensor(float(ref_step))
       )
-      torch.testing.assert_close(
+      test_utils.assert_close(
           new_pg.opt_steps[k].cpu(),
           ref_step_t,
           rtol=1e-4,
           atol=1e-4,
-          msg=f"Mismatch in opt_steps for {k}",
+          preamble=f"Mismatch in opt_steps for {k}",
       )
 
   def test_reference_adamw_step(self):
@@ -221,21 +222,21 @@ class SGDOptimizersTest(parameterized.TestCase):
     ref_opt.step()
 
     for k in params_ref:
-      torch.testing.assert_close(
+      test_utils.assert_close(
           new_pg.params[k],
           ref_params[k].detach(),
           rtol=1e-4,
           atol=1e-4,
-          msg=f"Mismatch in param {k}",
+          preamble=f"Mismatch in param {k}",
       )
       if momentum != 0.0:
         ref_m = ref_opt.state[ref_params[k]]["momentum_buffer"]
-        torch.testing.assert_close(
+        test_utils.assert_close(
             new_pg.opt_state_m[k],
             ref_m,
             rtol=1e-4,
             atol=1e-4,
-            msg=f"Mismatch in opt_state_m for {k}",
+            preamble=f"Mismatch in opt_state_m for {k}",
         )
 
   def test_reference_sgd_step(self):

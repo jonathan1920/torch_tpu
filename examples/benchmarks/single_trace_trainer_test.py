@@ -17,6 +17,7 @@
 import copy
 from absl.testing import absltest
 import torch
+from torch_tpu._internal.utils import test_utils
 from examples.benchmarks import single_trace_trainer
 from tests import seed_test_utils
 
@@ -60,7 +61,7 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
       name = trainer._key_map[safe_name]
       p_eager = dict(model_eager.named_parameters())[name]
 
-      torch.testing.assert_close(
+      test_utils.assert_close(
           p_comp,
           p_eager,
           rtol=1e-4,
@@ -71,7 +72,7 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
         if safe_name in trainer.param_group.opt_state_m:
           m_comp = trainer.param_group.opt_state_m[safe_name]
           m_eager = optimizer_eager.state[p_eager]["exp_avg"]
-          torch.testing.assert_close(
+          test_utils.assert_close(
               m_comp,
               m_eager,
               rtol=1e-4,
@@ -81,7 +82,7 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
         if safe_name in trainer.param_group.opt_state_v:
           v_comp = trainer.param_group.opt_state_v[safe_name]
           v_eager = optimizer_eager.state[p_eager]["exp_avg_sq"]
-          torch.testing.assert_close(
+          test_utils.assert_close(
               v_comp,
               v_eager,
               rtol=1e-4,
@@ -93,7 +94,7 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
           m_comp = trainer.param_group.opt_state_m[safe_name]
           if "momentum_buffer" in optimizer_eager.state[p_eager]:
             m_eager = optimizer_eager.state[p_eager]["momentum_buffer"]
-            torch.testing.assert_close(
+            test_utils.assert_close(
                 m_comp,
                 m_eager,
                 rtol=1e-4,
@@ -115,7 +116,7 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
     optimizer_eager.step()
 
     torch.accelerator.synchronize()
-    torch.testing.assert_close(loss, loss_eager, rtol=1e-4, atol=1e-4)
+    test_utils.assert_close(loss, loss_eager, rtol=1e-4, atol=1e-4)
 
     self._assert_params_and_state_close(trainer, model_eager, optimizer_eager)
 
@@ -128,7 +129,7 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
     optimizer_eager.step()
 
     torch.accelerator.synchronize()
-    torch.testing.assert_close(loss, loss_eager, rtol=1e-4, atol=1e-4)
+    test_utils.assert_close(loss, loss_eager, rtol=1e-4, atol=1e-4)
 
     self._assert_params_and_state_close(
         trainer,

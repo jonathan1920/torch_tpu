@@ -18,6 +18,7 @@ from absl import app
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch_tpu._internal.utils import test_utils
 
 # Uncomment this line in a future exercise.
 # torch._logging.set_logs(aot_graphs=True)  # pylint: disable=protected-access
@@ -35,7 +36,7 @@ def quantize(values):
   signs[signs == 0.0] = 1.0
 
   # Now, all values should be -1 or 1.
-  torch.testing.assert_close(torch.abs(signs), torch.ones_like(signs))
+  test_utils.assert_close(torch.abs(signs), torch.ones_like(signs))
 
   return signs, scale
 
@@ -48,7 +49,7 @@ def _pack32(values):
   """Packs a vector of 32 quantized values (signs) into a uint32"""
   assert values.size() == (32,)
   assert values.dtype == torch.float32
-  torch.testing.assert_close(torch.abs(values), torch.ones_like(values))
+  test_utils.assert_close(torch.abs(values), torch.ones_like(values))
 
   # Translate values from {-1, 1} to {0, 1}
   bits = (values == 1.0).to(torch.uint32)
