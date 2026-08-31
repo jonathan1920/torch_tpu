@@ -6,4 +6,6 @@ This directory holds documentation for developing TorchTPU. Read this if you are
 contributing to the TorchTPU development. If you want to learn how to use
 TorchTPU, read the documentation in the [parent directory](../README.md).
 
-For now, this is just a placeholder. Real contents will be added soon.
+## Design Guidelines
+
+*   [API design guide](api_design_guide.md)

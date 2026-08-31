@@ -1,0 +1,80 @@
+# TorchTPU API Design Guidelines
+
+## Introduction
+
+While TorchTPU aims at a great user experience out of the box, power users need
+sophisticated control to get the exact behavior and performance they want. To
+ensure a predictable and pleasant user experience, TorchTPU APIs need to follow
+a common set of guidelines. This document presents such guidelines.
+
+## Principles
+
+This section contains the principles for defining APIs that affect TorchTPU's
+behavior. APIs defined in tests are not governed by these rules. While not all
+of our APIs follow these principles today, we shall follow them in new code and
+migrate the existing APIs to conform to them.
+
+*   APIs can be either **global** (affecting the entire process) or **local**
+    (affecting a region of a particular thread).
+*   General preferences
+    *   Try not to invent new APIs; **prefer reusing an existing PyTorch API**
+        if it can meet our needs well. This minimizes the user migration cost.
+    *   Prefer
+        [torch.accelerator](https://docs.pytorch.org/docs/2.13/accelerator.html)
+        over `torch.tpu`. The former makes it easier for the users to switch
+        between different accelerator types.
+*   Design choices
+    *   For **global** APIs:
+        *   Global knobs should always have a Python API, e.g.
+            `torch.backends.tpu.allow_excess_precision = True` and
+            `torch.set_float32_matmul_precision("highest")`.
+            *   Prefer properties to getters/setters.
+            *   A user can change the state of a global knob multiple times. In
+                such cases, the latest change takes effect.
+        *   Optionally, we permit configuring the default value of a global knob
+            via an **environment variable**. Add this if we anticipate a need to
+            tweak the knob without touching the model code (e.g. a knob used by
+            the production operation team).
+            *   If there's a
+                [well-established PyTorch environment variable](https://docs.pytorch.org/docs/2.13/torch_environment_variables.html)
+                for controlling the behavior (e.g. `TORCH_TRACE` or
+                `TORCH_SHOW_CPP_STACKTRACES`), we may reuse the same variable
+                for TorchTPU to minimize the user migration cost.
+            *   An environment variable introduced by TorchTPU should by default
+                start with `TORCH_TPU_INTERNAL_`. If we want it to be usable by
+                users, it should start with `TORCH_TPU_` without the `INTERNAL_`
+                part. If the internal API becomes stable and we are comfortable
+                letting users use it, it should be renamed to strip the
+                `INTERNAL_` part at that time.
+            *   When the environment variable is set and the Python API is
+                called, the *latter* takes precedence.
+        *   Use **command-line flags** only for Google-internal knobs (e.g. it's
+            for Google internal experiments and shouldn't be exposed to even
+            power users), as there's no easy way to pass flags to TorchTPU in
+            OSS.
+            *   All TorchTPU flag names should start with `torch_tpu_internal_`.
+    *   Rules for **local** APIs:
+        *   Local knobs should be implemented as Python **context managers**.
+            Each context manager region governs the behavior of all enclosed
+            PyTorch code in the current Python thread.
+        *   A local knob overrides the corresponding global knob (if any), not
+            the other way around. For example, the MLIR tracebacks can be
+            controlled via either a global knob (the
+            `--torch_tpu_internal_mlir_tracebacks` *internal* flag) or a local
+            knob (the `enable_tracebacks` context manager); when both are
+            present, the latter takes precedence.
+*   Implementation choices
+    *   For **global** APIs:
+        *   Read a flag only once and memoize it. This ensures consistent
+            behavior in case someone tampered with the flag at run time. Such
+            read-only behavior aligns with how PyTorch handles knobs like
+            `TORCH_SHOW_CPP_STACKTRACES`. To conform to this pattern, use the
+            `ReadFlagOnce()` function to read a flag in C++.
+        *   Similarly, read an environment variable only once and memoize it.
+            Use `GetEnvOnce()` in C++ for this purpose.
+        *   When a command-line flag is justified, implement it using the `absl`
+            flag library (in both C++ and Python).
+    *   For **local** APIs:
+        *   It's important to follow TorchTPU Context Manager design pattern to
+            implement a context manager (TODO: publish the context manager
+            design guide). Otherwise its behavior may be incorrect.
