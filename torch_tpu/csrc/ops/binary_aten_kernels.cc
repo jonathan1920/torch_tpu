@@ -520,24 +520,22 @@ absl::Status CheckInputsNotComplex(const at::Tensor& self, const T& other) {
   return absl::OkStatus();
 }
 
-// The template parameters `T` and `U` should be one of:
+// Checks that the input dtypes of the `pow()` op are not booleans.
+//
+// In this context, template parameters `T` and `U` should be one of:
 //
 //   - at::Tensor
 //   - at::Scalar
 template <typename T, typename U>
+  requires((std::is_same_v<T, at::Tensor> || std::is_same_v<T, at::Scalar>) &&
+           (std::is_same_v<U, at::Tensor> || std::is_same_v<U, at::Scalar>))
 absl::Status CheckPowInputs(const T& self, const U& exponent) {
-  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch native devices supports boolean
-                 // dtype.
-      !IsBool(self), error::kInvalidArgument)
-      << "expected the dtype of the first argument not to be boolean, got "
-      << ToString(GetScalarType(self));
-
-  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch native devices supports boolean
-                 // dtype.
-      !IsBool(exponent), error::kInvalidArgument)
-      << "expected the dtype of the second argument not to be boolean, got "
-      << ToString(GetScalarType(exponent));
-
+  if constexpr (std::is_same_v<U, at::Tensor>) {
+    at::ScalarType result_type = at::result_type(self, exponent);
+    TT_RET_CHECK(!IsBool(result_type), error::kInvalidArgument)
+        << "expected non-boolean first argument, got "
+        << ToString(GetScalarType(self));
+  }
   return absl::OkStatus();
 }
 
@@ -1567,6 +1565,7 @@ at::Tensor& AtenPowTensorScalarOut(const at::Tensor& self,
                                    at::Tensor& out) {
   auto promoted_exponent = PromoteScalar(exponent);
   TT_KERNEL(OpName::kPowTensorScalarOut, _, (self, promoted_exponent, out), {
+    TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
     // Cast to self dtype to be consistent with PyTorch.
     TT_ASSIGN_OR_THROW(const at::Tensor exponent_tensor,
                        promoted_exponent.GetTensor(self.scalar_type()));

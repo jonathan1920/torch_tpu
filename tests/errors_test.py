@@ -11498,6 +11498,17 @@ class MaskedSoftmaxErrorTest(et.ErrorTestBase):
     ):
       torch.ops.tpu.sparse_gather(row_pointers, indices_wrong_len, operand, 8)
 
+  def test_pow_unsupported_dtypes(self):
+    """Tests that pow with unsupported bool tensor inputs fails with expected error."""
+    base = torch.tensor([True, False], dtype=torch.bool, device=et.device())
+    exp = torch.tensor([True, False], dtype=torch.bool, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""pow(): expected non-boolean first argument, got bool""",
+        gpu=""""pow_cuda" not implemented for 'Bool'""",
+    ):
+      torch.pow(base, exp)
+
 
 if __name__ == "__main__":
   multiprocessing.handle_test_main(absltest.main)

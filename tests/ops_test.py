@@ -2796,8 +2796,8 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "_foreach_pow",
         # TODO: fix TPU failure for these dtypes.
-        exclude_dtypes=(torch.bool, torch.complex64),
-        exclude_inplace_dtypes=(torch.bool, torch.complex64),
+        exclude_dtypes=(torch.complex64,),
+        exclude_inplace_dtypes=(torch.complex64,),
     )
 
   @category("foreach")
