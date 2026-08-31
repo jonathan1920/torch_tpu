@@ -1001,19 +1001,6 @@ cc_library(
     deps = backend_probe_labels(PYWRAP_EXTENSIONS),
 )
 
-cc_library(
-    name = "env_vars_cc",
-    srcs = ["env_vars.cc"],
-    hdrs = ["env_vars.h"],
-    deps = [
-        ":constexpr_map",
-        ":symbol_stage",
-        "//shims/torch/c10/util:base_headers",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 xla_base_filter(
     name = "xla_base_filter",
     dep = ":_xla_base_agg",
