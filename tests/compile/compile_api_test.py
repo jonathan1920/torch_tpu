@@ -17,7 +17,6 @@
 import re
 import textwrap
 from typing import TypeAlias
-import unittest
 from absl.testing import absltest
 import torch
 from torch.fx.experimental.proxy_tensor import make_fx
@@ -307,24 +306,41 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     self.assertLen(results, 1)
     self.assertEqual(results[0].shape, (10,))
 
-  # TODO(marcosyukio): b/553714856 execution worker thread errors due to shape
-  # mismatch, which gets ignored by not explicitly materializing the output.
-  @unittest.skip('Execution errors on worker thread due to shape mismatch.')
   def test_execute_with_smaller_output_shapes(self):
-    self.synchronize_tensors_in_tear_down = False  # Output shape [5] intentionally mismatches compiled op buffer shape [10], which fails during buffer materialization.
-    with eager_mode_compile_fx_graph():
-      x = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
-      y = torch.ones(10, device='cpu').to(device=torch.device('tpu'))
-      z = x + y
+    ub = 10
+    dim = 5
 
-    mlir = tpu_torch_compile.build_mlir([z], [x, y])
+    with eager_mode_compile_fx_graph():
+      placeholder_x = tpu_torch_compile.dynamic_placeholder(
+          [ub], torch.float32, ([0], [ub])
+      )
+      placeholder_y = tpu_torch_compile.dynamic_placeholder(
+          [ub], torch.float32, ([0], [ub])
+      )
+      z = placeholder_x + placeholder_y
+
+    mlir = tpu_torch_compile.build_mlir(
+        [z], [placeholder_x, placeholder_y], use_stablehlo_bounds=True
+    )
     executable = tpu_torch_compile.compile_mlir(mlir)
 
+    x = torch.ones(ub, dtype=torch.float32, device='tpu')
+    y = torch.ones(ub, dtype=torch.float32, device='tpu')
+
+    size = torch.tensor(dim, dtype=torch.int32, device='tpu')
+    x = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
+    y = torch.ops.tpu.set_dimension_logical_size(y, 0, size)
+
     results = tpu_torch_compile.execute(
-        executable, [x, y], [tpu_torch_compile.OutputShape([5])]
+        executable,
+        [x, y],
+        [tpu_torch_compile.OutputShape([dim], is_dynamic=True)],
     )
     self.assertLen(results, 1)
-    self.assertEqual(results[0].shape, (5,))
+    self.assertEqual(results[0].shape, (dim,))
+
+    expected = torch.full((dim,), 2.0, dtype=torch.float32)
+    utils.assert_close(results[0].cpu(), expected)
 
   def test_get_or_compile_pad_module(self):
     tensor_info = [([1, 4], torch.int64)]
