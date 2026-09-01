@@ -81,31 +81,40 @@ absl::StatusOr<LayerNormShloResults> BuildRmsNormShlo(
         compute_type, rb.getRegion(), rb.getOpBuilder());
   };
 
-  // Sum(x^2)
-  mlir::MlirOp sum_x2 = mlir::stablehlo::Reduce(
+  // Mathematical Formulation of RMSNorm Forward Pass:
+  // ---------------------------------------------------------------------------
+  // For input tensor x with shape [..., N], where N is the product of reduction
+  // axes:
+  //   1. Sum of squares:
+  //        SS = \sum_{i=1}^N x_i^2
+  //   2. Mean square (variance without centering):
+  //        MS = (1 / N) * SS
+  //      Optimization: Computed via constant multiplication `Mul(SS, 1.0 / N)`
+  //      rather than vector division `Div(SS, N)` to reduce MXU latency on TPU.
+  //   3. Reciprocal root mean square:
+  //        rstd = 1 / \sqrt{MS + \epsilon} = \text{rsqrt}(MS + \epsilon)
+  //   4. Normalized output:
+  //        y = (x * rstd) * \gamma
+  // ---------------------------------------------------------------------------
+  mlir::MlirOp sum_squared_elements = mlir::stablehlo::Reduce(
       builder, x_squared, zero, sum_reduce_builder, reduction_axes)[0];
 
-  // Mean(x^2) = Sum(x^2) / N
   int64_t num_elements = 1;
-  auto shape = input_type.getShape();
-  for (int64_t dim_idx : reduction_axes) {
+  const auto shape = input_type.getShape();
+  for (const int64_t dim_idx : reduction_axes) {
     TT_ASSIGN_OR_RETURN(num_elements,
                         SafeMultiply(num_elements, shape[dim_idx]));
   }
-  mlir::MlirOp n_op = MakeScalarConstant(
-      builder, static_cast<double>(num_elements), compute_type);
-  // Need to broadcast n to the shape of sum_x2 (which is reduced shape)
-  const mlir::RankedTensorType reduced_type = GetTensorTypeOrDie(sum_x2);
-  mlir::MlirOp n_broadcasted =
-      mlir::stablehlo::BroadcastInDim(reduced_type, n_op, {});
-
-  mlir::MlirOp mean_x2 = mlir::stablehlo::Div(sum_x2, n_broadcasted);
+  mlir::MlirOp inv_num_elements = MakeConstantLike(
+      sum_squared_elements, 1.0 / static_cast<double>(num_elements));
+  mlir::MlirOp mean_squared_elements =
+      mlir::stablehlo::Mul(sum_squared_elements, inv_num_elements);
 
   // rstd = 1 / sqrt(Mean(x^2) + eps)
-  const mlir::RankedTensorType variance_type = reduced_type;
-  mlir::MlirOp eps_op = MakeConstant(builder, eps, variance_type);
-  mlir::MlirOp var_plus_eps = mlir::stablehlo::Add(mean_x2, eps_op);
-  mlir::MlirOp rstd = mlir::stablehlo::Rsqrt(var_plus_eps);
+  mlir::MlirOp epsilon_constant = MakeConstantLike(sum_squared_elements, eps);
+  mlir::MlirOp variance_plus_epsilon =
+      mlir::stablehlo::Add(mean_squared_elements, epsilon_constant);
+  mlir::MlirOp rstd = mlir::stablehlo::Rsqrt(variance_plus_epsilon);
 
   mlir::MlirOp rstd_broadcasted = mlir::stablehlo::BroadcastInDim(
       GetTensorTypeOrDie(compute_input), rstd, unreduced_axes);
@@ -213,43 +222,65 @@ mlir::MlirOp ComputeRmsNormBackwardDX(
     mlir::MlirBuilder& builder, mlir::MlirOp dy, mlir::MlirOp normalized_input,
     mlir::MlirOp rstd_bcast, std::optional<mlir::MlirOp> gamma_bcast,
     const Dimensions& norm_dims, const Dimensions& batch_dims,
-    int64_t normalized_dim_numl, mlir::Type compute_type,
+    const int64_t normalized_dim_numl, mlir::Type compute_type,
     absl::AnyInvocable<void(mlir::RegionBuilder&)>& sum_reduce_builder) {
+  // Mathematical Formulation of RMSNorm Backward Pass (dL/dx):
+  // ---------------------------------------------------------------------------
+  // Let y = x * rstd * \gamma, where rstd = 1 / \sqrt{Mean(x^2) + \epsilon}.
+  // Using the chain rule:
+  //   dL/dx_i = rstd * (dL/dy_i * \gamma_i)
+  //             - (x_i / N) * rstd^3 * \sum_{k=1}^N (dL/dy_k * \gamma_k * x_k)
+  //
+  // Let normalized_input_i = x_i * rstd.
+  // Let reduced_grad_factor = (1 / N) * \sum_{k=1}^N (dL/dy_k * \gamma_k *
+  // normalized_input_k). Then:
+  //   dL/dx = (rstd * dL/dy * \gamma) - (normalized_input * rstd *
+  //   reduced_grad_factor)
+  //
+  // Optimization:
+  //   Compute `reduced_grad_factor * (1 / N)` on the smaller reduced tensor [B,
+  //   S] *before* broadcasting to [B, S, D], avoiding an elementwise scaling
+  //   loop over all B * S * D elements across every transformer layer.
+  // ---------------------------------------------------------------------------
   mlir::MlirOp zeros = MakeScalarConstant(builder, 0.0, compute_type);
   mlir::MlirOp dy_times_norm_input = mlir::stablehlo::Mul(dy, normalized_input);
-  mlir::MlirOp ds;
+  mlir::MlirOp reduced_grad_factor;
 
   if (gamma_bcast.has_value()) {
     mlir::MlirOp temp =
         mlir::stablehlo::Mul(dy_times_norm_input, gamma_bcast.value());
-    ds = mlir::stablehlo::Reduce(
+    reduced_grad_factor = mlir::stablehlo::Reduce(
         builder, temp, zeros,
         [&](mlir::RegionBuilder& rb) { sum_reduce_builder(rb); }, norm_dims)[0];
   } else {
-    ds = mlir::stablehlo::Reduce(
+    reduced_grad_factor = mlir::stablehlo::Reduce(
         builder, dy_times_norm_input, zeros,
         [&](mlir::RegionBuilder& rb) { sum_reduce_builder(rb); }, norm_dims)[0];
   }
-  ds = mlir::stablehlo::BroadcastInDim(GetTensorTypeOrDie(normalized_input), ds,
-                                       batch_dims);
 
-  mlir::MlirOp scale_const =
-      MakeScalarConstant(builder, 1.0 / normalized_dim_numl, compute_type);
-  mlir::MlirOp scale = mlir::stablehlo::BroadcastInDim(
-      GetTensorTypeOrDie(normalized_input), scale_const, {});
+  mlir::MlirOp inv_normalized_dim_elements = MakeConstantLike(
+      reduced_grad_factor, 1.0 / static_cast<double>(normalized_dim_numl));
+  reduced_grad_factor =
+      mlir::stablehlo::Mul(reduced_grad_factor, inv_normalized_dim_elements);
 
-  // term1 = rstd * dy * gamma
-  mlir::MlirOp term1 = mlir::stablehlo::Mul(rstd_bcast, dy);
+  mlir::MlirOp reduced_grad_factor_broadcasted =
+      mlir::stablehlo::BroadcastInDim(GetTensorTypeOrDie(normalized_input),
+                                      reduced_grad_factor, batch_dims);
+
+  // direct_grad_term = rstd * dy * gamma
+  mlir::MlirOp direct_grad_term = mlir::stablehlo::Mul(rstd_bcast, dy);
   if (gamma_bcast.has_value()) {
-    term1 = mlir::stablehlo::Mul(term1, gamma_bcast.value());
+    direct_grad_term =
+        mlir::stablehlo::Mul(direct_grad_term, gamma_bcast.value());
   }
 
-  // term2 = normalized_input * ds * rstd * scale
-  mlir::MlirOp term2_factor = mlir::stablehlo::Mul(ds, rstd_bcast);
-  term2_factor = mlir::stablehlo::Mul(term2_factor, scale);
-  mlir::MlirOp term2 = mlir::stablehlo::Mul(normalized_input, term2_factor);
+  // variance_grad_term = normalized_input * (reduced_grad_factor * rstd)
+  mlir::MlirOp scaled_grad_factor =
+      mlir::stablehlo::Mul(reduced_grad_factor_broadcasted, rstd_bcast);
+  mlir::MlirOp variance_grad_term =
+      mlir::stablehlo::Mul(normalized_input, scaled_grad_factor);
 
-  return mlir::stablehlo::Subtract(term1, term2);
+  return mlir::stablehlo::Subtract(direct_grad_term, variance_grad_term);
 }
 
 }  // namespace
