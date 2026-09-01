@@ -611,6 +611,40 @@ class CompiledRngTest(_BaseRngTest):
     out = compiled_fn(x)
     self.assertEqual(out.shape, x.shape)
 
+  def test_compiled_graphsafe_get_state_execution(self):
+    """Verifies function with graphsafe_get_state executes under compile."""
+    x = torch.zeros(10, device=self.device)
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+
+    def fn_get_state(x):
+      gen_state = g.graphsafe_get_state()
+      out = torch.rand_like(x)
+      return out, gen_state
+
+    compiled_fn = torch.compile(fn_get_state)
+    out, gen_state = compiled_fn(x)
+    self.assertEqual(out.shape, x.shape)
+    self.assertIsInstance(gen_state, torch.Generator)
+    self.assertTrue(torch.equal(gen_state.get_state(), g.get_state()))
+
+  def test_compiled_graphsafe_set_state_restores_stream(self):
+    """Verifies function with graphsafe_set_state restores compiled stream."""
+    x = torch.zeros(10, device=self.device)
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+    saved_state = g.clone_state()
+
+    expected_out = torch.rand(10, generator=g, device=self.device)
+
+    def fn_restore(x):
+      g.graphsafe_set_state(saved_state)
+      return torch.rand(10, generator=g, device=x.device)
+
+    compiled_fn = torch.compile(fn_restore)
+    actual_out = compiled_fn(x)
+    self.assertTrue(torch.equal(actual_out, expected_out))
+
   def test_compiled_generator_supported_with_graph_breaks(self):
     """Verifies generators work under standard compile."""
     g = torch.Generator(device=self.device)
