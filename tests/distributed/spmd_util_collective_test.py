@@ -41,15 +41,6 @@ def _update_xla_dump_to(xla_flags: str, dump_dir: str) -> str:
 
 
 def _test_wrapper(test_fn, *args, **kwargs):
-  dump_dir = kwargs.pop("dump_dir", None)
-  if dump_dir is not None:
-    rank = os.environ.get("RANK", "0")
-    rank_dump_dir = os.path.join(dump_dir, f"rank_{rank}")
-    os.makedirs(rank_dump_dir, exist_ok=True)
-    os.environ["XLA_FLAGS"] = _update_xla_dump_to(
-        os.environ.get("XLA_FLAGS", ""), rank_dump_dir
-    )
-
   dist.init_process_group(backend="tpu_dist")
   try:
     test_fn(*args, **kwargs)
@@ -292,14 +283,21 @@ class SpmdSafeDecoratorTest(seed_test_utils.MultiProcessRepeatableTest):
 
   def test_uncoordinated_op_stream_deadlock(self):
     dump_dir = self.create_tempdir(name="xla_dump_deadlock_test").full_path
-    distributed_utils.dist_run(
-        nproc_per_node=self._world_size,
-        fn=singlehost_wrapper.tpu_env_wrapper(
-            _test_wrapper, world_size=self._world_size
-        ),
-        test_fn=run_uncoordinated_op_stream_test,
-        dump_dir=dump_dir,
-    )
+    with mock.patch.dict(
+        os.environ,
+        {
+            "XLA_FLAGS": _update_xla_dump_to(
+                os.environ.get("XLA_FLAGS", ""), f"{dump_dir}/rank_${{RANK}}"
+            )
+        },
+    ):
+      distributed_utils.dist_run(
+          nproc_per_node=self._world_size,
+          fn=singlehost_wrapper.tpu_env_wrapper(
+              _test_wrapper, world_size=self._world_size
+          ),
+          test_fn=run_uncoordinated_op_stream_test,
+      )
     self._check_all_reduce_mlir_matching(dump_dir)
 
   def test_spmd_safe_dtensor_compile(self):

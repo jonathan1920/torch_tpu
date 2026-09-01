@@ -34,8 +34,22 @@ torch_tpu_py_library(
     visibility = ["//:__subpackages__"],
     deps = [
         "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
         "//torch_tpu",
         "@pypi//portpicker",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "distributed_utils_test",
+    srcs = ["distributed_utils_test.py"],
+    deps = [
+        ":distributed_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/distributed:multiprocessing",
     ],
 )
 

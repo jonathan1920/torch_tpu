@@ -19,12 +19,14 @@ from typing import Any, Callable
 
 import portpicker
 import torch.multiprocessing as mp
+from tests import seed_test_utils
 
 
 def _worker_fn(
     local_rank: int,
     nproc_per_node: int,
     default_master_port: int,
+    base_seed: int,
     fn: Callable[..., Any],
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
@@ -57,11 +59,20 @@ def _worker_fn(
   os.environ["LOCAL_WORLD_SIZE"] = str(nproc_per_node)
   os.environ["GROUP_RANK"] = str(node_rank)
 
+  if "XLA_FLAGS" in os.environ:
+    os.environ["XLA_FLAGS"] = os.path.expandvars(os.environ["XLA_FLAGS"])
+
+  seed_test_utils.seed_rngs(base_seed + global_rank)
+
   fn(*args, **kwargs)
 
 
 def dist_run(
-    nproc_per_node: int, fn: Callable[..., Any], *args: Any, **kwargs: Any
+    nproc_per_node: int,
+    fn: Callable[..., Any],
+    *args: Any,
+    base_seed: int | None = None,
+    **kwargs: Any,
 ) -> None:
   """Runs the given function in a distributed environment using mp.spawn.
 
@@ -74,8 +85,12 @@ def dist_run(
     nproc_per_node: The number of processes to spawn on the current node.
     fn: The function to be executed by each distributed worker.
     *args: Positional arguments to pass to the function.
+    base_seed: The base RNG seed for worker processes. Defaults to the seed
+      chosen by RepeatableTest.choose_seed().
     **kwargs: Keyword arguments to pass to the function.
   """
+  if base_seed is None:
+    base_seed = seed_test_utils.RepeatableTest.choose_seed()
   default_master_port = (
       int(os.environ["MASTER_PORT"])
       if "MASTER_PORT" in os.environ
@@ -83,7 +98,7 @@ def dist_run(
   )
   mp.spawn(
       _worker_fn,
-      args=(nproc_per_node, default_master_port, fn, args, kwargs),
+      args=(nproc_per_node, default_master_port, base_seed, fn, args, kwargs),
       nprocs=nproc_per_node,
       join=True,
   )

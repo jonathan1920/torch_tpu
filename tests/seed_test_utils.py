@@ -114,11 +114,8 @@ class MultiProcessRepeatableTest(RepeatableTest):
 
   Disables seeding in setUp() in the main process to prevent torch.manual_seed
   from initializing and locking the TPU device before child processes are
-  spawned.
-
-  # TODO: b/549297098 - Implement automatic per-rank RNG seeding in
-  # distributed_utils to resolve TPU device conflicts and ensure test
-  # reproducibility.
+  spawned. Automatic per-rank RNG seeding is handled inside
+  distributed_utils.dist_run().
   """
 
   seed_in_setup = False
