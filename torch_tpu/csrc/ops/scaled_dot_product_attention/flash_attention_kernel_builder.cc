@@ -142,30 +142,55 @@ int64_t RoundUpToTileSize(int64_t seq_len, int64_t tile_size) {
   return llvm::divideCeil(seq_len, tile_size) * tile_size;
 }
 
+mlir::torch_tpu::Tiling CreateTiling(int64_t q_seq_len, int64_t k_seq_len) {
+  constexpr int64_t kMinTileSize = 128;
+  int64_t qt = std::min(mlir::torch_tpu::kDefaultQTileSize,
+                        RoundUpToTileSize(q_seq_len, kMinTileSize));
+  int64_t kt = std::min(mlir::torch_tpu::kDefaultKTileSize,
+                        RoundUpToTileSize(k_seq_len, kMinTileSize));
+  return {
+      .qt = std::max(kMinTileSize, qt),
+      .kt = std::max(kMinTileSize, kt),
+  };
+}
+
+mlir::torch_tpu::Tiling CreateTiling(mlir::MlirOp query, mlir::MlirOp key) {
+  auto query_type = GetTensorTypeOrDie(query);
+  auto key_type = GetTensorTypeOrDie(key);
+  int64_t q_seq_len = query_type.getShape()[query_type.getRank() - 2];
+  int64_t k_seq_len = key_type.getShape()[key_type.getRank() - 2];
+  return CreateTiling(q_seq_len, k_seq_len);
+}
+
 absl::StatusOr<mlir::torch_tpu::FlashAttnConfig> CreateFlashAttnConfig(
-    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
-    const std::optional<at::Tensor>& attn_bias, bool is_causal,
+    mlir::MlirOp query, mlir::MlirOp key, mlir::MlirOp value,
+    const std::optional<mlir::MlirOp>& attn_bias, bool is_causal,
     std::optional<double> scale, bool return_lse,
-    mlir::torch_tpu::Tiling tiling) {
-  if (is_causal && IsDefined(attn_bias)) {
+    const mlir::torch_tpu::Tiling& tiling) {
+  if (is_causal && attn_bias.has_value()) {
     return TT_ERROR(error::kInvalidArgument)
            << "Causal mask and attn bias are mutually exclusive.";
   }
 
-  int rank = query.ndimension();
+  auto query_type = GetTensorTypeOrDie(query);
+  auto key_type = GetTensorTypeOrDie(key);
+  auto value_type = GetTensorTypeOrDie(value);
+
+  int rank = query_type.getRank();
   int batch_size = 1;
-  for (int i = 0; i < rank - 3; i++) {
-    batch_size *= query.size(i);
+  auto query_shape = query_type.getShape();
+  for (int i = 0; i < rank - 3; ++i) {
+    batch_size *= query_shape[i];
   }
-  Dimensions out_dims(query.sizes().begin(), query.sizes().end());
-  out_dims[rank - 1] = value.size(rank - 1);
-  const auto query_scalar_type = query.scalar_type();
-  const int64_t head_dim = query.size(rank - 1);
-  const int64_t num_heads = query.size(rank - 3);
-  const int64_t kv_num_heads = key.size(rank - 3);
-  const int64_t vo_head_dim = value.size(rank - 1);
-  const int64_t q_seq_len = query.size(rank - 2);
-  const int64_t kv_seq_len = key.size(rank - 2);
+
+  const int64_t head_dim = query_shape[rank - 1];
+  const int64_t num_heads = query_shape[rank - 3];
+  auto key_shape = key_type.getShape();
+  const int64_t kv_num_heads = key_shape[key_type.getRank() - 3];
+  auto value_shape = value_type.getShape();
+  const int64_t vo_head_dim = value_shape[value_type.getRank() - 1];
+  const int64_t q_seq_len = query_shape[rank - 2];
+  const int64_t kv_seq_len = key_shape[key_type.getRank() - 2];
 
   if (num_heads % kv_num_heads != 0) {
     return TT_ERROR(error::kInvalidArgument)
@@ -174,8 +199,7 @@ absl::StatusOr<mlir::torch_tpu::FlashAttnConfig> CreateFlashAttnConfig(
 
   mlir::torch_tpu::FlashAttnConfig config;
   config.return_lse = return_lse;
-  TT_ASSIGN_OR_RETURN(config.element_type,
-                      ConvertTo<mlir::ElementType>(query_scalar_type));
+  TT_ASSIGN_OR_RETURN(config.element_type, GetElementType(query));
   config.batch_size = batch_size;
   config.num_heads = num_heads;
   config.kv_num_heads = kv_num_heads;
@@ -187,10 +211,10 @@ absl::StatusOr<mlir::torch_tpu::FlashAttnConfig> CreateFlashAttnConfig(
   config.padded_kv_sequence_length = RoundUpToTileSize(kv_seq_len, tiling.kt);
   config.is_causal = is_causal;
   config.scale = scale.value_or(1.0 / std::sqrt(head_dim));
-  config.has_attn_bias = IsDefined(attn_bias);
+  config.has_attn_bias = attn_bias.has_value();
 
   if (config.has_attn_bias) {
-    llvm::ArrayRef<int64_t> shape = attn_bias->sizes();
+    llvm::ArrayRef<int64_t> shape = GetTensorTypeOrDie(*attn_bias).getShape();
     llvm::SmallVector<int64_t, 4> flattened_shape;
     if (shape.size() > 4) {
       flattened_shape.push_back(batch_size);
@@ -208,18 +232,6 @@ absl::StatusOr<mlir::torch_tpu::FlashAttnConfig> CreateFlashAttnConfig(
   }
 
   return config;
-}
-
-mlir::torch_tpu::Tiling CreateTiling(int64_t q_seq_len, int64_t k_seq_len) {
-  constexpr int64_t kMinTileSize = 128;
-  int64_t qt = std::min(mlir::torch_tpu::kDefaultQTileSize,
-                        RoundUpToTileSize(q_seq_len, kMinTileSize));
-  int64_t kt = std::min(mlir::torch_tpu::kDefaultKTileSize,
-                        RoundUpToTileSize(k_seq_len, kMinTileSize));
-  return {
-      .qt = std::max(kMinTileSize, qt),
-      .kt = std::max(kMinTileSize, kt),
-  };
 }
 
 mlir::MlirOp ReshapeMask(mlir::MlirOp mask_mlir, int batch_size) {
@@ -299,15 +311,6 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
                                bool return_lse) {
   TT_RETURN_IF_ERROR(CheckDtype(query.scalar_type()));
 
-  int64_t q_seq_len = query.size(query.ndimension() - 2);
-  int64_t k_seq_len = key.size(key.ndimension() - 2);
-  const auto tiling = CreateTiling(q_seq_len, k_seq_len);
-
-  TT_ASSIGN_OR_RETURN(
-      auto config_init,
-      CreateFlashAttnConfig(query, key, value, attn_bias, is_causal, scale,
-                            return_lse, tiling));
-
   int rank = query.ndimension();
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
@@ -316,16 +319,25 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
   out_dims[rank - 1] = value.size(rank - 1);
 
   auto op_builder =
-      [rank, out_dims, config_init, tiling](
+      [rank, out_dims, is_causal, scale, return_lse](
           absl::Span<mlir::MlirOp> inputs,
           mlir::MlirBuilder& builder) -> absl::StatusOr<DynamicMlirOpResults> {
-    mlir::torch_tpu::FlashAttnConfig config = config_init;
     mlir::MlirOp query_mlir = inputs[0];
     mlir::MlirOp key_mlir = inputs[1];
     mlir::MlirOp value_mlir = inputs[2];
-    mlir::MlirOp mask_mlir = inputs.size() == 4
-                                 ? ReshapeMask(inputs[3], config.batch_size)
-                                 : mlir::MlirOp();
+    std::optional<mlir::MlirOp> attn_bias_mlir =
+        inputs.size() == 4 ? std::make_optional(inputs[3]) : std::nullopt;
+
+    const auto tiling = CreateTiling(query_mlir, key_mlir);
+    TT_ASSIGN_OR_RETURN(
+        mlir::torch_tpu::FlashAttnConfig config,
+        CreateFlashAttnConfig(query_mlir, key_mlir, value_mlir, attn_bias_mlir,
+                              is_causal, scale, return_lse, tiling));
+
+    mlir::MlirOp mask_mlir =
+        attn_bias_mlir.has_value()
+            ? ReshapeMask(*attn_bias_mlir, config.batch_size)
+            : mlir::MlirOp();
 
     // Flatten batch dimensions of inputs.
     mlir::MlirOp query_4d =
@@ -470,31 +482,29 @@ CreateFlashAttentionBackwardKernel(
     bool is_causal) {
   TT_RETURN_IF_ERROR(CheckDtype(query.scalar_type()));
 
-  int64_t q_seq_len = query.size(query.ndimension() - 2);
-  int64_t k_seq_len = key.size(key.ndimension() - 2);
-  const auto tiling = CreateTiling(q_seq_len, k_seq_len);
-
-  TT_ASSIGN_OR_RETURN(auto config_init,
-                      CreateFlashAttnConfig(query, key, value, attn_bias,
-                                            is_causal, scale, false, tiling));
-
   int rank = query.ndimension();
 
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
   auto op_builder =
-      [rank, config_init, tiling](
+      [rank, is_causal, scale](
           absl::Span<mlir::MlirOp> inputs,
           mlir::MlirBuilder& builder) -> absl::StatusOr<MlirOpResults<3>> {
-    mlir::torch_tpu::FlashAttnConfig config = config_init;
-
     mlir::MlirOp grad_out_mlir = inputs[0];
     mlir::MlirOp query_mlir = inputs[1];
     mlir::MlirOp key_mlir = inputs[2];
     mlir::MlirOp value_mlir = inputs[3];
     mlir::MlirOp logsumexp_mlir = inputs[4];
     mlir::MlirOp out_mlir = inputs[5];
+    std::optional<mlir::MlirOp> attn_bias_mlir =
+        inputs.size() == 7 ? std::make_optional(inputs[6]) : std::nullopt;
+
+    const auto tiling = CreateTiling(query_mlir, key_mlir);
+    TT_ASSIGN_OR_RETURN(
+        mlir::torch_tpu::FlashAttnConfig config,
+        CreateFlashAttnConfig(query_mlir, key_mlir, value_mlir, attn_bias_mlir,
+                              is_causal, scale, /*return_lse=*/false, tiling));
 
     // Compute di in SHLO
     mlir::Type f32_type = builder.getOpBuilder().getF32Type();
@@ -512,9 +522,10 @@ CreateFlashAttentionBackwardKernel(
                               config.q_sequence_length};
     mlir::MlirOp di_4d = mlir::stablehlo::Reshape(di_shlo, aux_dims_4d);
 
-    mlir::MlirOp mask_mlir = inputs.size() == 7
-                                 ? ReshapeMask(inputs[6], config.batch_size)
-                                 : mlir::MlirOp();
+    mlir::MlirOp mask_mlir =
+        attn_bias_mlir.has_value()
+            ? ReshapeMask(*attn_bias_mlir, config.batch_size)
+            : mlir::MlirOp();
 
     mlir::MlirOp grad_out_batch =
         flatten_batch_dims(grad_out_mlir, config.batch_size, rank - 3);
