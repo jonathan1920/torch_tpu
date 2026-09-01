@@ -81,6 +81,70 @@ class TpuDeviceModuleTest(
   def test_is_gpu(self):
     self.assertFalse(torch.tpu.is_gpu())
 
+  def test_window_num_stripes(self):
+    """Tests torch.tpu.window_num_stripes property."""
+    original = torch.tpu.window_num_stripes
+    try:
+      self.assertEqual(original, 4)
+      torch.tpu.window_num_stripes = 8
+      self.assertEqual(torch.tpu.window_num_stripes, 8)
+    finally:
+      torch.tpu.window_num_stripes = original
+
+  def test_window_stripe_chunk_mb(self):
+    """Tests torch.tpu.window_stripe_chunk_mb property."""
+    original = torch.tpu.window_stripe_chunk_mb
+    try:
+      self.assertEqual(original, 8)
+      torch.tpu.window_stripe_chunk_mb = 16
+      self.assertEqual(torch.tpu.window_stripe_chunk_mb, 16)
+    finally:
+      torch.tpu.window_stripe_chunk_mb = original
+
+  def test_compute_window_stripe_count(self):
+    """Tests stripe count calculation logic across tensor byte sizes and configurations."""
+    from torch_tpu._internal.device import _device_ops_backend
+
+    compute_fn = getattr(
+        _device_ops_backend, "_compute_window_stripe_count", None
+    )
+    if compute_fn is None:
+      return
+
+    original_stripes = torch.tpu.window_num_stripes
+    original_chunk_mb = torch.tpu.window_stripe_chunk_mb
+    try:
+      # Default: 8 MB chunk, 4 max stripes
+      torch.tpu.window_num_stripes = 4
+      torch.tpu.window_stripe_chunk_mb = 8
+      mb = 1024 * 1024
+
+      self.assertEqual(compute_fn(0), 1)
+      self.assertEqual(compute_fn(1024), 1)
+      self.assertEqual(compute_fn(7 * mb), 1)
+      self.assertEqual(compute_fn(8 * mb), 1)
+      self.assertEqual(compute_fn(15 * mb), 1)
+      self.assertEqual(compute_fn(16 * mb), 2)
+      self.assertEqual(compute_fn(23 * mb), 2)
+      self.assertEqual(compute_fn(24 * mb), 3)
+      self.assertEqual(compute_fn(31 * mb), 3)
+      self.assertEqual(compute_fn(32 * mb), 4)
+      self.assertEqual(compute_fn(64 * mb), 4)
+      self.assertEqual(compute_fn(128 * mb), 4)
+
+      # Custom: 4 MB chunk, 8 max stripes
+      torch.tpu.window_num_stripes = 8
+      torch.tpu.window_stripe_chunk_mb = 4
+
+      self.assertEqual(compute_fn(4 * mb), 1)
+      self.assertEqual(compute_fn(8 * mb), 2)
+      self.assertEqual(compute_fn(16 * mb), 4)
+      self.assertEqual(compute_fn(32 * mb), 8)
+      self.assertEqual(compute_fn(64 * mb), 8)
+    finally:
+      torch.tpu.window_num_stripes = original_stripes
+      torch.tpu.window_stripe_chunk_mb = original_chunk_mb
+
 
 if __name__ == "__main__":
   absltest.main()

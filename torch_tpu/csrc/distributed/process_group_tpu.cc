@@ -1539,7 +1539,7 @@ int64_t ProcessGroupTpu::GetLogicalDeviceId(int64_t physical_device_id) const {
 #if TT_TORCH_VERSION_GE(2, 14)
 c10::intrusive_ptr<c10d::Window> ProcessGroupTpu::new_window(
     const std::optional<at::Tensor>& tensor) {
-  auto win = c10::make_intrusive<WindowTPU>(
+  auto win = c10::make_intrusive<WindowTpu>(
       c10::intrusive_ptr<ProcessGroupTpu>::unsafe_reclaim_from_nonowning(this),
       rank_);
   if (tensor.has_value()) {

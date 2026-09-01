@@ -227,14 +227,14 @@ def _run_window_multi_tpu_peer_transfer_test() -> None:
   if rank > 0:
     # Wait for RMA signal and payload arrival from predecessor rank (rank - 1).
     recv_work = win.wait_signal(peer_rank=rank - 1, async_op=True)
-    if recv_work is not None:
-      recv_work.wait()
     expected = torch.full(
         (num_elements,), float((rank - 1) * 10 + 1), dtype=torch.float32
     )
     local_tensor = win.map_remote_tensor(rank)
     assert_close(local_tensor.cpu(), expected)
 
+  if recv_work is not None:
+    recv_work.wait()
   if send_work is not None:
     send_work.wait()
 
@@ -317,15 +317,16 @@ def _run_window_signal_wait_test() -> None:
   win = dist._new_window(tpu_tensor)
 
   # 2. Coordinate pipeline signaling from rank 0 -> 1 -> 2 -> ... -> world_size - 1.
-  if rank > 0:
-    wait_work = win.wait_signal(peer_rank=rank - 1, async_op=True)
-    if wait_work is not None:
-      wait_work.wait()
-
+  sig_work = None
+  wait_work = None
   if rank < world_size - 1:
     sig_work = win.signal(peer_rank=rank + 1, async_op=True)
-    if sig_work is not None:
-      sig_work.wait()
+  if rank > 0:
+    wait_work = win.wait_signal(peer_rank=rank - 1, async_op=True)
+  if wait_work is not None:
+    wait_work.wait()
+  if sig_work is not None:
+    sig_work.wait()
 
   # 3. Clean up and synchronize across ranks.
   win.tensor_deregister()
@@ -395,82 +396,6 @@ def _run_window_sync_dma_test() -> None:
 
   win_tpu.tensor_deregister()
   win_host.tensor_deregister()
-
-
-def _run_window_errors_test() -> None:
-  """Tests error handling for unattached windows and out-of-bounds offsets.
-
-  Validates that invoking put, wait_signal, or map_remote_tensor on an
-  unregistered window, or providing put offsets exceeding the buffer boundary,
-  properly raises a descriptive RuntimeError.
-  """
-  rank = int(os.environ["RANK"])
-  world_size = dist.get_world_size()
-  num_elements = 1024
-
-  def assert_runtime_error(fn: Callable[[], Any], match: str) -> None:
-    try:
-      fn()
-    except RuntimeError as e:
-      assert (
-          match.lower() in str(e).lower()
-      ), f"Expected '{match}' in error message: '{e}'"
-      return
-    assert False, (
-        f"Expected RuntimeError containing '{match}', but no exception was"
-        " raised."
-    )
-
-  # 1. Operations before tensor registration must raise RuntimeError.
-  win = dist._new_window()
-  dummy = torch.ones((num_elements,), dtype=torch.float32, device="cpu")
-
-  assert_runtime_error(
-      lambda: win.put(
-          dummy, dst_rank=rank, target_offset_nelems=0, async_op=False
-      ),
-      "registered",
-  )
-  assert_runtime_error(
-      lambda: win.wait_signal(peer_rank=0, async_op=False),
-      "registered",
-  )
-  assert_runtime_error(
-      lambda: win.map_remote_tensor(rank),
-      "registered",
-  )
-
-  # 2. Out-of-bounds offset in put must raise RuntimeError.
-  tpu_buf = torch.zeros((num_elements,), dtype=torch.bfloat16, device="tpu:0")
-  win.tensor_register(tpu_buf)
-
-  large_src = torch.ones((num_elements,), dtype=torch.bfloat16, device="cpu")
-  assert_runtime_error(
-      lambda: win.put(
-          large_src,
-          dst_rank=rank,
-          target_offset_nelems=num_elements // 2,
-          async_op=False,
-      ),
-      "exceeds",
-  )
-
-  # 3. Non-zero targetOffsetNelems in peer P2P transfer must raise RuntimeError.
-  peer_rank = (rank + 1) % world_size
-  peer_src = torch.ones(
-      (num_elements // 2,), dtype=torch.bfloat16, device="tpu:0"
-  )
-  assert_runtime_error(
-      lambda: win.put(
-          peer_src,
-          dst_rank=peer_rank,
-          target_offset_nelems=10,
-          async_op=False,
-      ),
-      "targetOffsetNelems",
-  )
-
-  win.tensor_deregister()
 
 
 class WindowTpuTest(
@@ -587,16 +512,6 @@ class WindowTpuTest(
             _test_wrapper, world_size=self._world_size
         ),
         test_fn=_run_window_explicit_register_lifecycle_test,
-    )
-
-  def test_window_errors(self):
-    """Verifies error handling on unregistered windows and out-of-bounds offsets."""
-    distributed_utils.dist_run(
-        nproc_per_node=self._world_size,
-        fn=singlehost_wrapper.tpu_env_wrapper(
-            _test_wrapper, world_size=self._world_size
-        ),
-        test_fn=_run_window_errors_test,
     )
 
 

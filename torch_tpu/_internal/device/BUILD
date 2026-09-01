@@ -73,6 +73,7 @@ pybind_extension(
         "//torch_tpu/csrc/common:env_vars",
         "//torch_tpu/csrc/common:error_utils",
         "//torch_tpu/csrc/common:excess_precision",
+        "//torch_tpu/csrc/distributed:window_tpu",
         "//torch_tpu/csrc/distributed/slicebuilder:discovery",
         "//torch_tpu/csrc/eager:current_stream",
         "//torch_tpu/csrc/eager:device_buffer",

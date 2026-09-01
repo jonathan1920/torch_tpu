@@ -3217,6 +3217,42 @@ module {
     ):
       torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 7)
 
+  @et.why_tpu_only("WindowTPU DMA striping configuration is TPU-specific")
+  def test_window_num_stripes_non_positive(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""expected window_num_stripes to be > 0, got 0""",
+        message_reviewed_by="wan",
+    ):
+      torch.tpu.window_num_stripes = 0
+
+  @et.why_tpu_only("WindowTPU DMA striping configuration is TPU-specific")
+  def test_window_num_stripes_negative(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""expected window_num_stripes to be > 0, got -1""",
+        message_reviewed_by="wan",
+    ):
+      torch.tpu.window_num_stripes = -1
+
+  @et.why_tpu_only("WindowTPU DMA striping configuration is TPU-specific")
+  def test_window_stripe_chunk_mb_non_positive(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""expected window_stripe_chunk_mb to be > 0, got 0""",
+        message_reviewed_by="wan",
+    ):
+      torch.tpu.window_stripe_chunk_mb = 0
+
+  @et.why_tpu_only("WindowTPU DMA striping configuration is TPU-specific")
+  def test_window_stripe_chunk_mb_negative(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""expected window_stripe_chunk_mb to be > 0, got -1""",
+        message_reviewed_by="wan",
+    ):
+      torch.tpu.window_stripe_chunk_mb = -1
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -42,6 +42,7 @@
 #include "torch_tpu/csrc/common/discovery.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/excess_precision.h"
+#include "torch_tpu/csrc/distributed/window_tpu.h"
 #include "torch_tpu/csrc/eager/current_stream.h"
 #include "torch_tpu/csrc/eager/device_gen_impl.h"
 #include "torch_tpu/csrc/eager/events_queue.h"
@@ -457,6 +458,22 @@ PYBIND11_MODULE(_device_ops_backend, m) {
   m.def("_set_core_pinning_mode", &SetCorePinningMode, py::arg("device_index"),
         py::arg("stream_id"), py::arg("pinned"),
         "Sets the pinning mode for the specified stream.");
+
+  m.def("_set_window_num_stripes", &PySetWindowNumStripes,
+        py::arg("num_stripes"),
+        "Sets the maximum number of concurrent DMA stripes for WindowTpu peer "
+        "transfers.");
+  m.def("_get_window_num_stripes", &PyGetWindowNumStripes,
+        "Gets the maximum number of concurrent DMA stripes for WindowTpu peer "
+        "transfers.");
+  m.def("_set_window_stripe_chunk_mb", &PySetWindowStripeChunkMb,
+        py::arg("chunk_mb"),
+        "Sets the minimum stripe chunk size in megabytes for WindowTpu DMA.");
+  m.def("_get_window_stripe_chunk_mb", &PyGetWindowStripeChunkMb,
+        "Gets the minimum stripe chunk size in megabytes for WindowTpu DMA.");
+  m.def("_compute_window_stripe_count", &PyComputeWindowStripeCount,
+        py::arg("total_bytes"),
+        "Computes the optimal stripe count for a tensor of given byte size.");
 }
 
 }  // namespace torch_tpu

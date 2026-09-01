@@ -213,6 +213,54 @@ class _DeviceModuleMeta(abc.ABCMeta):
   attributes on `torch.tpu` registered in `__tt_api_stages__`.
   """
 
+  @property
+  @annotations.experimental(
+      "window_num_stripes is experimental and may change or be removed "
+      "without notice."
+  )
+  def window_num_stripes(cls) -> int:
+    """Maximum concurrent DMA stripes for WindowTpu peer transfers."""
+    getter = getattr(_device_ops_backend, "_get_window_num_stripes", None)
+    if getter is None:
+      raise RuntimeError("TorchTPU device ops backend is not initialized.")
+    return getter()
+
+  @window_num_stripes.setter
+  @annotations.experimental(
+      "window_num_stripes is experimental and may change or be removed "
+      "without notice."
+  )
+  def window_num_stripes(cls, value: int):
+    """Sets maximum concurrent DMA stripes for WindowTpu peer transfers."""
+    setter = getattr(_device_ops_backend, "_set_window_num_stripes", None)
+    if setter is None:
+      raise RuntimeError("TorchTPU device ops backend is not initialized.")
+    setter(value)
+
+  @property
+  @annotations.experimental(
+      "window_stripe_chunk_mb is experimental and may change or be removed "
+      "without notice."
+  )
+  def window_stripe_chunk_mb(cls) -> int:
+    """Minimum payload size in MB per parallel DMA stripe for WindowTpu."""
+    getter = getattr(_device_ops_backend, "_get_window_stripe_chunk_mb", None)
+    if getter is None:
+      raise RuntimeError("TorchTPU device ops backend is not initialized.")
+    return getter()
+
+  @window_stripe_chunk_mb.setter
+  @annotations.experimental(
+      "window_stripe_chunk_mb is experimental and may change or be removed "
+      "without notice."
+  )
+  def window_stripe_chunk_mb(cls, value: int):
+    """Sets minimum payload size in MB per parallel DMA stripe for WindowTpu."""
+    setter = getattr(_device_ops_backend, "_set_window_stripe_chunk_mb", None)
+    if setter is None:
+      raise RuntimeError("TorchTPU device ops backend is not initialized.")
+    setter(value)
+
   def __getattr__(cls, name: str) -> Any:
     stages_map = getattr(cls, "__tt_api_stages__", {})
     # tt_api_globals is None because resolved attributes are cached directly on
