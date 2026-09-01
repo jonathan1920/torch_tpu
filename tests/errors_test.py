@@ -1615,6 +1615,15 @@ Device-side assertion tracking was not enabled by user.""",
         message_reviewed_by="gunhyun",
     )
 
+  def test_reduction_dim_out_of_bounds_std(self):
+    self.do_test_reduction_dim_out_of_bounds(
+        torch.std,
+        tpu_msg_template=(
+            "std(): expected dimension to be in range of [-2, 1], got {dim}"
+        ),
+        message_reviewed_by="gunhyun",
+    )
+
   def test_reduction_dim_out_of_bounds_mean(self):
     self.do_test_reduction_dim_out_of_bounds(torch.mean)
 
@@ -1653,6 +1662,13 @@ Device-side assertion tracking was not enabled by user.""",
         message_reviewed_by="gunhyun",
     )
 
+  def test_reduction_dim_repeated_std(self):
+    self.do_test_reduction_dim_repeated(
+        torch.std,
+        tpu_msg="std(): dim 1 appears multiple times in the list of dims",
+        message_reviewed_by="gunhyun",
+    )
+
   def test_reduction_dim_repeated_mean(self):
     self.do_test_reduction_dim_repeated(torch.mean)
 
@@ -1678,6 +1694,13 @@ Device-side assertion tracking was not enabled by user.""",
     self.do_test_reduction_dim_scalar(
         torch.var,
         tpu_msg="var(): expected dimension to be in range of [-1, 0], got 1",
+        message_reviewed_by="gunhyun",
+    )
+
+  def test_reduction_dim_scalar_std(self):
+    self.do_test_reduction_dim_scalar(
+        torch.std,
+        tpu_msg="std(): expected dimension to be in range of [-1, 0], got 1",
         message_reviewed_by="gunhyun",
     )
 
@@ -1724,6 +1747,38 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.var(t, dim=0)
 
+  def test_reduction_unsupported_int_dtype_std(self):
+    """Std fails for integral dtypes."""
+    t = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""std(): expected a floating point or complex dtype, got int32""",
+        gpu="""std and var only support floating point and complex dtypes""",
+    ):
+      torch.std(t, dim=0)
+
+  def test_reduction_unsupported_int_dtype_std_out(self):
+    """Std out-variant fails when input has integral dtype."""
+    t = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
+    out = torch.empty(3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""std(): expected a floating point or complex dtype, got int32""",
+        gpu="""std and var only support floating point and complex dtypes""",
+    ):
+      torch.std(t, dim=0, out=out)
+
+  def test_reduction_unsupported_int_out_dtype_std(self):
+    """Std out-variant fails when output has non-floating dtype."""
+    t = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    out = torch.empty(3, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""std(): expected floating point output dtype, got int32""",
+        gpu="""result type Float can't be cast to the desired output type Int""",
+    ):
+      torch.std(t, dim=0, out=out)
+
   def test_unfold_size_too_large(self):
     """Unfold fails when size is larger than dimension."""
     t = torch.ones(5, device=et.device())
@@ -1753,6 +1808,38 @@ Device-side assertion tracking was not enabled by user.""",
         tpu="""unfold(): expected step > 0, got 0""",
     ):
       t.unfold(0, 2, 0)
+
+  def test_std_negative_reduction_factor(self):
+    """A warning is issued and nan returned when degrees of freedom <= 0."""
+    # TODO: b/435570003 - Create a utility to compare warning messages.
+    tpu_warn_msg = (
+        "std(): degrees of freedom (i.e., reduction size - correction) should"
+        " be positive, got reduction size = 1, correction = 1, and degrees of"
+        " freedom = 0"
+    )
+    gpu_warn_msg = (
+        "std(): degrees of freedom is <= 0. Correction should be strictly less"
+        " than the reduction factor (input numel divided by output numel)."
+    )
+
+    t = torch.ones(1, device=et.device(), dtype=torch.float32)
+    warn_msg = tpu_warn_msg if et.is_on_tpu() else gpu_warn_msg
+
+    with self.assertWarnsRegex(UserWarning, re.escape(warn_msg)):
+      result = torch.std(t, correction=1)
+    self.assertTrue(torch.all(torch.isnan(result)), f"Got {result.to('cpu')}")
+
+    t = torch.ones(3, 2, device=et.device(), dtype=torch.float32)
+    tpu_warn_msg = (
+        "std(): degrees of freedom (i.e., reduction size - correction) should"
+        " be positive, got reduction size = 3, correction = 4, and degrees of"
+        " freedom = -1"
+    )
+    warn_msg = tpu_warn_msg if et.is_on_tpu() else gpu_warn_msg
+
+    with self.assertWarnsRegex(UserWarning, re.escape(warn_msg)):
+      result = torch.std(t, dim=0, correction=4)
+    self.assertTrue(torch.all(torch.isnan(result)), f"Got {result.to('cpu')}")
 
   def test_var_negative_reduction_factor(self):
     """A warning is issued and nan returned when the variance degrees of freedom is <= 0."""

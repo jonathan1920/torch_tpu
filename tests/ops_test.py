@@ -1581,6 +1581,9 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.bfloat16: {"rtol": 1e-3, "atol": 5.8e-3},
                 torch.float16: {"rtol": 1e-3, "atol": 1.1e-3},
             },
+            "std": {
+                torch.float16: {"atol": 5.9e-4},
+            },
             "tan": {
                 torch.float32: {"rtol": 1e-5, "atol": 2e-2},
             },
@@ -4197,6 +4200,9 @@ class TestOps(op_testing.OpInfoTestBase):
             ),
         },
     )
+
+  def test_std(self):
+    self.do_test_op("std")
 
   def test_var(self):
     self.do_test_op("var")

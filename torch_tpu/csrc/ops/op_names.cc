@@ -1361,6 +1361,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "split_with_sizes_copy.out";
     case OpName::kSqrtOut:
       return "sqrt.out";
+    case OpName::kStdCorrection:
+      return "std.correction";
+    case OpName::kStdCorrectionOut:
+      return "std.correction_out";
     case OpName::kSub:
       return "sub";
     case OpName::kSubOut:

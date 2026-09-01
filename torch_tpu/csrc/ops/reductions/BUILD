@@ -129,6 +129,42 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "std_aten_kernels",
+    srcs = ["std_aten_kernels.cc"],
+    hdrs = ["std_aten_kernels.h"],
+    deps = [
+        ":reduction_utils",
+        ":reductions",
+        ":sum",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/csrc/common:cache_key",
+        "//torch_tpu/csrc/common:dimension_types",
+        "//torch_tpu/csrc/common:dtype",
+        "//torch_tpu/csrc/common:error_utils",
+        "//torch_tpu/csrc/common:fixed_size_span",
+        "//torch_tpu/csrc/common:to_string",
+        "//torch_tpu/csrc/eager:op_dispatcher",
+        "//torch_tpu/csrc/eager:tensor_to_buffer",
+        "//torch_tpu/csrc/ops:binary",
+        "//torch_tpu/csrc/ops:binary_aten_kernels",
+        "//torch_tpu/csrc/ops:op_builder_utils",
+        "//torch_tpu/csrc/ops:op_names",
+        "//torch_tpu/csrc/ops:python_context",
+        "//torch_tpu/csrc/ops:unary",
+        "//torch_tpu/csrc/ops/macros:kernel",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "var_aten_kernels",
     srcs = ["var_aten_kernels.cc"],
     hdrs = ["var_aten_kernels.h"],

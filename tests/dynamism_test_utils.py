@@ -197,6 +197,7 @@ def verify_op_supports_dynamism(
       "slice",  # reshape reassociation not supported
       "squeeze",  # unsupported view op - enhance view op to detect squeeze
       "squeeze_copy",  # unsupported view op
+      "std",  # dynamic triage
       "sub",  # dynamic triage (invalid result)
       "sum",  # return i64, which has lowering issues
       "take",  # dynamic triage (invalid result)

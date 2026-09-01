@@ -391,8 +391,6 @@ UNREGISTERED_OPS = frozenset([
     'special_xlog1py.out',
     'special_zeta.out',
     'sspaddmm.out',
-    'std.correction',
-    'std.correction_out',
     'std_mean.correction',
     'to_mkldnn',
     'to_padded_tensor',

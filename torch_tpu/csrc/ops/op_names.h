@@ -692,6 +692,8 @@ enum class OpName {
   kSparseGather,
   kSplitWithSizesCopyOut,
   kSqrtOut,
+  kStdCorrection,
+  kStdCorrectionOut,
   kSub,
   kSubOut,
   kSum,

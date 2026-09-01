@@ -643,6 +643,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/random:random_aten_kernels",
         "//torch_tpu/csrc/ops/randperm:randperm_aten_kernels",
         "//torch_tpu/csrc/ops/reductions:mean_aten_kernels",
+        "//torch_tpu/csrc/ops/reductions:std_aten_kernels",
         "//torch_tpu/csrc/ops/reductions:sum_aten_kernels",
         "//torch_tpu/csrc/ops/reductions:var_aten_kernels",
         "//torch_tpu/csrc/ops/reflection_pad:reflection_pad_aten_kernels",

@@ -450,6 +450,7 @@ _OUT_DTYPE_CAST_KNOWN_FAILURES: Final[set[str]] = {
     "sort",
     "split_with_sizes_copy",
     "sqrt",
+    "std",
     "sub",
     "take",
     "tan",
