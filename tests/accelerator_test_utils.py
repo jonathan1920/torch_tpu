@@ -1,0 +1,66 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Provides utilities for managing accelerator devices across backends in tests."""
+
+from typing import Any
+
+import torch
+import torch_tpu  # pylint: disable=unused-import  # noqa: F401
+
+
+def get_backend_module(backend_name: str) -> Any:
+  """Returns the torch backend module corresponding to backend_name."""
+  if backend_name in ("gpu", "cuda"):
+    return torch.cuda
+  elif backend_name == "tpu":
+    return torch.tpu
+  raise ValueError(
+      f"Unsupported backend '{backend_name}'. Supported backends are: 'gpu',"
+      " 'cuda', 'tpu'"
+  )
+
+
+def get_device(
+    backend_name: str, device_idx: int | None = None
+) -> torch.device:
+  """Returns a torch.device for backend name and optional device index.
+
+  Maps the CLI flag backend names ('gpu', 'cuda', 'tpu') to their corresponding
+  PyTorch device types ('cuda', 'tpu').
+
+  Args:
+    backend_name: Name of the backend ('gpu', 'cuda', or 'tpu').
+    device_idx: Optional integer index of the device (e.g. 0 for 'cuda:0'). If
+      None, returns a device without an index (e.g. 'cuda').
+  """
+  if backend_name in ("gpu", "cuda"):
+    device_type = "cuda"
+  elif backend_name == "tpu":
+    device_type = "tpu"
+  else:
+    raise ValueError(
+        f"Unsupported backend '{backend_name}'. Supported backends are: 'gpu',"
+        " 'cuda', 'tpu'"
+    )
+  if device_idx is None:
+    return torch.device(device_type)
+  return torch.device(f"{device_type}:{device_idx}")
+
+
+def set_active_device(backend_name: str, device_idx: int) -> torch.device:
+  """Sets active device to device_idx and returns torch.device."""
+  backend_mod = get_backend_module(backend_name)
+  backend_mod.set_device(device_idx)
+  return get_device(backend_name, device_idx)

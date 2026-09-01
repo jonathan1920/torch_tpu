@@ -21,49 +21,12 @@ import unittest
 from absl import flags
 from absl.testing import absltest
 import torch
+from tests import accelerator_test_utils
 from tests import seed_test_utils
 
 _BACKEND = flags.DEFINE_string(
     "backend", "tpu", "The backend to test: 'tpu' or 'gpu'."
 )
-
-
-def _get_backend_module(backend_name: str) -> Any:
-  if backend_name == "gpu":
-    return torch.cuda
-  elif backend_name == "tpu":
-    return torch.tpu
-  raise ValueError(
-      f"Unsupported backend '{backend_name}'. Supported backends are: 'gpu',"
-      " 'tpu'"
-  )
-
-
-def _get_device(
-    backend_name: str, device_idx: int | None = None
-) -> torch.device:
-  """Returns a torch.device for the given backend name and optional device index.
-
-  Maps the CLI flag backend names ('gpu', 'tpu') to their corresponding PyTorch
-  device types ('cuda', 'tpu').
-
-  Args:
-    backend_name: Name of the backend ('gpu' or 'tpu').
-    device_idx: Optional integer index of the device (e.g. 0 for 'cuda:0'). If
-      None, returns a device without an index (e.g. 'cuda').
-  """
-  if backend_name == "gpu":
-    device_type = "cuda"
-  elif backend_name == "tpu":
-    device_type = "tpu"
-  else:
-    raise ValueError(
-        f"Unsupported backend '{backend_name}'. Supported backends are: 'gpu',"
-        " 'tpu'"
-    )
-  if device_idx is None:
-    return torch.device(device_type)
-  return torch.device(f"{device_type}:{device_idx}")
 
 
 def _fail_on_tpu(reason: str):
@@ -190,8 +153,8 @@ class _BaseRngTest(seed_test_utils.RepeatableTest):
   def setUp(self):
     super().setUp()
     self.backend = _BACKEND.value
-    self.backend_mod = _get_backend_module(self.backend)
-    self.device = _get_device(self.backend)
+    self.backend_mod = accelerator_test_utils.get_backend_module(self.backend)
+    self.device = accelerator_test_utils.get_device(self.backend)
 
   def _unpack_device_rng_uint64(
       self, start_byte: int, end_byte: int, device_idx: int | None = None
@@ -847,7 +810,9 @@ class SingleProcessMultiDeviceTest(_BaseRngTest):
         " seeding all devices.",
     )
     for i in range(num_devices):
-      _ = torch.rand(100, device=_get_device(self.backend, i))
+      _ = torch.rand(
+          100, device=accelerator_test_utils.get_device(self.backend, i)
+      )
 
     new_seed = torch.seed()
 
@@ -882,17 +847,23 @@ class SingleProcessMultiDeviceTest(_BaseRngTest):
     self.assertLen(saved_states, num_devices)
 
     expected_outs = [
-        torch.rand(10, device=_get_device(self.backend, i))
+        torch.rand(
+            10, device=accelerator_test_utils.get_device(self.backend, i)
+        )
         for i in range(num_devices)
     ]
 
     for i in range(num_devices):
-      _ = torch.rand(50, device=_get_device(self.backend, i))
+      _ = torch.rand(
+          50, device=accelerator_test_utils.get_device(self.backend, i)
+      )
 
     self.backend_mod.set_rng_state_all(saved_states)
 
     actual_outs = [
-        torch.rand(10, device=_get_device(self.backend, i))
+        torch.rand(
+            10, device=accelerator_test_utils.get_device(self.backend, i)
+        )
         for i in range(num_devices)
     ]
     for exp, act in zip(expected_outs, actual_outs):
@@ -923,7 +894,7 @@ class SingleProcessMultiDeviceTest(_BaseRngTest):
 
       def thread_worker(thread_id):
         try:
-          dev = _get_device(self.backend, thread_id)
+          dev = accelerator_test_utils.get_device(self.backend, thread_id)
           with self.backend_mod.device(thread_id):
             self.backend_mod.manual_seed(42 + thread_id)
             tensors = [torch.rand(10, device=dev) for _ in range(5)]
