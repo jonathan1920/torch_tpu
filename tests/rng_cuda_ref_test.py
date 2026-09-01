@@ -672,6 +672,41 @@ class CompiledRngTest(_BaseRngTest):
     actual_out = compiled_fn(x)
     self.assertTrue(torch.equal(actual_out, expected_out))
 
+  def test_compiled_graphsafe_get_state_triggers_graph_break(self):
+    """Verifies graphsafe_get_state triggers a graph break in torch.compile.
+
+    Graphsafe refers to CUDA graphs rather than FX graphs during Dynamo
+    tracing, so graphsafe_get_state should have the same behavior as get_state
+    and trigger a graph break.
+    """
+    x = torch.zeros(10, device=self.device)
+    g = torch.Generator(device=self.device)
+
+    def fn_get_state(x):
+      _ = g.graphsafe_get_state()
+      return torch.rand_like(x)
+
+    with self.assertRaises(torch._dynamo.exc.Unsupported):
+      torch.compile(fn_get_state, fullgraph=True)(x)
+
+  def test_compiled_graphsafe_set_state_triggers_graph_break(self):
+    """Verifies graphsafe_set_state triggers a graph break in torch.compile.
+
+    Graphsafe refers to CUDA graphs rather than FX graphs during Dynamo
+    tracing, so graphsafe_set_state should have the same behavior as set_state
+    and trigger a graph break.
+    """
+    x = torch.zeros(10, device=self.device)
+    g = torch.Generator(device=self.device)
+    saved_state = g.clone_state()
+
+    def fn_set_state(x):
+      g.graphsafe_set_state(saved_state)
+      return torch.rand_like(x)
+
+    with self.assertRaises(torch._dynamo.exc.Unsupported):
+      torch.compile(fn_set_state, fullgraph=True)(x)
+
   def test_compiled_generator_supported_with_graph_breaks(self):
     """Verifies generators work under standard compile."""
     g = torch.Generator(device=self.device)
