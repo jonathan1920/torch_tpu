@@ -30,6 +30,7 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/csrc/common/cache_key.h"
+#include "torch_tpu/csrc/common/device_type.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
@@ -37,11 +38,31 @@
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/binary.h"
+#include "torch_tpu/csrc/ops/copy_from/cpu_to_tpu.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/where/where.h"
 
 namespace torch_tpu {
+namespace {
+
+// PyTorch's dispatcher bypasses backend device guards for index tensors
+// during indexing out-variant and composite execution, allowing them to arrive
+// on CPU. We use CopyCpuToTpuBuffer instead of ATen's .to() to transfer CPU
+// tensors to TPU without triggering dispatcher re-entry or CompositeOpCheck
+// failures during tracing.
+absl::StatusOr<at::Tensor> ResolveAuxiliaryTensorDevice(
+    const at::Tensor& tensor) {
+  if (!tensor.defined() ||
+      tensor.device().type() == GetPrivateUse1DeviceType()) {
+    return tensor;
+  }
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef tpu_buffer,
+                      CopyCpuToTpuBuffer(tensor, /*non_blocking=*/false));
+  return MakeTensor(std::move(tpu_buffer));
+}
+
+}  // namespace
 
 absl::Status ResolveNegativeIndices(std::vector<at::Tensor>& indices,
                                     const at::IntArrayRef sizes,
@@ -54,6 +75,7 @@ absl::Status ResolveNegativeIndices(std::vector<at::Tensor>& indices,
     at::Tensor& index = indices[i];
     if (index.scalar_type() == c10::ScalarType::Long ||
         index.scalar_type() == c10::ScalarType::Int) {
+      TT_ASSIGN_OR_RETURN(index, ResolveAuxiliaryTensorDevice(index));
       indices_to_resolve.push_back(index);
 
       const int64_t dim_size = sizes[dimensions[i]];

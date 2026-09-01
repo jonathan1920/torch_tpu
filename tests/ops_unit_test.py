@@ -8146,6 +8146,14 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
 
     self.assert_close_tpu_vs_cpu(compute)
 
+  def test_negative_indices_cpu_tensor(self):
+    def test_fn(device):
+      x = torch.arange(20, dtype=torch.float32, device=device).reshape(4, 5)
+      cpu_index = torch.tensor([-1, 2], dtype=torch.int64, device="cpu")
+      return x[cpu_index]
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase):
   """Tests for custom ops."""
