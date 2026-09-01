@@ -26,6 +26,7 @@ import torch
 from torch import distributed as dist
 from torch import nn
 import torch.distributed.checkpoint as dcp
+from torch.distributed.checkpoint import staging
 from torch.distributed.checkpoint import state_dict
 import torch.distributed.tensor as dt
 import torch.multiprocessing as mp
@@ -58,9 +59,10 @@ def _create_sharded_model(device_mesh, seed):
   return model.to("tpu")
 
 
-def _init_test_env(seed):
+def _init_test_env(seed: int, enable_cpu_backend: bool = False):
   rank = int(os.environ["RANK"])
-  dist.init_process_group(backend="tpu_dist")
+  backend = "cpu:gloo,tpu:tpu_dist" if enable_cpu_backend else "tpu_dist"
+  dist.init_process_group(backend=backend)
   world_size = dist.get_world_size()
   device_mesh = dt.init_device_mesh("tpu", (world_size,))
   model = _create_sharded_model(device_mesh, seed)
@@ -82,7 +84,7 @@ def _cleanup_test_env():
   dist.destroy_process_group()
 
 
-def run_dtensor_dcp_load_save(checkpoint_dir: str) -> None:
+def run_dtensor_dcp_save_load(checkpoint_dir: str) -> None:
   """Tests DCP with DTensor using the save and load API."""
   model, device, device_mesh = _init_test_env(seed=42)
   _warmup_model(model, device, device_mesh)
@@ -106,6 +108,60 @@ def run_dtensor_dcp_load_save(checkpoint_dir: str) -> None:
   # Assert that the model parameters are the same
   for param, param_new in zip(model.parameters(), model_new.parameters()):
     utils.assert_close(param.to_local(), param_new.to_local())
+
+  _cleanup_test_env()
+
+
+def run_dtensor_dcp_async_save_load(checkpoint_dir: str) -> None:
+  """Tests DCP with DTensor using the async_save and load API."""
+  model, device, device_mesh = _init_test_env(seed=42, enable_cpu_backend=True)
+  _warmup_model(model, device, device_mesh)
+
+  # Capture the original parameter values
+  with torch.no_grad():
+    original_weights = [
+        param.to_local().clone() for param in model.parameters()
+    ]
+
+  # Start an async checkpoint, which will consists of two phases:
+  # 1. Staging: The model parameters are copied to CPU memory
+  # 2. Upload: The staged parameters are copied to the final storage
+  stager = staging.DefaultStager(staging.StagingOptions(use_async_staging=True))
+  writer = dcp.FileSystemWriter(checkpoint_dir)
+  save_response = dcp.async_save(
+      {"model": model},
+      storage_writer=writer,
+      async_stager=stager,
+  )
+
+  # Wait for the staging phase to complete by waiting on the future
+  save_response.staging_completion.result()
+
+  # Mutate model parameters
+  with torch.no_grad():
+    for param in model.parameters():
+      param.to_local().add_(1.0)
+
+  # Wait for the upload phase to complete by waiting on the future
+  save_response.upload_completion.result()
+  stager.close()
+
+  # Create a new model with a different seed to ensure it is initialized
+  # differently
+  model_new = _create_sharded_model(device_mesh, seed=43)
+
+  # Assert that the model parameters are different before load
+  for orig_w, param_new in zip(original_weights, model_new.parameters()):
+    assert not torch.allclose(orig_w, param_new.to_local())
+
+  # Restore the checkpoint
+  reader = dcp.FileSystemReader(checkpoint_dir)
+  dcp.load({"model": model_new}, storage_reader=reader)
+
+  # Assert that the model parameters are the same as original weights. The
+  # intermediate mutation is expected to be discarded.
+  for orig_w, param_new in zip(original_weights, model_new.parameters()):
+    utils.assert_close(orig_w, param_new.to_local())
 
   _cleanup_test_env()
 
@@ -197,12 +253,22 @@ class DCPTest(seed_test_utils.MultiProcessRepeatableTest):
 
   _world_size = 8
 
-  def test_dtensor_dcp_load_save(self):
+  def test_dtensor_dcp_save_load(self):
     checkpoint_dir = self.create_tempdir().full_path
     distributed_utils.dist_run(
         self._world_size,
         singlehost_wrapper.tpu_env_wrapper(
-            run_dtensor_dcp_load_save, world_size=self._world_size
+            run_dtensor_dcp_save_load, world_size=self._world_size
+        ),
+        checkpoint_dir=checkpoint_dir,
+    )
+
+  def test_dtensor_dcp_async_save_load(self):
+    checkpoint_dir = self.create_tempdir().full_path
+    distributed_utils.dist_run(
+        self._world_size,
+        singlehost_wrapper.tpu_env_wrapper(
+            run_dtensor_dcp_async_save_load, world_size=self._world_size
         ),
         checkpoint_dir=checkpoint_dir,
     )
