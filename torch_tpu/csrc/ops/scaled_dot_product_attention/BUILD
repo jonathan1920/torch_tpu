@@ -95,6 +95,7 @@ torch_tpu_cc_library(
     deps = [
         "//torch_tpu/csrc/common:dimension_types",
         "//torch_tpu/csrc/ops:op_builder_utils",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",

@@ -23,6 +23,7 @@
 #include "absl/types/span.h"
 #include "mlir/IR/Types.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "torch_tpu/csrc/common/dimension_types.h"
 
 namespace torch_tpu {
 
@@ -38,6 +39,14 @@ mlir::MlirOp GetScaleDefaulted(mlir::MlirBuilder& builder,
                                std::optional<double> maybe_scale,
                                int64_t head_dim,
                                mlir::Type element_type = nullptr);
+
+// Returns strides for `target_sizes` that preserve the physical memory layout
+// permutation of `template_strides` on `template_sizes`, but compacted to be
+// dense (no gaps). This is useful for returning a tensor that is compatible
+// with subsequent view operations that expect a specific permutation, while
+// avoiding memory bloat and slice-by-slice writes (dynamic-update-slice).
+Strides DenseStrides(absl::Span<const int64_t> template_strides,
+                     absl::Span<const int64_t> target_sizes);
 
 }  // namespace torch_tpu
 

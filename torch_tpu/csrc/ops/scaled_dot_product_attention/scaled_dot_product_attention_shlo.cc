@@ -58,40 +58,6 @@ namespace torch_tpu {
 
 namespace {
 
-// Returns strides for `target_sizes` that preserve the physical memory layout
-// permutation of `template_strides` on `template_sizes`, but compacted to be
-// dense (no gaps). This is useful for returning a tensor that is compatible
-// with subsequent view operations that expect a specific permutation, while
-// avoiding memory bloat and slice-by-slice writes (dynamic-update-slice).
-// Note: `template_sizes` and `target_sizes` must only be permutations of each
-// other.
-Strides DenseStrides(absl::Span<const int64_t> template_sizes,
-                     absl::Span<const int64_t> template_strides,
-                     absl::Span<const int64_t> target_sizes) {
-  int rank = template_sizes.size();
-  Strides target_strides(rank, 0);
-
-  struct Dim {
-    int index;
-    int64_t size;
-    int64_t stride;
-  };
-  std::vector<Dim> dims(rank);
-  for (int i = 0; i < rank; ++i) {
-    dims[i] = {i, template_sizes[i], template_strides[i]};
-  }
-  absl::c_stable_sort(
-      dims, [](const Dim& a, const Dim& b) { return a.stride > b.stride; });
-
-  int64_t current_stride = 1;
-  for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
-    target_strides[it->index] = current_stride;
-    current_stride *= target_sizes[it->index];
-  }
-
-  return target_strides;
-}
-
 struct AttentionPrepResults {
   mlir::MlirOp query_4d;
   mlir::MlirOp key_4d;
@@ -477,8 +443,7 @@ absl::StatusOr<FusedAttentionResults> ScaledDotProductFusedAttentionShlo(
     // We can only do this simple when the query and value have the same head
     // dimension.
     // TODO(willfroom): Check if we need to handle the general case.
-    Strides dense_strides =
-        DenseStrides(query.sizes(), query.strides(), out_dims);
+    Strides dense_strides = DenseStrides(query.strides(), out_dims);
     TT_ASSIGN_OR_RETURN(at::Tensor view_out,
                         ContiguousToView(std::move(results[0]), dense_strides,
                                          /*target_storage_offset=*/0));

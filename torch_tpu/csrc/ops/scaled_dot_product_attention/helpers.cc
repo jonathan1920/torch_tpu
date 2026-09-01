@@ -19,7 +19,9 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/absl_check.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -77,6 +79,31 @@ mlir::MlirOp GetScaleDefaulted(mlir::MlirBuilder& builder,
     element_type = builder.getOpBuilder().getF32Type();
   }
   return MakeScalarConstant(builder, scale, element_type);
+}
+
+Strides DenseStrides(absl::Span<const int64_t> template_strides,
+                     absl::Span<const int64_t> target_sizes) {
+  int rank = template_strides.size();
+  Strides target_strides(rank, 0);
+
+  struct Dim {
+    int index;
+    int64_t stride;
+  };
+  std::vector<Dim> dims(rank);
+  for (int i = 0; i < rank; ++i) {
+    dims[i] = {i, template_strides[i]};
+  }
+  absl::c_stable_sort(
+      dims, [](const Dim& a, const Dim& b) { return a.stride > b.stride; });
+
+  int64_t current_stride = 1;
+  for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
+    target_strides[it->index] = current_stride;
+    current_stride *= target_sizes[it->index];
+  }
+
+  return target_strides;
 }
 
 }  // namespace torch_tpu

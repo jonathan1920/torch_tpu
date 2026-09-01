@@ -429,9 +429,17 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
                            .out_dims_list = out_dims_list,
                            .op_param_cache_keys = std::move(param_keys)})));
 
-  TT_ASSIGN_OR_RETURN(
-      at::Tensor strided_result,
-      ContiguousToView(results[0], query.strides(), query.storage_offset()));
+  // We return a view with dense strides that preserves the layout permutation
+  // of the query. This ensures subsequent view operations (e.g., merging heads)
+  // do not crash due to unexpected non-contiguity, while avoiding the memory
+  // bloat and performance cost of matching exact CUDA strides (which may have
+  // gaps if the query was sliced).
+  // Note: This does not preserve the exact strides/offset for explicit
+  // `as_strided` calls, which is considered an acceptable trade-off.
+  // See: https://pytorch.org/docs/stable/generated/torch.as_strided.html
+  Strides dense_strides = DenseStrides(query.strides(), out_dims);
+  TT_ASSIGN_OR_RETURN(at::Tensor strided_result,
+                      ContiguousToView(results[0], dense_strides, 0));
 
   if (return_lse) {
     return {{strided_result, MakeTensor(std::move(results[1]))}};
