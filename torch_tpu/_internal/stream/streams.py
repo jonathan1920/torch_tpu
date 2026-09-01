@@ -229,6 +229,9 @@ class TpuEvent:
     # Accepted for CUDA API compatibility; TPU currently ignores these flags.
     self._base_event: _device_ops_backend.TpuEventBase | None = None
 
+  @experimental(
+      'record() is experimental and may change or be removed without notice.'
+  )
   def record(self, stream: TpuStream | None = None):
     """Snapshot all pending async futures on the current device."""
     if self._base_event is not None:
@@ -237,6 +240,9 @@ class TpuEvent:
     self._base_event = _device_ops_backend._record_event(stream_id=stream_id)  # pylint: disable=protected-access
     return self
 
+  @experimental(
+      'wait() is experimental and may change or be removed without notice.'
+  )
   def wait(self, stream: TpuStream | None = None) -> None:  # pylint: disable=unused-argument
     """No-op placeholder for CUDA stream-wait semantics.
 
@@ -251,16 +257,27 @@ class TpuEvent:
     # TODO(bawilson): actually support asynchronous waiting
     return
 
+  @experimental(
+      'query() is experimental and may change or be removed without notice.'
+  )
   def query(self) -> bool:
     """Checks if all work currently captured by this event has completed."""
     if self._base_event is None:
       return True
     return self._base_event.query()
 
+  @experimental(
+      'elapsed_time() is experimental and may change or be removed without'
+      ' notice.'
+  )
   def elapsed_time(self, end_event: Self) -> float:  # pylint: disable=unused-argument
     """Returns the time elapsed between recording and completing this event."""
     raise NotImplementedError(_NOT_IMPLEMENTED_STREAMS_MSG)
 
+  @experimental(
+      'synchronize() is experimental and may change or be removed without'
+      ' notice.'
+  )
   def synchronize(self) -> None:
     """Block until all snapshotted futures complete.
 
@@ -274,10 +291,18 @@ class TpuEvent:
     self._base_event.wait()
 
   @classmethod
+  @experimental(
+      'from_ipc_handle() is experimental and may change or be removed without'
+      ' notice.'
+  )
   def from_ipc_handle(cls, device, handle):
     """Reconstructs an event from an IPC handle on the given device."""
     raise NotImplementedError(_NOT_IMPLEMENTED_STREAMS_MSG)
 
+  @experimental(
+      'ipc_handle() is experimental and may change or be removed without'
+      ' notice.'
+  )
   def ipc_handle(self):
     """Returns an IPC handle of this event."""
     raise NotImplementedError(_NOT_IMPLEMENTED_STREAMS_MSG)
