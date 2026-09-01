@@ -1592,6 +1592,10 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float16: {"rtol": 1.2e-1, "atol": 1.1e-3},
                 torch.float32: {"rtol": 3.8e-1, "atol": 6.6e-5},
             },
+            "torch.ops.aten._safe_softmax.default": {
+                torch.bfloat16: {"rtol": 1e-3, "atol": 5.8e-3},
+                torch.float16: {"rtol": 1e-3, "atol": 1.1e-3},
+            },
             "var": {
                 torch.bfloat16: {"rtol": 3e-1, "atol": 2e-2},
             },
@@ -1807,35 +1811,10 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("add")
 
   def test_addcdiv(self):
-    self.do_test_op(
-        "addcdiv",
-        exclude_dtypes={
-            "gpu": (
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-                torch.float4_e2m1fn_x2,
-            ),
-        },
-    )
+    self.do_test_op("addcdiv")
 
   def test_addcmul(self):
-    self.do_test_op(
-        "addcmul",
-        exclude_dtypes={
-            "gpu": (
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-                torch.float4_e2m1fn_x2,
-            ),
-        },
-        exclude_inplace_dtypes={
-            "gpu": (
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-                torch.float4_e2m1fn_x2,
-            ),
-        },
-    )
+    self.do_test_op("addcmul")
 
   def test_addmm(self):
     self.do_test_op(
@@ -2229,16 +2208,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("digamma")
 
   def test_div(self):
-    self.do_test_op(
-        "div",
-        exclude_dtypes={
-            "gpu": (
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-                torch.float4_e2m1fn_x2,
-            ),
-        },
-    )
+    self.do_test_op("div")
 
   def test_dot(self):
     self.do_test_op(
@@ -2284,6 +2254,7 @@ class TestOps(op_testing.OpInfoTestBase):
             "cpu": COMPLEX_DTYPES,
             "gpu": (
                 *COMPLEX_DTYPES,
+                # TODO(b/555391048): support float8 golden data sampling.
                 torch.float8_e4m3fn,
                 torch.float8_e5m2,
                 torch.float4_e2m1fn_x2,
@@ -2452,21 +2423,11 @@ class TestOps(op_testing.OpInfoTestBase):
         # TODO: cpu does incorrect rounding for bfloat16 and float16.
         exclude_dtypes={
             "cpu": (torch.bfloat16, torch.float16),
-            "gpu": (
-                torch.float16,
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-                torch.float4_e2m1fn_x2,
-            ),
+            "gpu": (torch.float16,),
         },
         exclude_inplace_dtypes={
             "cpu": (torch.bfloat16, torch.float16),
-            "gpu": (
-                torch.float16,
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-                torch.float4_e2m1fn_x2,
-            ),
+            "gpu": (torch.float16,),
         },
     )
 
@@ -2480,15 +2441,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("fmin")
 
   def test_fmod(self):
-    self.do_test_op(
-        "fmod",
-        exclude_dtypes={
-            "gpu": (
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-            ),
-        },
-    )
+    self.do_test_op("fmod")
 
   @category("foreach")
   def test_foreach_abs(self):
@@ -3130,6 +3083,7 @@ class TestOps(op_testing.OpInfoTestBase):
         "norm",
         exclude_dtypes={
             "gpu": (
+                # TODO(b/555391048): support float4 golden data sampling.
                 torch.float4_e2m1fn_x2,
                 torch.int4,
             ),
@@ -3484,12 +3438,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "nonzero",
         exclude_dtypes={
-            "gpu": (
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-                torch.float4_e2m1fn_x2,
-                torch.int4,
-            ),
+            "gpu": (torch.int4,),
         },
     )
 
@@ -3897,16 +3846,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("select_scatter")
 
   def test_safe_softmax(self):
-    self.do_test_op(
-        "torch.ops.aten._safe_softmax.default",
-        exclude_dtypes={
-            "gpu": (
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-                torch.float4_e2m1fn_x2,
-            ),
-        },
-    )
+    self.do_test_op("torch.ops.aten._safe_softmax.default")
 
   def test_scalar_tensor(self):
     self.do_test_op("scalar_tensor")
@@ -3919,6 +3859,7 @@ class TestOps(op_testing.OpInfoTestBase):
             "cpu": COMPLEX_DTYPES,
             "gpu": (
                 *COMPLEX_DTYPES,
+                # TODO(b/555391048): support float8 golden data sampling.
                 torch.float8_e4m3fn,
                 torch.float8_e5m2,
                 torch.float4_e2m1fn_x2,
