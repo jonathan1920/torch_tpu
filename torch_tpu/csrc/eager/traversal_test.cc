@@ -205,14 +205,71 @@ TEST_F(TraversalTest, CompileAnnotatesArgumentLayouts) {
   CompilationSpec spec(std::make_unique<xla::CompileOptions>(),
                        CompileOptionsKey(12345));
   std::string mlir_text;
-  TF_ASSERT_OK_AND_ASSIGN(
-      [[maybe_unused]] auto kernel,
+  ASSERT_TRUE(
       (*traversal)
           ->Compile(
               std::move(spec), &mlir_text,
               /*use_stablehlo_bounds=*/false,
-              /*argument_layouts=*/{CustomLayout{.minor_to_major = {1, 0}}}));
+              /*argument_layouts=*/{CustomLayout{.minor_to_major = {1, 0}}})
+          .ok());
   EXPECT_THAT(mlir_text, testing::HasSubstr("mhlo.layout_mode = \"{1,0}\""));
+}
+
+TEST_F(TraversalTest, CompileAnnotatesArgumentLayoutsWithTilingAndCaching) {
+  Shape shape_2d(Dimensions{128, 64}, mlir::ElementType::F32);
+  absl::StatusOr<std::vector<DeviceBufferRef>> refs_a =
+      DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder, {},
+                                       OpParamCacheKeys::Empty(), {shape_2d});
+  ASSERT_TRUE(refs_a.ok());
+  if (!refs_a.ok()) {
+    return;
+  }
+  DeviceBufferRef ref_a = (*refs_a)[0];
+
+  MlirOpBuilder identity_builder = [](mlir::MlirBuilder& /*builder*/,
+                                      absl::Span<mlir::MlirOp> inputs)
+      -> absl::StatusOr<DynamicMlirOpResults> {
+    return DynamicMlirOpResults{inputs[0]};
+  };
+
+  absl::StatusOr<std::vector<DeviceBufferRef>> refs_b =
+      DeviceBufferList::CreateDeferred(OpName::kAdd,
+                                       std::move(identity_builder), {ref_a},
+                                       OpParamCacheKeys::Empty(), {shape_2d});
+  ASSERT_TRUE(refs_b.ok());
+  if (!refs_b.ok()) {
+    return;
+  }
+  DeviceBufferRef ref_b = (*refs_b)[0];
+
+  absl::StatusOr<std::unique_ptr<Traversal>> traversal =
+      Traversal::Create({ref_b}, {ref_a.device_buffer_list().get()});
+  ASSERT_TRUE(traversal.ok());
+  if (!traversal.ok()) {
+    return;
+  }
+  std::unique_ptr<Traversal> tr = std::move(*traversal);
+
+  CustomLayout tiled_layout{.minor_to_major = {1, 0}, .tiles = {{8}}};
+  CompilationSpec spec(std::make_unique<xla::CompileOptions>(),
+                       CompileOptionsKey(12345));
+  std::string mlir_text;
+  ASSERT_TRUE(tr->Compile(std::move(spec), &mlir_text,
+                          /*use_stablehlo_bounds=*/false,
+                          /*argument_layouts=*/{tiled_layout})
+                  .ok());
+  EXPECT_THAT(mlir_text,
+              testing::HasSubstr("mhlo.layout_mode = \"{1,0:T(8,128)}\""));
+
+  CustomLayout different_tile_layout{.minor_to_major = {1, 0}, .tiles = {{16}}};
+  CompilationCacheKey key_untiled = tr->GetCacheKey(
+      CompileOptionsKey(12345), {CustomLayout{.minor_to_major = {1, 0}}});
+  CompilationCacheKey key_tiled8 =
+      tr->GetCacheKey(CompileOptionsKey(12345), {tiled_layout});
+  CompilationCacheKey key_tiled16 =
+      tr->GetCacheKey(CompileOptionsKey(12345), {different_tile_layout});
+  EXPECT_NE(key_untiled, key_tiled8);
+  EXPECT_NE(key_tiled8, key_tiled16);
 }
 
 }  // namespace

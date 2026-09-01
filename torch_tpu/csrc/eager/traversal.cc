@@ -80,6 +80,7 @@
 #include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/device_assignment.h"
 #include "xla/xla_data.pb.h"
@@ -640,6 +641,7 @@ std::vector<Shape> GetShapes(absl::Span<const DeviceBufferRef> buffers) {
 }
 
 void AnnotateArgumentLayouts(mlir::ModuleOp module,
+                             absl::Span<const DeviceBufferRef> arguments,
                              absl::Span<const CustomLayout> argument_layouts) {
   if (argument_layouts.empty()) return;
 
@@ -647,18 +649,39 @@ void AnnotateArgumentLayouts(mlir::ModuleOp module,
   ABSL_CHECK(main)  // CRASH_OK: Should never call API on a malformed module.
       << "MLIR module does not contain a main function for argument layouts.";
 
+  ABSL_CHECK_EQ(argument_layouts.size(), arguments.size())  // CRASH_OK
+      << "argument_layouts size (" << argument_layouts.size()
+      << ") must match arguments size (" << arguments.size() << ")";
+  ABSL_CHECK_LE(argument_layouts.size(), main.getNumArguments())  // CRASH_OK
+      << "argument_layouts size (" << argument_layouts.size()
+      << ") exceeds MLIR main argument count (" << main.getNumArguments()
+      << ")";
+
   mlir::Builder builder(main.getContext());
   for (size_t i = 0; i < argument_layouts.size(); ++i) {
-    ABSL_CHECK(  // CRASH_OK: Only an infra bug could cause a bad arg layout idx
-        i < main.getNumArguments())
-        << "argument_layout index " << i << " is out of range [0, "
-        << main.getNumArguments() << ")";
     const CustomLayout& layout = argument_layouts[i];
     if (!layout.minor_to_major.empty()) {
-      main.setArgAttr(
-          i, "mhlo.layout_mode",
-          builder.getStringAttr(
-              xla::LayoutUtil::MakeLayout(layout.minor_to_major).ToString()));
+      absl::Span<const int64_t> dims = arguments[i].dimensions();
+      ABSL_CHECK_GE(layout.minor_to_major.size(), dims.size())  // CRASH_OK
+          << "minor_to_major size (" << layout.minor_to_major.size()
+          << ") is smaller than argument " << i << " rank (" << dims.size()
+          << ")";
+      std::vector<xla::Tile> tiles;
+      tiles.reserve(layout.tiles.size());
+      for (const Indices& tile_indices : layout.tiles) {
+        Indices tile_dims(tile_indices.begin(), tile_indices.end());
+        while (tile_dims.size() < dims.size()) {
+          int64_t dim_idx = layout.minor_to_major[tile_dims.size()];
+          ABSL_CHECK_GE(dim_idx, 0);            // CRASH_OK
+          ABSL_CHECK_LT(dim_idx, dims.size());  // CRASH_OK
+          tile_dims.push_back(dims[dim_idx]);
+        }
+        tiles.push_back(xla::Tile(tile_dims));
+      }
+      xla::Layout xla_layout(layout.minor_to_major, tiles,
+                             layout.element_size_in_bits);
+      main.setArgAttr(i, "mhlo.layout_mode",
+                      builder.getStringAttr(xla_layout.ToString()));
     }
   }
 }
@@ -729,7 +752,7 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
     TT_ASSIGN_OR_RETURN(
         auto module,
         BuildMlirModule(mlir_context, use_stablehlo_bounds, donated_inputs));
-    AnnotateArgumentLayouts(*module, argument_layouts);
+    AnnotateArgumentLayouts(*module, arguments_, argument_layouts);
     if (out_mlir_text != nullptr) {
       *out_mlir_text = MlirModuleToString(*module);
     }
