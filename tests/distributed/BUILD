@@ -755,6 +755,8 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
+        "noasan",  # TODO(b/555734615): fix the test in asan mode.
+        "notsan",  # TODO(b/555734615): fix the time-out in tsan mode.
         "requires-tpu-v5lite:8",
     ],
     deps = [
