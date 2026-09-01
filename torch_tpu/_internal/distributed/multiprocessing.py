@@ -15,8 +15,11 @@
 """OSS implementation of TorchTPU's multiprocessing wrapper."""
 
 import multiprocessing
+import sys
 from typing import Any
+
 from absl import app
+from absl import flags
 
 
 def handle_main(main, *args, **kwargs):
@@ -32,3 +35,19 @@ def handle_test_main(main, *args, **kwargs):
 def get_context(method=None) -> Any:
   """Returns a multiprocessing context."""
   return multiprocessing.get_context(method)
+
+
+def parse_absl_flags() -> None:
+  """Parses absl flags in spawned worker subprocesses if not already parsed.
+
+  Required for OSS: Subprocesses spawned via torch.multiprocessing.spawn bypass
+  the absl main entry point and start with unparsed flags. This prevents
+  subprocesses from raising UnparsedFlagAccessError when downstream utilities
+  read flag values (e.g., --test_mode in et.assert_raises_message).
+  """
+  if not flags.FLAGS.is_parsed():
+    # Calling flags.FLAGS as a callable evaluates and marks the registry parsed.
+    # We pass known_only=True so absl consumes flags declared in the binary
+    # without raising UnrecognizedFlagError on runner-injected arguments (e.g.,
+    # torchrun/pytest options present in sys.argv).
+    flags.FLAGS(sys.argv, known_only=True)

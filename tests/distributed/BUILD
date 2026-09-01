@@ -362,7 +362,6 @@ torch_tpu_py_test(
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
-    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 3,
     tags = if_oss(
         ["exclusive"],
@@ -389,9 +388,15 @@ torch_tpu_py_test(
     args = [
         "--test_mode=cov",
     ],
-    env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
+    env = {
+        "TORCH_SHOW_CPP_STACKTRACES": "1",
+        # TODO(b/493050035): Use a centralized location to set this flag.
+        # Required in OSS: In OSS CI with multiprocess spawn, PyTorch's addr2line symbolizer can
+        # crash or hang during exception unwinding and TPU driver cleanup. Disabling addr2line
+        # prevents SIGSEGV crashes while still capturing traces.
+        "TORCH_DISABLE_ADDR2LINE": "1",
+    },
     main = "all_gather_errors_test.py",
-    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 3,
     tags = if_oss(
         ["exclusive"],

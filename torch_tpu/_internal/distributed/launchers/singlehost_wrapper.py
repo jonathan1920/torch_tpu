@@ -44,6 +44,7 @@ from typing import Any, Callable
 from absl import logging
 import portpicker
 from torch_tpu._internal.utils import hardware
+from torch_tpu._internal.distributed import multiprocessing
 
 
 def prepare_tpu_environment(world_size: int | None = None) -> None:
@@ -90,6 +91,13 @@ class WorkerWrapper:
     self.__qualname__ = getattr(func, "__qualname__", str(func))
 
   def __call__(self, *args: Any, **kwargs: Any) -> None:
+    # Required for OSS: Subprocesses spawned via torch.multiprocessing.spawn
+    # bypass the absl main entry point and start with unparsed flags. This
+    # prevents subprocesses from raising UnparsedFlagAccessError when
+    # downstream utilities read flag values (e.g., --test_mode in
+    # et.assert_raises_message).
+    # Runs inside the spawned worker subprocess before executing user logic.
+    multiprocessing.parse_absl_flags()
     # Execute user function with any positional and keyword args.
     self.func(*args, **kwargs)
 

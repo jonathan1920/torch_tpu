@@ -24,6 +24,7 @@ torch_tpu_py_library(
     srcs = ["singlehost_wrapper.py"],
     deps = [
         "//shims/absl_py/logging",
+        "//torch_tpu/_internal/distributed:multiprocessing",
         "//torch_tpu/_internal/utils:hardware",
         "@pypi//portpicker",
     ],
