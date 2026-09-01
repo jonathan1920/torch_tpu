@@ -50,6 +50,33 @@ def _get_initial_seed(backend_mod: Any, dev: torch.device, rank: int) -> int:
   return backend_mod.initial_seed()
 
 
+def _set_same_seed(backend_mod: Any, rank: int) -> None:
+  """Sets manual seed to a fixed value of 42 across all ranks."""
+  backend_mod.manual_seed(42)
+
+
+def _gen_rand_tensors(
+    backend_mod: Any, dev: torch.device, rank: int
+) -> list[list[float]]:
+  """Generates a stack of eager random tensors on dev as nested lists."""
+  tensors = [torch.rand(10, device=dev).cpu().tolist() for _ in range(5)]
+  return tensors
+
+
+def _gen_compiled_rand(
+    backend_mod: Any, dev: torch.device, rank: int
+) -> list[float]:
+  """Generates random output from a compiled function on dev as a list."""
+  torch._inductor.config.compile_threads = 1
+
+  def fn(x):
+    return torch.rand_like(x) + torch.rand_like(x)
+
+  compiled_fn = torch.compile(fn, fullgraph=True)
+  x = torch.zeros(10, device=dev)
+  return compiled_fn(x).cpu().tolist()
+
+
 def _multiprocess_worker(
     results_queue: queue.Queue[tuple[int, Any]],
     backend_name: str,
@@ -152,6 +179,45 @@ class MultiProcessTest(seed_test_utils.MultiProcessRepeatableTest):
     for i in range(self.num_devices):
       self.assertEqual(seeds[i], 42 + i)
     self.assertNotEqual(seeds[0], seeds[1])
+
+  def test_multiprocess_eager_device_isolation_deterministic(self):
+    """Verifies spawned processes per device produce deterministic outputs."""
+    trial1 = self._run_distributed(
+        _set_different_seeds,
+        _gen_rand_tensors,
+    )
+    trial2 = self._run_distributed(
+        _set_different_seeds,
+        _gen_rand_tensors,
+    )
+
+    for res1, res2 in zip(trial1, trial2):
+      self.assertEqual(res1, res2)
+    self.assertNotEqual(trial1[0], trial1[1])
+
+  def test_multiprocess_identical_seed_across_devices_matches(self):
+    """Verifies identical seed across spawned processes matches output."""
+    outputs = self._run_distributed(
+        _set_same_seed,
+        _gen_rand_tensors,
+    )
+    for i in range(1, len(outputs)):
+      self.assertEqual(outputs[0], outputs[i])
+
+  def test_multiprocess_compiled_device_deterministic(self):
+    """Verifies compiled function across processes is deterministic."""
+    trial1 = self._run_distributed(
+        _set_different_seeds,
+        _gen_compiled_rand,
+    )
+    trial2 = self._run_distributed(
+        _set_different_seeds,
+        _gen_compiled_rand,
+    )
+
+    for res1, res2 in zip(trial1, trial2):
+      self.assertEqual(res1, res2)
+    self.assertNotEqual(trial1[0], trial1[1])
 
 
 if __name__ == "__main__":
