@@ -811,6 +811,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "handshake_test",
     srcs = ["handshake_test.py"],
+    notest_oss = "TODO(b/555376758): fix handshake port race in OSS",
     shard_count = 8,
     tags = [
         "noasan",  # TODO(b/497035517)
