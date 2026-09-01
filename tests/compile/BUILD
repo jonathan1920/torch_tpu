@@ -207,6 +207,7 @@ torch_tpu_py_test(
     notest_oss = "Disabled in OSS due to infra limitations on distributed tests",
     shard_count = 6,
     tags = [
+        "noasan",  # TODO(b/555762239): fix the test in asan mode.
         "requires-accel-hbm",
         "requires-tpu-v5lite:8",
     ],
