@@ -17,6 +17,7 @@
 #include "torch_tpu/csrc/ops/topk/topk.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -37,8 +38,9 @@ namespace torch_tpu {
 namespace chlo = mlir::chlo;
 namespace stablehlo = mlir::stablehlo;
 
-absl::StatusOr<TopKOutputs> BuildTopKShlo(mlir::MlirOp input_op, int64_t k,
-                                          int64_t dim, TopKMode topk_mode) {
+absl::StatusOr<TopKOutputs> BuildTopKShlo(
+    mlir::MlirOp input_op, int64_t k, int64_t dim, TopKMode topk_mode,
+    std::optional<TopKStableMode> topk_stable_mode) {
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input_op);
   const int64_t rank = input_type.getRank();
   TT_ASSIGN_OR_RETURN(const int64_t canonical_dim, SafeWrapDim(dim, rank));
@@ -59,9 +61,13 @@ absl::StatusOr<TopKOutputs> BuildTopKShlo(mlir::MlirOp input_op, int64_t k,
     sort_input = stablehlo::Neg(sort_input);
   }
 
-  // Call chlo::TopK along the innermost dimension (rank - 1).
+  // Call chlo::TopK along the innermost dimension (rank - 1). The chlo::TopK
+  // builder defaults is_stable to true; derive it from topk_stable_mode instead
+  // so the default preserves the historical unstable-sort tie-selection
+  // semantics. See github.com/google-pytorch/torch_tpu/issues/3392.
   llvm::SmallVector<mlir::MlirOp, 2> outputs =
-      chlo::TopK(sort_input, static_cast<uint64_t>(k));
+      chlo::TopK(sort_input, static_cast<uint64_t>(k),
+                 /*is_stable=*/topk_stable_mode == TopKStableMode::kStable);
   mlir::MlirOp topk_values = outputs[0];
   mlir::MlirOp topk_indices = outputs[1];
 
