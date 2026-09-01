@@ -1544,6 +1544,10 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "tier3_compilation_cache_enablement_test",
     srcs = ["tier3_compilation_cache_enablement_test.cc"],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Avoid CppLink OOM in asan build.
+    },
     requires_libtpu = True,
     deps = [
         ":compilation_cache_utils",
