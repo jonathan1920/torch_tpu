@@ -735,6 +735,7 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
+        "noasan",  # TODO(b/555774204): fix the test in asan mode.
         "requires-tpu-v5lite:8",
     ],
     deps = [
