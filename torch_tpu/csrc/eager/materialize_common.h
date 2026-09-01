@@ -33,7 +33,7 @@
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/structured_log_buffer.h"
 #include "torch_tpu/csrc/eager/traversal.h"
-#include "torch_tpu/pjrt/pjrt_utils.h"
+#include "torch_tpu/csrc/pjrt/pjrt_utils.h"
 #include "xla/pjrt/pjrt_client.h"
 
 namespace torch_tpu {

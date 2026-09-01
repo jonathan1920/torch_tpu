@@ -51,7 +51,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/resize:resize_aten_kernels",
         "//torch_tpu/csrc/ops/uniform",
         "//torch_tpu/csrc/ops/view:view_aten_kernels",
-        "//torch_tpu/pjrt:pjrt_utils",
+        "//torch_tpu/csrc/pjrt:pjrt_utils",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

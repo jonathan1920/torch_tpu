@@ -47,7 +47,7 @@
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/python_context.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace torch_tpu {

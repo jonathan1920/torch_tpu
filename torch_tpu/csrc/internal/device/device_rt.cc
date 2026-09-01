@@ -50,7 +50,7 @@
 #include "torch_tpu/csrc/eager/structured_log_buffer.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/eager/tpu_hooks.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "xla/pjrt/pjrt_client.h"
 
 namespace torch_tpu {

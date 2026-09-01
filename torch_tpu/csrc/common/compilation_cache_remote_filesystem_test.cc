@@ -29,7 +29,7 @@
 #include "torch_tpu/csrc/common/compilation_spec.h"
 #include "torch_tpu/csrc/common/env_vars.h"
 #include "torch_tpu/csrc/common/tier3_compilation_cache.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "xla/tsl/platform/env.h"
 
 namespace torch_tpu {

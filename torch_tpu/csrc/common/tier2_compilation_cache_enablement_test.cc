@@ -21,7 +21,7 @@
 #include "gtest/gtest.h"
 #include "torch_tpu/csrc/common/flags.h"
 #include "torch_tpu/csrc/common/tier2_compilation_cache.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 
 ABSL_FLAG(std::string, expected_tier2_cache_name, "",
           "The expected name of the tier-2 compilation cache, or empty if the "

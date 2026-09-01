@@ -48,7 +48,7 @@
 #include "torch_tpu/csrc/common/fingerprint_utils.h"
 #include "torch_tpu/csrc/common/shape.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/translate/register.h"
 #include "xla/pjrt/pjrt_client.h"

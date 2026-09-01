@@ -24,7 +24,7 @@
 #include "torch_tpu/csrc/common/compilation.h"
 #include "torch_tpu/csrc/common/compilation_spec.h"
 #include "torch_tpu/csrc/common/compilation_test_helper.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla.pb.h"
 

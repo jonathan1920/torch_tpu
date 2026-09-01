@@ -62,7 +62,7 @@
 #include "torch_tpu/csrc/ops/python_context.h"
 #include "torch_tpu/csrc/ops/view_decomposition/decomposition.h"
 #include "torch_tpu/csrc/ops/view_decomposition/strided_layout.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"

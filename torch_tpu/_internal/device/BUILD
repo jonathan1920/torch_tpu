@@ -84,7 +84,7 @@ pybind_extension(
         "//torch_tpu/csrc/eager:tensor_to_buffer",
         "//torch_tpu/csrc/eager:tpu_hooks",
         "//torch_tpu/csrc/internal/sync:sync_cc",
-        "//torch_tpu/pjrt:pjrt_state",
+        "//torch_tpu/csrc/pjrt:pjrt_state",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",

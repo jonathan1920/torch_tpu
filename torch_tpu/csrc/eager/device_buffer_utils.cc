@@ -64,7 +64,6 @@
 #include "torch_tpu/csrc/ops/view_decomposition/inversion.h"
 #include "torch_tpu/csrc/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/csrc/ops/view_decomposition/view_sequence.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
 
 namespace torch_tpu {
 namespace {

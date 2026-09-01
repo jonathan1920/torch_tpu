@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_pjrt_PJRT_CLIENT_H_
-#define TORCH_TPU_pjrt_PJRT_CLIENT_H_
+#ifndef TORCH_TPU_CSRC_PJRT_PJRT_CLIENT_H_
+#define TORCH_TPU_CSRC_PJRT_PJRT_CLIENT_H_
 
 #include <cstdint>
 #include <memory>
@@ -33,4 +33,4 @@ absl::StatusOr<absl_nonnull std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_pjrt_PJRT_CLIENT_H_
+#endif  // TORCH_TPU_CSRC_PJRT_PJRT_CLIENT_H_

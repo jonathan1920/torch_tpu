@@ -35,7 +35,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops:op_builder_utils",
         "//torch_tpu/csrc/ops:op_names",
         "//torch_tpu/csrc/ops/macros:kernel",
-        "//torch_tpu/pjrt:pjrt_utils",
+        "//torch_tpu/csrc/pjrt:pjrt_utils",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

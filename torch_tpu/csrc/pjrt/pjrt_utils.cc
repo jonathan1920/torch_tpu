@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/pjrt/pjrt_utils.h"
+#include "torch_tpu/csrc/pjrt/pjrt_utils.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -55,7 +55,7 @@
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/events_queue.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"

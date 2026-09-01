@@ -40,7 +40,7 @@
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/structured_log_buffer.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
-#include "torch_tpu/pjrt/pjrt_utils.h"
+#include "torch_tpu/csrc/pjrt/pjrt_utils.h"
 namespace torch_tpu {
 
 static std::atomic<int> g_window_num_stripes{4};

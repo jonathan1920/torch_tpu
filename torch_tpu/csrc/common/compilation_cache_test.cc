@@ -53,7 +53,7 @@
 #include "torch_tpu/csrc/common/shape.h"
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla.pb.h"

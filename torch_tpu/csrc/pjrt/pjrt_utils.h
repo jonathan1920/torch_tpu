@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_PJRT_PJRT_UTILS_H_
-#define TORCH_TPU_PJRT_PJRT_UTILS_H_
+#ifndef TORCH_TPU_CSRC_PJRT_PJRT_UTILS_H_
+#define TORCH_TPU_CSRC_PJRT_PJRT_UTILS_H_
 
 #include <cstdint>
 #include <memory>
@@ -93,4 +93,4 @@ std::string ToString(const xla::PjRtBuffer& buffer);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_PJRT_PJRT_UTILS_H_
+#endif  // TORCH_TPU_CSRC_PJRT_PJRT_UTILS_H_

@@ -58,7 +58,7 @@
 #include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/csrc/ops/rng_utils.h"
 #include "torch_tpu/csrc/ops/uniform/uniform.h"
-#include "torch_tpu/pjrt/pjrt_utils.h"
+#include "torch_tpu/csrc/pjrt/pjrt_utils.h"
 
 namespace torch_tpu {
 namespace {

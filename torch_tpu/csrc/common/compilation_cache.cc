@@ -72,7 +72,7 @@
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/internal/dynamism/dynamism_ops.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "tsl/platform/numbers.h"
 #include "xla/hlo/utils/concurrency/concurrency_utils.h"
 #include "xla/pjrt/pjrt_client.h"

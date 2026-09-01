@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/pjrt/pjrt_client.h"
+#include "torch_tpu/csrc/pjrt/pjrt_client.h"
 
 #include <cstdint>
 #include <memory>

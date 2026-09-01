@@ -74,7 +74,7 @@
 #include "torch_tpu/csrc/eager/structured_log_buffer.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/python_context.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/pjrt/host_memory_allocator.h"
 

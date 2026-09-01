@@ -81,7 +81,7 @@
 #include "torch_tpu/csrc/ops/view_decomposition/contiguous_to_view.h"
 #include "torch_tpu/csrc/ops/view_decomposition/decomposition.h"
 #include "torch_tpu/csrc/ops/view_decomposition/strided_layout.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 #include "tsl/platform/fingerprint.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"

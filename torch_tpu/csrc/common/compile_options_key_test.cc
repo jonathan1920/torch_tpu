@@ -24,7 +24,7 @@
 #include "torch_tpu/csrc/common/compilation_spec.h"
 #include "torch_tpu/csrc/common/compilation_test_helper.h"
 #include "torch_tpu/csrc/common/fingerprint_utils.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 
 namespace torch_tpu {
 namespace {

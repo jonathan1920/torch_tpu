@@ -55,7 +55,7 @@
 #include "torch_tpu/csrc/internal/sync/sync.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 
 namespace torch_tpu {
 namespace {

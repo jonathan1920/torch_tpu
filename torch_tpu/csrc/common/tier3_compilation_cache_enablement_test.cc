@@ -21,7 +21,7 @@
 #include "gtest/gtest.h"
 #include "torch_tpu/csrc/common/compilation_cache_utils.h"
 #include "torch_tpu/csrc/common/flags.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 
 ABSL_FLAG(
     std::string, expected_tier3_cache_root, "",

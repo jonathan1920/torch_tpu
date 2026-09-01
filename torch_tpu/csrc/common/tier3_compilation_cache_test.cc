@@ -33,7 +33,7 @@
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/env_vars.h"
 #include "torch_tpu/csrc/common/error_utils.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 
 namespace torch_tpu {
 

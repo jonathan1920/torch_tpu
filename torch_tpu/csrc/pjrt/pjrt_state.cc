@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -42,7 +42,7 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/distributed/slicebuilder/discovery.h"
-#include "torch_tpu/pjrt/pjrt_client.h"
+#include "torch_tpu/csrc/pjrt/pjrt_client.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "xla/backends/profiler/plugin/plugin_tracer.h"

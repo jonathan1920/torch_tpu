@@ -36,7 +36,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/common:error_utils",
         "//torch_tpu/csrc/distributed:process_group_tpu",
         "//torch_tpu/csrc/distributed:utils",
-        "//torch_tpu/pjrt:pjrt_state",
+        "//torch_tpu/csrc/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:check",
     ],
