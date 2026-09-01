@@ -123,8 +123,22 @@ class HandleGenerativeOpsPass:
         torch.ops.aten.arange.default: self._process_arange_op,
         torch.ops.aten.arange.start: self._process_arange_op,
         torch.ops.aten.arange.start_step: self._process_arange_op,
-        torch.ops.aten.ones.default: self._process_ones_op,
-        # TODO (mkkhanna): Add support for other generative ops.
+        torch.ops.aten.ones.default: self._process_bounded_size_op,
+        torch.ops.aten.zeros.default: self._process_bounded_size_op,
+        torch.ops.aten.full.default: self._process_bounded_size_op,
+        torch.ops.aten.empty.memory_format: self._process_bounded_size_op,
+        torch.ops.aten.rand.default: self._process_bounded_size_op,
+        torch.ops.aten.randn.default: self._process_bounded_size_op,
+        torch.ops.aten.randint.default: (
+            lambda gm, node: self._process_bounded_size_op(
+                gm, node, size_arg_idx=1
+            )
+        ),
+        torch.ops.aten.randint.low: (
+            lambda gm, node: self._process_bounded_size_op(
+                gm, node, size_arg_idx=2
+            )
+        ),
     }
 
   def __call__(self, graph_module: torch.fx.GraphModule) -> None:
@@ -286,13 +300,17 @@ class HandleGenerativeOpsPass:
     node.replace_all_uses_with(dynamic_arange_node)
     graph_module.graph.erase_node(node)
 
-  def _process_ones_op(
+  def _process_bounded_size_op(
       self,
       graph_module: torch.fx.GraphModule,
       node: torch.fx.Node,
+      size_arg_idx: int = 0,
   ) -> None:
-    """Processes ones op node."""
-    sizes = node.args[0]
+    """Processes generative ops with dynamic sizes (e.g.
+
+    ones, zeros, empty, full, rand, randn, randint).
+    """
+    sizes = node.args[size_arg_idx]
     is_container = isinstance(sizes, (list, tuple))
     sizes_list = list(sizes) if is_container else [sizes]
 
@@ -318,7 +336,11 @@ class HandleGenerativeOpsPass:
 
     if has_symint:
       new_size_arg = type(sizes)(new_sizes) if is_container else new_sizes[0]
-      node.args = (new_size_arg, *node.args[1:])
+      node.args = (
+          *node.args[:size_arg_idx],
+          new_size_arg,
+          *node.args[size_arg_idx + 1 :],
+      )
 
     if current_node != node:
       node.replace_all_uses_with(

@@ -42,6 +42,22 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "generative_ops_test",
+    srcs = ["generative_ops_test.py"],
+    notest_oss = "OSS needs to be updated with the latest libtpu release for bounded dynamism.",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils:test_utils",
+    ],
+)
+
+torch_tpu_py_test(
     name = "dynamic_view_test",
     srcs = ["dynamic_view_test.py"],
     oss_presubmit_tpu_generation = tpu_gen(

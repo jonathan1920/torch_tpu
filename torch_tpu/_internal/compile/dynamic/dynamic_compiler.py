@@ -104,6 +104,8 @@ def _get_inputs_dynamic_flag(
       flags.append(
           False
       )  # for scalar tensor as SymInt is replaced by scalar tensor in MLIR
+    else:
+      flags.append(False)
   return flags
 
 
@@ -115,8 +117,7 @@ def _extract_minor_to_major(
   if parameter_layouts is None:
     return ()
   layouts = []
-  for index, layout in enumerate(parameter_layouts):
-    is_dynamic = parameter_dynamic_flags[index]
+  for is_dynamic, layout in zip(parameter_dynamic_flags, parameter_layouts):
     if is_dynamic and layout is not None:
       layouts.append(tuple(layout[0]))
     else:
