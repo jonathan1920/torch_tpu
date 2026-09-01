@@ -417,7 +417,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["model_coverage_timm_test.py"],
     data = ["data/goldfish.jpg"],
-    notap = "TODO(b/555252602): Temporarily disabled due to SDPA Pallas Flash Attention precision issue.",
     notest_oss = "No OSS access to model resources",
     shard_count = 6,
     tags = [
