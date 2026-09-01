@@ -490,6 +490,33 @@ class RngCudaRefTest(_BaseRngTest):
     g = torch.Generator(device=self.device)
     self.assertEqual(g.device.type, self.device.type)
 
+  def test_generator_graphsafe_get_state_shares_state(self):
+    """Verifies graphsafe_get_state returns generator sharing state."""
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+    g_shared = g.graphsafe_get_state()
+    self.assertIsInstance(g_shared, torch.Generator)
+
+    # Generating random numbers on g advances both g and g_shared because they
+    # share the underlying intrusive state pointer.
+    _ = torch.rand(10, generator=g, device=self.device)
+    self.assertTrue(torch.equal(g.get_state(), g_shared.get_state()))
+
+  def test_generator_graphsafe_set_state_restores_stream(self):
+    """Verifies graphsafe_set_state restores PRNG state and reproducibility."""
+    g = torch.Generator(device=self.device)
+    g.manual_seed(42)
+    saved_state = g.clone_state()
+
+    expected_out = torch.rand(10, generator=g, device=self.device)
+
+    g.graphsafe_set_state(saved_state)
+    self.assertEqual(g.initial_seed(), saved_state.initial_seed())
+    self.assertEqual(g.get_offset(), saved_state.get_offset())
+
+    actual_out = torch.rand(10, generator=g, device=self.device)
+    self.assertTrue(torch.equal(actual_out, expected_out))
+
 
 class CompiledRngTest(_BaseRngTest):
   """Reference tests comparing compiled RNG behaviors for current device."""
