@@ -1187,7 +1187,7 @@ def torch_tpu_oss_torch_example(
         deps = DEFAULT_TORCH_EXAMPLE_DEPS,
         tags = None,
         **kwargs):
-    """Creates an OSS-only PyTorch upstream example integration test target run on nightly builds.
+    """Creates an OSS-only PyTorch upstream example integration test target.
 
     Args:
         name: The name of the test.
@@ -1225,6 +1225,7 @@ def torch_tpu_oss_torch_example(
         main = main,
         env = env,
         nolocal = "This test requires downloading the raw PyTorch examples tree.",
+        nonightly_oss = "Test in development. To be added to nightly once stable.",
         nopresubmit_oss = "This test requires downloading the raw PyTorch examples tree.",
         tags = all_tags,
         deps = deps,
