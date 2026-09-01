@@ -305,7 +305,6 @@ torch_tpu_py_test(
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
-    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = if_oss(
         ["exclusive"],
@@ -334,7 +333,6 @@ torch_tpu_py_test(
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "alltoall_collective_errors_test.py",
-    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = if_oss(
         ["exclusive"],
