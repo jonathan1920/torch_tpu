@@ -61,6 +61,7 @@ torch_tpu_py_test(
         # per PyTorch process.' occurs because each TPU7x chip contains two addressable TensorCores,
         # but manual process group init expects exactly 1 TPU device per process.
         "fails-on-tpu-v7",
+        "noasan",  # TODO(b/555770497): fix the test in asan mode.
         "requires-tpu-v5lite",
     ],
     deps = [
