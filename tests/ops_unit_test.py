@@ -10457,15 +10457,17 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase):
         check_sim(cpu_tensor, tpu_tensor, key)
         assert_close(cpu_tensor, tpu_tensor, key)
 
-  def test_sdpa_masked_out_row(self):
+  @parameterized.named_parameters(
+      ("flash", torch.nn.attention.SDPBackend.FLASH_ATTENTION),
+      ("overrideable", torch.nn.attention.SDPBackend.OVERRIDEABLE),
+  )
+  def test_sdpa_masked_out_row(self, backend: torch.nn.attention.SDPBackend):
     """Check that a masked out row does not contain NaNs."""
     q = torch.ones((1, 1, 2, 2), dtype=torch.float32).tpu()
     k = torch.ones((1, 1, 2, 2), dtype=torch.float32).tpu()
     v = torch.ones((1, 1, 2, 2), dtype=torch.float32).tpu()
     mask = torch.tensor([[0, 0], [1, 1]], dtype=torch.bool).tpu()
-    with torch.nn.attention.sdpa_kernel(
-        torch.nn.attention.SDPBackend.OVERRIDEABLE
-    ):
+    with torch.nn.attention.sdpa_kernel(backend):
       result = torch.nn.functional.scaled_dot_product_attention(
           q, k, v, attn_mask=mask
       ).cpu()
