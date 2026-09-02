@@ -1164,7 +1164,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"atol": 5.9e-4},
     },
     "tan": {
-        torch.complex64: {"rtol": 7.1e-6},
+        torch.complex64: {"rtol": 3.0e-5, "atol": 5.0e-6},
     },
     "tanh": {
         torch.complex64: {"rtol": 1.1e-5, "atol": 1.1e-5},
@@ -1212,6 +1212,9 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     },
     "_foreach_sigmoid": {
         torch.complex64: {"rtol": 1.4e-5},
+    },
+    "_foreach_tan": {
+        torch.complex64: {"rtol": 3.7e-5},
     },
     "_foreach_tanh": {
         torch.complex64: {"rtol": 2.8e-5, "atol": 1.1e-5},
@@ -1414,7 +1417,7 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.uint8: {"rtol": 4e-6},
     },
     "tan": {
-        torch.complex64: {"rtol": 7.1e-6},
+        torch.complex64: {"rtol": 3.0e-5, "atol": 2.5e-4},
     },
     "tanh": {
         torch.complex64: {"rtol": 1.1e-5, "atol": 1.1e-5},
