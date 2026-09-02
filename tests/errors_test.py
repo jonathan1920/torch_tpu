@@ -10542,6 +10542,17 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.logcumsumexp(t, dim=1)
 
+  def test_logcumsumexp_with_unsupported_bool_dtype(self):
+    """Tests logcumsumexp rejects bool inputs with expected error."""
+    t = torch.tensor([True, False], device=et.device(), dtype=torch.bool)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""logcumsumexp(): expected the input dtype to be floating point, got bool""",
+        gpu=""""logcumsumexp_cuda" not implemented for 'Bool'""",
+        message_reviewed_by="adivinpatel",
+    ):
+      torch.logcumsumexp(t, dim=0)
+
   def test_unsafe_masked_index_error(self):
     with et.assert_raises_message(
         IndexError,
