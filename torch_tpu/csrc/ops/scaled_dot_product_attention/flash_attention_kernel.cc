@@ -57,6 +57,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/internal/mosaic/op_builders.h"
+#include "torch_tpu/csrc/ops/scaled_dot_product_attention/flash_attention_config.h"
 #include "torch_tpu/csrc/ops/scaled_dot_product_attention/util.h"
 #include "xla/xla_data.pb.h"
 

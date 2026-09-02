@@ -14,50 +14,16 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_KERNELS_FLASH_ATTENTION_KERNEL_H_
-#define TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_KERNELS_FLASH_ATTENTION_KERNEL_H_
-
-#include <cstdint>
-#include <string>
+#ifndef TORCH_TPU_CSRC_OPS_SCALED_DOT_PRODUCT_ATTENTION_FLASH_ATTENTION_KERNEL_H_
+#define TORCH_TPU_CSRC_OPS_SCALED_DOT_PRODUCT_ATTENTION_FLASH_ATTENTION_KERNEL_H_
 
 #include "absl/status/statusor.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "xla/xla_data.pb.h"
+#include "torch_tpu/csrc/ops/scaled_dot_product_attention/flash_attention_config.h"
 
 namespace mlir::torch_tpu {
-
-// Configuration for the flash attention kernel.
-struct FlashAttnConfig {
-  ElementType element_type;
-  int64_t batch_size;
-  int64_t num_heads;
-  int64_t kv_num_heads;
-  int64_t qk_head_dim;
-  int64_t vo_head_dim;
-  int64_t q_sequence_length;
-  int64_t kv_sequence_length;
-  int64_t padded_q_sequence_length;
-  int64_t padded_kv_sequence_length;
-  bool is_causal;
-  float scale;
-  // Broadcast dimensions of the mask.
-  llvm::SmallVector<int64_t, 4> mask_broadcast_dims;
-  // Whether to return LSE (m and l) tensors.
-  bool return_lse;
-  bool has_attn_bias;
-};
-
-struct Tiling {
-  int64_t qt;
-  int64_t kt;
-};
-
-constexpr int64_t kDefaultQTileSize = 512;
-constexpr int64_t kDefaultKTileSize = 512;
 
 // Creates the flash attention kernel for the given configuration.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateKernel(
@@ -73,4 +39,4 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateBackwardDqKernel(
 
 }  // namespace mlir::torch_tpu
 
-#endif  // TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_KERNELS_FLASH_ATTENTION_KERNEL_H_
+#endif  // TORCH_TPU_CSRC_OPS_SCALED_DOT_PRODUCT_ATTENTION_FLASH_ATTENTION_KERNEL_H_

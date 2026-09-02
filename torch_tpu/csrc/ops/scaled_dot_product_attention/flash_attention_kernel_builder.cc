@@ -67,6 +67,7 @@
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/reductions/reductions.h"
 #include "torch_tpu/csrc/ops/reductions/sum.h"
+#include "torch_tpu/csrc/ops/scaled_dot_product_attention/flash_attention_config.h"
 #include "torch_tpu/csrc/ops/scaled_dot_product_attention/flash_attention_kernel.h"
 #include "torch_tpu/csrc/ops/scaled_dot_product_attention/helpers.h"
 #include "torch_tpu/csrc/ops/scaled_dot_product_attention/util.h"

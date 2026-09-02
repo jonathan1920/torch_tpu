@@ -150,10 +150,20 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "flash_attention_config",
+    hdrs = ["flash_attention_config.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@stablehlo//:attr_type_builder_util",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "flash_attention_kernel",
     srcs = ["flash_attention_kernel.cc"],
     hdrs = ["flash_attention_kernel.h"],
     deps = [
+        ":flash_attention_config",
         ":util",
         "//torch_tpu/csrc/common:error_utils",
         "//torch_tpu/csrc/internal/mosaic:op_builders",
@@ -185,6 +195,7 @@ torch_tpu_cc_library(
     srcs = ["flash_attention_backward_kernel.cc"],
     hdrs = ["flash_attention_kernel.h"],
     deps = [
+        ":flash_attention_config",
         ":flash_attention_kernel",
         ":util",
         "//torch_tpu/csrc/common:error_utils",
@@ -215,6 +226,7 @@ torch_tpu_cc_library(
     srcs = ["flash_attention_kernel_builder.cc"],
     hdrs = ["flash_attention_kernel_builder.h"],
     deps = [
+        ":flash_attention_config",
         ":flash_attention_kernel",
         ":helpers",
         ":scaled_dot_product_attention_shlo",
