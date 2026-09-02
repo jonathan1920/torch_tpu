@@ -9,3 +9,4 @@ TorchTPU, read the documentation in the [parent directory](../README.md).
 ## Design Guidelines
 
 *   [API design guide](api_design_guide.md)
+*   [API policy](api_policy.md)
