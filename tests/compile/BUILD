@@ -13,6 +13,7 @@
 # limitations under the License.
 load(
     "//build_files:build_defs.bzl",
+    "if_oss",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
     "torch_tpu_py_test",
@@ -204,9 +205,13 @@ torch_tpu_py_test(
     size = "large",
     timeout = "long",
     srcs = ["compile_with_distributed_test.py"],
-    notest_oss = "Disabled in OSS due to infra limitations on distributed tests",
     shard_count = 6,
-    tags = [
+    tags = if_oss(
+        # Run test shards exclusively to prevent device contention on /dev/vfio/* when acquiring the
+        # 8-chip TPU slice concurrently.
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/555762239): fix the test in asan mode.
         "requires-accel-hbm",
         "requires-tpu-v5lite:8",
@@ -214,6 +219,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//tests:oss_utils",
         "//tests:seed_test_utils",
         "//tests/distributed:distributed_utils",
         "//torch_tpu",

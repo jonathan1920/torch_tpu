@@ -15,6 +15,7 @@
 """Tests PyTorch distributed ops with torch.compile()."""
 
 import os
+import unittest
 
 from absl.testing import absltest
 import torch
@@ -28,6 +29,7 @@ from torch_tpu._internal.device import _device_module as tpu_device
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import test_utils as utils
 from torch_tpu._internal.distributed import multiprocessing
+from tests import oss_utils
 from tests import seed_test_utils
 from tests.distributed import distributed_utils
 
@@ -452,6 +454,13 @@ class MultiTpuTorchCompileTest(seed_test_utils.MultiProcessRepeatableTest):
         ),
     )
 
+  # TODO(b/493050035): Enable once OSS PyTorch supports functional collective
+  # tracing for list-of-tensor reduce_scatter, which currently falls back to
+  # eager and produces 2 subgraphs instead of the expected 3.
+  @unittest.skipIf(
+      oss_utils.is_oss(),
+      "The test fails in OSS with 'AssertionError: Expected 3 graphs, got 2'.",
+  )
   def test_reduce_scatter_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
