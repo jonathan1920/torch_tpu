@@ -1112,6 +1112,33 @@ class DynamicSliceTest(seed_test_utils.RepeatableTest):
     expected = torch.cat([cache, new_k], dim=-2)[:, :, -sliding_window + 1 :, :]
     utils.assert_close(out, expected)
 
+  def test_dynamic_slice_static_buffer(self):
+    max_len = 64
+
+    class Model(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.register_buffer("static_table", torch.randn(4, 1, max_len))
+
+      def forward(self, x):
+        seq_len = x.shape[-1]
+        sliced_table = self.static_table[:, :, :seq_len]
+        return x + sliced_table
+
+    model = Model().to(self.device)
+    compiled = torch.compile(
+        model, backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    for seq_len in [8, 16]:
+      x = torch.randn(1, 4, 1, seq_len, dtype=torch.float32, device=self.device)
+      torch._dynamo.mark_dynamic(x, 3, min=4, max=32)
+
+      out = compiled(x)
+      expected = model(x)
+      utils.assert_close(out, expected)
+
 
 class DynamicErrorHandlingTest(seed_test_utils.RepeatableTest):
 

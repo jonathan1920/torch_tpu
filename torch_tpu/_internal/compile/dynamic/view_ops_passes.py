@@ -364,14 +364,7 @@ class HandleSliceLikeOpsPass:
     ]
 
     slice_sizes = [
-        int(out_val.shape[d])
-        if (
-            d == dim
-            and hasattr(out_val, "shape")
-            and not sym_utils.is_symint(out_val.shape[d])
-        )
-        else symbol_bounds.get_upper_bound(inp_val.shape[d])
-        for d in range(rank)
+        symbol_bounds.get_upper_bound(out_val.shape[d]) for d in range(rank)
     ]
 
     dynamic_dim_sizes: list[tuple[int, torch.fx.Node]] = []
