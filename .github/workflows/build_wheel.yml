@@ -73,43 +73,7 @@ jobs:
           BASE_SHA: ${{ inputs.override_base_sha || github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ inputs.override_current_sha || github.sha }}
           FORCE_BUILD: ${{ contains(github.event.pull_request.labels.*.name, 'ci:force-wheel-build') || contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}
-        run: |
-          # Push to main, scheduled nightly, workflow_dispatch, or override labels always build.
-          if [[ "${EVENT_NAME}" != "pull_request" || "${FORCE_BUILD}" == "true" ]]; then
-            echo "Non-PR event or force-build label detected. Triggering full build."
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ -z "${BASE_SHA}" ]]; then
-            echo "No base SHA available. Defaulting to build."
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          git fetch --no-tags --depth=1 origin "${BASE_SHA}"
-          CHANGED_FILES=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
-
-          if [[ -z "${CHANGED_FILES}" ]]; then
-            echo "No changed files detected. Defaulting to build."
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "Changed files in PR:"
-          echo "${CHANGED_FILES}"
-
-          # Filter out files that do not affect the wheel build or testing
-          NON_DOC_FILES=$(echo "${CHANGED_FILES}" | grep -v -E '(\.md$|^docs/|(^|/)OWNERS|^LICENSE|^\.clang|^\.gitignore|^\.vscode/)' || true)
-
-          if [[ -z "${NON_DOC_FILES}" ]]; then
-            echo "All modified files are documentation or repo metadata. Skipping wheel build."
-            echo "should_build=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Found changes requiring wheel build:"
-            echo "${NON_DOC_FILES}"
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-          fi
+        run: ci/check_wheel_diff.sh
       - id: set
         env:
           EVENT_NAME: ${{ github.event_name }}
