@@ -755,7 +755,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "split_collective_ops_test",
     srcs = ["split_collective_ops_test.py"],
-    notest_oss = "TODO(b/537411907): Re-enable in OSS once fixed.",
+    shard_count = 4,
     tags = if_oss(
         ["exclusive"],
         [],

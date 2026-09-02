@@ -149,7 +149,8 @@ def run_compile_all_reduce_and_serdes_test():
   x = torch.ones((2, 2), device="tpu")
   res = compiled_f(x)
 
-  expected = torch.full((2, 2), 31.0, device="cpu")
+  # Expected: (1.0 * 2.0 + 5.0) * world_size + 3.0 = 7.0 * world_size + 3.0
+  expected = torch.full((2, 2), 59.0, device="cpu")
   utils.assert_close(res.cpu(), expected)
 
   # Verify splitting in backend.
@@ -221,7 +222,8 @@ def run_compile_no_splits_when_env_zero_test():
   x = torch.ones((2, 2), device="tpu")
   res = compiled_f(x)
 
-  expected = torch.full((2, 2), 31.0, device="cpu")
+  # Expected: (1.0 * 2.0 + 5.0) * world_size + 3.0 = 7.0 * world_size + 3.0
+  expected = torch.full((2, 2), 59.0, device="cpu")
   utils.assert_close(res.cpu(), expected)
 
   assert (
@@ -255,8 +257,8 @@ def run_compile_two_collectives_test():
   y = torch.ones((2, 2), device="tpu")
   res = compiled_f(x, y)
 
-  # Expected: (1 * 4) + (1 * 4) + 3 = 11.0
-  expected = torch.full((2, 2), 11.0, device="cpu")
+  # Expected: (1 * world_size) + (1 * world_size) + 3 = 2 * world_size + 3
+  expected = torch.full((2, 2), 19.0, device="cpu")
   utils.assert_close(res.cpu(), expected)
 
   assert len(backend._compiled_executables) == 1
@@ -319,7 +321,8 @@ def run_torch_compile_fullgraph_no_break_test():
   x = torch.ones((2, 2), device="tpu")
   res = compiled_model(x)
 
-  expected = torch.full((2, 2), 16.0, device="cpu")
+  # Expected: ((1.0 + 1.0) * world_size) * 2.0 = 4.0 * world_size
+  expected = torch.full((2, 2), 32.0, device="cpu")
   utils.assert_close(res.cpu(), expected)
 
   # Verify splitting in backend.
@@ -563,7 +566,13 @@ class DummyBaseCompiler(compiler.Compiler):
 
 
 class SplitCollectiveOpsTest(seed_test_utils.MultiProcessRepeatableTest):
-  _world_size = 4
+  # Using _world_size = 4 has flakiness on 8-chip TPU v5e CI runners:
+  # initializing only 4 chips leaves the rest of the physical interconnect ring
+  # idle, causing process group init to intermittently hang for ~20s and fail
+  # with SIGTERM (ProcessExitedException). Setting this to 8 ensures all chips
+  # on the host participate, allowing the physical ring to close and sync
+  # deterministically.
+  _world_size = 8
 
   def test_compile_all_reduce_and_serdes(self):
     distributed_utils.dist_run(
