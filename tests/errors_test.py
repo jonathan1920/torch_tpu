@@ -5007,32 +5007,25 @@ Supported combinations for non-constant padding:
       torch.clamp(t, min=False, max=True)
 
   def test_bmm_bool(self):
-    a = torch.ones(1, 2, 3, dtype=torch.float32, device=et.device())
-    b = torch.ones(1, 3, 2, dtype=torch.float32, device=et.device())
-    out = torch.ones(1, 2, 2, dtype=torch.float32, device=et.device())
+    a = torch.ones(1, 2, 3, dtype=torch.bool, device=et.device())
+    b = torch.ones(1, 3, 2, dtype=torch.bool, device=et.device())
+    out = torch.ones(1, 2, 2, dtype=torch.bool, device=et.device())
 
     with et.assert_raises_message(
-        RuntimeError,
-        tpu="""bmm(): the dtype of the first argument cannot be bool""",
+        NotImplementedError,
+        tpu="""bmm(): not implemented for bool""",
         gpu=""""baddbmm_cuda" not implemented for 'Bool'""",
         message_reviewed_by="wan",
     ):
-      torch.bmm(a.to(torch.bool), b)
+      torch.bmm(a, b)
 
     with et.assert_raises_message(
-        RuntimeError,
-        tpu="""bmm(): the dtype of the second argument cannot be bool""",
-        gpu="""Expected out tensor to have dtype bool, but got float instead""",
+        NotImplementedError,
+        tpu="""bmm(): not implemented for bool""",
+        gpu=""""baddbmm_cuda" not implemented for 'Bool'""",
         message_reviewed_by="wan",
     ):
-      # Call `bmm.out` op.
-      #
-      # Otherwise, it will trigger the output tensor dtype check first. This
-      # happens because of 2 reasons:
-      #   1. output dtype is checked first
-      #   2. PyTorch generated code sets the output dtype to be whatever `b`
-      #      dtype is (bool)
-      torch.bmm(a, b.to(torch.bool), out=out)
+      torch.bmm(a, b, out=out)
 
   @parameterized.named_parameters(
       dict(
@@ -5069,7 +5062,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""bmm(): the dtype of the output tensor cannot be bool""",
+        tpu="""bmm(): expected out tensor to have dtype float32, got bool""",
         gpu="""Expected out tensor to have dtype float, but got bool instead""",
         message_reviewed_by="wan",
     ):

@@ -26,7 +26,6 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
@@ -47,27 +46,19 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status CheckBmmOut(const at::Tensor& out) {
-  TT_RET_CHECK(!IsBool(out), error::kInvalidArgument)
-      << "the dtype of the output tensor cannot be bool";
+absl::Status ValidateBmmOut(const at::Tensor& out, at::ScalarType out_dtype) {
+  TT_RET_CHECK(out.scalar_type() == out_dtype, error::kInvalidArgument)
+      << "expected out tensor to have dtype " << ToString(out_dtype) << ", got "
+      << ToString(out.scalar_type());
   return absl::OkStatus();
 }
 
 absl::Status CheckBmmInputs(const at::Tensor& self, const at::Tensor& mat2) {
-  TT_RET_CHECK(!IsBool(self), error::kInvalidArgument)
-      << "the dtype of the first argument cannot be bool";
-  TT_RET_CHECK(
-      self.numel() == 0 || mat2.numel() == 0 ||
-          (self.scalar_type() != at::kInt && self.scalar_type() != at::kLong),
-      error::kPythonNotImplementedError)
-      << "not implemented for " << ToString(self.scalar_type());
   TT_RET_CHECK(self.dim() == 3, error::kInvalidArgument)
       << "expected the first argument to be a 3D tensor (batch of matrices), "
          "got "
       << self.dim() << "D";
 
-  TT_RET_CHECK(!IsBool(mat2), error::kInvalidArgument)
-      << "the dtype of the second argument cannot be bool";
   TT_RET_CHECK(mat2.dim() == 3, error::kInvalidArgument)
       << "expected the second argument to be a 3D tensor (batch of matrices), "
          "got "
@@ -90,6 +81,15 @@ absl::Status CheckBmmInputs(const at::Tensor& self, const at::Tensor& mat2) {
       << " to match the second dimension of the second argument "
       << ToString(mat2.sizes()) << ", got " << self.size(2) << " vs "
       << mat2.size(1);
+
+  // Must come after the dtype and shape checks. CUDA validates those criteria
+  // before reaching the dispatch that reports the dtype as unimplemented.
+  TT_RET_CHECK(
+      self.numel() == 0 || mat2.numel() == 0 ||
+          (self.scalar_type() != at::kBool && self.scalar_type() != at::kInt &&
+           self.scalar_type() != at::kLong),
+      error::kPythonNotImplementedError)
+      << "not implemented for " << ToString(self.scalar_type());
 
   return absl::OkStatus();
 }
@@ -125,7 +125,8 @@ absl::StatusOr<DeviceBufferRef> Bmm(const at::Tensor& self,
 absl::Status BmmOut(const at::Tensor& self, const at::Tensor& mat2,
                     at::ScalarType out_dtype, at::Tensor& out,
                     OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckBmmOut(out));
+  TT_RETURN_IF_ERROR(CheckBmmInputs(self, mat2));
+  TT_RETURN_IF_ERROR(ValidateBmmOut(out, out_dtype));
   TT_ASSIGN_OR_RETURN(auto result_buffer,
                       Bmm(self, mat2, out_dtype, std::move(param_keys)));
   TT_RETURN_IF_ERROR(
@@ -157,7 +158,7 @@ at::Tensor& AtenBmmOut(const at::Tensor& self, const at::Tensor& mat2,
                        at::Tensor& out) {
   TT_KERNEL(OpName::kBmmOut, param_keys, (self, mat2, out), {
     TT_THROW_IF_ERROR(
-        BmmOut(self, mat2, out.scalar_type(), out, std::move(param_keys)));
+        BmmOut(self, mat2, self.scalar_type(), out, std::move(param_keys)));
     return out;
   });
 }
