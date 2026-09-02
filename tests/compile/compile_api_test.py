@@ -14,6 +14,7 @@
 
 """Directly test the PyBind11 API for compiled mode, without using Dynamo."""
 
+import os
 import re
 import textwrap
 from typing import TypeAlias
@@ -1747,6 +1748,20 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
         ph_x.untyped_storage().data_ptr(),
         ph_y.untyped_storage().data_ptr(),
     )
+
+  def test_traverse_and_compile_shared_storage_deduplication(self):
+    with absltest.mock.patch.dict(
+        os.environ, {'TORCHTPU_STORAGE_AWARE_PLACEHOLDERS': '1'}
+    ):
+
+      @torch.compile
+      def fn(a, b):
+        return a + b.t()
+
+      x = torch.randn(16, 32, device='tpu')
+      y = x.t()
+      out = fn(x, y)
+      utils.assert_close(out.cpu(), (x + y.t()).cpu())
 
 
 if __name__ == '__main__':

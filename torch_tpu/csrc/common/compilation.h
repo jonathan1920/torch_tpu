@@ -52,7 +52,17 @@ using SharedLoadedExecutableWithMetadata =
 class LoadedExecutableWithMetadata {
  public:
   static absl::StatusOr<SharedLoadedExecutableWithMetadata> MakeShared(
-      std::unique_ptr<xla::PjRtLoadedExecutable> executable);
+      absl_nonnull std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+      Indices argument_indices = {});
+
+  static SharedLoadedExecutableWithMetadata WithArgumentIndices(
+      const SharedLoadedExecutableWithMetadata& existing,
+      Indices argument_indices) {
+    return std::shared_ptr<const LoadedExecutableWithMetadata>(
+        new LoadedExecutableWithMetadata(existing->executable_,
+                                         existing->output_shapes_,
+                                         std::move(argument_indices)));
+  }
 
   const xla::PjRtExecutable* GetExecutable() const {
     return executable_->GetExecutable();
@@ -63,17 +73,20 @@ class LoadedExecutableWithMetadata {
   }
 
   const std::vector<Shape>& output_shapes() const { return output_shapes_; }
+  const Indices& argument_indices() const { return argument_indices_; }
 
  private:
   LoadedExecutableWithMetadata(
-      absl_nonnull std::unique_ptr<const xla::PjRtLoadedExecutable> executable,
-      std::vector<Shape> output_shapes)
+      absl_nonnull std::shared_ptr<const xla::PjRtLoadedExecutable> executable,
+      std::vector<Shape> output_shapes, Indices argument_indices = {})
       : executable_(std::move(executable)),
-        output_shapes_(std::move(output_shapes)) {}
+        output_shapes_(std::move(output_shapes)),
+        argument_indices_(std::move(argument_indices)) {}
 
-  absl_nonnull std::unique_ptr<const xla::PjRtLoadedExecutable> executable_;
+  absl_nonnull std::shared_ptr<const xla::PjRtLoadedExecutable> executable_;
   // Cached output shapes for the executable.
   std::vector<Shape> output_shapes_;
+  Indices argument_indices_;
 };
 
 using LoadedExecutablePromise =

@@ -295,6 +295,7 @@ torch_tpu_cc_library(
         ":compile_options_key",
         ":context_manager",
         ":context_states",
+        ":dimension_types",
         ":env_vars",
         ":error_utils",
         ":excess_precision",

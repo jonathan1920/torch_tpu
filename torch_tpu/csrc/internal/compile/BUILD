@@ -56,6 +56,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/view_decomposition:decomposition",
         "//torch_tpu/csrc/ops/view_decomposition:strided_layout",
         "//torch_tpu/csrc/pjrt:pjrt_state",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",

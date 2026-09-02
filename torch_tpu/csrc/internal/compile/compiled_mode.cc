@@ -16,15 +16,19 @@
 
 #include "torch_tpu/csrc/internal/compile/compiled_mode.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
+#include "absl/algorithm/container.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/check.h"
@@ -118,6 +122,42 @@ absl::StatusOr<std::vector<DeviceBufferRef>> PrepareCompiledModeArguments(
   // After materialization, each argument buffer will be a materialized,
   // contiguous tensor which the compiled executable can safely apply view
   // logic to.
+  return argument_buffer_refs;
+}
+
+// Deduplicated Path: If we have argument_indices, populate only the unique
+// base buffers expected by the executable.
+absl::StatusOr<std::vector<DeviceBufferRef>> PrepareCompiledModeArguments(
+    absl::Span<const at::Tensor> argument_tensors,
+    const Indices& argument_indices) {
+  if (argument_indices.empty()) {
+    return PrepareCompiledModeArguments(argument_tensors);
+  }
+
+  int64_t num_base =
+      *std::max_element(argument_indices.begin(), argument_indices.end()) + 1;
+  std::vector<std::optional<DeviceBufferRef>> base_buffer_refs(num_base);
+  for (size_t i = 0; i < argument_tensors.size(); ++i) {
+    int64_t base_idx = argument_indices[i];
+    if (!base_buffer_refs[base_idx].has_value()) {
+      TT_ASSIGN_OR_RETURN(
+          DeviceBufferRef buffer_ref, GetBaseBuffer(argument_tensors[i]),
+          _.SetPrepend() << "failed to get buffer from argument tensor: "
+                         << ToString(argument_tensors[i]));
+      base_buffer_refs[base_idx] = std::move(buffer_ref);
+    }
+  }
+
+  std::vector<DeviceBufferRef> argument_buffer_refs;
+  argument_buffer_refs.reserve(num_base);
+  for (int64_t i = 0; i < num_base; ++i) {
+    ABSL_CHECK(base_buffer_refs[i].has_value())  // CRASH_OK
+        << "base argument " << i << " was not populated";
+    argument_buffer_refs.push_back(std::move(*base_buffer_refs[i]));
+  }
+
+  TT_RETURN_IF_ERROR(Materialize(argument_buffer_refs,
+                                 MaterializationReason::kCompileModeExecution));
   return argument_buffer_refs;
 }
 
@@ -228,7 +268,9 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
       << "no result tensors provided";
 
   std::vector<DeviceBufferRef> argument_refs;
+  Indices argument_indices;
   argument_refs.reserve(argument_tensors.size());
+  argument_indices.reserve(argument_tensors.size());
   for (const at::Tensor& tensor : argument_tensors) {
     // Get the base buffer, not the view; view tensors will always have
     // deferred ops.
@@ -239,8 +281,20 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
     ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
         !buffer_ref.is_deferred())
         << "argument tensor has deferred ops: " << ToString(tensor);
-    argument_refs.push_back(std::move(buffer_ref));
+
+    // Using a vector scan instead of a hashset for deduplication
+    // as argument_tensors is expected to have few elements (<100)
+    std::vector<DeviceBufferRef>::const_iterator it =
+        absl::c_find(argument_refs, buffer_ref);
+    if (it == argument_refs.cend()) {
+      argument_indices.push_back(argument_refs.size());
+      argument_refs.push_back(std::move(buffer_ref));
+    } else {
+      argument_indices.push_back(std::distance(argument_refs.cbegin(), it));
+    }
   }
+
+  bool has_duplicates = argument_refs.size() < argument_tensors.size();
 
   std::vector<DeviceBufferRef> result_refs;
   result_refs.reserve(result_tensors.size());
@@ -265,6 +319,20 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
       traversal->ValidateAndReorderArguments(std::move(argument_refs)))
       << "failed to validate and reorder traversal inputs";
 
+  // Re-map donated inputs to deduplicated unique base arguments.
+  Indices unique_donated_inputs = options.donated_inputs;
+  if (has_duplicates && !options.donated_inputs.empty()) {
+    for (int64_t& donated_idx : unique_donated_inputs) {
+      if (donated_idx >= 0 && donated_idx < argument_indices.size()) {
+        donated_idx = argument_indices[donated_idx];
+      }
+    }
+    std::sort(unique_donated_inputs.begin(), unique_donated_inputs.end());
+    unique_donated_inputs.erase(
+        std::unique(unique_donated_inputs.begin(), unique_donated_inputs.end()),
+        unique_donated_inputs.end());
+  }
+
   // Release the Python GIL before XLA compilation to allow multi-threaded
   // compilation.
   pybind11::gil_scoped_release release;
@@ -276,11 +344,15 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
       auto compiled_kernel,
       traversal->Compile(std::move(compilation_spec), nullptr,
                          options.use_stablehlo_bounds, options.argument_layouts,
-                         options.donated_inputs),
+                         unique_donated_inputs),
       _ << "failed to compile traversal");
 
   TT_ASSIGN_OR_RETURN(auto executable, compiled_kernel.fixed_shape_kernel.get(),
                       _.SetPrepend() << "failed to get fixed shape kernel: ");
+  if (has_duplicates) {
+    executable = LoadedExecutableWithMetadata::WithArgumentIndices(
+        executable, std::move(argument_indices));
+  }
 
   std::shared_ptr<ContextedModule> module = nullptr;
   if (options.build_mlir_module) {
@@ -294,7 +366,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
                 -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
               return traversal->BuildMlirModule(mlir_context,
                                                 options.use_stablehlo_bounds,
-                                                options.donated_inputs);
+                                                unique_donated_inputs);
             }),
         _ << "failed to build MLIR module");
     module = std::make_shared<ContextedModule>(std::move(contexted_module));
@@ -418,7 +490,8 @@ std::vector<at::Tensor> ExecuteCompiledModel(
                      GetOutputShapes(executable, output_shapes));
   // Get the materialized buffers for the bases of the argument tensors.
   TT_ASSIGN_OR_THROW(std::vector<DeviceBufferRef> argument_buffer_refs,
-                     PrepareCompiledModeArguments(argument_tensors),
+                     PrepareCompiledModeArguments(
+                         argument_tensors, executable->argument_indices()),
                      _.SetPrepend()
                          << "failed to prepare compiled mode arguments: ");
 

@@ -16,7 +16,6 @@
 
 #include "torch_tpu/csrc/common/compilation.h"
 
-#include <atomic>
 #include <map>
 #include <memory>
 #include <optional>
@@ -42,6 +41,7 @@
 #include "torch_tpu/csrc/common/compile_options_key.h"
 #include "torch_tpu/csrc/common/context_manager.h"
 #include "torch_tpu/csrc/common/context_states.h"
+#include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/env_vars.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/excess_precision.h"
@@ -106,7 +106,8 @@ absl::StatusOr<ContextedModule> ContextedModule::Make(
 
 absl::StatusOr<SharedLoadedExecutableWithMetadata>
 LoadedExecutableWithMetadata::MakeShared(
-    absl_nonnull std::unique_ptr<xla::PjRtLoadedExecutable> executable) {
+    absl_nonnull std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+    Indices argument_indices) {
   TT_RET_CHECK(executable, error::kInternal)
       << "cannot create SharedLoadedExecutableWithMetadata from null "
          "executable.";
