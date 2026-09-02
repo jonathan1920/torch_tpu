@@ -16,17 +16,18 @@ name: RBE Hardware TPU Tests (Opt-In)
 
 on:
   pull_request:
-    types: [labeled, synchronize]
+    types: [opened, reopened, synchronize, labeled]
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: shadow-rbe-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   run_tests:
     name: "${{ matrix.job_info.name }}"
     if: contains(github.event.pull_request.labels.*.name, 'run-rbe') || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -45,8 +46,6 @@ jobs:
           },
         ]
     runs-on: ${{ matrix.job_info.runner }}
-    env:
-      RBE_KEY: ${{ secrets.GCP_RBE_SERVICE_ACCOUNT_KEY }}
 
     steps:
       - name: Checkout Repository
@@ -56,7 +55,7 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Authenticate to GCP RBE
-        if: env.RBE_KEY != ''
+        if: ${{ secrets.GCP_RBE_SERVICE_ACCOUNT_KEY != '' }}
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_RBE_SERVICE_ACCOUNT_KEY }}

@@ -246,7 +246,7 @@ common:tpu_envvars --test_env=VBAR_CONTROL_SERVICE_URL
 # for more details.
 common:remote_caching_readonly --remote_upload_local_results=false
 common:remote_caching_readonly --remote_cache=grpcs://remotebuildexecution.googleapis.com
-common:remote_caching_readonly --remote_instance_name=projects/ml-oss-rbe-testing/instances/default_instance
+common:remote_caching_readonly --remote_instance_name=projects/rbe-tpu-oss/instances/default_instance
 common:remote_caching_readonly --remote_default_exec_properties=cache-silo-key=FirstCachedBuild
 common:remote_caching_readonly --google_default_credentials
 
@@ -255,7 +255,7 @@ common:remote_caching_readonly --google_default_credentials
 common:resultstore_base --bes_backend=buildeventservice.googleapis.com
 common:resultstore_base --bes_timeout=600s
 common:resultstore_base --bes_results_url="https://source.cloud.google.com/results/invocations"
-common:resultstore_base --bes_instance_name="ml-oss-rbe-testing"
+common:resultstore_base --bes_instance_name="rbe-tpu-oss"
 
 common:remote_caching_readwrite --config=remote_caching_readonly
 common:remote_caching_readwrite --remote_upload_local_results=true
@@ -343,12 +343,11 @@ common:ci_tpu_v7_presubmit --test_tag_filters=-notest,-nobuild,-nopresubmit,-fai
 build --define=with_tpu_support=true
 
 # Configs for Bazel remote execution.
-# Do not use instance "projects/ml-oss-rbe-testing/instances/default_instance"
-# because it does not have RBE agents setup.
+# Configured for project "rbe-tpu-oss" default_instance.
 common:remote_execution_readonly --remote_upload_local_results=false
 common:remote_execution_readonly --remote_download_minimal
 common:remote_execution_readonly --keep_going
-common:remote_execution_readonly --remote_instance_name=projects/tpu-pytorch/instances/default_instance
+common:remote_execution_readonly --remote_instance_name=projects/rbe-tpu-oss/instances/default_instance
 common:remote_execution_readonly --google_default_credentials
 common:remote_execution_readonly --jobs=200
 common:remote_execution_readonly --remote_timeout=3600
