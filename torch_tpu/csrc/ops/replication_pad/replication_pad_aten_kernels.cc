@@ -232,15 +232,19 @@ absl::Status ReplicationPadHelper(
         shlo_builder_function,
     OpParamCacheKeys param_keys, const at::Tensor& self,
     at::IntArrayRef padding, at::Tensor& out, int num_pad_dimensions) {
-  TT_RET_CHECK(self.scalar_type() != at::ScalarType::Bool,
-               error::kInvalidArgument)
-      << "not implemented for 'Bool'";
-
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Current usages are guaranteed to be
                  // within range.
       padding.size() == num_pad_dimensions * 2, error::kInvalidArgument)
       << "expected padding to have " << (num_pad_dimensions * 2) << " elements"
       << ", got " << padding.size() << " elements";
+
+  if (out.numel() == 0) {
+    return absl::OkStatus();
+  }
+
+  TT_RET_CHECK(self.scalar_type() != at::ScalarType::Bool,
+               error::kInvalidArgument)
+      << "not implemented for 'Bool'";
 
   Dimensions padding_vec(padding.begin(), padding.end());
   TT_ASSIGN_OR_RETURN(auto element_type,

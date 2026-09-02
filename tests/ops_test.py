@@ -3771,10 +3771,6 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op(
         "nn.functional.pad",
         variant_test_name="reflect",
-        # TODO: bool dtype is not yet supported on TPU.
-        exclude_dtypes={
-            "gpu": (torch.bool,),
-        },
     )
 
   def test_remainder(self):
@@ -3794,14 +3790,9 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("repeat")
 
   def test_replication_pad(self):
-    # TODO: Check why this is failing with torch.bool.
     self.do_test_op(
         "nn.functional.pad",
         variant_test_name="replicate",
-        # TODO: bool dtype is not yet supported on TPU.
-        exclude_dtypes={
-            "gpu": (torch.bool,),
-        },
     )
 
   def test_reshape(self):
