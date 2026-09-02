@@ -46,8 +46,6 @@ jobs:
           },
         ]
     runs-on: ${{ matrix.job_info.runner }}
-    env:
-      RBE_KEY: ${{ secrets.GCP_RBE_SERVICE_ACCOUNT_KEY }}
 
     steps:
       - name: Checkout Repository
@@ -57,7 +55,6 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Authenticate to GCP RBE
-        if: env.RBE_KEY != ''
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_RBE_SERVICE_ACCOUNT_KEY }}
