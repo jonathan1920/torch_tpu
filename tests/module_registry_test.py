@@ -745,6 +745,101 @@ class ModuleRegistryTest(seed_test_utils.RepeatableTest):
           ):
             provider.get_module_spec(model_name)
 
+  def test_module_spec_modality_attributes(self):
+    # Vision models
+    tv_spec = self.module_registry.get_module_spec(
+        "torchvision", "convnext_small"
+    )
+    self.assertEqual(tv_spec.modality, module_registry.Modality.VISION)
+
+    timm_spec = self.module_registry.get_module_spec(
+        "timm", "mobilenetv3_small_050"
+    )
+    self.assertEqual(timm_spec.modality, module_registry.Modality.VISION)
+
+    detr_spec = self.module_registry.get_module_spec(
+        "transformers", "facebook/detr-resnet-50"
+    )
+    self.assertEqual(detr_spec.modality, module_registry.Modality.VISION)
+
+    resnet_spec = self.module_registry.get_module_spec(
+        "transformers", "microsoft/resnet-50"
+    )
+    self.assertEqual(resnet_spec.modality, module_registry.Modality.VISION)
+
+    # Diffusion models
+    diffusers_spec = self.module_registry.get_module_spec(
+        "diffusers",
+        "stabilityai/stable-diffusion-xl-base-1.0",
+        load_weights=False,
+        subfolder="unet",
+    )
+    self.assertEqual(
+        diffusers_spec.modality, module_registry.Modality.DIFFUSION
+    )
+
+    # Causal LM models
+    gemma_spec = self.module_registry.get_module_spec(
+        "transformers", "google/gemma-3-270m"
+    )
+    self.assertEqual(gemma_spec.modality, module_registry.Modality.CAUSAL_LM)
+
+    qwen_spec = self.module_registry.get_module_spec(
+        "transformers", "Qwen/Qwen3-4B"
+    )
+    self.assertEqual(qwen_spec.modality, module_registry.Modality.CAUSAL_LM)
+
+    llama_spec = self.module_registry.get_module_spec(
+        "transformers", "meta-llama/Llama-3.2-tiny"
+    )
+    self.assertEqual(llama_spec.modality, module_registry.Modality.CAUSAL_LM)
+
+    # Audio models
+    whisper_spec = self.module_registry.get_module_spec(
+        "transformers", "openai/whisper-large-v3"
+    )
+    self.assertEqual(whisper_spec.modality, module_registry.Modality.AUDIO)
+
+    # Multimodal models
+    gemma4_spec = self.module_registry.get_module_spec(
+        "transformers", "google/gemma-4-31b"
+    )
+    self.assertEqual(gemma4_spec.modality, module_registry.Modality.MULTIMODAL)
+
+    qwen_vl_spec = self.module_registry.get_module_spec(
+        "transformers", "Qwen/Qwen3-VL-2B-Instruct"
+    )
+    self.assertEqual(qwen_vl_spec.modality, module_registry.Modality.MULTIMODAL)
+
+    qwen_moe_spec = self.module_registry.get_module_spec(
+        "transformers", "Qwen/Qwen3.5-397B-A17B"
+    )
+    self.assertEqual(
+        qwen_moe_spec.modality, module_registry.Modality.MULTIMODAL
+    )
+
+    # Verify None text_config and vision_config are not treated as active
+    def _add_none_subconfigs(cfg):
+      cfg.text_config = None
+      cfg.vision_config = None
+      return cfg
+
+    none_cfg_spec = self.module_registry.get_module_spec(
+        "transformers",
+        "google/gemma-3-270m",
+        modify_config_hook=_add_none_subconfigs,
+    )
+    self.assertEqual(none_cfg_spec.modality, module_registry.Modality.CAUSAL_LM)
+
+    # Custom ModuleSpec direct constructor across all modalities
+    for mod in module_registry.Modality:
+      custom_spec = module_registry.ModuleSpec(
+          lambda: None,
+          lambda: ((), {}),
+          modality=mod,
+      )
+      self.assertEqual(custom_spec.modality, mod)
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -180,32 +180,93 @@ _TEXT_MODEL_TYPES = (
 )
 _CAUSAL_LM_MODEL_TYPES = (
     # go/keep-sorted start
+    "afmoe",
+    "apertus",
+    "arcee",
+    "bamba",
+    "biogpt",
+    "bitnet",
     "bloom",
+    "codegen",
     "cohere",
+    "cohere2",
+    "cpmant",
+    "dbrx",
     "deepseek",
     "deepseek_v2",
     "deepseek_v3",
+    "diffllama",
+    "dots1",
+    "ernie",
+    "ernie4_5",
+    "ernie4_5_moe",
+    "exaone4",
     "falcon",
+    "falcon_h1",
+    "falcon_mamba",
+    "flex_olmo",
+    "fuyu",
     "gemma",
     "gemma2",
     "gemma3",
     "gemma3_text",
     "gemma4",
+    "gemma4_assistant",
+    "gemma4_text",
+    "gemma4_unified",
+    "gemma4_unified_assistant",
+    "gemma4_unified_text",
+    "git",
+    "glm",
+    "glm4",
+    "glm4_moe",
     "gpt",
     "gpt2",
+    "gpt_bigcode",
     "gpt_neo",
     "gpt_neox",
+    "gpt_neox_japanese",
     "gpt_oss",
     "gptj",
+    "granite",
+    "granitemoe",
+    "granitemoehybrid",
+    "helium",
+    "hrm_text",
+    "hunyuan_v1_dense",
+    "jais2",
+    "jamba",
+    "jetmoe",
+    "kosmos_2_5_text_model",
+    "lfm2",
+    "lfm2_moe",
     "llama",
+    "llama4_text",
+    "mamba",
+    "mamba2",
+    "ministral",
+    "ministral3",
     "mistral",
+    "mistral3",
+    "mistral4",
     "mixtral",
+    "mllama_text_model",
+    "modernbert-decoder",
     "mpt",
+    "nanochat",
+    "nemotron",
+    "nemotron_h",
+    "olmo",
+    "olmo2",
+    "olmo3",
+    "olmo_hybrid",
     "openai-gpt",
     "opt",
+    "persimmon",
     "phi",
     "phi3",
     "phi4",
+    "phimoe",
     "qwen",
     "qwen2",
     "qwen2_5",
@@ -213,8 +274,20 @@ _CAUSAL_LM_MODEL_TYPES = (
     "qwen3",
     "qwen3_5",
     "qwen3_5_moe",
+    "qwen3_5_text",
     "qwen3_moe",
+    "recurrent_gemma",
+    "rwkv",
+    "smollm3",
+    "solar_open",
     "stablelm",
+    "starcoder2",
+    "vaultgemma",
+    "xglm",
+    "xlstm",
+    "youtu",
+    "zamba",
+    "zamba2",
     # go/keep-sorted end
 )
 _SEQ2SEQ_MODEL_TYPES = (
@@ -346,22 +419,41 @@ _PROVIDER_ALIASES: dict[str, str] = {
 }
 
 
-def is_supported_transformers_model_type(model_type: str) -> bool:
-  """Returns True if model_type is supported by module_registry."""
-  if not model_type:
+def is_supported_transformers_model_type(
+    model_type: str, config: Any | None = None
+) -> bool:
+  """Returns True if model_type or config is supported by module_registry."""
+  if not model_type and config is None:
     return False
-  return any(
+  if model_type and any(
       k in model_type.lower() for k in _ALL_SUPPORTED_TRANSFORMERS_MODEL_TYPES
-  )
+  ):
+    return True
+  if config is not None:
+    if isinstance(config, dict):
+      archs = config.get("architectures", []) or []
+    else:
+      archs = getattr(config, "architectures", []) or []
+    for arch in archs:
+      arch_lower = arch.lower()
+      if (
+          any(k in arch_lower for k in _ALL_SUPPORTED_TRANSFORMERS_MODEL_TYPES)
+          or "causallm" in arch_lower
+          or "lmheadmodel" in arch_lower
+      ):
+        return True
+  return False
 
 
 class Modality(enum.Enum):
-  MULTIMODAL = "multimodal"
-  VISION = "vision"
   AUDIO = "audio"
   CAUSAL_LM = "causal_lm"
+  DIFFUSION = "diffusion"
+  MULTIMODAL = "multimodal"
   SEQ2SEQ = "seq2seq"
-  TEXT_DEFAULT = "text_default"
+  TEXT = "text"
+  UNKNOWN = "unknown"
+  VISION = "vision"
 
 
 class ModuleSpec:
@@ -376,6 +468,8 @@ class ModuleSpec:
       that need it. None by default.
     config: Optional configuration object associated with the model (e.g., a
       Transformers `AutoConfig`).
+    modality: the modality of the model, which specifies its type (e.g.
+      causal_lm, vision, etc.).
   """
 
   def __init__(
@@ -387,11 +481,13 @@ class ModuleSpec:
       ],
       preprocessor_factory: Callable[[], Any] | None = None,
       config: Any | None = None,
+      modality: Modality = Modality.UNKNOWN,
   ):
     self.module_factory = module_factory
     self.sample_inputs_factory = sample_inputs_factory
     self.preprocessor_factory = preprocessor_factory
     self.config = config
+    self.modality = modality
 
 
 class BaseProvider(abc.ABC):
@@ -551,6 +647,7 @@ class TorchvisionProvider(BaseProvider):
     return ModuleSpec(
         lambda: torchvision.models.get_model(name),
         _torchvision_input_factory,
+        modality=Modality.VISION,
     )
 
 
@@ -650,7 +747,11 @@ class TimmProvider(BaseProvider):
       return None
 
     return ModuleSpec(
-        _module_factory, _input_factory, _preprocessor_factory, config
+        _module_factory,
+        _input_factory,
+        _preprocessor_factory,
+        config,
+        modality=Modality.VISION,
     )
 
 
@@ -713,68 +814,177 @@ def _walk_package_resources(
       yield from _walk_package_resources(path)
 
 
-# Helper functions for TransformersProvider
-def _determine_modality(config: Any) -> Modality:
-  """Determines the modality of a Transformers model from its config.
+def _is_diffusion(
+    model_type: str, class_name: str, arch_name: str, model_name: str
+) -> bool:
+  return (
+      any(
+          k in model_type
+          for k in (
+              "diffusion",
+              "unet",
+              "ldm",
+              "flux",
+              "sdxl",
+              "stable-diffusion",
+          )
+      )
+      or any(
+          k in class_name
+          for k in (
+              "unet",
+              "ldm",
+              "if-",
+              "minit2i",
+              "stablediffusion",
+              "ddpm",
+              "diffusion",
+          )
+      )
+      or any(k in arch_name for k in ("unet", "diffusion"))
+      or any(k in model_name for k in ("diffusion", "ldm", "if-", "minit2i"))
+  )
 
-  Args:
-    config: The Transformers configuration object.
 
-  Returns:
-    A Modality enum value.
-  """
-  model_type = getattr(config, "model_type", "unknown").lower()
-  archs = getattr(config, "architectures", []) or []
-  arch_name = archs[0].lower() if archs else ""
-
-  is_multimodal = (
+def _is_multimodal(
+    model_type: str, arch_name: str, has_text_cfg: bool, has_vision_cfg: bool
+) -> bool:
+  return (
       any(k in model_type for k in _MULTIMODAL_MODEL_TYPES)
       or "clip" in arch_name
       or "llava" in arch_name
       or "paligemma" in arch_name
-      or (hasattr(config, "text_config") and hasattr(config, "vision_config"))
+      or "blip" in arch_name
+      or (has_text_cfg and has_vision_cfg)
   )
-  is_audio = (
+
+
+def _is_audio(model_type: str, arch_name: str) -> bool:
+  return (
       any(k in model_type for k in _AUDIO_MODEL_TYPES)
       or "audio" in arch_name
       or "speech" in arch_name
+      or "whisper" in arch_name
+      or "wav2vec2" in arch_name
   )
-  is_vision = (
+
+
+def _is_vision(
+    model_type: str, arch_name: str, has_image_size: bool, has_vocab_size: bool
+) -> bool:
+  return (
       any(k in model_type for k in _VISION_MODEL_TYPES)
       or "image" in arch_name
       or "vit" in arch_name
-      or hasattr(config, "image_size")
-      or hasattr(config, "num_channels")
       or "pixel_values" in arch_name
+      or "resnet" in arch_name
+      or "dinov2" in arch_name
+      or "convnext" in arch_name
+      or (has_image_size and not has_vocab_size)
   )
-  is_causal = (
+
+
+def _is_causal(model_type: str, arch_name: str) -> bool:
+  return (
       any(k in model_type for k in _CAUSAL_LM_MODEL_TYPES)
       or "causallm" in arch_name
+      or "llama" in arch_name
+      or "gpt" in arch_name
+      or "qwen" in arch_name
+      or "mistral" in arch_name
+      or "phi" in arch_name
+      or "bloom" in arch_name
   )
-  is_seq2seq = (
+
+
+def _is_seq2seq(model_type: str, arch_name: str, is_enc_dec: bool) -> bool:
+  return (
       any(k in model_type for k in _SEQ2SEQ_MODEL_TYPES)
+      or is_enc_dec
       or "conditionalgeneration" in arch_name
+      or "t5" in arch_name
+      or "bart" in arch_name
+      or "marian" in arch_name
+      or "pegasus" in arch_name
   )
-  is_text = (
+
+
+def _is_text(model_type: str, arch_name: str) -> bool:
+  return (
       any(k in model_type for k in _TEXT_MODEL_TYPES)
       or "bert" in arch_name
       or "encoder" in arch_name
   )
 
-  if is_multimodal:
-    return Modality.MULTIMODAL
-  elif is_audio:
-    return Modality.AUDIO
-  elif is_vision:
-    return Modality.VISION
-  elif is_causal:
-    return Modality.CAUSAL_LM
-  elif is_seq2seq:
-    return Modality.SEQ2SEQ
-  elif is_text:
-    return Modality.TEXT_DEFAULT
+
+# Helper functions for TransformersProvider
+def _determine_modality(config: Any) -> Modality:
+  """Determines the modality of a Transformers model from its config.
+
+  Args:
+    config: The Transformers configuration object or dictionary.
+
+  Returns:
+    A Modality enum value.
+  """
+  class_name = ""
+  model_name = ""
+  archs = []
+  model_type = ""
+  is_enc_dec = False
+
+  if config is not None:
+    if isinstance(config, dict):
+      class_name = str(config.get("_class_name", "") or "").lower()
+      model_name = str(config.get("_name_or_path", "") or "").lower()
+      model_type = str(config.get("model_type", "") or "").lower()
+      archs = config.get("architectures", []) or []
+      is_enc_dec = bool(config.get("is_encoder_decoder", False))
+      has_text_cfg = config.get("text_config") is not None
+      has_vision_cfg = config.get("vision_config") is not None
+      has_image_size = (
+          config.get("image_size") is not None
+          or config.get("num_channels") is not None
+      )
+      has_vocab_size = config.get("vocab_size") is not None
+    else:
+      class_name = str(getattr(config, "_class_name", "") or "").lower()
+      model_name = str(getattr(config, "_name_or_path", "") or "").lower()
+      model_type = str(getattr(config, "model_type", "") or model_type).lower()
+      archs = getattr(config, "architectures", []) or []
+      is_enc_dec = bool(getattr(config, "is_encoder_decoder", False))
+      has_text_cfg = getattr(config, "text_config", None) is not None
+      has_vision_cfg = getattr(config, "vision_config", None) is not None
+      has_image_size = (
+          getattr(config, "image_size", None) is not None
+          or getattr(config, "num_channels", None) is not None
+      )
+      has_vocab_size = getattr(config, "vocab_size", None) is not None
   else:
-    return Modality.TEXT_DEFAULT
+    has_text_cfg = False
+    has_vision_cfg = False
+    has_image_size = False
+    has_vocab_size = False
+
+  arch_name = archs[0].lower() if archs else ""
+  if _is_diffusion(model_type, class_name, arch_name, model_name):
+    return Modality.DIFFUSION
+  if _is_multimodal(model_type, arch_name, has_text_cfg, has_vision_cfg):
+    return Modality.MULTIMODAL
+  if _is_audio(model_type, arch_name):
+    return Modality.AUDIO
+  if _is_vision(model_type, arch_name, has_image_size, has_vocab_size):
+    return Modality.VISION
+  if _is_causal(model_type, arch_name):
+    return Modality.CAUSAL_LM
+  if _is_seq2seq(model_type, arch_name, is_enc_dec):
+    return Modality.SEQ2SEQ
+  if _is_text(model_type, arch_name):
+    return Modality.TEXT
+
+  # If we can't figure it out then assume modality is `text` for a transformers
+  # model.
+  return Modality.TEXT
 
 
 def _parse_image_size(config: Any, default_size: int = 224) -> int:
@@ -1553,7 +1763,9 @@ class TransformersProvider(BaseProvider):
       )
       return (), input_kwargs
 
-    return ModuleSpec(model_fn, _input_fn, preprocessor_fn, config)
+    return ModuleSpec(
+        model_fn, _input_fn, preprocessor_fn, config, modality=modality
+    )
 
 
 class DiffusersProvider(BaseProvider):
@@ -1796,7 +2008,12 @@ class DiffusersProvider(BaseProvider):
 
       return (), kwargs
 
-    return ModuleSpec(_module_factory, _input_factory, config=config_dict)
+    return ModuleSpec(
+        _module_factory,
+        _input_factory,
+        config=config_dict,
+        modality=Modality.DIFFUSION,
+    )
 
 
 class ModuleRegistry:
