@@ -39,6 +39,9 @@ torch_tpu_py_library(
 torch_tpu_py_test(
     name = "singlehost_wrapper_v7x_test",
     srcs = ["singlehost_wrapper_test.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     main = "singlehost_wrapper_test.py",
     nopresubmit = "long Forge queue",
     notest_oss = "Disabled during switch from opt-in to opt-out",
@@ -59,6 +62,9 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "singlehost_wrapper_v5e_test",
     srcs = ["singlehost_wrapper_test.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     main = "singlehost_wrapper_test.py",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     strict = True,
