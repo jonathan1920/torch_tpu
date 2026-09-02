@@ -178,7 +178,7 @@ inline constexpr auto kEnvVarToStage =
         {kMasterPortEnvVar, std::nullopt},
         {kNprocEnvVar, std::nullopt},
         {kRankEnvVar, std::nullopt},
-        {kTmpdirEnvVar, std::nullopt},
+        {kTmpdirEnvVar, SymbolStage::Stable()},
         {kTorchShowCppStacktracesEnvVar, std::nullopt},
         {kTorchTpuHandshakePortEnvVar, SymbolStage::InternalApi()},
         {kTorchTpuInternalDetectRepeatedOpsEnvVar, std::nullopt},
