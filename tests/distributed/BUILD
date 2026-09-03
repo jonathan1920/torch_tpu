@@ -447,8 +447,12 @@ torch_tpu_py_test(
     args = [
         "--test_mode=tpu",
     ],
-    env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
-    notest_oss = "fix hang in OSS",  # TODO
+    env = {
+        "TORCH_SHOW_CPP_STACKTRACES": "0",
+        # Disables addr2line C++ stack trace symbolization to prevent deadlocks/hangs during
+        # exception construction in multi-process distributed tests in OSS CI.
+        "TORCH_DISABLE_ADDR2LINE": "1",
+    },
     shard_count = 3,
     tags = if_oss(
         ["exclusive"],
@@ -475,9 +479,13 @@ torch_tpu_py_test(
     args = [
         "--test_mode=cov",
     ],
-    env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
+    env = {
+        "TORCH_SHOW_CPP_STACKTRACES": "1",
+        # Disables addr2line C++ stack trace symbolization to prevent deadlocks/hangs during
+        # exception construction in multi-process distributed tests in OSS CI.
+        "TORCH_DISABLE_ADDR2LINE": "1",
+    },
     main = "scatter_errors_test.py",
-    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 3,
     tags = if_oss(
         ["exclusive"],
