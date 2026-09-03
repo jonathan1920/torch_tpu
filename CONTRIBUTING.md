@@ -134,12 +134,15 @@ implementation begins.
 *   **API Philosophy**: We aim to make TorchTPU feel native to PyTorch. When
     contributing, prefer to extend standard PyTorch mechanisms (such as
     `torch.distributed` and `torch.compile`) rather than inventing
-    hardware-specific wrappers.
+    hardware-specific wrappers. See
+    [TorchTPU API Guidelines](docs/developers/api_design_guide.md) for more
+    details.
 *   **Stability Lifecycle**: New public APIs progress from internal, to
     experimental, and finally to stable. Once marked stable, APIs undergo a
     formal deprecation period before removal. To follow this process, create new
     APIs as internal — or experimental if intended to be used by consumers of
-    TorchTPU — rather than stable.
+    TorchTPU — rather than stable. See
+    [TorchTPU API Policy](docs/developers/api_policy.md) for more details.
 
 ## Policy on AI-Generated Code
 
