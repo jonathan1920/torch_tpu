@@ -99,6 +99,11 @@ Value CreateRepeatOp(ImplicitLocOpBuilder& builder, Value input,
                                num_repeats);
 }
 
+Value CreateReciprocal(ImplicitLocOpBuilder& b, Value input) {
+  return tpu::ReciprocalOp::create(b, input, /*approx=*/false,
+                                   /*full_range=*/false);
+}
+
 mlir::MemRefType GetVmemMemRefType(MLIRContext* context,
                                    ArrayRef<int64_t> shape, Type element_type) {
   return MemRefType::get(

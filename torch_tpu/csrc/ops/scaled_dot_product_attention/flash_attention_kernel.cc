@@ -67,7 +67,6 @@ using mlir::arith::AddFOp;          // USING_DECL_OK
 using mlir::arith::CmpIOp;          // USING_DECL_OK
 using mlir::arith::CmpIPredicate;   // USING_DECL_OK
 using mlir::arith::ConstantOp;      // USING_DECL_OK
-using mlir::arith::DivFOp;          // USING_DECL_OK
 using mlir::arith::MaximumFOp;      // USING_DECL_OK
 using mlir::arith::MulFOp;          // USING_DECL_OK
 using mlir::arith::SubFOp;          // USING_DECL_OK
@@ -292,39 +291,30 @@ func::FuncOp buildModule(ImplicitLocOpBuilder& module_builder,
 
   auto mij = ReduceBroadcastLane(fn_builder, sij, CombiningKind::MAXIMUMF);
 
-  auto pij = ExpOp::create(
-      fn_builder,
-      SubFOp::create(fn_builder, sij, NormalizeLaneDim(fn_builder, mij, kt)));
-
-  auto lij = ReduceBroadcastLane(fn_builder, pij, CombiningKind::ADD);
-
   auto mi_prev = LoadTile(fn_builder, mi_arg);
   auto mi_new = MaximumFOp::create(fn_builder, mi_prev, mij);
 
-  auto li_prev = LoadTile(fn_builder, li_arg);
-  auto exp_mi_prev_minus_mi_new =
+  auto alpha =
       ExpOp::create(fn_builder, SubFOp::create(fn_builder, mi_prev, mi_new));
-  auto li_prev_scaled =
-      MulFOp::create(fn_builder, exp_mi_prev_minus_mi_new, li_prev);
 
-  auto exp_mij_minus_mi_new =
-      ExpOp::create(fn_builder, SubFOp::create(fn_builder, mij, mi_new));
+  auto p_tile_scaled = ExpOp::create(
+      fn_builder, SubFOp::create(fn_builder, sij,
+                                 NormalizeLaneDim(fn_builder, mi_new, kt)));
 
-  auto li_new =
-      AddFOp::create(fn_builder, li_prev_scaled,
-                     MulFOp::create(fn_builder, exp_mij_minus_mi_new, lij));
+  auto tile_sum =
+      ReduceBroadcastLane(fn_builder, p_tile_scaled, CombiningKind::ADD);
+
+  auto li_prev = LoadTile(fn_builder, li_arg);
+  auto li_prev_scaled = MulFOp::create(fn_builder, alpha, li_prev);
+
+  auto li_new = AddFOp::create(fn_builder, li_prev_scaled, tile_sum);
 
   auto oi = LoadTile(fn_builder, o_scratch_arg);
-  auto adjustment =
-      MulFOp::create(fn_builder,
-                     NormalizeLaneDim(fn_builder, exp_mi_prev_minus_mi_new,
-                                      config.vo_head_dim),
-                     oi);
+  auto adjustment = MulFOp::create(
+      fn_builder, NormalizeLaneDim(fn_builder, alpha, config.vo_head_dim), oi);
 
   auto vj = LoadTile(fn_builder, v_arg);
-  Value lhs = MulFOp::create(
-      fn_builder, NormalizeLaneDim(fn_builder, exp_mij_minus_mi_new, kt), pij);
-  lhs = ConvertElementType(fn_builder, ity, lhs);
+  Value lhs = ConvertElementType(fn_builder, ity, p_tile_scaled);
 
   Value current = CreateMatmul(fn_builder, lhs, vj);
 
@@ -349,9 +339,10 @@ func::FuncOp buildModule(ImplicitLocOpBuilder& module_builder,
                  ImplicitLocOpBuilder b(loc, builder);
                  Value unnormalized_output = LoadTile(b, o_scratch_arg);
                  Value li = LoadTile(b, li_arg);
-                 Value normalized_output = DivFOp::create(
+                 Value li_recip = CreateReciprocal(b, li);
+                 Value normalized_output = MulFOp::create(
                      b, unnormalized_output,
-                     NormalizeLaneDim(b, li, config.vo_head_dim));
+                     NormalizeLaneDim(b, li_recip, config.vo_head_dim));
                  StoreTile(b, normalized_output, oi_arg);
                  if (config.return_lse) {
                    Value mi = LoadTile(b, mi_arg);

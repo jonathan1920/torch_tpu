@@ -55,6 +55,8 @@ Value CreateIotaOp(ImplicitLocOpBuilder& builder, Type type, int32_t dimension);
 Value CreateRepeatOp(ImplicitLocOpBuilder& builder, Value input,
                      int64_t dimension, int64_t target_dim_size);
 
+Value CreateReciprocal(ImplicitLocOpBuilder& b, Value input);
+
 // Helper to build a memref type with vmem tpu::Vmem memory space.
 mlir::MemRefType GetVmemMemRefType(MLIRContext* context,
                                    ArrayRef<int64_t> shape, Type element_type);
