@@ -37,6 +37,14 @@ DISABLE_BAZEL_DIFF="${6:-false}"
 if [ -n "$BASE_SHA" ] && [ "$DISABLE_BAZEL_DIFF" != "true" ]; then
   git fetch --depth=1 origin "$BASE_SHA"
   CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$CURRENT_SHA")
+  echo "BASE_SHA=$BASE_SHA"
+  echo "CURRENT_SHA=$CURRENT_SHA"
+  echo "CHANGED_FILES:"
+  git diff --name-status "$BASE_SHA" "$CURRENT_SHA" || echo "$CHANGED_FILES"
+  echo ""
+  echo "Diff stat:"
+  git diff --stat "$BASE_SHA" "$CURRENT_SHA" || true
+  echo ""
 
   GLOBAL_BAZEL_CONFIGS=(  # One regex per line.
     # go/keep-sorted start
