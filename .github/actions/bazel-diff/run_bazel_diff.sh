@@ -19,12 +19,22 @@
 
 set -e
 
-WORKSPACE_DIR="${1:-$GITHUB_WORKSPACE}"
+WORKSPACE_DIR="${1:-${GITHUB_WORKSPACE:-.}}"
 BASE_SHA="${2}"
-CURRENT_SHA="${3}"
+CURRENT_SHA="${3:-HEAD}"
 BAZEL_CONFIG="${4}"
 EXTRA_FLAGS="${5}"
 DISABLE_BAZEL_DIFF="${6:-false}"
+
+if [ -n "$WORKSPACE_DIR" ] && [ -d "$WORKSPACE_DIR" ]; then
+  WORKSPACE_DIR="$(cd "$WORKSPACE_DIR" && pwd)"
+  cd "$WORKSPACE_DIR"
+fi
+
+# Resolve effective base SHA via centralized helper. If CURRENT_SHA is a merge
+# commit (synthetic PR merge), resolves to CURRENT_SHA^1 to isolate PR changes.
+RESOLVED_BASE="$(bash "${WORKSPACE_DIR}/ci/tools/resolve_base_sha.sh" "${CURRENT_SHA}" "${BASE_SHA}")"
+BASE_SHA="${RESOLVED_BASE}"
 
 # Check if global Bazel configuration were modified. If so, bypass bazel-diff
 # to guarantee a full build validation.
@@ -35,7 +45,7 @@ DISABLE_BAZEL_DIFF="${6:-false}"
 # impacted_targets.txt, and feed them back to Bazel. This introduces a slight
 # performance regression.
 if [ -n "$BASE_SHA" ] && [ "$DISABLE_BAZEL_DIFF" != "true" ]; then
-  git fetch --depth=1 origin "$BASE_SHA"
+  git fetch --depth=1 origin "$BASE_SHA" 2>/dev/null || true
   CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$CURRENT_SHA")
   echo "BASE_SHA=$BASE_SHA"
   echo "CURRENT_SHA=$CURRENT_SHA"
@@ -107,7 +117,7 @@ echo "Computing impacted targets between $BASE_SHA and $CURRENT_SHA..."
 
 echo "--- Generating Base Hashes ---"
 echo "PR detected. Fetching exact base SHA: $BASE_SHA"
-git fetch --depth=1 origin "$BASE_SHA"
+git fetch --depth=1 origin "$BASE_SHA" 2>/dev/null || true
 git checkout "$BASE_SHA"
 java -jar /tmp/bazel-diff.jar generate-hashes -w "$WORKSPACE_DIR" "$WORKSPACE_DIR/base_hashes.json" \
   --useCquery \
