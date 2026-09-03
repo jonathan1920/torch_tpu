@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Prerequisites: bazel-diff requires Git, Bazel >= 3.3.0 and Java >= 8.
-# https://github.com/Tinder/bazel-diff/tree/16.0.0?tab=readme-ov-file#prerequisites
+# https://github.com/Tinder/bazel-diff/tree/v46.1.0?tab=readme-ov-file#prerequisites
 # As of 2026-06, our Docker container has Git 2.34.1, Bazel 8.6.0 and Java 21.0.10.
 
 set -e
@@ -97,10 +97,11 @@ if [ -z "$BASE_SHA" ] || [ "$DISABLE_BAZEL_DIFF" == "true" ]; then
 fi
 
 echo "Downloading bazel-diff..."
-# Pin to v16.0.0 because latest releases are missing bazel-diff_deploy.jar:
-# https://github.com/Tinder/bazel-diff/issues/320
+# Updated to v46.1.0 to include canonicalized rule hash inputs and resolve
+# non-deterministic target hash permutations:
+# https://github.com/Tinder/bazel-diff/issues/406
 curl -fLo /tmp/bazel-diff.jar --retry 5 --retry-connrefused \
-  https://github.com/Tinder/bazel-diff/releases/download/16.0.0/bazel-diff_deploy.jar
+  https://github.com/Tinder/bazel-diff/releases/download/v46.1.0/bazel-diff_deploy.jar
 
 echo "Computing impacted targets between $BASE_SHA and $CURRENT_SHA..."
 
@@ -123,6 +124,7 @@ echo "--- Determining Impacted Targets ---"
 java -jar /tmp/bazel-diff.jar get-impacted-targets \
   -sh "$WORKSPACE_DIR/base_hashes.json" \
   -fh "$WORKSPACE_DIR/pr_hashes.json" \
+  -w "$WORKSPACE_DIR" \
   -o "$WORKSPACE_DIR/impacted_targets.txt"
 
 echo "--- Running Impacted Bazel Tests ---"
