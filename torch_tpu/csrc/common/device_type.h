@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_DEVICE_TYPE_H_
-#define TORCH_TPU_COMMON_DEVICE_TYPE_H_
+#ifndef TORCH_TPU_CSRC_COMMON_DEVICE_TYPE_H_
+#define TORCH_TPU_CSRC_COMMON_DEVICE_TYPE_H_
 
 #include <string>
 
@@ -50,4 +50,4 @@ enum class PjRtDeviceType {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_DEVICE_TYPE_H_
+#endif  // TORCH_TPU_CSRC_COMMON_DEVICE_TYPE_H_

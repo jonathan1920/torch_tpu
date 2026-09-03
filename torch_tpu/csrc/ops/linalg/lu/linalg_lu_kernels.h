@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef TORCH_TPU_OPS_LINALG_LU_LINALG_LU_KERNELS_H_
-#define TORCH_TPU_OPS_LINALG_LU_LINALG_LU_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_LINALG_LU_LINALG_LU_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_LINALG_LU_LINALG_LU_KERNELS_H_
 
 #include <tuple>
 
@@ -59,4 +59,4 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuOut(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_LINALG_LU_LINALG_LU_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_LINALG_LU_LINALG_LU_KERNELS_H_

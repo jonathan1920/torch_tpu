@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_CLAMP_CLAMP_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_CLAMP_CLAMP_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_CLAMP_CLAMP_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_CLAMP_CLAMP_ATEN_KERNELS_H_
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
@@ -46,4 +46,4 @@ at::Tensor& AtenClampMaxTensorOut(const at::Tensor& self, const at::Tensor& max,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_CLAMP_CLAMP_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_CLAMP_CLAMP_ATEN_KERNELS_H_

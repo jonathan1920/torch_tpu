@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_DISTRIBUTED_ALLREDUCE_H_
-#define TORCH_TPU_DISTRIBUTED_ALLREDUCE_H_
+#ifndef TORCH_TPU_CSRC_DISTRIBUTED_ALLREDUCE_H_
+#define TORCH_TPU_CSRC_DISTRIBUTED_ALLREDUCE_H_
 
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -30,4 +30,4 @@ absl::StatusOr<mlir::MlirOp> BuildDistributedAllReduceShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_DISTRIBUTED_ALLREDUCE_H_
+#endif  // TORCH_TPU_CSRC_DISTRIBUTED_ALLREDUCE_H_

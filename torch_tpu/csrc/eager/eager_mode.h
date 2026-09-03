@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_EAGER_MODE_H_
-#define TORCH_TPU_EAGER_EAGER_MODE_H_
+#ifndef TORCH_TPU_CSRC_EAGER_EAGER_MODE_H_
+#define TORCH_TPU_CSRC_EAGER_EAGER_MODE_H_
 
 #include "torch_tpu/csrc/common/context_states.h"
 
@@ -33,4 +33,4 @@ void SetEagerMode(EagerMode mode);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_EAGER_MODE_H_
+#endif  // TORCH_TPU_CSRC_EAGER_EAGER_MODE_H_

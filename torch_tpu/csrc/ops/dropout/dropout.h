@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_DROPOUT_DROPOUT_H_
-#define TORCH_TPU_OPS_DROPOUT_DROPOUT_H_
+#ifndef TORCH_TPU_CSRC_OPS_DROPOUT_DROPOUT_H_
+#define TORCH_TPU_CSRC_OPS_DROPOUT_DROPOUT_H_
 
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -38,4 +38,4 @@ absl::StatusOr<MlirOpResults<1>> BuildDropoutBackwardShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_DROPOUT_DROPOUT_H_
+#endif  // TORCH_TPU_CSRC_OPS_DROPOUT_DROPOUT_H_

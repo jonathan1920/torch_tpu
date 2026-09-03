@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_DEVICE_GEN_IMPL_H_
-#define TORCH_TPU_EAGER_DEVICE_GEN_IMPL_H_
+#ifndef TORCH_TPU_CSRC_EAGER_DEVICE_GEN_IMPL_H_
+#define TORCH_TPU_CSRC_EAGER_DEVICE_GEN_IMPL_H_
 
 #include <cstdint>
 #include <string>
@@ -182,4 +182,4 @@ void SetManualSeedAll(uint64_t seed);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_DEVICE_GEN_IMPL_H_
+#endif  // TORCH_TPU_CSRC_EAGER_DEVICE_GEN_IMPL_H_

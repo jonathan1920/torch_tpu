@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_UNARY_H_
-#define TORCH_TPU_OPS_UNARY_H_
+#ifndef TORCH_TPU_CSRC_OPS_UNARY_H_
+#define TORCH_TPU_CSRC_OPS_UNARY_H_
 
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -109,4 +109,4 @@ absl::StatusOr<mlir::MlirOp> BuildFracShlo(mlir::MlirOp input);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_UNARY_H_
+#endif  // TORCH_TPU_CSRC_OPS_UNARY_H_

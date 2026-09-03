@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_INTERNAL_PROFILER_TPU_PROFILER_H_
-#define TORCH_TPU_INTERNAL_PROFILER_TPU_PROFILER_H_
+#ifndef TORCH_TPU_CSRC_INTERNAL_PROFILER_TPU_PROFILER_PLUGIN_H_
+#define TORCH_TPU_CSRC_INTERNAL_PROFILER_TPU_PROFILER_PLUGIN_H_
 
 #include <kineto/ActivityType.h>
 #include <kineto/IActivityProfiler.h>
@@ -119,4 +119,4 @@ absl::Status UpdateProfileOptions(std::string_view custom_config,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_INTERNAL_PROFILER_TPU_PROFILER_H_
+#endif  // TORCH_TPU_CSRC_INTERNAL_PROFILER_TPU_PROFILER_PLUGIN_H_

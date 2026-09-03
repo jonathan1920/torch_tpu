@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_TRIL_INDICES_TRIL_INDICES_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_TRIL_INDICES_TRIL_INDICES_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_TRIL_INDICES_TRIL_INDICES_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_TRIL_INDICES_TRIL_INDICES_ATEN_KERNELS_H_
 
 #include <cstdint>
 #include <optional>
@@ -35,4 +35,4 @@ at::Tensor AtenTrilIndices(int64_t row, int64_t col, int64_t offset,
                            std::optional<bool> pin_memory_opt);
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_TRIL_INDICES_TRIL_INDICES_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_TRIL_INDICES_TRIL_INDICES_ATEN_KERNELS_H_

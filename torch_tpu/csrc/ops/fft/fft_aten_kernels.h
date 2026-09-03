@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_FFT_FFT_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_FFT_FFT_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_FFT_FFT_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_FFT_FFT_ATEN_KERNELS_H_
 
 #include <cstdint>
 
@@ -42,4 +42,4 @@ at::Tensor& AtenFftC2rOut(const at::Tensor& self, at::IntArrayRef dim,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_FFT_FFT_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_FFT_FFT_ATEN_KERNELS_H_

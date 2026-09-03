@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_TENSOR_TO_BUFFER_H_
-#define TORCH_TPU_EAGER_TENSOR_TO_BUFFER_H_
+#ifndef TORCH_TPU_CSRC_EAGER_TENSOR_TO_BUFFER_H_
+#define TORCH_TPU_CSRC_EAGER_TENSOR_TO_BUFFER_H_
 
 #include <vector>
 
@@ -178,4 +178,4 @@ absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_TENSOR_TO_BUFFER_H_
+#endif  // TORCH_TPU_CSRC_EAGER_TENSOR_TO_BUFFER_H_

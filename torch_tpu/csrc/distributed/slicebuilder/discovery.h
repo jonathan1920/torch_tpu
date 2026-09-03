@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_DISTRIBUTED_SLICEBUILDER_DISCOVERY_H_
-#define TORCH_TPU_DISTRIBUTED_SLICEBUILDER_DISCOVERY_H_
+#ifndef TORCH_TPU_CSRC_DISTRIBUTED_SLICEBUILDER_DISCOVERY_H_
+#define TORCH_TPU_CSRC_DISTRIBUTED_SLICEBUILDER_DISCOVERY_H_
 
 #include <cstdint>
 #include <string>
@@ -62,4 +62,4 @@ const absl::StatusOr<int>& GetWorldSizeFromEnvOnce();
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_DISTRIBUTED_SLICEBUILDER_DISCOVERY_H_
+#endif  // TORCH_TPU_CSRC_DISTRIBUTED_SLICEBUILDER_DISCOVERY_H_

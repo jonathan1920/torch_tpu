@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_MIN_MAX_MIN_MAX_H_
-#define TORCH_TPU_OPS_MIN_MAX_MIN_MAX_H_
+#ifndef TORCH_TPU_CSRC_OPS_MIN_MAX_MIN_MAX_H_
+#define TORCH_TPU_CSRC_OPS_MIN_MAX_MIN_MAX_H_
 
 #include <cstdint>
 
@@ -47,4 +47,4 @@ absl::StatusOr<MinMaxOutputs> BuildMinMaxShlo(c10::optional<int64_t> dim,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_MIN_MAX_MIN_MAX_H_
+#endif  // TORCH_TPU_CSRC_OPS_MIN_MAX_MIN_MAX_H_

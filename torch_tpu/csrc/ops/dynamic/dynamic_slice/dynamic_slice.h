@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_DYNAMIC_DYNAMIC_SLICE_H_
-#define TORCH_TPU_OPS_DYNAMIC_DYNAMIC_SLICE_H_
+#ifndef TORCH_TPU_CSRC_OPS_DYNAMIC_DYNAMIC_SLICE_DYNAMIC_SLICE_H_
+#define TORCH_TPU_CSRC_OPS_DYNAMIC_DYNAMIC_SLICE_DYNAMIC_SLICE_H_
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
@@ -41,4 +41,4 @@ at::Tensor DynamicSlice(const at::Tensor& input, at::TensorList start_indices,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_DYNAMIC_DYNAMIC_SLICE_H_
+#endif  // TORCH_TPU_CSRC_OPS_DYNAMIC_DYNAMIC_SLICE_DYNAMIC_SLICE_H_

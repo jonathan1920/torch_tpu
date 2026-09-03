@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_TOPK_TOPK_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_TOPK_TOPK_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_TOPK_TOPK_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_TOPK_TOPK_ATEN_KERNELS_H_
 
 #include <cstdint>
 #include <tuple>
@@ -37,4 +37,4 @@ std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(const at::Tensor& self,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_TOPK_TOPK_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_TOPK_TOPK_ATEN_KERNELS_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_REDUCTION_MEAN_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_REDUCTION_MEAN_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_REDUCTIONS_MEAN_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_REDUCTIONS_MEAN_ATEN_KERNELS_H_
 
 #include <cstdint>
 #include <optional>
@@ -41,4 +41,4 @@ absl::StatusOr<mlir::MlirOp> BuildMeanShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_REDUCTION_MEAN_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_REDUCTIONS_MEAN_ATEN_KERNELS_H_

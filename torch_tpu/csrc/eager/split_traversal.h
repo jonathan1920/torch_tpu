@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_SPLIT_TRAVERSAL_H_
-#define TORCH_TPU_EAGER_SPLIT_TRAVERSAL_H_
+#ifndef TORCH_TPU_CSRC_EAGER_SPLIT_TRAVERSAL_H_
+#define TORCH_TPU_CSRC_EAGER_SPLIT_TRAVERSAL_H_
 
 #include <memory>
 #include <vector>
@@ -40,4 +40,4 @@ SplitTraversal(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_SPLIT_TRAVERSAL_H_
+#endif  // TORCH_TPU_CSRC_EAGER_SPLIT_TRAVERSAL_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_SEGMENT_REDUCE_SEGMENT_REDUCE_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_SEGMENT_REDUCE_SEGMENT_REDUCE_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_SEGMENT_REDUCE_SEGMENT_REDUCE_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_SEGMENT_REDUCE_SEGMENT_REDUCE_ATEN_KERNELS_H_
 
 #include <cstdint>
 #include <optional>
@@ -35,4 +35,4 @@ at::Tensor AtenSegmentReduce(const at::Tensor& data, c10::string_view reduce,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_SEGMENT_REDUCE_SEGMENT_REDUCE_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_SEGMENT_REDUCE_SEGMENT_REDUCE_ATEN_KERNELS_H_

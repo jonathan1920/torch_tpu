@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_UNIQUE_UNIQUE_H_
-#define TORCH_TPU_OPS_UNIQUE_UNIQUE_H_
+#ifndef TORCH_TPU_CSRC_OPS_UNIQUE_UNIQUE_H_
+#define TORCH_TPU_CSRC_OPS_UNIQUE_UNIQUE_H_
 
 #include <cstdint>
 
@@ -42,4 +42,4 @@ absl::StatusOr<BuildUniqueShloOutputs> BuildUnique2Shlo(int64_t output_size,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_UNIQUE_UNIQUE_H_
+#endif  // TORCH_TPU_CSRC_OPS_UNIQUE_UNIQUE_H_

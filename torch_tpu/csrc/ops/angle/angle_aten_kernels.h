@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_ANGLE_ANGLE_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_ANGLE_ANGLE_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_ANGLE_ANGLE_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_ANGLE_ANGLE_ATEN_KERNELS_H_
 
 #include "ATen/core/TensorBody.h"
 
@@ -26,4 +26,4 @@ at::Tensor& AtenAngleOut(const at::Tensor& self, at::Tensor& out);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_ANGLE_ANGLE_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_ANGLE_ANGLE_ATEN_KERNELS_H_

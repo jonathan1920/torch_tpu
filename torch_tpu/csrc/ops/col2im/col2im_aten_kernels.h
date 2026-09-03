@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TORCH_TPU_OPS_COL2IM_COL2IM_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_COL2IM_COL2IM_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_COL2IM_COL2IM_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_COL2IM_COL2IM_ATEN_KERNELS_H_
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
@@ -31,4 +31,4 @@ at::Tensor& AtenCol2ImOut(const at::Tensor& input, at::IntArrayRef output_size,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_COL2IM_COL2IM_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_COL2IM_COL2IM_ATEN_KERNELS_H_

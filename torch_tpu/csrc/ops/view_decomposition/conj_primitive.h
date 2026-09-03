@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_VIEW_DECOMPOSITION_CONJ_PRIMITIVE_H_
-#define TORCH_TPU_OPS_VIEW_DECOMPOSITION_CONJ_PRIMITIVE_H_
+#ifndef TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_CONJ_PRIMITIVE_H_
+#define TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_CONJ_PRIMITIVE_H_
 
 #include "absl/status/statusor.h"
 #include "torch_tpu/csrc/ops/view_decomposition/strided_layout.h"
@@ -35,4 +35,4 @@ inline bool UpdateLayout(StridedLayout& layout,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_VIEW_DECOMPOSITION_CONJ_PRIMITIVE_H_
+#endif  // TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_CONJ_PRIMITIVE_H_

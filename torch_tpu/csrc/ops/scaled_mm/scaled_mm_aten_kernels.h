@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_SCALED_MM_SCALED_MM_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_SCALED_MM_SCALED_MM_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_SCALED_MM_SCALED_MM_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_SCALED_MM_SCALED_MM_ATEN_KERNELS_H_
 
 #include <optional>
 
@@ -87,4 +87,4 @@ at::Tensor& AtenScaledMmV2Out(const at::Tensor& self, const at::Tensor& mat2,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_SCALED_MM_SCALED_MM_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_SCALED_MM_SCALED_MM_ATEN_KERNELS_H_

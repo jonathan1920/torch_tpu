@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_DIGAMMA_DIGAMMA_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_DIGAMMA_DIGAMMA_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_DIGAMMA_DIGAMMA_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_DIGAMMA_DIGAMMA_ATEN_KERNELS_H_
 
 #include "ATen/core/ATen_fwd.h"
 #include "absl/status/statusor.h"
@@ -31,4 +31,4 @@ at::Tensor& AtenDigammaOut(const at::Tensor& self, at::Tensor& out);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_DIGAMMA_DIGAMMA_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_DIGAMMA_DIGAMMA_ATEN_KERNELS_H_

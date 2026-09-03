@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_COMPILATION_CACHE_UTILS_H_
-#define TORCH_TPU_COMMON_COMPILATION_CACHE_UTILS_H_
+#ifndef TORCH_TPU_CSRC_COMMON_COMPILATION_CACHE_UTILS_H_
+#define TORCH_TPU_CSRC_COMMON_COMPILATION_CACHE_UTILS_H_
 
 #include <ostream>
 #include <string>
@@ -78,4 +78,4 @@ absl::Status AtomicWriteToCacheFile(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_COMPILATION_CACHE_UTILS_H_
+#endif  // TORCH_TPU_CSRC_COMMON_COMPILATION_CACHE_UTILS_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU__INTERNAL_DYNAMISM_DYNAMISM_H_
-#define TORCH_TPU__INTERNAL_DYNAMISM_DYNAMISM_H_
+#ifndef TORCH_TPU_CSRC_INTERNAL_DYNAMISM_DYNAMISM_H_
+#define TORCH_TPU_CSRC_INTERNAL_DYNAMISM_DYNAMISM_H_
 
 #include <cstdint>
 
@@ -42,4 +42,4 @@ absl::StatusOr<absl::Span<const BoundedDynamicDimension>> GetDynamismInfo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU__INTERNAL_DYNAMISM_DYNAMISM_H_
+#endif  // TORCH_TPU_CSRC_INTERNAL_DYNAMISM_DYNAMISM_H_

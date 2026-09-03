@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_ALL_ANY_ALL_ANY_H_
-#define TORCH_TPU_OPS_ALL_ANY_ALL_ANY_H_
+#ifndef TORCH_TPU_CSRC_OPS_ALL_ANY_ALL_ANY_H_
+#define TORCH_TPU_CSRC_OPS_ALL_ANY_ALL_ANY_H_
 
 #include <cstdint>
 
@@ -36,4 +36,4 @@ absl::StatusOr<mlir::MlirOp> BuildAnyShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_ALL_ANY_ALL_ANY_H_
+#endif  // TORCH_TPU_CSRC_OPS_ALL_ANY_ALL_ANY_H_

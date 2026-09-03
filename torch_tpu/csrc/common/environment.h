@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_ENVIRONMENT_H_
-#define TORCH_TPU_COMMON_ENVIRONMENT_H_
+#ifndef TORCH_TPU_CSRC_COMMON_ENVIRONMENT_H_
+#define TORCH_TPU_CSRC_COMMON_ENVIRONMENT_H_
 
 #include "absl/status/status.h"
 #include "torch_tpu/csrc/distributed/slicebuilder/discovery.h"
@@ -33,4 +33,4 @@ absl::Status InitializeSingleDeviceEnvironment();
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_ENVIRONMENT_H_
+#endif  // TORCH_TPU_CSRC_COMMON_ENVIRONMENT_H_

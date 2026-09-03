@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_DISTRIBUTED_HANDSHAKE_H_
-#define TORCH_TPU_DISTRIBUTED_HANDSHAKE_H_
+#ifndef TORCH_TPU_CSRC_DISTRIBUTED_HANDSHAKE_H_
+#define TORCH_TPU_CSRC_DISTRIBUTED_HANDSHAKE_H_
 
 namespace torch_tpu {
 
@@ -35,4 +35,4 @@ int GetHandshakePortEnvVarOnce();
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_DISTRIBUTED_HANDSHAKE_H_
+#endif  // TORCH_TPU_CSRC_DISTRIBUTED_HANDSHAKE_H_

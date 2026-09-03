@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_EYE_EYE_LIB_H_
-#define TORCH_TPU_OPS_EYE_EYE_LIB_H_
+#ifndef TORCH_TPU_CSRC_OPS_EYE_EYE_LIB_H_
+#define TORCH_TPU_CSRC_OPS_EYE_EYE_LIB_H_
 
 #include <cstdint>
 
@@ -32,4 +32,4 @@ absl::StatusOr<mlir::MlirOp> BuildEyeShlo(mlir::MlirBuilder& builder,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_EYE_EYE_LIB_H_
+#endif  // TORCH_TPU_CSRC_OPS_EYE_EYE_LIB_H_

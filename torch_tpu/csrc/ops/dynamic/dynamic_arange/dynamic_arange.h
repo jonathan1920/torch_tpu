@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_DYNAMIC_DYNAMIC_ARANGE_H_
-#define TORCH_TPU_OPS_DYNAMIC_DYNAMIC_ARANGE_H_
+#ifndef TORCH_TPU_CSRC_OPS_DYNAMIC_DYNAMIC_ARANGE_DYNAMIC_ARANGE_H_
+#define TORCH_TPU_CSRC_OPS_DYNAMIC_DYNAMIC_ARANGE_DYNAMIC_ARANGE_H_
 
 #include <cstdint>
 
@@ -48,4 +48,4 @@ at::Tensor DynamicArange(const at::Tensor& start, const at::Tensor& end,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_DYNAMIC_DYNAMIC_ARANGE_H_
+#endif  // TORCH_TPU_CSRC_OPS_DYNAMIC_DYNAMIC_ARANGE_DYNAMIC_ARANGE_H_

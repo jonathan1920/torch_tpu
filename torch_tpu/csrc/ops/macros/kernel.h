@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_MACROS_KERNEL_H_
-#define TORCH_TPU_OPS_MACROS_KERNEL_H_
+#ifndef TORCH_TPU_CSRC_OPS_MACROS_KERNEL_H_
+#define TORCH_TPU_CSRC_OPS_MACROS_KERNEL_H_
 
 #include <cstddef>
 #include <optional>
@@ -342,4 +342,4 @@ constexpr void ConditionalStaticAssert() {
 }  // namespace internal
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_MACROS_KERNEL_H_
+#endif  // TORCH_TPU_CSRC_OPS_MACROS_KERNEL_H_

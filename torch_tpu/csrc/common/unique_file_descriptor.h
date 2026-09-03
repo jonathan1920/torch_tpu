@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_UNIQUE_FILE_DESCRIPTOR_H_
-#define TORCH_TPU_COMMON_UNIQUE_FILE_DESCRIPTOR_H_
+#ifndef TORCH_TPU_CSRC_COMMON_UNIQUE_FILE_DESCRIPTOR_H_
+#define TORCH_TPU_CSRC_COMMON_UNIQUE_FILE_DESCRIPTOR_H_
 
 #include <unistd.h>
 
@@ -74,4 +74,4 @@ class UniqueFileDescriptor {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_UNIQUE_FILE_DESCRIPTOR_H_
+#endif  // TORCH_TPU_CSRC_COMMON_UNIQUE_FILE_DESCRIPTOR_H_

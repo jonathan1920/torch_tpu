@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_MASKED_SELECT_MASKED_SELECT_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_MASKED_SELECT_MASKED_SELECT_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_MASKED_SELECT_MASKED_SELECT_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_MASKED_SELECT_MASKED_SELECT_ATEN_KERNELS_H_
 
 #include "ATen/core/TensorBody.h"
 
@@ -38,4 +38,4 @@ at::Tensor& AtenMaskedSelectOut(const at::Tensor& self, const at::Tensor& mask,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_MASKED_SELECT_MASKED_SELECT_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_MASKED_SELECT_MASKED_SELECT_ATEN_KERNELS_H_

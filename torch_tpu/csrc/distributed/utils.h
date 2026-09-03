@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_DISTRIBUTED_UTILS_H_
-#define TORCH_TPU_DISTRIBUTED_UTILS_H_
+#ifndef TORCH_TPU_CSRC_DISTRIBUTED_UTILS_H_
+#define TORCH_TPU_CSRC_DISTRIBUTED_UTILS_H_
 
 #include "absl/status/status.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -58,4 +58,4 @@ absl::Status ValidateReductionOp(c10d::ReduceOp reduce_op,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_DISTRIBUTED_UTILS_H_
+#endif  // TORCH_TPU_CSRC_DISTRIBUTED_UTILS_H_

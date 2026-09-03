@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_SOFTMAX_MASKED_SOFTMAX_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_SOFTMAX_MASKED_SOFTMAX_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_SOFTMAX__MASKED_SOFTMAX_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_SOFTMAX__MASKED_SOFTMAX_ATEN_KERNELS_H_
 
 #include <cstdint>
 #include <optional>
@@ -46,4 +46,4 @@ at::Tensor& AtenMaskedSoftmaxBackwardOut(const at::Tensor& grad_output,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_SOFTMAX_MASKED_SOFTMAX_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_SOFTMAX__MASKED_SOFTMAX_ATEN_KERNELS_H_

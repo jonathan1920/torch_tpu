@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_TRAVERSAL_H_
-#define TORCH_TPU_EAGER_TRAVERSAL_H_
+#ifndef TORCH_TPU_CSRC_EAGER_TRAVERSAL_H_
+#define TORCH_TPU_CSRC_EAGER_TRAVERSAL_H_
 
 #include <algorithm>
 #include <memory>
@@ -339,4 +339,4 @@ absl::StatusOr<std::string> GetGraphviz(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_TRAVERSAL_H_
+#endif  // TORCH_TPU_CSRC_EAGER_TRAVERSAL_H_

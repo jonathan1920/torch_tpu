@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_NORMAL_NORMAL_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_NORMAL_NORMAL_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_NORMAL_NORMAL_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_NORMAL_NORMAL_ATEN_KERNELS_H_
 
 #include <optional>
 
@@ -51,4 +51,4 @@ at::Tensor& AtenNormalTensorTensorOut(const at::Tensor& mean,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_NORMAL_NORMAL_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_NORMAL_NORMAL_ATEN_KERNELS_H_

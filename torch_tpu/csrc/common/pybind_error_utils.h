@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_PYBIND_ERROR_UTILS_H_
-#define TORCH_TPU_COMMON_PYBIND_ERROR_UTILS_H_
+#ifndef TORCH_TPU_CSRC_COMMON_PYBIND_ERROR_UTILS_H_
+#define TORCH_TPU_CSRC_COMMON_PYBIND_ERROR_UTILS_H_
 
 #include <string>
 #include <string_view>
@@ -180,4 +180,4 @@ internal::PyBindErrorHandlingWrapper<T> PyBindWrapWithErrorHandling(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_PYBIND_ERROR_UTILS_H_
+#endif  // TORCH_TPU_CSRC_COMMON_PYBIND_ERROR_UTILS_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_POOLING_POOLING_H_
-#define TORCH_TPU_OPS_POOLING_POOLING_H_
+#ifndef TORCH_TPU_CSRC_OPS_POOLING_POOLING_H_
+#define TORCH_TPU_CSRC_OPS_POOLING_POOLING_H_
 
 #include <cstdint>
 #include <utility>
@@ -100,4 +100,4 @@ ReduceWindowAttributes GetReduceWindowAttributes(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_POOLING_POOLING_H_
+#endif  // TORCH_TPU_CSRC_OPS_POOLING_POOLING_H_

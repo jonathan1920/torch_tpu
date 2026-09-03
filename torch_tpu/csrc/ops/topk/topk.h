@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_TOPK_TOPK_H_
-#define TORCH_TPU_OPS_TOPK_TOPK_H_
+#ifndef TORCH_TPU_CSRC_OPS_TOPK_TOPK_H_
+#define TORCH_TPU_CSRC_OPS_TOPK_TOPK_H_
 
 #include <cstdint>
 #include <optional>
@@ -46,4 +46,4 @@ absl::StatusOr<TopKOutputs> BuildTopKShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_TOPK_TOPK_H_
+#endif  // TORCH_TPU_CSRC_OPS_TOPK_TOPK_H_

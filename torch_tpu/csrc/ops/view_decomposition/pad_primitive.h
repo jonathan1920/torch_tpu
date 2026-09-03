@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_VIEW_DECOMPOSITION_PAD_PRIMITIVE_H_
-#define TORCH_TPU_OPS_VIEW_DECOMPOSITION_PAD_PRIMITIVE_H_
+#ifndef TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_PAD_PRIMITIVE_H_
+#define TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_PAD_PRIMITIVE_H_
 
 #include <cstdint>
 #include <ostream>
@@ -113,4 +113,4 @@ absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(mlir::MlirOp input,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_VIEW_DECOMPOSITION_PAD_PRIMITIVE_H_
+#endif  // TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_PAD_PRIMITIVE_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_CONSTEXPR_MAP_H_
-#define TORCH_TPU_COMMON_CONSTEXPR_MAP_H_
+#ifndef TORCH_TPU_CSRC_COMMON_CONSTEXPR_MAP_H_
+#define TORCH_TPU_CSRC_COMMON_CONSTEXPR_MAP_H_
 
 #include <algorithm>
 #include <array>
@@ -201,4 +201,4 @@ MakeConstexprMap(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_CONSTEXPR_MAP_H_
+#endif  // TORCH_TPU_CSRC_COMMON_CONSTEXPR_MAP_H_

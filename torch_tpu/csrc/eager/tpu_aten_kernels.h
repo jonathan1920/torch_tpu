@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_TPU_ATEN_KERNELS_H_
-#define TORCH_TPU_EAGER_TPU_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_EAGER_TPU_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_EAGER_TPU_ATEN_KERNELS_H_
 
 namespace torch_tpu {
 
@@ -32,4 +32,4 @@ void EnableCpuFallback(bool enabled);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_TPU_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_EAGER_TPU_ATEN_KERNELS_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_CLAMP_CLAMP_H_
-#define TORCH_TPU_OPS_CLAMP_CLAMP_H_
+#ifndef TORCH_TPU_CSRC_OPS_CLAMP_CLAMP_H_
+#define TORCH_TPU_CSRC_OPS_CLAMP_CLAMP_H_
 
 #include <optional>
 
@@ -30,4 +30,4 @@ absl::StatusOr<mlir::MlirOp> BuildClampShlo(mlir::MlirOp input,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_CLAMP_CLAMP_H_
+#endif  // TORCH_TPU_CSRC_OPS_CLAMP_CLAMP_H_

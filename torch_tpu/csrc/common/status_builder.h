@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_STATUS_BUILDER_H_
-#define TORCH_TPU_COMMON_STATUS_BUILDER_H_
+#ifndef TORCH_TPU_CSRC_COMMON_STATUS_BUILDER_H_
+#define TORCH_TPU_CSRC_COMMON_STATUS_BUILDER_H_
 
 // A builder for absl::Status. The API mostly mirrors util::StatusBuilder at
 // Google. This is mainly used for implementing status macros in error_utils.h.
@@ -333,4 +333,4 @@ absl::Status MaybeAddCppSourceLoc(absl::Status status, std::string_view file,
 }  // namespace internal
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_STATUS_BUILDER_H_
+#endif  // TORCH_TPU_CSRC_COMMON_STATUS_BUILDER_H_

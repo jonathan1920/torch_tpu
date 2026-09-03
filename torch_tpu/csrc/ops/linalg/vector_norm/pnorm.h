@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_LINALG_VECTOR_NORM_PNORM_H_
-#define TORCH_TPU_OPS_LINALG_VECTOR_NORM_PNORM_H_
+#ifndef TORCH_TPU_CSRC_OPS_LINALG_VECTOR_NORM_PNORM_H_
+#define TORCH_TPU_CSRC_OPS_LINALG_VECTOR_NORM_PNORM_H_
 
 #include <cstdint>
 
@@ -38,4 +38,4 @@ absl::StatusOr<mlir::MlirOp> BuildPNormShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_LINALG_VECTOR_NORM_PNORM_H_
+#endif  // TORCH_TPU_CSRC_OPS_LINALG_VECTOR_NORM_PNORM_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_DISTRIBUTED_WINDOW_TPU_H_
-#define TORCH_TPU_DISTRIBUTED_WINDOW_TPU_H_
+#ifndef TORCH_TPU_CSRC_DISTRIBUTED_WINDOW_TPU_H_
+#define TORCH_TPU_CSRC_DISTRIBUTED_WINDOW_TPU_H_
 
 #include <chrono>
 #include <cstddef>
@@ -215,4 +215,4 @@ class WindowTpu : public c10d::Window {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_DISTRIBUTED_WINDOW_TPU_H_
+#endif  // TORCH_TPU_CSRC_DISTRIBUTED_WINDOW_TPU_H_

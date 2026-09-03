@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_DTYPE_H_
-#define TORCH_TPU_COMMON_DTYPE_H_
+#ifndef TORCH_TPU_CSRC_COMMON_DTYPE_H_
+#define TORCH_TPU_CSRC_COMMON_DTYPE_H_
 
 #include <cstdint>
 #include <string_view>
@@ -168,4 +168,4 @@ struct Fingerprint64Impl<mlir::ElementType, /*kIsSmallIntegral=*/false> {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_DTYPE_H_
+#endif  // TORCH_TPU_CSRC_COMMON_DTYPE_H_

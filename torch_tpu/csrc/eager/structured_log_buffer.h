@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_STRUCTURED_LOG_BUFFER_H_
-#define TORCH_TPU_EAGER_STRUCTURED_LOG_BUFFER_H_
+#ifndef TORCH_TPU_CSRC_EAGER_STRUCTURED_LOG_BUFFER_H_
+#define TORCH_TPU_CSRC_EAGER_STRUCTURED_LOG_BUFFER_H_
 
 #include <atomic>
 #include <cstdint>
@@ -145,4 +145,4 @@ class StructuredLogBuffer {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_STRUCTURED_LOG_BUFFER_H_
+#endif  // TORCH_TPU_CSRC_EAGER_STRUCTURED_LOG_BUFFER_H_

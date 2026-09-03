@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef TORCH_TPU_OPS_DISTANCE_DIST_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_DISTANCE_DIST_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_DISTANCE_DIST_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_DISTANCE_DIST_ATEN_KERNELS_H_
 
 #include <cstdint>
 #include <optional>
@@ -34,4 +34,4 @@ at::Tensor AtenPdistBackward(const at::Tensor& grad, const at::Tensor& self,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_DISTANCE_DIST_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_DISTANCE_DIST_ATEN_KERNELS_H_

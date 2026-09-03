@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TORCH_TPU_OPS_MASKED_SCATTER_MASKED_SCATTER_H_
-#define TORCH_TPU_OPS_MASKED_SCATTER_MASKED_SCATTER_H_
+#ifndef TORCH_TPU_CSRC_OPS_MASKED_SCATTER_MASKED_SCATTER_H_
+#define TORCH_TPU_CSRC_OPS_MASKED_SCATTER_MASKED_SCATTER_H_
 
 #include "absl/status/statusor.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
@@ -26,4 +26,4 @@ absl::StatusOr<mlir::MlirOp> BuildMaskedScatterShlo(mlir::MlirOp input,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_MASKED_SCATTER_MASKED_SCATTER_H_
+#endif  // TORCH_TPU_CSRC_OPS_MASKED_SCATTER_MASKED_SCATTER_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_SORT_SORT_H_
-#define TORCH_TPU_OPS_SORT_SORT_H_
+#ifndef TORCH_TPU_CSRC_OPS_SORT_SORT_H_
+#define TORCH_TPU_CSRC_OPS_SORT_SORT_H_
 
 #include <cstdint>
 
@@ -36,4 +36,4 @@ SortShloOutputs BuildSortShlo(mlir::MlirOp input_op, bool stable, int64_t dim,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_SORT_SORT_H_
+#endif  // TORCH_TPU_CSRC_OPS_SORT_SORT_H_

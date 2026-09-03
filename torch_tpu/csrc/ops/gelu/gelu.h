@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_GELU_GELU_H_
-#define TORCH_TPU_OPS_GELU_GELU_H_
+#ifndef TORCH_TPU_CSRC_OPS_GELU_GELU_H_
+#define TORCH_TPU_CSRC_OPS_GELU_GELU_H_
 
 #include <string_view>
 
@@ -33,4 +33,4 @@ absl::StatusOr<mlir::MlirOp> BuildGeluBackwardGradInputShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_GELU_GELU_H_
+#endif  // TORCH_TPU_CSRC_OPS_GELU_GELU_H_

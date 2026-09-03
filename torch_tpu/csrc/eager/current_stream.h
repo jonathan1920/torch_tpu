@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_CURRENT_STREAM_H_
-#define TORCH_TPU_EAGER_CURRENT_STREAM_H_
+#ifndef TORCH_TPU_CSRC_EAGER_CURRENT_STREAM_H_
+#define TORCH_TPU_CSRC_EAGER_CURRENT_STREAM_H_
 
 #include <cstdint>
 
@@ -66,4 +66,4 @@ void ResetStreamIdCounters();
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_CURRENT_STREAM_H_
+#endif  // TORCH_TPU_CSRC_EAGER_CURRENT_STREAM_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_ASSERTION_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_ASSERTION_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_ASSERTION_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_ASSERTION_ATEN_KERNELS_H_
 
 #include <string_view>
 
@@ -28,4 +28,4 @@ void AtenAssertAsyncMsg(const at::Tensor& self, std::string_view assert_msg);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_ASSERTION_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_ASSERTION_ATEN_KERNELS_H_

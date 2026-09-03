@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_ROLL_ROLL_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_ROLL_ROLL_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_ROLL_ROLL_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_ROLL_ROLL_ATEN_KERNELS_H_
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
@@ -27,4 +27,4 @@ at::Tensor AtenRoll(const at::Tensor& self, at::IntArrayRef shifts,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_ROLL_ROLL_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_ROLL_ROLL_ATEN_KERNELS_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_FAKE_QUANTIZE_FAKE_QUANTIZE_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_FAKE_QUANTIZE_FAKE_QUANTIZE_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_FAKE_QUANTIZE_FAKE_QUANTIZE_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_FAKE_QUANTIZE_FAKE_QUANTIZE_ATEN_KERNELS_H_
 
 #include <cstdint>
 #include <tuple>
@@ -30,4 +30,4 @@ std::tuple<at::Tensor, at::Tensor> FakeQuantizePerTensorAffineCachemask(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_FAKE_QUANTIZE_FAKE_QUANTIZE_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_FAKE_QUANTIZE_FAKE_QUANTIZE_ATEN_KERNELS_H_

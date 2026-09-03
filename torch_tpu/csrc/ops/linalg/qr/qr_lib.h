@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_LINALG_QR_QR_LIB_H_
-#define TORCH_TPU_OPS_LINALG_QR_QR_LIB_H_
+#ifndef TORCH_TPU_CSRC_OPS_LINALG_QR_QR_LIB_H_
+#define TORCH_TPU_CSRC_OPS_LINALG_QR_QR_LIB_H_
 
 #include "absl/status/statusor.h"
 #include "c10/util/string_view.h"
@@ -51,4 +51,4 @@ absl::StatusOr<MlirOpResults<2>> BuildQrShlo(mlir::MlirOp input,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_LINALG_QR_QR_LIB_H_
+#endif  // TORCH_TPU_CSRC_OPS_LINALG_QR_QR_LIB_H_

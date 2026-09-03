@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_DISTRIBUTED_TYPES_H_
-#define TORCH_TPU_DISTRIBUTED_TYPES_H_
+#ifndef TORCH_TPU_CSRC_DISTRIBUTED_TYPES_H_
+#define TORCH_TPU_CSRC_DISTRIBUTED_TYPES_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -106,4 +106,4 @@ struct Fingerprint64Impl<DeviceGroupList, /*kIsSmallIntegral=*/false> {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_DISTRIBUTED_TYPES_H_
+#endif  // TORCH_TPU_CSRC_DISTRIBUTED_TYPES_H_

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TORCH_TPU_COMMON_DEVICE_UTILS_H_
-#define TORCH_TPU_COMMON_DEVICE_UTILS_H_
+#ifndef TORCH_TPU_CSRC_COMMON_DEVICE_UTILS_H_
+#define TORCH_TPU_CSRC_COMMON_DEVICE_UTILS_H_
 
 #include <string_view>
 
@@ -40,4 +40,4 @@ inline bool IsSingleDeviceSpecified(std::string_view val) {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_DEVICE_UTILS_H_
+#endif  // TORCH_TPU_CSRC_COMMON_DEVICE_UTILS_H_

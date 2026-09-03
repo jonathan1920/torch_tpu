@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_EVENTS_QUEUE_H_
-#define TORCH_TPU_EAGER_EVENTS_QUEUE_H_
+#ifndef TORCH_TPU_CSRC_EAGER_EVENTS_QUEUE_H_
+#define TORCH_TPU_CSRC_EAGER_EVENTS_QUEUE_H_
 
 #include <memory>
 #include <utility>
@@ -125,4 +125,4 @@ void SetCorePinningMode(c10::DeviceIndex device_index, c10::StreamId stream_id,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_EVENTS_QUEUE_H_
+#endif  // TORCH_TPU_CSRC_EAGER_EVENTS_QUEUE_H_

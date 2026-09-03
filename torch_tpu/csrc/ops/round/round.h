@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_ROUND_ROUND_H_
-#define TORCH_TPU_OPS_ROUND_ROUND_H_
+#ifndef TORCH_TPU_CSRC_OPS_ROUND_ROUND_H_
+#define TORCH_TPU_CSRC_OPS_ROUND_ROUND_H_
 
 #include <cstdint>
 
@@ -29,4 +29,4 @@ absl::StatusOr<mlir::MlirOp> BuildRoundShlo(mlir::MlirOp input_op,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_ROUND_ROUND_H_
+#endif  // TORCH_TPU_CSRC_OPS_ROUND_ROUND_H_

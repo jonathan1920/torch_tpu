@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_REDUCTIONS_REDUCTION_UTILS_H_
-#define TORCH_TPU_OPS_REDUCTIONS_REDUCTION_UTILS_H_
+#ifndef TORCH_TPU_CSRC_OPS_REDUCTIONS_REDUCTION_UTILS_H_
+#define TORCH_TPU_CSRC_OPS_REDUCTIONS_REDUCTION_UTILS_H_
 
 #include <cstdint>
 
@@ -77,4 +77,4 @@ absl::Status ApplySumReductionOut(const at::Tensor& self, at::Tensor& out,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_REDUCTIONS_REDUCTION_UTILS_H_
+#endif  // TORCH_TPU_CSRC_OPS_REDUCTIONS_REDUCTION_UTILS_H_

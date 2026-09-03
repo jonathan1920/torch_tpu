@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_FINGERPRINT_UTILS_H_
-#define TORCH_TPU_COMMON_FINGERPRINT_UTILS_H_
+#ifndef TORCH_TPU_CSRC_COMMON_FINGERPRINT_UTILS_H_
+#define TORCH_TPU_CSRC_COMMON_FINGERPRINT_UTILS_H_
 
 // Utilities for computing fingerprints.
 //
@@ -196,4 +196,4 @@ template <typename T0, typename T1, typename... Ts>
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_FINGERPRINT_UTILS_H_
+#endif  // TORCH_TPU_CSRC_COMMON_FINGERPRINT_UTILS_H_

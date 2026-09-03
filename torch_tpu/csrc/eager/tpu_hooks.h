@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_TPU_HOOKS_H_
-#define TORCH_TPU_EAGER_TPU_HOOKS_H_
+#ifndef TORCH_TPU_CSRC_EAGER_TPU_HOOKS_H_
+#define TORCH_TPU_CSRC_EAGER_TPU_HOOKS_H_
 
 #include "absl/status/status.h"
 
@@ -25,4 +25,4 @@ absl::Status AddTpuHooks();
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_TPU_HOOKS_H_
+#endif  // TORCH_TPU_CSRC_EAGER_TPU_HOOKS_H_

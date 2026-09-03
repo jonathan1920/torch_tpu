@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_ATEN_UTILS_H_
-#define TORCH_TPU_COMMON_ATEN_UTILS_H_
+#ifndef TORCH_TPU_CSRC_COMMON_ATEN_UTILS_H_
+#define TORCH_TPU_CSRC_COMMON_ATEN_UTILS_H_
 
 #include <cmath>
 #include <limits>
@@ -225,4 +225,4 @@ H AbslHashValue(H h, const HashableScalar& hashable_scalar) {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_ATEN_UTILS_H_
+#endif  // TORCH_TPU_CSRC_COMMON_ATEN_UTILS_H_

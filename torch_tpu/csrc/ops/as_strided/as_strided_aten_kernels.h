@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_AS_STRIDED_AS_STRIDED_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_AS_STRIDED_AS_STRIDED_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_AS_STRIDED_AS_STRIDED_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_AS_STRIDED_AS_STRIDED_ATEN_KERNELS_H_
 
 #include <cstdint>
 
@@ -41,4 +41,4 @@ absl::StatusOr<at::Tensor> AsStrided(const at::Tensor& self,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_AS_STRIDED_AS_STRIDED_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_AS_STRIDED_AS_STRIDED_ATEN_KERNELS_H_

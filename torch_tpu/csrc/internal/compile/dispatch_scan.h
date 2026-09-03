@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_INTERNAL_COMPILE_DISPATCH_SCAN_H_
-#define TORCH_TPU_INTERNAL_COMPILE_DISPATCH_SCAN_H_
+#ifndef TORCH_TPU_CSRC_INTERNAL_COMPILE_DISPATCH_SCAN_H_
+#define TORCH_TPU_CSRC_INTERNAL_COMPILE_DISPATCH_SCAN_H_
 
 #include <cstdint>
 #include <memory>
@@ -56,4 +56,4 @@ std::vector<at::Tensor> PyCreateScanOp(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_INTERNAL_COMPILE_DISPATCH_SCAN_H_
+#endif  // TORCH_TPU_CSRC_INTERNAL_COMPILE_DISPATCH_SCAN_H_

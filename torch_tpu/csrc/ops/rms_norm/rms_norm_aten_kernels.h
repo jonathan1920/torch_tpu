@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_RMS_NORM_RMS_NORM_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_RMS_NORM_RMS_NORM_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_RMS_NORM_RMS_NORM_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_RMS_NORM_RMS_NORM_ATEN_KERNELS_H_
 
 #include <array>
 #include <optional>
@@ -36,4 +36,4 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNormBackward(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_RMS_NORM_RMS_NORM_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_RMS_NORM_RMS_NORM_ATEN_KERNELS_H_

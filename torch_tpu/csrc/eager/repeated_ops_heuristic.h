@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_REPEATED_OPS_HEURISTIC_H_
-#define TORCH_TPU_EAGER_REPEATED_OPS_HEURISTIC_H_
+#ifndef TORCH_TPU_CSRC_EAGER_REPEATED_OPS_HEURISTIC_H_
+#define TORCH_TPU_CSRC_EAGER_REPEATED_OPS_HEURISTIC_H_
 
 #include "torch_tpu/csrc/eager/device_buffer.h"
 
@@ -33,4 +33,4 @@ void ResetRepeatedOpsHeuristicState();
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_REPEATED_OPS_HEURISTIC_H_
+#endif  // TORCH_TPU_CSRC_EAGER_REPEATED_OPS_HEURISTIC_H_

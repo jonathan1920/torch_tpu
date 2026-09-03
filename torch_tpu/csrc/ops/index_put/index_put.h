@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_INDEX_PUT_INDEX_PUT_H_
-#define TORCH_TPU_OPS_INDEX_PUT_INDEX_PUT_H_
+#ifndef TORCH_TPU_CSRC_OPS_INDEX_PUT_INDEX_PUT_H_
+#define TORCH_TPU_CSRC_OPS_INDEX_PUT_INDEX_PUT_H_
 
 #include <cstdint>
 
@@ -75,4 +75,4 @@ absl::StatusOr<mlir::MlirOp> BuildIndexPutSelectShlo(mlir::MlirOp self,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_INDEX_PUT_INDEX_PUT_H_
+#endif  // TORCH_TPU_CSRC_OPS_INDEX_PUT_INDEX_PUT_H_

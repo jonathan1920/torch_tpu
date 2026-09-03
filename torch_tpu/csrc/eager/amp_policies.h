@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_AMP_POLICIES_H_
-#define TORCH_TPU_EAGER_AMP_POLICIES_H_
+#ifndef TORCH_TPU_CSRC_EAGER_AMP_POLICIES_H_
+#define TORCH_TPU_CSRC_EAGER_AMP_POLICIES_H_
 
 namespace torch_tpu {}  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_AMP_POLICIES_H_
+#endif  // TORCH_TPU_CSRC_EAGER_AMP_POLICIES_H_

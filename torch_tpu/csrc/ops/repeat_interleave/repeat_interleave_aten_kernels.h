@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TORCH_TPU_OPS_REPEAT_INTERLEAVE_REPEAT_INTERLEAVE_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_REPEAT_INTERLEAVE_REPEAT_INTERLEAVE_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_REPEAT_INTERLEAVE_REPEAT_INTERLEAVE_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_REPEAT_INTERLEAVE_REPEAT_INTERLEAVE_ATEN_KERNELS_H_
 
 #include <optional>
 
@@ -28,4 +28,4 @@ at::Tensor AtenRepeatInterleave(const at::Tensor& self,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_REPEAT_INTERLEAVE_REPEAT_INTERLEAVE_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_REPEAT_INTERLEAVE_REPEAT_INTERLEAVE_ATEN_KERNELS_H_

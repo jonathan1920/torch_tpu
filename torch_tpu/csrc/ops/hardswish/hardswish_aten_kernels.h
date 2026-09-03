@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_HARDSWISH_HARDSWISH_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_HARDSWISH_HARDSWISH_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_HARDSWISH_HARDSWISH_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_HARDSWISH_HARDSWISH_ATEN_KERNELS_H_
 
 #include "ATen/core/ATen_fwd.h"
 
@@ -30,4 +30,4 @@ at::Tensor AtenHardswishBackward(const at::Tensor& grad_output,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_HARDSWISH_HARDSWISH_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_HARDSWISH_HARDSWISH_ATEN_KERNELS_H_

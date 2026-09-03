@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_NATIVE_BATCH_NORM_NATIVE_BATCH_NORM_H_
-#define TORCH_TPU_OPS_NATIVE_BATCH_NORM_NATIVE_BATCH_NORM_H_
+#ifndef TORCH_TPU_CSRC_OPS_NATIVE_BATCH_NORM_NATIVE_BATCH_NORM_H_
+#define TORCH_TPU_CSRC_OPS_NATIVE_BATCH_NORM_NATIVE_BATCH_NORM_H_
 
 #include <array>
 #include <optional>
@@ -48,4 +48,4 @@ absl::StatusOr<MlirOpResults<3>> BuildBatchNormBackward(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_NATIVE_BATCH_NORM_NATIVE_BATCH_NORM_H_
+#endif  // TORCH_TPU_CSRC_OPS_NATIVE_BATCH_NORM_NATIVE_BATCH_NORM_H_

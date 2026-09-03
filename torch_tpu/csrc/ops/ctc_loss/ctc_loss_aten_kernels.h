@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_CTC_LOSS_CTC_LOSS_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_CTC_LOSS_CTC_LOSS_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_CTC_LOSS_CTC_LOSS_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_CTC_LOSS_CTC_LOSS_ATEN_KERNELS_H_
 
 #include <cstdint>
 #include <tuple>
@@ -106,4 +106,4 @@ at::Tensor AtenCtcLossBackwardTensor(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_CTC_LOSS_CTC_LOSS_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_CTC_LOSS_CTC_LOSS_ATEN_KERNELS_H_

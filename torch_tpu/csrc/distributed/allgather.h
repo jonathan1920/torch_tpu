@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_DISTRIBUTED_ALLGATHER_H_
-#define TORCH_TPU_DISTRIBUTED_ALLGATHER_H_
+#ifndef TORCH_TPU_CSRC_DISTRIBUTED_ALLGATHER_H_
+#define TORCH_TPU_CSRC_DISTRIBUTED_ALLGATHER_H_
 
 #include "absl/status/statusor.h"
 #include "mlir/Support/LLVM.h"
@@ -36,4 +36,4 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildDistributedAllGatherShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_DISTRIBUTED_ALLGATHER_H_
+#endif  // TORCH_TPU_CSRC_DISTRIBUTED_ALLGATHER_H_

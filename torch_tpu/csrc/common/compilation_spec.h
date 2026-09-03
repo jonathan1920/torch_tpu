@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_COMPILATION_SPEC_H_
-#define TORCH_TPU_COMMON_COMPILATION_SPEC_H_
+#ifndef TORCH_TPU_CSRC_COMMON_COMPILATION_SPEC_H_
+#define TORCH_TPU_CSRC_COMMON_COMPILATION_SPEC_H_
 
 #include <map>
 #include <memory>
@@ -114,4 +114,4 @@ class CompilationContext {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_COMPILATION_SPEC_H_
+#endif  // TORCH_TPU_CSRC_COMMON_COMPILATION_SPEC_H_

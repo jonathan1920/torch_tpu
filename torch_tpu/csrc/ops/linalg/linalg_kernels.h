@@ -1,5 +1,5 @@
-#ifndef TORCH_TPU_OPS_LINALG_LINALG_KERNELS_H_
-#define TORCH_TPU_OPS_LINALG_LINALG_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_LINALG_LINALG_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_LINALG_LINALG_KERNELS_H_
 
 /*
  * Copyright 2026 Google LLC
@@ -40,4 +40,4 @@ std::tuple<at::Tensor&, at::Tensor&> AtenLinalgInvExInverse(const at::Tensor& a,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_LINALG_LINALG_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_LINALG_LINALG_KERNELS_H_

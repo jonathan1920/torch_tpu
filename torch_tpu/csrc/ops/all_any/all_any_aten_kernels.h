@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_ALL_ANY_ALL_ANY_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_ALL_ANY_ALL_ANY_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_ALL_ANY_ALL_ANY_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_ALL_ANY_ALL_ANY_ATEN_KERNELS_H_
 
 #include <cstdint>
 
@@ -38,4 +38,4 @@ at::Tensor& AtenAnyOut(const at::Tensor& self, int64_t dim, bool keep_dim,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_ALL_ANY_ALL_ANY_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_ALL_ANY_ALL_ANY_ATEN_KERNELS_H_

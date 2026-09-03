@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_CONVOLUTION_CONVOLUTION_CHECKS_H_
-#define TORCH_TPU_OPS_CONVOLUTION_CONVOLUTION_CHECKS_H_
+#ifndef TORCH_TPU_CSRC_OPS_CONVOLUTION_CONVOLUTION_CHECKS_H_
+#define TORCH_TPU_CSRC_OPS_CONVOLUTION_CONVOLUTION_CHECKS_H_
 
 #include <cstdint>
 #include <string_view>
@@ -41,4 +41,4 @@ absl::Status ValidateConvolutionBias(absl::Span<const int64_t> bias,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_CONVOLUTION_CONVOLUTION_CHECKS_H_
+#endif  // TORCH_TPU_CSRC_OPS_CONVOLUTION_CONVOLUTION_CHECKS_H_

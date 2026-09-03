@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_ERROR_UTILS_TEST_HELPER_H_
-#define TORCH_TPU_COMMON_ERROR_UTILS_TEST_HELPER_H_
+#ifndef TORCH_TPU_CSRC_COMMON_ERROR_UTILS_TEST_HELPER_H_
+#define TORCH_TPU_CSRC_COMMON_ERROR_UTILS_TEST_HELPER_H_
 
 // A file that triggers an error in the header, used for testing the stack trace
 // cleaning functionality.
@@ -31,4 +31,4 @@ inline absl::Status MakeErrorFromHeader() {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_ERROR_UTILS_TEST_HELPER_H_
+#endif  // TORCH_TPU_CSRC_COMMON_ERROR_UTILS_TEST_HELPER_H_

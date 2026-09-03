@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_GATHER_GATHER_H_
-#define TORCH_TPU_OPS_GATHER_GATHER_H_
+#ifndef TORCH_TPU_CSRC_OPS_INDEX_INDEX_H_
+#define TORCH_TPU_CSRC_OPS_INDEX_INDEX_H_
 
 #include "absl/status/statusor.h"
 #include "mlir/Support/LLVM.h"
@@ -29,4 +29,4 @@ absl::StatusOr<mlir::MlirOp> BuildIndexShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_GATHER_GATHER_H_
+#endif  // TORCH_TPU_CSRC_OPS_INDEX_INDEX_H_

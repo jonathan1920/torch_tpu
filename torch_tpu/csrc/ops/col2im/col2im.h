@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TORCH_TPU_OPS_COL2IM_COL2IM_H_
-#define TORCH_TPU_OPS_COL2IM_COL2IM_H_
+#ifndef TORCH_TPU_CSRC_OPS_COL2IM_COL2IM_H_
+#define TORCH_TPU_CSRC_OPS_COL2IM_COL2IM_H_
 
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -28,4 +28,4 @@ absl::StatusOr<mlir::MlirOp> BuildCol2ImShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_COL2IM_COL2IM_H_
+#endif  // TORCH_TPU_CSRC_OPS_COL2IM_COL2IM_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_CUMMAX_CUMMAX_H_
-#define TORCH_TPU_OPS_CUMMAX_CUMMAX_H_
+#ifndef TORCH_TPU_CSRC_OPS_CUMMAX_CUMMAX_H_
+#define TORCH_TPU_CSRC_OPS_CUMMAX_CUMMAX_H_
 
 #include <cstdint>
 
@@ -33,4 +33,4 @@ absl::StatusOr<CummaxOutputs> BuildCummaxShlo(int64_t dim, mlir::MlirOp input);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_CUMMAX_CUMMAX_H_
+#endif  // TORCH_TPU_CSRC_OPS_CUMMAX_CUMMAX_H_

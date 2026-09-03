@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_DOT_DOT_CHECKS_H_
-#define TORCH_TPU_OPS_DOT_DOT_CHECKS_H_
+#ifndef TORCH_TPU_CSRC_OPS_DOT_DOT_CHECKS_H_
+#define TORCH_TPU_CSRC_OPS_DOT_DOT_CHECKS_H_
 
 #include <string_view>
 
@@ -34,4 +34,4 @@ absl::StatusOr<mlir::ElementType> ValidateAndGetDotOutputType(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_DOT_DOT_CHECKS_H_
+#endif  // TORCH_TPU_CSRC_OPS_DOT_DOT_CHECKS_H_

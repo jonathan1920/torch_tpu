@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_FMAX_FMAX_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_FMAX_FMAX_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_FMAX_FMAX_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_FMAX_FMAX_ATEN_KERNELS_H_
 
 #include "ATen/core/ATen_fwd.h"
 
@@ -26,4 +26,4 @@ at::Tensor& AtenFmaxOut(const at::Tensor& self, const at::Tensor& other,
 
 }
 
-#endif  // TORCH_TPU_OPS_FMAX_FMAX_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_FMAX_FMAX_ATEN_KERNELS_H_

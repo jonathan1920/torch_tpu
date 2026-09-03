@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU__INTERNAL_DYNAMISM_DYNAMISM_OPS_H_
-#define TORCH_TPU__INTERNAL_DYNAMISM_DYNAMISM_OPS_H_
+#ifndef TORCH_TPU_CSRC_INTERNAL_DYNAMISM_DYNAMISM_OPS_H_
+#define TORCH_TPU_CSRC_INTERNAL_DYNAMISM_DYNAMISM_OPS_H_
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -71,4 +71,4 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetSliceModule(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU__INTERNAL_DYNAMISM_DYNAMISM_OPS_H_
+#endif  // TORCH_TPU_CSRC_INTERNAL_DYNAMISM_DYNAMISM_OPS_H_

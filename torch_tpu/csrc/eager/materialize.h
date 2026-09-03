@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_MATERIALIZE_H_
-#define TORCH_TPU_EAGER_MATERIALIZE_H_
+#ifndef TORCH_TPU_CSRC_EAGER_MATERIALIZE_H_
+#define TORCH_TPU_CSRC_EAGER_MATERIALIZE_H_
 
 #include <memory>
 #include <string_view>
@@ -130,4 +130,4 @@ absl::StatusOr<std::vector<std::shared_ptr<EventSnapshot>>> MaterializeDevice(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_MATERIALIZE_H_
+#endif  // TORCH_TPU_CSRC_EAGER_MATERIALIZE_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_PROD_PROD_H_
-#define TORCH_TPU_OPS_PROD_PROD_H_
+#ifndef TORCH_TPU_CSRC_OPS_PROD_PROD_H_
+#define TORCH_TPU_CSRC_OPS_PROD_PROD_H_
 
 #include <cstdint>
 #include <optional>
@@ -32,4 +32,4 @@ mlir::MlirOp BuildProdShlo(std::optional<int64_t> dim, ReductionMode mode,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_PROD_PROD_H_
+#endif  // TORCH_TPU_CSRC_OPS_PROD_PROD_H_

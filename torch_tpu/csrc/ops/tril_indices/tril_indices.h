@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef TORCH_TPU_OPS_TRIL_INDICES_TRIL_INDICES_H_
-#define TORCH_TPU_OPS_TRIL_INDICES_TRIL_INDICES_H_
+#ifndef TORCH_TPU_CSRC_OPS_TRIL_INDICES_TRIL_INDICES_H_
+#define TORCH_TPU_CSRC_OPS_TRIL_INDICES_TRIL_INDICES_H_
 #include <cstdint>
 
 #include "absl/status/statusor.h"
@@ -31,4 +31,4 @@ absl::StatusOr<mlir::MlirOp> BuildTrilIndicesShlo(mlir::MlirBuilder& builder,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_TRIL_INDICES_TRIL_INDICES_H_
+#endif  // TORCH_TPU_CSRC_OPS_TRIL_INDICES_TRIL_INDICES_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_INDEX_UTILS_H_
-#define TORCH_TPU_OPS_INDEX_UTILS_H_
+#ifndef TORCH_TPU_CSRC_OPS_INDEX_UTILS_H_
+#define TORCH_TPU_CSRC_OPS_INDEX_UTILS_H_
 
 #include <cstdint>
 #include <vector>
@@ -39,4 +39,4 @@ absl::StatusOr<int64_t> ValidateIndexInputsAndGetDim(const at::Tensor& self,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_INDEX_UTILS_H_
+#endif  // TORCH_TPU_CSRC_OPS_INDEX_UTILS_H_

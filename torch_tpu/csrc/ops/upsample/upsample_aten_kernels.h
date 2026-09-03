@@ -19,8 +19,8 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 
-#ifndef TORCH_TPU_OPS_UPSAMPLE_UPSAMPLE_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_UPSAMPLE_UPSAMPLE_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_UPSAMPLE_UPSAMPLE_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_UPSAMPLE_UPSAMPLE_ATEN_KERNELS_H_
 
 namespace torch_tpu {
 
@@ -107,4 +107,4 @@ at::Tensor& AtenUpsampleNearestExact3dOut(const at::Tensor& self,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_UPSAMPLE_UPSAMPLE_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_UPSAMPLE_UPSAMPLE_ATEN_KERNELS_H_

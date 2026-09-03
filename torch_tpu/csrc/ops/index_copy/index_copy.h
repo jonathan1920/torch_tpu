@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_INDEX_COPY_INDEX_COPY_H_
-#define TORCH_TPU_OPS_INDEX_COPY_INDEX_COPY_H_
+#ifndef TORCH_TPU_CSRC_OPS_INDEX_COPY_INDEX_COPY_H_
+#define TORCH_TPU_CSRC_OPS_INDEX_COPY_INDEX_COPY_H_
 
 #include <cstdint>
 
@@ -30,4 +30,4 @@ mlir::MlirOp BuildIndexCopyShlo(mlir::MlirOp self, int64_t dim,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_INDEX_COPY_INDEX_COPY_H_
+#endif  // TORCH_TPU_CSRC_OPS_INDEX_COPY_INDEX_COPY_H_

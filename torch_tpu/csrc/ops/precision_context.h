@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_PRECISION_CONTEXT_H_
-#define TORCH_TPU_OPS_PRECISION_CONTEXT_H_
+#ifndef TORCH_TPU_CSRC_OPS_PRECISION_CONTEXT_H_
+#define TORCH_TPU_CSRC_OPS_PRECISION_CONTEXT_H_
 
 #include <string_view>
 
@@ -50,4 +50,4 @@ mlir::stablehlo::Precision GetAndAddPrecisionTo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_PRECISION_CONTEXT_H_
+#endif  // TORCH_TPU_CSRC_OPS_PRECISION_CONTEXT_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_INDEX_REDUCE_INDEX_REDUCE_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_INDEX_REDUCE_INDEX_REDUCE_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_INDEX_REDUCE_INDEX_REDUCE_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_INDEX_REDUCE_INDEX_REDUCE_ATEN_KERNELS_H_
 
 #include <cstdint>
 #include <string_view>
@@ -33,4 +33,4 @@ at::Tensor& TpuAtenIndexReduceOut(const at::Tensor& self, int64_t dim,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_INDEX_REDUCE_INDEX_REDUCE_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_INDEX_REDUCE_INDEX_REDUCE_ATEN_KERNELS_H_

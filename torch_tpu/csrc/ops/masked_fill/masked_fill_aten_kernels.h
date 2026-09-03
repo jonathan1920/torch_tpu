@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_MASKED_FILL_MASKED_FILL_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_MASKED_FILL_MASKED_FILL_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_MASKED_FILL_MASKED_FILL_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_MASKED_FILL_MASKED_FILL_ATEN_KERNELS_H_
 #include "ATen/core/ATen_fwd.h"
 
 namespace torch_tpu {
@@ -30,4 +30,4 @@ at::Tensor& AtenMaskedFill_Tensor(at::Tensor& self, const at::Tensor& mask,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_MASKED_FILL_MASKED_FILL_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_MASKED_FILL_MASKED_FILL_ATEN_KERNELS_H_

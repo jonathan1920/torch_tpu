@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_MACRO_UTILS_H_
-#define TORCH_TPU_COMMON_MACRO_UTILS_H_
+#ifndef TORCH_TPU_CSRC_COMMON_MACRO_UTILS_H_
+#define TORCH_TPU_CSRC_COMMON_MACRO_UTILS_H_
 
 #include <cstddef>
 #include <vector>
@@ -249,4 +249,4 @@ const char* NormalizeIfInsideBuildDirectory(const char* path);
 }  // namespace internal
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_MACRO_UTILS_H_
+#endif  // TORCH_TPU_CSRC_COMMON_MACRO_UTILS_H_

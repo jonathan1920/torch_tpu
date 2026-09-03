@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_CONTEXT_STATES_H_
-#define TORCH_TPU_COMMON_CONTEXT_STATES_H_
+#ifndef TORCH_TPU_CSRC_COMMON_CONTEXT_STATES_H_
+#define TORCH_TPU_CSRC_COMMON_CONTEXT_STATES_H_
 
 #include <memory>
 #include <optional>
@@ -106,4 +106,4 @@ using LayoutContextState = absl_nonnull std::shared_ptr<const xla::Layout>;
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_CONTEXT_STATES_H_
+#endif  // TORCH_TPU_CSRC_COMMON_CONTEXT_STATES_H_

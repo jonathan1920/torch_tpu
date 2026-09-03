@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_FIXED_SIZE_SPAN_H_
-#define TORCH_TPU_COMMON_FIXED_SIZE_SPAN_H_
+#ifndef TORCH_TPU_CSRC_COMMON_FIXED_SIZE_SPAN_H_
+#define TORCH_TPU_CSRC_COMMON_FIXED_SIZE_SPAN_H_
 
 #include <array>
 #include <cstddef>
@@ -144,4 +144,4 @@ struct tuple_element<I, torch_tpu::FixedSizeSpan<T, N>> {
 
 }  // namespace std
 
-#endif  // TORCH_TPU_COMMON_FIXED_SIZE_SPAN_H_
+#endif  // TORCH_TPU_CSRC_COMMON_FIXED_SIZE_SPAN_H_

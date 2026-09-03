@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_MACROS_LOGGING_H_
-#define TORCH_TPU_OPS_MACROS_LOGGING_H_
+#ifndef TORCH_TPU_CSRC_OPS_MACROS_LOGGING_H_
+#define TORCH_TPU_CSRC_OPS_MACROS_LOGGING_H_
 
 #include <array>
 #include <cstddef>
@@ -582,4 +582,4 @@ inline void CheckTtKernelArgList(const KernelArgCheckerContext& context,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_MACROS_LOGGING_H_
+#endif  // TORCH_TPU_CSRC_OPS_MACROS_LOGGING_H_

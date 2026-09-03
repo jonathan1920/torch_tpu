@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_VIEW_DECOMPOSITION_VIEW_SEQUENCE_H_
-#define TORCH_TPU_OPS_VIEW_DECOMPOSITION_VIEW_SEQUENCE_H_
+#ifndef TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_VIEW_SEQUENCE_H_
+#define TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_VIEW_SEQUENCE_H_
 
 #include <cstdint>
 #include <ostream>
@@ -112,4 +112,4 @@ absl::StatusOr<OpParamCacheKeys> ViewSequenceCacheKey(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_VIEW_DECOMPOSITION_VIEW_SEQUENCE_H_
+#endif  // TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_VIEW_SEQUENCE_H_

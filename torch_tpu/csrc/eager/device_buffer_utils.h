@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_DEVICE_BUFFER_UTILS_H_
-#define TORCH_TPU_EAGER_DEVICE_BUFFER_UTILS_H_
+#ifndef TORCH_TPU_CSRC_EAGER_DEVICE_BUFFER_UTILS_H_
+#define TORCH_TPU_CSRC_EAGER_DEVICE_BUFFER_UTILS_H_
 
 #include <optional>
 #include <vector>
@@ -109,4 +109,4 @@ absl::StatusOr<DeviceBufferRef> CreateInverseViewDeviceBufferRef(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_DEVICE_BUFFER_UTILS_H_
+#endif  // TORCH_TPU_CSRC_EAGER_DEVICE_BUFFER_UTILS_H_

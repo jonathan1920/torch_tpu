@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_DYNAMIC_DYNAMIC_RESHAPE_H_
-#define TORCH_TPU_OPS_DYNAMIC_DYNAMIC_RESHAPE_H_
+#ifndef TORCH_TPU_CSRC_OPS_DYNAMIC_DYNAMIC_RESHAPE_DYNAMIC_RESHAPE_H_
+#define TORCH_TPU_CSRC_OPS_DYNAMIC_DYNAMIC_RESHAPE_DYNAMIC_RESHAPE_H_
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/List.h"
@@ -46,4 +46,4 @@ at::Tensor DynamicReshape(const at::Tensor& input, at::TensorList shape,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_DYNAMIC_DYNAMIC_RESHAPE_H_
+#endif  // TORCH_TPU_CSRC_OPS_DYNAMIC_DYNAMIC_RESHAPE_DYNAMIC_RESHAPE_H_

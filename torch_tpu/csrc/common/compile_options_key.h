@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_COMPILE_OPTIONS_KEY_H_
-#define TORCH_TPU_COMMON_COMPILE_OPTIONS_KEY_H_
+#ifndef TORCH_TPU_CSRC_COMMON_COMPILE_OPTIONS_KEY_H_
+#define TORCH_TPU_CSRC_COMMON_COMPILE_OPTIONS_KEY_H_
 
 #include <cstddef>
 
@@ -52,4 +52,4 @@ void AbslStringify(Sink& sink, const CompileOptionsKey key) {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_COMPILE_OPTIONS_KEY_H_
+#endif  // TORCH_TPU_CSRC_COMMON_COMPILE_OPTIONS_KEY_H_

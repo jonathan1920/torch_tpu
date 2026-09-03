@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_DOT_DOT_H_
-#define TORCH_TPU_OPS_DOT_DOT_H_
+#ifndef TORCH_TPU_CSRC_OPS_DOT_DOT_H_
+#define TORCH_TPU_CSRC_OPS_DOT_DOT_H_
 
 #include "absl/status/statusor.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -28,4 +28,4 @@ absl::StatusOr<mlir::MlirOp> BuildDotShlo(mlir::MlirOp lhs, mlir::MlirOp rhs,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_DOT_DOT_H_
+#endif  // TORCH_TPU_CSRC_OPS_DOT_DOT_H_

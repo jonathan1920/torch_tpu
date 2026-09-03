@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_OP_DISPATCHER_H_
-#define TORCH_TPU_EAGER_OP_DISPATCHER_H_
+#ifndef TORCH_TPU_CSRC_EAGER_OP_DISPATCHER_H_
+#define TORCH_TPU_CSRC_EAGER_OP_DISPATCHER_H_
 
 #include <array>
 #include <cstdint>
@@ -430,4 +430,4 @@ absl::StatusOr<at::Tensor> MakeTensor(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_OP_DISPATCHER_H_
+#endif  // TORCH_TPU_CSRC_EAGER_OP_DISPATCHER_H_

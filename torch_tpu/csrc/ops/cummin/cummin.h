@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_CUMMIN_CUMMIN_H_
-#define TORCH_TPU_OPS_CUMMIN_CUMMIN_H_
+#ifndef TORCH_TPU_CSRC_OPS_CUMMIN_CUMMIN_H_
+#define TORCH_TPU_CSRC_OPS_CUMMIN_CUMMIN_H_
 
 #include <cstdint>
 
@@ -33,4 +33,4 @@ absl::StatusOr<CumminOutputs> BuildCumminShlo(int64_t dim, mlir::MlirOp input);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_CUMMIN_CUMMIN_H_
+#endif  // TORCH_TPU_CSRC_OPS_CUMMIN_CUMMIN_H_

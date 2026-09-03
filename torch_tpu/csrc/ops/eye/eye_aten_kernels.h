@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_EYE_EYE_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_EYE_EYE_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_EYE_EYE_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_EYE_EYE_ATEN_KERNELS_H_
 
 #include "ATen/core/TensorBody.h"
 #include "c10/core/SymInt.h"
@@ -28,4 +28,4 @@ at::Tensor& AtenEyeOut(c10::SymInt n, at::Tensor& out);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_EYE_EYE_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_EYE_EYE_ATEN_KERNELS_H_

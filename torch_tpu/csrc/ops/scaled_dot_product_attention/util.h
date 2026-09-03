@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_UTIL_H_
-#define TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_UTIL_H_
+#ifndef TORCH_TPU_CSRC_OPS_SCALED_DOT_PRODUCT_ATTENTION_UTIL_H_
+#define TORCH_TPU_CSRC_OPS_SCALED_DOT_PRODUCT_ATTENTION_UTIL_H_
 
 #include <cstdint>
 #include <string>
@@ -101,4 +101,4 @@ std::string GetOpString(Operation* op);
 
 }  // namespace mlir::torch_tpu
 
-#endif  // TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_UTIL_H_
+#endif  // TORCH_TPU_CSRC_OPS_SCALED_DOT_PRODUCT_ATTENTION_UTIL_H_

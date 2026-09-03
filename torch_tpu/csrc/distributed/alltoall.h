@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_DISTRIBUTED_ALLTOALL_H_
-#define TORCH_TPU_DISTRIBUTED_ALLTOALL_H_
+#ifndef TORCH_TPU_CSRC_DISTRIBUTED_ALLTOALL_H_
+#define TORCH_TPU_CSRC_DISTRIBUTED_ALLTOALL_H_
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -33,4 +33,4 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildDistributedAllToAllShlo(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_DISTRIBUTED_ALLTOALL_H_
+#endif  // TORCH_TPU_CSRC_DISTRIBUTED_ALLTOALL_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_CAT_CAT_H_
-#define TORCH_TPU_OPS_CAT_CAT_H_
+#ifndef TORCH_TPU_CSRC_OPS_CAT_CAT_H_
+#define TORCH_TPU_CSRC_OPS_CAT_CAT_H_
 
 #include <cstdint>
 
@@ -30,4 +30,4 @@ absl::StatusOr<mlir::MlirOp> BuildCatShlo(absl::Span<mlir::MlirOp> input_ops,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_CAT_CAT_H_
+#endif  // TORCH_TPU_CSRC_OPS_CAT_CAT_H_

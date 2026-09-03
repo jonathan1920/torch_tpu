@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_INTERNAL_MOSAIC_OP_BUILDERS_H_
-#define TORCH_TPU_INTERNAL_MOSAIC_OP_BUILDERS_H_
+#ifndef TORCH_TPU_CSRC_INTERNAL_MOSAIC_OP_BUILDERS_H_
+#define TORCH_TPU_CSRC_INTERNAL_MOSAIC_OP_BUILDERS_H_
 
 #include <cstdint>
 #include <memory>
@@ -78,4 +78,4 @@ LogicalResult SerializeMosaicKernel(
 
 }  // namespace mlir::torch_tpu
 
-#endif  // TORCH_TPU_INTERNAL_MOSAIC_OP_BUILDERS_H_
+#endif  // TORCH_TPU_CSRC_INTERNAL_MOSAIC_OP_BUILDERS_H_

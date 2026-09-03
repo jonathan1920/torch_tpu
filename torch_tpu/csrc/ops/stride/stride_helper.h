@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_STRIDE_STRIDE_HELP_H_
-#define TORCH_TPU_OPS_STRIDE_STRIDE_HELP_H_
+#ifndef TORCH_TPU_CSRC_OPS_STRIDE_STRIDE_HELPER_H_
+#define TORCH_TPU_CSRC_OPS_STRIDE_STRIDE_HELPER_H_
 
 #include <cstdint>
 
@@ -58,4 +58,4 @@ absl::Status ValidateProvidedLayoutDataFitsInStorage(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_STRIDE_STRIDE_HELP_H_
+#endif  // TORCH_TPU_CSRC_OPS_STRIDE_STRIDE_HELPER_H_

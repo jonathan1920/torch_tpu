@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_A_MIN_MAX_A_MIN_MAX_H_
-#define TORCH_TPU_OPS_A_MIN_MAX_A_MIN_MAX_H_
+#ifndef TORCH_TPU_CSRC_OPS_A_MIN_MAX_A_MIN_MAX_H_
+#define TORCH_TPU_CSRC_OPS_A_MIN_MAX_A_MIN_MAX_H_
 
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -40,4 +40,4 @@ absl::StatusOr<MlirOpResults<2>> BuildFusedAMinMaxShlo(Dimensions dims,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_A_MIN_MAX_A_MIN_MAX_H_
+#endif  // TORCH_TPU_CSRC_OPS_A_MIN_MAX_A_MIN_MAX_H_

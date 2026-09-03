@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_FUSED_SGD_FUSED_SGD_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_FUSED_SGD_FUSED_SGD_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_CSRC_OPS_FUSED_SGD_FUSED_SGD_ATEN_KERNELS_H_
+#define TORCH_TPU_CSRC_OPS_FUSED_SGD_FUSED_SGD_ATEN_KERNELS_H_
 
 #include <optional>
 
@@ -41,4 +41,4 @@ void AtenFusedSgdTensorLr(at::TensorList self, at::TensorList grads,
                           const std::optional<at::Tensor>& found_inf);
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_FUSED_SGD_FUSED_SGD_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_CSRC_OPS_FUSED_SGD_FUSED_SGD_ATEN_KERNELS_H_

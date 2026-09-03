@@ -190,4 +190,4 @@ absl::Status AssignConstantTensor(const at::Tensor& cpu_src_tensor,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_TESTS_COMPILED_MODE_H_
+#endif  // TORCH_TPU_CSRC_INTERNAL_COMPILE_COMPILED_MODE_H_

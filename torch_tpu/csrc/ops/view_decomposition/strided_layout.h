@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_VIEW_DECOMPOSITION_STRIDED_LAYOUT_H_
-#define TORCH_TPU_OPS_VIEW_DECOMPOSITION_STRIDED_LAYOUT_H_
+#ifndef TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_STRIDED_LAYOUT_H_
+#define TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_STRIDED_LAYOUT_H_
 
 #include <stdint.h>
 
@@ -96,4 +96,4 @@ Strides GetStrides(const StridedLayout& layout);
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_VIEW_DECOMPOSITION_STRIDED_LAYOUT_H_
+#endif  // TORCH_TPU_CSRC_OPS_VIEW_DECOMPOSITION_STRIDED_LAYOUT_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_HELPERS_H_
-#define TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_HELPERS_H_
+#ifndef TORCH_TPU_CSRC_OPS_SCALED_DOT_PRODUCT_ATTENTION_HELPERS_H_
+#define TORCH_TPU_CSRC_OPS_SCALED_DOT_PRODUCT_ATTENTION_HELPERS_H_
 
 #include <cstdint>
 #include <optional>
@@ -50,4 +50,4 @@ Strides DenseStrides(absl::Span<const int64_t> template_strides,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_SCALED_DOT_PRODUCT_ATTENTION_HELPERS_H_
+#endif  // TORCH_TPU_CSRC_OPS_SCALED_DOT_PRODUCT_ATTENTION_HELPERS_H_

@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_MOSAIC_DIALECT_H_
-#define TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_MOSAIC_DIALECT_H_
+#ifndef TORCH_TPU_CSRC_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_MOSAIC_DIALECT_H_
+#define TORCH_TPU_CSRC_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_MOSAIC_DIALECT_H_
 
 #include "mlir/IR/Dialect.h"
 #include "torch_tpu/csrc/internal/mosaic/dialect/torch_tpu_mosaic_dialect.h.inc"
 
-#endif  // TORCH_TPU_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_MOSAIC_DIALECT_H_
+#endif  // TORCH_TPU_CSRC_INTERNAL_MOSAIC_DIALECT_TORCH_TPU_MOSAIC_DIALECT_H_

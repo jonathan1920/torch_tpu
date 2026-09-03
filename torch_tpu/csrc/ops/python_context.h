@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_python_context_H_
-#define TORCH_TPU_OPS_python_context_H_
+#ifndef TORCH_TPU_CSRC_OPS_PYTHON_CONTEXT_H_
+#define TORCH_TPU_CSRC_OPS_PYTHON_CONTEXT_H_
 
 // This library provides utilities for capturing the python context of an op
 // and using it to implement the op's behavior correctly. See go/catto-design
@@ -321,4 +321,4 @@ class ScopedPythonContextProvider {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_python_context_H_
+#endif  // TORCH_TPU_CSRC_OPS_PYTHON_CONTEXT_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_COMMON_TIER3_COMPILATION_CACHE_H_
-#define TORCH_TPU_COMMON_TIER3_COMPILATION_CACHE_H_
+#ifndef TORCH_TPU_CSRC_COMMON_TIER3_COMPILATION_CACHE_H_
+#define TORCH_TPU_CSRC_COMMON_TIER3_COMPILATION_CACHE_H_
 
 #include <string>
 
@@ -43,4 +43,4 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> GetFromTier3Cache(
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_COMMON_TIER3_COMPILATION_CACHE_H_
+#endif  // TORCH_TPU_CSRC_COMMON_TIER3_COMPILATION_CACHE_H_

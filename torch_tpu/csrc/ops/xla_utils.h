@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_XLA_UTILS_H_
-#define TORCH_TPU_OPS_XLA_UTILS_H_
+#ifndef TORCH_TPU_CSRC_OPS_XLA_UTILS_H_
+#define TORCH_TPU_CSRC_OPS_XLA_UTILS_H_
 
 #include "c10/util/BFloat16.h"
 #include "c10/util/Half.h"
@@ -43,4 +43,4 @@ inline xla::complex64 ToXlaComplex64(c10::complex<float> value) {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_XLA_UTILS_H_
+#endif  // TORCH_TPU_CSRC_OPS_XLA_UTILS_H_

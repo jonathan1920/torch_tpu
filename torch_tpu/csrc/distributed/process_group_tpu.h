@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_DISTRIBUTED_PROCESS_GROUP_TPU_H_
-#define TORCH_TPU_DISTRIBUTED_PROCESS_GROUP_TPU_H_
+#ifndef TORCH_TPU_CSRC_DISTRIBUTED_PROCESS_GROUP_TPU_H_
+#define TORCH_TPU_CSRC_DISTRIBUTED_PROCESS_GROUP_TPU_H_
 
 // A c10d::Backend implementation for TPUs.
 // All the PyTorch collective operations for tensors on TPU device will be
@@ -354,4 +354,4 @@ class ProcessGroupTpu : public c10d::Backend {
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_DISTRIBUTED_PROCESS_GROUP_TPU_H_
+#endif  // TORCH_TPU_CSRC_DISTRIBUTED_PROCESS_GROUP_TPU_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_RANDOM_RANDOM_H_
-#define TORCH_TPU_OPS_RANDOM_RANDOM_H_
+#ifndef TORCH_TPU_CSRC_OPS_RANDOM_RANDOM_H_
+#define TORCH_TPU_CSRC_OPS_RANDOM_RANDOM_H_
 
 #include <cstdint>
 
@@ -37,4 +37,4 @@ absl::StatusOr<MlirOpResults<1>> BuildRandomShlo(mlir::MlirOp rng_input_state,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_RANDOM_RANDOM_H_
+#endif  // TORCH_TPU_CSRC_OPS_RANDOM_RANDOM_H_
