@@ -335,24 +335,38 @@ func::FuncOp buildModule(ImplicitLocOpBuilder& module_builder,
 
   Value adjusted_output = AddFOp::create(fn_builder, adjustment, current);
 
-  // Store the output, we could just do this on the last iteration.
-  StoreTile(fn_builder, adjusted_output, oi_arg);
-  StoreTile(fn_builder, adjusted_output, o_scratch_arg);
-  if (config.return_lse) {
-    Value lse = AddFOp::create(fn_builder, mi_new,
-                               math::LogOp::create(fn_builder, li_new));
-    Value sliced_lse = NormalizeLaneDim(fn_builder, lse, 1);
-    Value transposed_lse =
-        vector::TransposeOp::create(fn_builder, sliced_lse, {1, 0});
-    StoreTile(fn_builder, transposed_lse, lse_arg);
-  }
-
   StoreTile(fn_builder, mi_new, mi_arg);
   StoreTile(fn_builder, li_new, li_arg);
+  StoreTile(fn_builder, adjusted_output, o_scratch_arg);
 
   if (causal_if.has_value()) {
     fn_builder.setInsertionPointAfter(*causal_if);
   }
+
+  Value last_col_idx = ConstantOp::create(
+      fn_builder, fn_builder.getI32IntegerAttr(
+                      (config.padded_kv_sequence_length / tiling.kt) - 1));
+  Value is_last_col = CmpIOp::create(fn_builder, CmpIPredicate::eq,
+                                     fn.getArgument(3), last_col_idx);
+  IfOp::create(fn_builder, is_last_col,
+               /*thenBuilder=*/
+               [&](OpBuilder& builder, Location loc) -> void {
+                 ImplicitLocOpBuilder b(loc, builder);
+                 Value output = LoadTile(b, o_scratch_arg);
+                 StoreTile(b, output, oi_arg);
+                 if (config.return_lse) {
+                   Value li = LoadTile(b, li_arg);
+                   Value mi = LoadTile(b, mi_arg);
+                   Value lse =
+                       AddFOp::create(b, mi, math::LogOp::create(b, li));
+                   Value sliced_lse = NormalizeLaneDim(b, lse, 1);
+                   Value transposed_lse =
+                       vector::TransposeOp::create(b, sliced_lse, {1, 0});
+                   StoreTile(b, transposed_lse, lse_arg);
+                 }
+                 YieldOp::create(b, loc);
+               });
+
   ReturnOp::create(fn_builder);
 
   return fn;
