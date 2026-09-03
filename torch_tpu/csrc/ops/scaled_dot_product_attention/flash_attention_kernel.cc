@@ -302,10 +302,10 @@ func::FuncOp buildModule(ImplicitLocOpBuilder& module_builder,
   auto mi_new = MaximumFOp::create(fn_builder, mi_prev, mij);
 
   auto li_prev = LoadTile(fn_builder, li_arg);
-  auto li_prev_scaled = MulFOp::create(
-      fn_builder,
-      ExpOp::create(fn_builder, SubFOp::create(fn_builder, mi_prev, mi_new)),
-      li_prev);
+  auto exp_mi_prev_minus_mi_new =
+      ExpOp::create(fn_builder, SubFOp::create(fn_builder, mi_prev, mi_new));
+  auto li_prev_scaled =
+      MulFOp::create(fn_builder, exp_mi_prev_minus_mi_new, li_prev);
 
   auto exp_mij_minus_mi_new =
       ExpOp::create(fn_builder, SubFOp::create(fn_builder, mij, mi_new));
@@ -315,29 +315,24 @@ func::FuncOp buildModule(ImplicitLocOpBuilder& module_builder,
                      MulFOp::create(fn_builder, exp_mij_minus_mi_new, lij));
 
   auto oi = LoadTile(fn_builder, o_scratch_arg);
-  auto adjustment = MulFOp::create(
-      fn_builder,
-      NormalizeLaneDim(fn_builder,
-                       DivFOp::create(fn_builder, li_prev_scaled, li_new),
-                       config.vo_head_dim),
-      oi);
+  auto adjustment =
+      MulFOp::create(fn_builder,
+                     NormalizeLaneDim(fn_builder, exp_mi_prev_minus_mi_new,
+                                      config.vo_head_dim),
+                     oi);
 
   auto vj = LoadTile(fn_builder, v_arg);
   Value lhs = MulFOp::create(
-      fn_builder,
-      NormalizeLaneDim(fn_builder,
-                       DivFOp::create(fn_builder, exp_mij_minus_mi_new, li_new),
-                       kt),
-      pij);
+      fn_builder, NormalizeLaneDim(fn_builder, exp_mij_minus_mi_new, kt), pij);
   lhs = ConvertElementType(fn_builder, ity, lhs);
 
   Value current = CreateMatmul(fn_builder, lhs, vj);
 
-  Value adjusted_output = AddFOp::create(fn_builder, adjustment, current);
+  Value unnormalized_output = AddFOp::create(fn_builder, adjustment, current);
 
   StoreTile(fn_builder, mi_new, mi_arg);
   StoreTile(fn_builder, li_new, li_arg);
-  StoreTile(fn_builder, adjusted_output, o_scratch_arg);
+  StoreTile(fn_builder, unnormalized_output, o_scratch_arg);
 
   if (causal_if.has_value()) {
     fn_builder.setInsertionPointAfter(*causal_if);
@@ -352,10 +347,13 @@ func::FuncOp buildModule(ImplicitLocOpBuilder& module_builder,
                /*thenBuilder=*/
                [&](OpBuilder& builder, Location loc) -> void {
                  ImplicitLocOpBuilder b(loc, builder);
-                 Value output = LoadTile(b, o_scratch_arg);
-                 StoreTile(b, output, oi_arg);
+                 Value unnormalized_output = LoadTile(b, o_scratch_arg);
+                 Value li = LoadTile(b, li_arg);
+                 Value normalized_output = DivFOp::create(
+                     b, unnormalized_output,
+                     NormalizeLaneDim(b, li, config.vo_head_dim));
+                 StoreTile(b, normalized_output, oi_arg);
                  if (config.return_lse) {
-                   Value li = LoadTile(b, li_arg);
                    Value mi = LoadTile(b, mi_arg);
                    Value lse =
                        AddFOp::create(b, mi, math::LogOp::create(b, li));
