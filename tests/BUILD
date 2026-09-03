@@ -470,6 +470,7 @@ torch_tpu_py_test(
         "ops_test_gpu_golden_compiled2.gz",
     ],
     main = "ops_test.py",
+    notap = "TODO(b/556458525): Re-enable once the test is fixed.",
     run_on_accelerators = [
         "requires-tpu-v6e",
         "requires-tpu-v5lite",
@@ -554,6 +555,7 @@ torch_tpu_py_test(
         "ops_test_gpu_golden2.gz",
     ],
     main = "ops_test.py",
+    notap = "TODO(b/556458525): Re-enable once the test is fixed.",
     run_on_accelerators = [
         "requires-tpu-v6e",
         "requires-tpu-v5lite",
