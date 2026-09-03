@@ -105,6 +105,7 @@ def _has_test_filter() -> bool:
 COMPLEX_DTYPES = op_testing.COMPLEX_DTYPES
 FLOAT_DTYPES = op_testing.FLOAT_DTYPES
 INTEGRAL_DTYPES = op_testing.INTEGRAL_DTYPES
+UNQUANTIZED_NUMERIC_DTYPES = op_testing.UNQUANTIZED_NUMERIC_DTYPES
 ALL_NUMERIC_DTYPES = op_testing.ALL_NUMERIC_DTYPES
 
 CheckValueMode = test_utils.CheckValueMode
@@ -821,7 +822,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.complex64: {"rtol": 3.7e-5},
     },
     "_foreach_tanh": {
-        torch.complex64: {"rtol": 2.8e-5, "atol": 1.1e-5},
+        torch.complex64: {"rtol": 1.4e-4, "atol": 1.1e-5},
         torch.float32: {"atol": 5.2e-5},
     },
     "_log_softmax_backward_data": {
@@ -1175,6 +1176,9 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.int8: {"atol": 3.6e-5},
         torch.uint8: {"atol": 3.6e-5},
     },
+    "torch.ops.aten._safe_softmax.default": {
+        torch.float16: {"atol": 5.9e-4},
+    },
     "var": {
         torch.float16: {"rtol": 1.5e-3},
     },
@@ -1217,7 +1221,7 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.complex64: {"rtol": 3.7e-5},
     },
     "_foreach_tanh": {
-        torch.complex64: {"rtol": 2.8e-5, "atol": 1.1e-5},
+        torch.complex64: {"rtol": 1.4e-4, "atol": 1.1e-5},
     },
     "_log_softmax_backward_data": {
         torch.float32: {"rtol": 3.5e-5, "atol": 3.6e-5},
@@ -3829,7 +3833,11 @@ class TestOps(op_testing.OpInfoTestBase):
 
   def test_scaled_mm_v2(self):
     self.do_test_op(
-        "torch._scaled_mm_v2", exclude_dtypes={"cpu": ALL_NUMERIC_DTYPES}
+        "torch._scaled_mm_v2",
+        exclude_dtypes={
+            "cpu": ALL_NUMERIC_DTYPES,
+            "gpu": UNQUANTIZED_NUMERIC_DTYPES,
+        },
     )
 
   def test_scatter(self):

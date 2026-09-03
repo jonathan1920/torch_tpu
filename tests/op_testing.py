@@ -38,7 +38,7 @@ import sys
 import time
 import traceback
 import typing
-from typing import Any, Final, IO
+from typing import Any, Final, IO, TypeGuard
 import unittest
 
 from absl import flags
@@ -4152,16 +4152,28 @@ class OpInfoTestBase(
         op_exclude_dtypes = _get_dtype_exclusions(
             raw_exclude_dtypes, self.golden_device_type
         )
-        # Select one valid promotional upcast pair (allowed_pair, e.g., float32 -> float64)
-        # and one invalid downcast pair (illegal_pair, e.g., float32 -> int32) from the
-        # dtypes to be tested. These will be used below to test out-variant dtype casting
-        # and exception parity between TorchTPU and GPU.
+        # Select one valid promotional upcast pair (allowed_pair, e.g., float32
+        # -> float64) and one invalid downcast pair (illegal_pair, e.g.,
+        # float32 -> int32) from the dtypes to be tested. These will be used
+        # below to test out-variant dtype casting and exception parity between
+        # TorchTPU and GPU.
         cast_pairs = find_cast_pairs([
             d
             for d in dtypes_to_test
             if not _should_skip_dtype(d, exclude_dtypes=op_exclude_dtypes)
         ])
         test_out_casting = op.name not in _OUT_DTYPE_CAST_KNOWN_FAILURES
+
+        def _should_test_out_casting(
+            cast_pair: tuple[torch.dtype, torch.dtype] | None,
+        ) -> TypeGuard[tuple[torch.dtype, torch.dtype]]:
+          # In golden generation mode, always capture golden data regardless of
+          # whether the op is known to fail on TPU.
+          return (
+              (_gen_gpu_golden_mode() or test_out_casting)
+              and cast_pair is not None
+              and dtype == cast_pair[0]
+          )
 
         for dtype in dtypes_to_test:
           if _should_skip_dtype(dtype, exclude_dtypes=exclude_dtypes):
@@ -4183,14 +4195,11 @@ class OpInfoTestBase(
               max_samples_per_op_dtype=max_samples_per_op_dtype,
           )
 
-          # If this dtype is the input dtype of the allowed cast pair, run an additional
-          # out-variant test with out_dtype_override set to the target upcast dtype to verify
-          # that TorchTPU correctly supports out-variant promotional upcasting.
-          if (
-              test_out_casting
-              and cast_pairs.allowed_pair is not None
-              and dtype == cast_pairs.allowed_pair[0]
-          ):
+          # If this dtype is the input dtype of the allowed cast pair, run an
+          # additional out-variant test with out_dtype_override set to the
+          # target upcast dtype to verify that TorchTPU correctly supports
+          # out-variant promotional upcasting.
+          if _should_test_out_casting(cast_pairs.allowed_pair):
             self._test_torch_tpu_vs_golden(
                 op,
                 dtype,
@@ -4208,14 +4217,11 @@ class OpInfoTestBase(
                 out_dtype_override=cast_pairs.allowed_pair[1],
             )
 
-          # If this dtype is the input dtype of the illegal cast pair, run an additional
-          # out-variant test with out_dtype_override set to the target downcast dtype to verify
-          # that TorchTPU raises the same RuntimeError (exception parity) as PyTorch/GPU.
-          if (
-              test_out_casting
-              and cast_pairs.illegal_pair is not None
-              and dtype == cast_pairs.illegal_pair[0]
-          ):
+          # If this dtype is the input dtype of the illegal cast pair, run an
+          # additional out-variant test with out_dtype_override set to the
+          # target downcast dtype to verify that TorchTPU raises the same
+          # RuntimeError (exception parity) as PyTorch/GPU.
+          if _should_test_out_casting(cast_pairs.illegal_pair):
             self._test_torch_tpu_vs_golden(
                 op,
                 dtype,
