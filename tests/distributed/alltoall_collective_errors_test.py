@@ -241,42 +241,80 @@ def run_all_to_all_wrong_num_input_tensors_error() -> None:
     torch.distributed.all_to_all(output_tensors, input_tensors)
 
 
-def run_all_to_all_unequal_input_tensor_shape_error() -> None:
+def run_all_to_all_unequal_input_tensor_trailing_dims_error() -> None:
   dist.init_process_group(backend="tpu_dist")
   world_size = int(os.environ["WORLD_SIZE"])
   device = "tpu"
   input_tensors = [
-      torch.ones(1, device=device, dtype=torch.int64) for _ in range(world_size)
+      torch.ones((1, 2), device=device, dtype=torch.int64)
+      for _ in range(world_size)
   ]
-  input_tensors[1] = torch.ones(2, device=device, dtype=torch.int64)
+  input_tensors[1] = torch.ones((1, 4), device=device, dtype=torch.int64)
   output_tensors = [
-      torch.ones(1, device=device, dtype=torch.int64) for _ in range(world_size)
+      torch.ones((1, 2), device=device, dtype=torch.int64)
+      for _ in range(world_size)
   ]
-  output_tensors[1] = torch.ones(2, device=device, dtype=torch.int64)
   expected_msg = (
-      "distributed.all_to_all(): expected all input tensors to be of same"
-      " shape, got [2] at index 1 and [1] at index 0"
+      "distributed.all_to_all(): expected trailing dimensions of input tensors"
+      " to match, got [1, 4] and [1, 2]"
   )
   with et.assert_raises_message(RuntimeError, tpu=expected_msg):
     torch.distributed.all_to_all(output_tensors, input_tensors)
 
 
-def run_all_to_all_unequal_input_output_tensor_shape_error() -> None:
+def run_all_to_all_unequal_output_tensor_trailing_dims_error() -> None:
+  dist.init_process_group(backend="tpu_dist")
+  world_size = int(os.environ["WORLD_SIZE"])
+  device = "tpu"
+  input_tensors = [
+      torch.ones((1, 2), device=device, dtype=torch.int64)
+      for _ in range(world_size)
+  ]
+  output_tensors = [
+      torch.ones((1, 2), device=device, dtype=torch.int64)
+      for _ in range(world_size)
+  ]
+  output_tensors[0] = torch.ones((1, 4), device=device, dtype=torch.int64)
+  expected_msg = (
+      "distributed.all_to_all(): expected trailing dimensions of output"
+      " tensors to match, got [1, 4] and [1, 2]"
+  )
+  with et.assert_raises_message(RuntimeError, tpu=expected_msg):
+    torch.distributed.all_to_all(output_tensors, input_tensors)
+
+
+def run_all_to_all_dim_count_mismatch_error() -> None:
   dist.init_process_group(backend="tpu_dist")
   world_size = int(os.environ["WORLD_SIZE"])
   device = "tpu"
   input_tensors = [
       torch.ones(1, device=device, dtype=torch.int64) for _ in range(world_size)
   ]
+  input_tensors[1] = torch.ones((1, 2), device=device, dtype=torch.int64)
   output_tensors = [
       torch.ones(1, device=device, dtype=torch.int64) for _ in range(world_size)
   ]
-  output_tensors[0] = torch.ones(2, device=device, dtype=torch.int64)
   expected_msg = (
-      "distributed.all_to_all(): expected output and input tensors to have the"
-      " same shape, got [2] for output and [1] for input at index 0"
+      "distributed.all_to_all(): expected all input tensors to have the same"
+      " number of dimensions, got 2 and 1"
   )
   with et.assert_raises_message(RuntimeError, tpu=expected_msg):
+    torch.distributed.all_to_all(output_tensors, input_tensors)
+
+
+def run_all_to_all_dtype_mismatch_error() -> None:
+  dist.init_process_group(backend="tpu_dist")
+  world_size = int(os.environ["WORLD_SIZE"])
+  device = "tpu"
+  input_tensors = [
+      torch.ones(1, device=device, dtype=torch.int64) for _ in range(world_size)
+  ]
+  input_tensors[1] = torch.ones(1, device=device, dtype=torch.float32)
+  output_tensors = [
+      torch.ones(1, device=device, dtype=torch.int64) for _ in range(world_size)
+  ]
+  expected_msg = re.compile("Invalid usage of tensors with different dtypes.*")
+  with et.assert_raises_message(ValueError, tpu=expected_msg):
     torch.distributed.all_to_all(output_tensors, input_tensors)
 
 
@@ -302,20 +340,38 @@ class AllToAllCollectiveErrorsTest(seed_test_utils.MultiProcessRepeatableTest):
         ),
     )
 
-  def test_unequal_input_tensor_shape(self):
+  def test_unequal_input_tensor_trailing_dims(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_to_all_unequal_input_tensor_shape_error,
+            run_all_to_all_unequal_input_tensor_trailing_dims_error,
             world_size=self._world_size,
         ),
     )
 
-  def test_unequal_input_output_tensor_shape(self):
+  def test_unequal_output_tensor_trailing_dims(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_to_all_unequal_input_output_tensor_shape_error,
+            run_all_to_all_unequal_output_tensor_trailing_dims_error,
+            world_size=self._world_size,
+        ),
+    )
+
+  def test_dim_count_mismatch(self):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_all_to_all_dim_count_mismatch_error,
+            world_size=self._world_size,
+        ),
+    )
+
+  def test_dtype_mismatch(self):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_all_to_all_dtype_mismatch_error,
             world_size=self._world_size,
         ),
     )

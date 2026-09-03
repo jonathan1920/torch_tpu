@@ -216,31 +216,11 @@ class ProcessGroupTpu : public c10d::Backend {
       std::vector<int64_t>& input_split_sizes,   // INT_VEC_OK
       const c10d::AllToAllOptions& opts) override;
 
-  // Scatters list of input tensors to all processes in a group and returns
-  // gathered list of tensors in output list.
-  //
-  //   PyTorch API: torch.distributed.all_to_all
-  //
-  //   Args:
-  //       output_tensors: List of tensors to be gathered one per rank
-  //       input_tensors: List of tensors to scatter one per rank
-  //
-  //   Example: Uniform shape of input and output tensors.
-  //     input
-  //       [tensor([0]), tensor([1]), tensor([2]), tensor([3])]     # Rank 0
-  //       [tensor([4]), tensor([5]), tensor([6]), tensor([7])]     # Rank 1
-  //       [tensor([8]), tensor([9]), tensor([10]), tensor([11])]   # Rank 2
-  //       [tensor([12]), tensor([13]), tensor([14]), tensor([15])] # Rank 3
-  //     output
-  //       [tensor([0]), tensor([4]), tensor([8]), tensor([12])]    # Rank 0
-  //       [tensor([1]), tensor([5]), tensor([9]), tensor([13])]    # Rank 1
-  //       [tensor([2]), tensor([6]), tensor([10]), tensor([14])]   # Rank 2
-  //       [tensor([3]), tensor([7]), tensor([11]), tensor([15])]   # Rank 3
-  //
-  //   Note: The current implementation requires all input and output tensors
-  //   to be of uniform shape. Non-uniform shape is not supported.
-  //   TODO(mkkhanna): Support tensors of non-uniform shape.
-  //   b/447429739
+  // Scatters a list of input tensors to all processes in a group and gathers
+  // the received tensors into output_tensors (torch.distributed.all_to_all).
+  // Supports both uniform shapes and non-uniform shapes across ranks (e.g. for
+  // MoE routing), where tensors may vary in dimension 0 while matching in
+  // trailing dimensions and dtype.
   c10::intrusive_ptr<c10d::Work> alltoall(
       std::vector<at::Tensor>& output_tensors,
       std::vector<at::Tensor>& input_tensors,
@@ -365,8 +345,8 @@ class ProcessGroupTpu : public c10d::Backend {
   // device_ids_.
   int64_t GetLogicalDeviceId(int64_t physical_device_id) const;
 
-  // Monotonic sequence counter for uneven all_to_all_single offset
-  // coordination.
+  // Monotonic sequence counter for uneven all_to_all and all_to_all_single
+  // offset coordination.
   std::atomic<uint64_t> alltoall_seq_{0};
 };
 
