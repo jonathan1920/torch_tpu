@@ -1997,7 +1997,6 @@ class TestOps(op_testing.OpInfoTestBase):
                 torch.uint8,
                 torch.int8,
                 torch.int16,
-                torch.bool,
             ),
         },
         exclude_inplace_dtypes={
@@ -2006,7 +2005,6 @@ class TestOps(op_testing.OpInfoTestBase):
                 torch.uint8,
                 torch.int8,
                 torch.int16,
-                torch.bool,
             ),
         },
     )

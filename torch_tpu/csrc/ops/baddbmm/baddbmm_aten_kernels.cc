@@ -22,7 +22,6 @@
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
-#include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -32,7 +31,6 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
@@ -51,9 +49,11 @@
 namespace torch_tpu {
 namespace {
 
-absl::Status ValidateBaddbmmOut(const at::Tensor& out) {
-  TT_RET_CHECK(!IsBool(out), error::kInvalidArgument)
-      << "expected out tensor to have dtype float32, got bool";
+absl::Status ValidateBaddbmmOut(const at::Tensor& out,
+                                at::ScalarType expected_dtype) {
+  TT_RET_CHECK(out.scalar_type() == expected_dtype, error::kInvalidArgument)
+      << "expected out tensor to have dtype " << ToString(expected_dtype)
+      << ", got " << ToString(out.scalar_type());
   return absl::OkStatus();
 }
 
@@ -61,8 +61,8 @@ absl::Status ValidateBaddbmmInputs(const at::Tensor& self,
                                    const at::Tensor& batch1,
                                    const at::Tensor& batch2) {
   TT_RET_CHECK(batch1.numel() == 0 || batch2.numel() == 0 ||
-                   (batch1.scalar_type() != at::kInt &&
-                    batch1.scalar_type() != at::kLong),
+                   c10::isFloatingType(batch1.scalar_type()) ||
+                   c10::isComplexType(batch1.scalar_type()),
                error::kPythonNotImplementedError)
       << "not implemented for " << ToString(batch1.scalar_type());
 
@@ -94,6 +94,18 @@ absl::Status ValidateBaddbmmInputs(const at::Tensor& self,
       << ToString(batch2.sizes()) << "), got " << batch1.size(2) << " vs "
       << batch2.size(1);
 
+  return absl::OkStatus();
+}
+
+absl::Status ValidateBaddbmmDtypes(at::ScalarType input_dtype,
+                                   at::ScalarType out_dtype) {
+  TT_RET_CHECK(out_dtype == input_dtype ||
+                   (out_dtype == at::kFloat &&
+                    (input_dtype == at::kHalf || input_dtype == at::kBFloat16)),
+               error::kInvalidArgument)
+      << "expected out_dtype to be the same as input dtype or float32 for "
+         "float16/bfloat16 inputs, got "
+      << ToString(out_dtype);
   return absl::OkStatus();
 }
 
@@ -276,6 +288,9 @@ at::Tensor AtenBaddbmmDtype(const at::Tensor& self, const at::Tensor& batch1,
   TT_KERNEL(
       OpName::kBaddbmmDtype, param_keys,
       (self, batch1, batch2, out_dtype, promoted_beta, promoted_alpha), {
+        TT_THROW_IF_ERROR(ValidateBaddbmmInputs(self, batch1, batch2));
+        TT_THROW_IF_ERROR(
+            ValidateBaddbmmDtypes(batch1.scalar_type(), out_dtype));
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
             ResolveAndRunBaddbmm(self, batch1, batch2, std::move(promoted_beta),
@@ -298,7 +313,10 @@ at::Tensor& AtenBaddbmmDtypeOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kBaddbmmDtypeOut, param_keys,
       (self, batch1, batch2, out_dtype, promoted_beta, promoted_alpha, out), {
-        TT_THROW_IF_ERROR(ValidateBaddbmmOut(out));
+        TT_THROW_IF_ERROR(ValidateBaddbmmInputs(self, batch1, batch2));
+        TT_THROW_IF_ERROR(
+            ValidateBaddbmmDtypes(batch1.scalar_type(), out_dtype));
+        TT_THROW_IF_ERROR(ValidateBaddbmmOut(out, out_dtype));
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
             ResolveAndRunBaddbmm(self, batch1, batch2, std::move(promoted_beta),
@@ -322,7 +340,8 @@ at::Tensor& AtenBaddbmmOut(const at::Tensor& self, const at::Tensor& batch1,
   TT_KERNEL(
       OpName::kBaddbmmOut, param_keys,
       (self, batch1, batch2, promoted_beta, promoted_alpha, out), {
-        TT_THROW_IF_ERROR(ValidateBaddbmmOut(out));
+        TT_THROW_IF_ERROR(ValidateBaddbmmInputs(self, batch1, batch2));
+        TT_THROW_IF_ERROR(ValidateBaddbmmOut(out, batch1.scalar_type()));
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
             ResolveAndRunBaddbmm(self, batch1, batch2, std::move(promoted_beta),

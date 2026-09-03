@@ -5226,6 +5226,30 @@ Supported combinations for non-constant padding:
 
   @parameterized.named_parameters(
       dict(
+          testcase_name="bool",
+          dtype=torch.bool,
+          tpu_dtype="bool",
+          gpu_dtype="Bool",
+      ),
+      dict(
+          testcase_name="uint8",
+          dtype=torch.uint8,
+          tpu_dtype="uint8",
+          gpu_dtype="Byte",
+      ),
+      dict(
+          testcase_name="int8",
+          dtype=torch.int8,
+          tpu_dtype="int8",
+          gpu_dtype="Char",
+      ),
+      dict(
+          testcase_name="int16",
+          dtype=torch.int16,
+          tpu_dtype="int16",
+          gpu_dtype="Short",
+      ),
+      dict(
           testcase_name="int32",
           dtype=torch.int32,
           tpu_dtype="int32",
@@ -5252,6 +5276,17 @@ Supported combinations for non-constant padding:
         message_reviewed_by="gunhyun",
     ):
       torch.baddbmm(input_tensor, batch1, batch2)
+
+  def test_baddbmm_invalid_out_dtype(self):
+    input_tensor = torch.ones(1, 2, 2, dtype=torch.float32, device=et.device())
+    batch1 = torch.ones(1, 2, 3, dtype=torch.float32, device=et.device())
+    batch2 = torch.ones(1, 3, 2, dtype=torch.float32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""baddbmm(): expected out_dtype to be the same as input dtype or float32 for float16/bfloat16 inputs, got int32""",
+        gpu="""out_dtype must be the same as input dtype or fp32 for fp16/bf16 inputs""",
+    ):
+      torch.ops.aten.baddbmm.dtype(input_tensor, batch1, batch2, torch.int32)
 
   def test_baddbmm_mismatch_dtypes_batch(self):
     input_tensor = torch.ones(1, 2, 2, dtype=torch.float32, device=et.device())
