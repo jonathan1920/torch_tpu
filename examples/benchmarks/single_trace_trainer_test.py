@@ -306,5 +306,48 @@ class SingleTraceTrainerBufferMutationTest(seed_test_utils.RepeatableTest):
     self.assertEqual(model.add_count, 1)
 
 
+class SingleTraceTrainerTiedWeightsTest(seed_test_utils.RepeatableTest):
+
+  def setUp(self):
+    super().setUp()
+    self.device = torch.device("tpu")
+
+  def test_tied_weights_deduplication(self):
+    class TiedModel(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.embed = torch.nn.Embedding(128, 64)
+        self.lm_head = torch.nn.Linear(64, 128, bias=False)
+        self.tie_weights()
+
+      def tie_weights(self):
+        self.lm_head.weight = self.embed.weight
+
+      def forward(self, x):
+        h = self.embed(x)
+        return self.lm_head(h)
+
+    model = TiedModel().to(self.device)
+    trainer = single_trace_trainer.SingleTraceTrainer(
+        model, single_trace_trainer.ReferenceAdamw()
+    )
+    # Verify that tied weights resulted in only one unique parameter entry
+    self.assertEqual(len(trainer.param_group.params), 1)
+    self.assertIn("embed_weight", trainer.param_group.params)
+    self.assertEqual(
+        list(trainer.params.keys()),
+        ["embed.weight"],
+    )
+
+    x = torch.randint(0, 128, (4, 16), device=self.device)
+    train_step = trainer.make_compiled_train_step(x)
+    for _ in range(3):
+      loss = train_step(x)
+      self.assertFalse(torch.isnan(loss))
+      # Ensure model parameters in both submodules stay synchronized and tied
+      self.assertIs(model.embed.weight, model.lm_head.weight)
+
+
 if __name__ == "__main__":
   absltest.main()

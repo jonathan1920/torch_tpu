@@ -620,4 +620,16 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "model_utils_test",
+    srcs = ["model_utils_test.py"],
+    deps = [
+        ":model_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+    ],
+)
+
 torch_tpu_package_end()

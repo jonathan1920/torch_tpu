@@ -279,6 +279,13 @@ def get_module_registry():
   return module_registry.ModuleRegistry()
 
 
+def tie_model_weights(model: torch.nn.Module) -> None:
+  """Ties weights in the model if the model supports weight tying."""
+  tie_weights = getattr(model, "tie_weights", None)
+  if callable(tie_weights):
+    tie_weights()
+
+
 def _precompute_attention_mask(
     config: Any,
     example_inputs: dict[str, Any],
@@ -528,19 +535,19 @@ def huggingface_llm_model_builder(
     )
 
   model: torch.nn.Module
-  if dist_strat == DistStrat.NONE:
+  if dist_strat in (DistStrat.NONE, DistStrat.DDP):
     model = model_cpu.to(device)
-  elif dist_strat == DistStrat.DDP:
-    model = model_cpu.to(device)
-    model.gradient_checkpointing_enable(
-        gradient_checkpointing_kwargs={"use_reentrant": False}
-    )
-    model = parallel.DistributedDataParallel(
-        model,
-        init_sync=False,
-        broadcast_buffers=False,
-        gradient_as_bucket_view=False,
-    )
+    tie_model_weights(model)
+    if dist_strat == DistStrat.DDP:
+      model.gradient_checkpointing_enable(
+          gradient_checkpointing_kwargs={"use_reentrant": False}
+      )
+      model = parallel.DistributedDataParallel(
+          model,
+          init_sync=False,
+          broadcast_buffers=False,
+          gradient_as_bucket_view=False,
+      )
   elif dist_strat == DistStrat.FSDP:
     with torch.device("meta"):
       model_meta = module_spec.module_factory().to(weights_dtype)

@@ -101,6 +101,10 @@ class SingleTraceTrainer:
     self.model = model
     self.optimizer = optimizer
 
+    tie_weights = getattr(model, "tie_weights", None)
+    if callable(tie_weights):
+      tie_weights()
+
     raw_params = dict(model.named_parameters())
     raw_buffers = dict(model.named_buffers())
 
