@@ -33,8 +33,8 @@ from collections.abc import Callable, Sequence
 import enum
 from importlib import resources
 from importlib.resources import abc as resources_abc
-import os
 import inspect
+import os
 import pathlib
 import tempfile
 from typing import Any, Iterator
@@ -42,10 +42,10 @@ import uuid
 
 from absl import flags
 from absl import logging
-
 from etils import epath
 from google.api_core import exceptions as gcp_exceptions
 from google.cloud import storage
+from safetensors import torch as safetensors_torch
 import torch
 
 try:
@@ -715,19 +715,28 @@ class TimmProvider(BaseProvider):
     def _module_factory():
       if load_weights and self._base_path:
         local_checkpoint = self._base_path / name / f"{name}.pth"
+        safetensors_checkpoint = self._base_path / name / "model.safetensors"
+        bin_checkpoint = self._base_path / name / "pytorch_model.bin"
 
         if local_checkpoint.exists():
-          model = timm.create_model(name, pretrained=False)
-          #  local checkpoint can't be loaded by timm.create_model directly.
           with local_checkpoint.open("rb") as f:
             state_dict = torch.load(f, map_location="cpu")
-          model.load_state_dict(state_dict)
-          return model
+        elif safetensors_checkpoint.exists():
+          with safetensors_checkpoint.open("rb") as f:
+            state_dict = safetensors_torch.load(f.read())
+        elif bin_checkpoint.exists():
+          with bin_checkpoint.open("rb") as f:
+            state_dict = torch.load(f, map_location="cpu")
         else:
           raise ValueError(
               f"Cannot load weights for {name} because checkpoint is missing"
-              f" at {local_checkpoint}."
+              f" at {local_checkpoint}, {safetensors_checkpoint}, or"
+              f" {bin_checkpoint}."
           )
+
+        model = timm.create_model(name, pretrained=False)
+        model.load_state_dict(state_dict)
+        return model
 
       return timm.create_model(name, pretrained=False)
 
