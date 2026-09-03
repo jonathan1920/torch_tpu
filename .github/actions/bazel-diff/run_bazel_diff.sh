@@ -66,6 +66,15 @@ if [ -n "$BASE_SHA" ] && [ "$DISABLE_BAZEL_DIFF" != "true" ]; then
     echo "Forcing a full test run to ensure global configuration validity."
     DISABLE_BAZEL_DIFF="true"
   fi
+
+  # Check if all modified files are documentation, images, or repo metadata.
+  # If so, they do not affect any build or test targets, so we can skip Bazel entirely.
+  NON_DOC_FILES=$(echo "$CHANGED_FILES" | grep -v -E '(\.md$|^docs/|(^|/)OWNERS|^LICENSE|^\.clang|^\.gitignore|^\.vscode/|\.png$|\.jpg$|\.jpeg$|\.svg$|\.webp$|\.gif$)' || true)
+  if [ -z "$NON_DOC_FILES" ]; then
+    echo "All modified files are documentation or repository metadata."
+    echo "No test targets impacted by these changes. Skipping Bazel entirely!"
+    exit 0
+  fi
 fi
 
 # If BASE_SHA is empty (e.g., workflow_dispatch, postsubmit, nightly on main) or
