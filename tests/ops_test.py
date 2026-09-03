@@ -3602,7 +3602,14 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_nn_functional_rms_norm(self):
     self.do_test_op(
         "nn.functional.rms_norm",
-        exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
+        exclude_dtypes=(
+            torch.uint8,
+            torch.int8,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+        )
+        + COMPLEX_DTYPES,
     )
 
   # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.

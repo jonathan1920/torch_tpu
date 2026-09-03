@@ -50,6 +50,7 @@ torch_tpu_cc_library(
         ":rms_norm",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/csrc/common:aten_utils",
         "//torch_tpu/csrc/common:dimension_types",
         "//torch_tpu/csrc/common:dtype",

@@ -6218,6 +6218,18 @@ Supported combinations for non-constant padding:
     ):
       torch.nn.functional.rms_norm(inp, normalized_shape)
 
+  def test_rms_norm_bool(self):
+    inp = torch.ones(5, 5, device=et.device(), dtype=torch.bool)
+    normalized_shape = (5,)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_rms_norm(): expected the input dtype to be floating point, got bool""",
+        gpu=""""LayerNormKernelImpl" not implemented for 'Bool'""",
+        message_reviewed_by="chizz",
+    ):
+      torch.nn.functional.rms_norm(inp, normalized_shape)
+
   def test_hardswish_unsupported_dtype(self):
     t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(

@@ -31,6 +31,7 @@
 #include "absl/types/span.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
@@ -51,7 +52,8 @@ namespace {
 
 absl::Status ValidateFusedRmsNormInputs(const at::Tensor& input,
                                         at::IntArrayRef normalized_shape) {
-  TT_RET_CHECK(IsFloatingPoint(input), error::kInvalidArgument)
+  TT_RET_CHECK(input.numel() == 0 || IsFloatingPoint(input),
+               error::kInvalidArgument)
       << "expected the input dtype to be floating point, got "
       << ToString(input.scalar_type());
 
@@ -83,6 +85,31 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNorm(
         TT_THROW_IF_ERROR(ValidateFusedRmsNormInputs(input, normalized_shape));
 
         const size_t normalized_shape_dims = normalized_shape.size();
+        const auto input_sizes = input.sizes();
+        const int64_t input_dims = input.dim();
+
+        // The StableHLO reduction op will remove all normalized dimensions, but
+        // PyTorch expects the dimensions to be retained as size 1. Return rstd
+        // with these singleton dimensions.
+        Dimensions rstd_buffer_shape;
+        for (int i = 0; i < input_dims - normalized_shape_dims; ++i) {
+          rstd_buffer_shape.push_back(input_sizes[i]);
+        }
+        for (int i = input_dims - normalized_shape_dims; i < input_dims; ++i) {
+          rstd_buffer_shape.push_back(1);
+        }
+
+        if (input.numel() == 0) {
+          TT_ASSIGN_OR_THROW(at::Tensor out,
+                             MakeEmptyTensor(input_sizes, input.scalar_type(),
+                                             input.device()));
+          TT_ASSIGN_OR_THROW(
+              at::Tensor rstd,
+              MakeEmptyTensor(rstd_buffer_shape,
+                              ToAccumulateType(input.scalar_type()),
+                              input.device()));
+          return std::make_tuple(std::move(out), std::move(rstd));
+        }
 
         auto op_builder = [normalized_shape_dims, epsilon](
                               absl::Span<const mlir::MlirOp> inputs,
@@ -109,7 +136,6 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNorm(
 
         TT_ASSIGN_OR_THROW(const auto output_dtype,
                            ConvertTo<mlir::ElementType>(input.scalar_type()));
-        const auto input_sizes = input.sizes();
         Dimensions output_dims = CopyIntVector(input_sizes);
 
         std::vector<at::Tensor> inputs = {input};
@@ -125,19 +151,6 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNorm(
 
         const auto elem_dtype = output_dtype;
         const auto rstd_elem_dtype = rstd_dtype;
-
-        const int64_t input_dims = input.dim();
-
-        // The StableHLO reduction op will remove all normalized dimensions, but
-        // PyTorch expects the dimensions to be retained as size 1. Return rstd
-        // with these singleton dimensions.
-        Dimensions rstd_buffer_shape;
-        for (int i = 0; i < input_dims - normalized_shape_dims; ++i) {
-          rstd_buffer_shape.push_back(input_sizes[i]);
-        }
-        for (int i = input_dims - normalized_shape_dims; i < input_dims; ++i) {
-          rstd_buffer_shape.push_back(1);
-        }
 
         TT_ASSIGN_OR_THROW(
             auto output_bufs,
@@ -174,6 +187,33 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNormBackward(
           has_weight = true;
         }
 
+        const auto input_sizes = input.sizes();
+        Dimensions input_dims = CopyIntVector(input_sizes);
+
+        Dimensions weight_dims;
+        if (has_weight) {
+          weight_dims = CopyIntVector(weight.value().sizes());
+        } else {
+          weight_dims = CopyIntVector(normalized_shape);
+        }
+
+        if (input.numel() == 0) {
+          at::Tensor grad_in;  // UNINITIALIZED_TENSOR_OK
+          if (output_mask[0]) {
+            TT_ASSIGN_OR_THROW(grad_in,
+                               MakeEmptyTensor(input_sizes, input.scalar_type(),
+                                               input.device()));
+          }
+          at::Tensor grad_w;  // UNINITIALIZED_TENSOR_OK
+          if (output_mask[1]) {
+            at::ScalarType w_dtype =
+                has_weight ? weight.value().scalar_type() : input.scalar_type();
+            TT_ASSIGN_OR_THROW(
+                grad_w, MakeEmptyTensor(weight_dims, w_dtype, input.device()));
+          }
+          return std::make_tuple(std::move(grad_in), std::move(grad_w));
+        }
+
         Dimensions normalized_shape_vec = CopyIntVector(normalized_shape);
         auto op_builder = [normalized_shape_vec](
                               absl::Span<const mlir::MlirOp> inputs,
@@ -200,16 +240,6 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNormBackward(
                                        weight_op, normalized_shape_vec));
           return MlirOpResults<2>{results.grad_input, results.grad_weight};
         };
-
-        const auto input_sizes = input.sizes();
-        Dimensions input_dims = CopyIntVector(input_sizes);
-
-        Dimensions weight_dims;
-        if (has_weight) {
-          weight_dims = CopyIntVector(weight.value().sizes());
-        } else {
-          weight_dims = CopyIntVector(normalized_shape);
-        }
 
         std::vector<at::Tensor> inputs = {grad_out, input, rstd};
         if (has_weight) {
