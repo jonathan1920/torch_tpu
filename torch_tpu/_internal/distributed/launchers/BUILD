@@ -39,14 +39,11 @@ torch_tpu_py_library(
 torch_tpu_py_test(
     name = "singlehost_wrapper_v7x_test",
     srcs = ["singlehost_wrapper_test.py"],
-    exec_properties = {
-        "cpp_link.mem": "16g",  # Needed for asan.
-    },
     main = "singlehost_wrapper_test.py",
     nopresubmit = "long Forge queue",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     strict = True,
     tags = [
+        "nosan",  # TODO(b/556238269): OOM
         "requires-tpu-v7x:4",  # Must use for testing v7x.
     ],
     deps = [
@@ -54,6 +51,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:seed_test_utils",
+        "//tests/distributed:distributed_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/distributed:multiprocessing",
     ],
@@ -62,18 +60,18 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "singlehost_wrapper_v5e_test",
     srcs = ["singlehost_wrapper_test.py"],
-    exec_properties = {
-        "cpp_link.mem": "16g",  # Needed for asan.
-    },
     main = "singlehost_wrapper_test.py",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
     strict = True,
-    tags = ["requires-tpu-v5lite:8"],
+    tags = [
+        "nosan",  # TODO(b/556238269): OOM
+        "requires-tpu-v5lite:8",
+    ],
     deps = [
         ":singlehost_wrapper",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:seed_test_utils",
+        "//tests/distributed:distributed_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/distributed:multiprocessing",
     ],
