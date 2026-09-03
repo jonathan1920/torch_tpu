@@ -40,7 +40,7 @@ torch_tpu_py_test(
     name = "singlehost_wrapper_v7x_test",
     srcs = ["singlehost_wrapper_test.py"],
     main = "singlehost_wrapper_test.py",
-    nopresubmit = "long Forge queue",
+    notap = "TODO(b/556238269): Re-enable once the test is fixed.",
     strict = True,
     tags = [
         "nosan",  # TODO(b/556238269): OOM
