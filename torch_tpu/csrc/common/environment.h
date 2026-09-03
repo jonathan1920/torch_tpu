@@ -22,13 +22,12 @@
 
 namespace torch_tpu {
 
-// This function handles the environment initialization for external
-// distributed TPU environment.
+// This function handles the environment initialization for distributed TPU
+// environment.
 absl::Status InitializeDistributedEnvironment(
     const DistributedWorkerConfiguration& config);
 
-// This function handles the environment initialization for external
-// single-device TPU environment.
+// Configures the local environment for single-device execution.
 absl::Status InitializeSingleDeviceEnvironment();
 
 }  // namespace torch_tpu
