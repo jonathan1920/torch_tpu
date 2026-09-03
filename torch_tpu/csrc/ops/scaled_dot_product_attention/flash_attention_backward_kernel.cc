@@ -104,6 +104,10 @@ SharedBwdResult ComputeSharedBackwardLogic(
   if (bias) {
     bias = ConvertElementType(fn_builder, oty, bias);
     sij = AddFOp::create(fn_builder, sij, bias);
+  }
+
+  if (user_bias) {
+    // See comment in forward pass for details.
     sij = ClampLogits(fn_builder, sij);
   }
 

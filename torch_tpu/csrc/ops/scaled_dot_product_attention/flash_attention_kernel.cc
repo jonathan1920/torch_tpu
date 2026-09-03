@@ -281,6 +281,12 @@ func::FuncOp buildModule(ImplicitLocOpBuilder& module_builder,
   if (bias) {
     bias = ConvertElementType(fn_builder, f32, bias);
     sij = AddFOp::create(fn_builder, sij, bias);
+  }
+
+  if (mask_arg) {
+    // If a user provides a mask we must defend against a row being entirely
+    // masked out. without this clamp we can get nan values.
+    // If there is no user mask there is no possibility of this happening.
     sij = ClampLogits(fn_builder, sij);
   }
 
