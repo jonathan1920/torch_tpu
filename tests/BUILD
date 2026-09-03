@@ -34,6 +34,9 @@ package(
 # architecture tag.
 _REQUIRES_GPU_SM90 = "requires-gpu-sm90"
 
+# TODO: change this back to 16 after the OSS v5 worker pool is back to normal.
+_OSS_SAMPLE_LIMIT = "--max_samples_per_op_dtype=10"
+
 torch_tpu_py_library(
     name = "oss_utils",
     testonly = True,
@@ -301,7 +304,7 @@ torch_tpu_py_test(
         "--test_categories=-foreach,-nonzero,-searchsorted",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
+        [_OSS_SAMPLE_LIMIT],
         # Forge has more resources, allowing a larger sample size.
         ["--max_samples_per_op_dtype=20"],
     ),
@@ -341,7 +344,7 @@ torch_tpu_py_test(
         "--test_categories=foreach",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
+        [_OSS_SAMPLE_LIMIT],
         # Forge has more resources, allowing a larger sample size.
         ["--max_samples_per_op_dtype=20"],
     ),
@@ -381,7 +384,7 @@ torch_tpu_py_test(
         "--test_categories=nonzero",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
+        [_OSS_SAMPLE_LIMIT],
         # Forge has more resources, allowing a larger sample size.
         ["--max_samples_per_op_dtype=20"],
     ),
@@ -421,7 +424,7 @@ torch_tpu_py_test(
         "--test_categories=searchsorted",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
+        [_OSS_SAMPLE_LIMIT],
         # Forge has more resources, allowing a larger sample size.
         ["--max_samples_per_op_dtype=20"],
     ),
@@ -456,8 +459,11 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--use_compiled=True",
-        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
-    ],
+    ] + if_oss(
+        [_OSS_SAMPLE_LIMIT],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
     data = [
         "ops_test_gpu_golden_compiled0.gz",
         "ops_test_gpu_golden_compiled1.gz",
@@ -496,7 +502,7 @@ torch_tpu_py_test(
         "--test_categories=-foreach,-nonzero,-searchsorted",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
+        [_OSS_SAMPLE_LIMIT],
         # Forge has more resources, allowing a larger sample size.
         ["--max_samples_per_op_dtype=20"],
     ),
@@ -538,7 +544,7 @@ torch_tpu_py_test(
         "--test_categories=foreach",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
+        [_OSS_SAMPLE_LIMIT],
         # Forge has more resources, allowing a larger sample size.
         ["--max_samples_per_op_dtype=20"],
     ),
@@ -618,7 +624,7 @@ torch_tpu_py_test(
         "--test_categories=searchsorted",
     ] + if_oss(
         # Reduce samples to avoid timeouts in OSS.
-        ["--max_samples_per_op_dtype=16"],
+        [_OSS_SAMPLE_LIMIT],
         # Forge has more resources, allowing a larger sample size.
         ["--max_samples_per_op_dtype=20"],
     ),
