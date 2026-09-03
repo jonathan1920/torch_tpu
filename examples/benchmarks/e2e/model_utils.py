@@ -291,7 +291,7 @@ def _precompute_attention_mask(
     example_inputs: dict[str, Any],
     device: torch.device,
     weights_dtype: torch.dtype,
-    masking_device: str | torch.device = "tpu",
+    masking_device: str | torch.device | None = None,
 ) -> Any:
   """Precomputes attention mask and moves to device.
 
@@ -307,6 +307,9 @@ def _precompute_attention_mask(
   bypassing
   these checks completely.
   """
+  if masking_device is None:
+    masking_device = device
+
   input_ids = example_inputs["input_ids"]
   batch_size, seq_len = input_ids.shape
 

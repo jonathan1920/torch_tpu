@@ -702,7 +702,7 @@ class TimmProvider(BaseProvider):
 
     try:
       config = timm.models.get_pretrained_cfg(name)
-    except RuntimeError:
+    except (RuntimeError, ValueError):
       config = None
       logging.warning(
           "Couldn't find config for %s.",
@@ -2095,7 +2095,7 @@ class ModuleRegistry:
   def get_module_spec(
       self,
       source: str,
-      name: str,
+      name: str | None = None,
       *,
       load_weights: bool = False,
       modify_config_hook: Callable[[Any], Any] | None = None,
@@ -2104,8 +2104,10 @@ class ModuleRegistry:
     """Instantiates and returns the ModuleSpec for a specific model.
 
     Args:
-      source: The provider key.
-      name: The name of the model within that provider.
+      source: The provider key (e.g., 'timm', 'transformers'), or a
+        fully-qualified module name formatted as '{source}/{model_name}'.
+      name: The name of the model within that provider. If omitted, `source` is
+        treated as a qualified name ('{source}/{model_name}').
       load_weights: Whether to load pre-trained weights.
       modify_config_hook: A callable to modify the model configuration. The
         callable accepts and returns a config object specific to the model
@@ -2116,9 +2118,24 @@ class ModuleRegistry:
       A ModuleSpec containing the model factory and input factory.
 
     Raises:
-      ValueError: If the source is not found in the registry.
+      ValueError: If the source is not found in the registry, or if name is
+        omitted and source does not contain a provider prefix.
     """
-    provider = self._get_provider(source)
+    if name is None:
+      if "/" not in source:
+        raise ValueError(
+            "When 'name' is omitted, 'source' must be formatted as"
+            f" '{{source}}/{{model_name}}', got: {source!r}"
+        )
+      source, _, name = source.partition("/")
+
+    canonical_source = _PROVIDER_ALIASES.get(source, source)
+    for prefix in (f"{source}/", f"{canonical_source}/"):
+      if name.startswith(prefix):
+        name = name.removeprefix(prefix)
+        break
+
+    provider = self._get_provider(canonical_source)
     return provider.get_module_spec(
         name,
         load_weights=load_weights,

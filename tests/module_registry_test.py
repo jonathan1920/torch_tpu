@@ -153,6 +153,40 @@ class ModuleRegistryTest(seed_test_utils.RepeatableTest):
 
     self.assertEqual(out.shape, expected_output_shape)
 
+  def test_get_module_spec_qualified_name(self):
+    module_spec = self.module_registry.get_module_spec(
+        "timm/mobilenetv3_small_050"
+    )
+    model = module_spec.module_factory()
+    args, _ = module_spec.sample_inputs_factory()
+    expected_output_shape = (args[0].shape[0], 1000)
+    model.eval()
+
+    out = model(*args)
+
+    self.assertEqual(out.shape, expected_output_shape)
+
+  def test_get_module_spec_with_redundant_provider_prefix(self):
+    module_spec = self.module_registry.get_module_spec(
+        "timm", "timm/mobilenetv3_small_050"
+    )
+    model = module_spec.module_factory()
+    args, _ = module_spec.sample_inputs_factory()
+    expected_output_shape = (args[0].shape[0], 1000)
+    model.eval()
+
+    out = model(*args)
+
+    self.assertEqual(out.shape, expected_output_shape)
+
+  def test_get_module_spec_missing_model_name_raises(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        r"When 'name' is omitted, 'source' must be formatted as"
+        r" '{source}/{model_name}', got: 'timm'",
+    ):
+      self.module_registry.get_module_spec("timm")
+
   def test_timm_get_module_spec_pretrained(self):
     module_spec = self.module_registry.get_module_spec(
         "timm", "convnext_small.in12k_ft_in1k", load_weights=True
