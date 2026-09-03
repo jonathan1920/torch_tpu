@@ -54,8 +54,8 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status CheckIsFloatingPoint(const at::Tensor& tensor,
-                                  std::string_view arg_name) {
+absl::Status ValidateIsFloatingPoint(const at::Tensor& tensor,
+                                     std::string_view arg_name) {
   TT_RET_CHECK(tensor.is_floating_point(), error::kInvalidArgument)
       << "expected floating point " << arg_name << ", got "
       << ToString(tensor.scalar_type());
@@ -140,8 +140,8 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryCrossEntropy(
     const at::Tensor& self, const at::Tensor& target,
     const std::optional<at::Tensor>& weight, int64_t reduction,
     OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckIsFloatingPoint(self, "input"));
-  TT_RETURN_IF_ERROR(CheckIsFloatingPoint(target, "target"));
+  TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(self, "input"));
+  TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(target, "target"));
   TT_RET_CHECK(self.sizes() == target.sizes(), error::kInvalidArgument)
       << "expected input and target shapes to match, got " << self.sizes()
       << " vs " << target.sizes();
@@ -238,9 +238,9 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryCrossEntropyBackward(
     const at::Tensor& grad_output, const at::Tensor& self,
     const at::Tensor& target, const std::optional<at::Tensor>& weight,
     int64_t reduction, OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckIsFloatingPoint(grad_output, "grad_output"));
-  TT_RETURN_IF_ERROR(CheckIsFloatingPoint(self, "input"));
-  TT_RETURN_IF_ERROR(CheckIsFloatingPoint(target, "target"));
+  TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(grad_output, "grad_output"));
+  TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(self, "input"));
+  TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(target, "target"));
   TT_RET_CHECK(self.sizes() == target.sizes(), error::kInvalidArgument)
       << "expected input and target shapes to match, got " << self.sizes()
       << " vs " << target.sizes();

@@ -106,7 +106,7 @@ Dimensions GetSizesAfterReduction(at::IntArrayRef self_size,
              : OutputSizesArrayDiscardDim(self_size, canonicalized_dims);
 }
 
-absl::Status CheckFloatOrComplex(c10::ScalarType scalar_type) {
+absl::Status ValidateFloatOrComplex(c10::ScalarType scalar_type) {
   TT_ASSIGN_OR_RETURN(const auto dtype,
                       ConvertTo<mlir::ElementType>(scalar_type));
   TT_RET_CHECK(

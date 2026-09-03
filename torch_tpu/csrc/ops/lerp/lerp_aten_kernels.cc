@@ -45,7 +45,7 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status CheckLerpSelfInput(const at::Tensor& self) {
+absl::Status ValidateLerpSelfInput(const at::Tensor& self) {
   TT_RET_CHECK(!IsIntegral(self), error::kInvalidArgument)
       << "expected the first argument's dtype to be non-integral, got "
       << ToString(self.scalar_type());
@@ -109,7 +109,7 @@ at::Tensor& AtenLerpTensorOut(const at::Tensor& self, const at::Tensor& end,
     TT_ASSIGN_OR_THROW(mlir::ElementType common_type,
                        ConvertTo<mlir::ElementType>(promoted_dtype));
 
-    TT_THROW_IF_ERROR(CheckLerpSelfInput(self));
+    TT_THROW_IF_ERROR(ValidateLerpSelfInput(self));
 
     TT_ASSIGN_OR_THROW(
         auto result,

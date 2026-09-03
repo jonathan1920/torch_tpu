@@ -65,7 +65,7 @@ struct IndicesInfo {
 };
 
 // Preprocess and check the `indices_list_opt` input into `IndicesInfo`.
-absl::StatusOr<IndicesInfo> CheckedGetIndicesInfo(
+absl::StatusOr<IndicesInfo> ValidateAndGetIndicesInfo(
     const c10::List<c10::optional<at::Tensor>>& indices_list_opt) {
   IndicesInfo info;
 
@@ -155,7 +155,7 @@ at::Tensor& AtenIndexTensorOut(
             << " (number of input dimensions), got " << indices_list_opt.size();
 
         TT_ASSIGN_OR_THROW(IndicesInfo info,
-                           CheckedGetIndicesInfo(indices_list_opt));
+                           ValidateAndGetIndicesInfo(indices_list_opt));
 
         TT_THROW_IF_ERROR(ResolveNegativeIndices(info.indices, self.sizes(),
                                                  info.dimensions));

@@ -32,7 +32,7 @@ namespace torch_tpu {
 
 // Checks that the provided dtype is either floating point or complex.
 // Many reduction ops only operate on these types.
-absl::Status CheckFloatOrComplex(c10::ScalarType scalar_type);
+absl::Status ValidateFloatOrComplex(c10::ScalarType scalar_type);
 
 // Converts provided dimensions to canonical dimensions.
 // A negative value, -i, becomes rank - i.

@@ -120,8 +120,9 @@ absl::Status PrepareOutTensor(const at::Tensor& result, at::Tensor& out) {
   return absl::OkStatus();
 }
 
-// CheckMaskTensorIsBool verifies that the mask tensor has boolean scalar type.
-absl::Status CheckMaskTensorIsBool(const at::Tensor& mask) {
+// ValidateMaskTensorIsBool verifies that the mask tensor has boolean scalar
+// type.
+absl::Status ValidateMaskTensorIsBool(const at::Tensor& mask) {
   TT_RET_CHECK(IsBool(mask), error::kInvalidArgument)
       << "expected mask to be a BoolTensor, got "
       << ToString(mask.scalar_type());
@@ -135,7 +136,7 @@ absl::Status CheckMaskTensorIsBool(const at::Tensor& mask) {
 // MaskedSelectWithKnownOutputShape.
 at::Tensor AtenMaskedSelect(const at::Tensor& self, const at::Tensor& mask) {
   TT_KERNEL(OpName::kMaskedSelect, _, (self, mask), {
-    TT_THROW_IF_ERROR(CheckMaskTensorIsBool(mask));
+    TT_THROW_IF_ERROR(ValidateMaskTensorIsBool(mask));
 
     const auto broadcasted = at::broadcast_tensors({mask, self});
     const at::Tensor& mask_broadcasted = broadcasted[0];
@@ -162,7 +163,7 @@ at::Tensor& AtenMaskedSelectOut(const at::Tensor& self, const at::Tensor& mask,
   // subsequent AtenCopyFrom execution is recognized under the known composite
   // op stack.
   TT_KERNEL(OpName::kMaskedSelect, _, (self, mask, out), {
-    TT_THROW_IF_ERROR(CheckMaskTensorIsBool(mask));
+    TT_THROW_IF_ERROR(ValidateMaskTensorIsBool(mask));
 
     const at::Tensor result = AtenMaskedSelect(self, mask);
     TT_THROW_IF_ERROR(PrepareOutTensor(result, out));

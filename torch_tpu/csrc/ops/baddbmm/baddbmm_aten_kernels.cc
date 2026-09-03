@@ -51,15 +51,15 @@
 namespace torch_tpu {
 namespace {
 
-absl::Status CheckBaddbmmOut(const at::Tensor& out) {
+absl::Status ValidateBaddbmmOut(const at::Tensor& out) {
   TT_RET_CHECK(!IsBool(out), error::kInvalidArgument)
       << "expected out tensor to have dtype float32, got bool";
   return absl::OkStatus();
 }
 
-absl::Status CheckBaddbmmInputs(const at::Tensor& self,
-                                const at::Tensor& batch1,
-                                const at::Tensor& batch2) {
+absl::Status ValidateBaddbmmInputs(const at::Tensor& self,
+                                   const at::Tensor& batch1,
+                                   const at::Tensor& batch2) {
   TT_RET_CHECK(batch1.numel() == 0 || batch2.numel() == 0 ||
                    (batch1.scalar_type() != at::kInt &&
                     batch1.scalar_type() != at::kLong),
@@ -166,7 +166,7 @@ absl::StatusOr<DeviceBufferRef> Baddbmm(
     MaybePromotedScalar alpha, std::optional<at::Tensor> alpha_tensor,
     at::ScalarType out_dtype, OpParamCacheKeys& param_keys,
     std::optional<OpName> op_name_override = std::nullopt) {
-  TT_RETURN_IF_ERROR(CheckBaddbmmInputs(self, batch1, batch2));
+  TT_RETURN_IF_ERROR(ValidateBaddbmmInputs(self, batch1, batch2));
 
   TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype_mlir,
                       ConvertTo<mlir::ElementType>(out_dtype));
@@ -298,7 +298,7 @@ at::Tensor& AtenBaddbmmDtypeOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kBaddbmmDtypeOut, param_keys,
       (self, batch1, batch2, out_dtype, promoted_beta, promoted_alpha, out), {
-        TT_THROW_IF_ERROR(CheckBaddbmmOut(out));
+        TT_THROW_IF_ERROR(ValidateBaddbmmOut(out));
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
             ResolveAndRunBaddbmm(self, batch1, batch2, std::move(promoted_beta),
@@ -322,7 +322,7 @@ at::Tensor& AtenBaddbmmOut(const at::Tensor& self, const at::Tensor& batch1,
   TT_KERNEL(
       OpName::kBaddbmmOut, param_keys,
       (self, batch1, batch2, promoted_beta, promoted_alpha, out), {
-        TT_THROW_IF_ERROR(CheckBaddbmmOut(out));
+        TT_THROW_IF_ERROR(ValidateBaddbmmOut(out));
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
             ResolveAndRunBaddbmm(self, batch1, batch2, std::move(promoted_beta),

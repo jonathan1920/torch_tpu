@@ -246,21 +246,21 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
       << " spatial dimensions), got " << padding.size() << " integers "
       << ToString(padding);
 
-  TT_RETURN_IF_ERROR(CheckConvolutionSpatialDimensionsMatch(
+  TT_RETURN_IF_ERROR(ValidateConvolutionSpatialDimensionsMatch(
       num_spatial_dims, dilation, "dilation"));
 
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
   // Input should be shaped as (B, C_in, *spatial_dims)
   //   B = batch dimension
   //   C_in = in_channels
-  TT_RETURN_IF_ERROR(CheckConvolutionInput(input_type.getShape()));
+  TT_RETURN_IF_ERROR(ValidateConvolutionInput(input_type.getShape()));
 
   const int64_t in_channels = input_type.getDimSize(1);
   const mlir::RankedTensorType weight_type = GetTensorTypeOrDie(weight);
 
   // Weight should be shaped as (C_out, C_in / groups, *spatial_dims)
   //   C_out = out_channels
-  TT_RETURN_IF_ERROR(CheckConvolutionWeight(
+  TT_RETURN_IF_ERROR(ValidateConvolutionWeight(
       weight_type.getShape(), num_spatial_dims, in_channels, groups,
       /*transposed=*/false));
 
@@ -322,7 +322,8 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
   const mlir::RankedTensorType bias_type = GetTensorTypeOrDie(*bias);
 
   // If it exists, bias should be shaped as (C_out,)
-  TT_RETURN_IF_ERROR(CheckConvolutionBias(bias_type.getShape(), out_channels));
+  TT_RETURN_IF_ERROR(
+      ValidateConvolutionBias(bias_type.getShape(), out_channels));
 
   bias = stablehlo::ConvertElementType(*bias, output_dtype);
   // Broadcast bias from shape (C_out,) to (B, C_out, *result_spatial_dims)...

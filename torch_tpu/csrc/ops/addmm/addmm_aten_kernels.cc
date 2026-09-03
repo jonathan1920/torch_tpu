@@ -99,8 +99,8 @@ absl::StatusOr<mlir::MlirOp> BuildAddmmShlo(
   return stablehlo::Add(bcast_scaled_input_result, bcast_scaled_dot_result);
 }
 
-absl::Status CheckInputBroadcast(const at::Tensor& self,
-                                 const Dimensions& output_dims_vec) {
+absl::Status ValidateInputBroadcast(const at::Tensor& self,
+                                    const Dimensions& output_dims_vec) {
   if (self.dim() == 1 && self.size(0) == 1) {
     return absl::OkStatus();
   }
@@ -155,7 +155,7 @@ absl::StatusOr<mlir::ElementType> ValidateAddmmInputsAndGetOutputDtype(
       << mat1.size(1) << " and " << mat2.size(0) << " respectively";
 
   Dimensions output_dims_vec = {mat1.size(0), mat2.size(1)};
-  TT_RETURN_IF_ERROR(CheckInputBroadcast(self, output_dims_vec));
+  TT_RETURN_IF_ERROR(ValidateInputBroadcast(self, output_dims_vec));
   TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype_mlir,
                       ConvertTo<mlir::ElementType>(out_scalar_type),
                       _.SetOverride()

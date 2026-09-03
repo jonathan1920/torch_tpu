@@ -52,8 +52,8 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status CheckIsFloating(const at::Tensor& tensor,
-                             const std::string_view arg_name) {
+absl::Status ValidateIsFloating(const at::Tensor& tensor,
+                                const std::string_view arg_name) {
   TT_RET_CHECK(c10::isFloatingType(tensor.scalar_type()),
                error::kInvalidArgument)
       << "expected " << arg_name << " to be floating point, got "
@@ -74,7 +74,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     std::optional<at::Tensor> bias, std::optional<at::Tensor> running_mean,
     std::optional<at::Tensor> running_variance, bool training, double momentum,
     double eps, OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckIsFloating(input, /*arg_name=*/"input"));
+  TT_RETURN_IF_ERROR(ValidateIsFloating(input, /*arg_name=*/"input"));
   ABSL_VLOG(1) << "TpuBatchNorm weight: " << !!weight << ", bias: " << !!bias
                << ", running_mean: " << !!running_mean
                << ", running_variance: " << !!running_variance
@@ -161,8 +161,8 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNormBackward(
     std::optional<at::Tensor> save_mean, std::optional<at::Tensor> save_invstd,
     bool training, double eps, std::array<bool, 3> output_mask,
     OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckIsFloating(input, /*arg_name=*/"input"));
-  TT_RETURN_IF_ERROR(CheckIsFloating(grad_out, /*arg_name=*/"grad_out"));
+  TT_RETURN_IF_ERROR(ValidateIsFloating(input, /*arg_name=*/"input"));
+  TT_RETURN_IF_ERROR(ValidateIsFloating(grad_out, /*arg_name=*/"grad_out"));
 
   std::vector<at::Tensor> inputs;
   inputs.reserve(7);  // Max inputs

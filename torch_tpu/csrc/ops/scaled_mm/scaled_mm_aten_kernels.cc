@@ -194,7 +194,7 @@ absl::StatusOr<mlir::MlirOp> BuildScaledMmShlo(
 }
 
 #if TT_TORCH_VERSION_GE(2, 14)  // See scaled_mm_aten_kernels.h.
-absl::Status CheckScaledMmV2Inputs(
+absl::Status ValidateScaledMmV2Inputs(
     const at::Tensor& self, const at::Tensor& mat2,
     const at::ITensorListRef& scale_a, at::IntArrayRef recipe_a,
     at::IntArrayRef swizzle_a, const at::ITensorListRef& scale_b,
@@ -203,7 +203,7 @@ absl::Status CheckScaledMmV2Inputs(
     std::optional<at::ScalarType> out_dtype, at::IntArrayRef contraction_dim,
     bool use_fast_accum) {
 #else
-absl::Status CheckScaledMmV2Inputs(
+absl::Status ValidateScaledMmV2Inputs(
     const at::Tensor& self, const at::Tensor& mat2, at::TensorList scale_a,
     at::IntArrayRef recipe_a, at::IntArrayRef swizzle_a, at::TensorList scale_b,
     at::IntArrayRef recipe_b, at::IntArrayRef swizzle_b,
@@ -221,8 +221,8 @@ absl::Status CheckScaledMmV2Inputs(
         << ", " << contraction_dim[1] << "]";
   }
 
-  TT_RETURN_IF_ERROR(CheckIsMatrix(self, "self"));
-  TT_RETURN_IF_ERROR(CheckIsMatrix(mat2, "mat2"));
+  TT_RETURN_IF_ERROR(ValidateIsMatrix(self, "self"));
+  TT_RETURN_IF_ERROR(ValidateIsMatrix(mat2, "mat2"));
   TT_RET_CHECK(self.size(1) == mat2.size(0), error::kInvalidArgument)
       << "expected column size of first matrix to match row size of second "
          "matrix, got shapes "
@@ -524,17 +524,15 @@ absl::StatusOr<mlir::MlirOp> BuildScaledMmV2Shlo(
   }
 }
 
-absl::Status CheckScaledMmInputs(const at::Tensor& self, const at::Tensor& mat2,
-                                 const at::Tensor& scale_a,
-                                 const at::Tensor& scale_b,
-                                 const std::optional<at::Tensor>& bias,
-                                 const std::optional<at::Tensor>& scale_result,
-                                 bool use_fast_accum) {
+absl::Status ValidateScaledMmInputs(
+    const at::Tensor& self, const at::Tensor& mat2, const at::Tensor& scale_a,
+    const at::Tensor& scale_b, const std::optional<at::Tensor>& bias,
+    const std::optional<at::Tensor>& scale_result, bool use_fast_accum) {
   TT_RET_CHECK(!use_fast_accum, error::kPythonNotImplementedError)
       << "use_fast_accum=true is not supported yet on TPU";
 
-  TT_RETURN_IF_ERROR(CheckIsMatrix(self, "self"));
-  TT_RETURN_IF_ERROR(CheckIsMatrix(mat2, "mat2"));
+  TT_RETURN_IF_ERROR(ValidateIsMatrix(self, "self"));
+  TT_RETURN_IF_ERROR(ValidateIsMatrix(mat2, "mat2"));
 
   const int64_t k_a = self.size(1);
   const int64_t k_b = mat2.size(0);
@@ -586,8 +584,8 @@ absl::StatusOr<DeviceBufferRef> ScaledMm(
     std::optional<at::Tensor> scale_result,
     std::optional<at::ScalarType> out_dtype, bool use_fast_accum,
     OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckScaledMmInputs(self, mat2, scale_a, scale_b, bias,
-                                         scale_result, use_fast_accum));
+  TT_RETURN_IF_ERROR(ValidateScaledMmInputs(self, mat2, scale_a, scale_b, bias,
+                                            scale_result, use_fast_accum));
 
   Dimensions output_dims = {self.size(0), mat2.size(1)};
   at::ScalarType target_scalar_type =
@@ -722,7 +720,7 @@ absl::StatusOr<DeviceBufferRef> ScaledMmV2(
     at::IntArrayRef contraction_dim, bool use_fast_accum,
     OpParamCacheKeys param_keys) {
 #endif
-  TT_RETURN_IF_ERROR(CheckScaledMmV2Inputs(
+  TT_RETURN_IF_ERROR(ValidateScaledMmV2Inputs(
       self, mat2, scale_a, recipe_a, swizzle_a, scale_b, recipe_b, swizzle_b,
       bias, out_dtype, contraction_dim, use_fast_accum));
 

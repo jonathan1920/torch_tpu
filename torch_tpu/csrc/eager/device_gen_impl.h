@@ -122,7 +122,7 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
   static c10::DeviceType device_type();
 
   // Validates the shape, dtype, and device of the RNG state tensor.
-  absl::Status CheckDeviceStateTensor(const at::Tensor& rng_state) const;
+  absl::Status ValidateDeviceStateTensor(const at::Tensor& rng_state) const;
 
   // Advances the generator's state by the amount specified
   // (num_elements * bit_width).

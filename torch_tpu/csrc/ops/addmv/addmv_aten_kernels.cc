@@ -160,9 +160,9 @@ absl::StatusOr<DeviceBufferRef> Addmv(
   return result_buf;
 }
 
-absl::Status CheckAddmvInputs(const at::Tensor& self, const at::Tensor& mat,
-                              const at::Tensor& vec, const at::Scalar& beta,
-                              const at::Scalar& alpha) {
+absl::Status ValidateAddmvInputs(const at::Tensor& self, const at::Tensor& mat,
+                                 const at::Tensor& vec, const at::Scalar& beta,
+                                 const at::Scalar& alpha) {
   TT_RET_CHECK(!IsBool(self), error::kInvalidArgument)
       << "the dtype of the first argument cannot be bool";
 
@@ -216,7 +216,7 @@ at::Tensor& AtenAddmvOut(const at::Tensor& self, const at::Tensor& mat,
   TT_KERNEL(
       OpName::kAddmvOut, param_keys,
       (self, mat, vec, promoted_beta, promoted_alpha, out), {
-        TT_THROW_IF_ERROR(CheckAddmvInputs(self, mat, vec, beta, alpha));
+        TT_THROW_IF_ERROR(ValidateAddmvInputs(self, mat, vec, beta, alpha));
 
         TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
                            promoted_alpha.GetTensor(out.scalar_type()));

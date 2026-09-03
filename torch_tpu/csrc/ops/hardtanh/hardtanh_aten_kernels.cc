@@ -70,7 +70,7 @@ absl::StatusOr<mlir::MlirOp> BuildHardtanhBackwardShlo(mlir::MlirOp grad_output,
   return mlir::stablehlo::Select(in_range, grad_output, zero);
 }
 
-absl::Status CheckHardtanhInputs(const at::Tensor& self) {
+absl::Status ValidateHardtanhInputs(const at::Tensor& self) {
   const auto scalar_type = self.scalar_type();
 
   TT_RET_CHECK(!IsComplex(self), error::kInvalidArgument)
@@ -154,7 +154,7 @@ absl::StatusOr<DeviceBufferRef> AtenHardtanhImpl(const at::Tensor& self,
                                                  PromotedScalar& promoted_max,
                                                  OpParamCacheKeys param_keys) {
   const auto scalar_type = self.scalar_type();
-  TT_RETURN_IF_ERROR(CheckHardtanhInputs(self));
+  TT_RETURN_IF_ERROR(ValidateHardtanhInputs(self));
 
   const at::Scalar min_val = promoted_min.scalar();
   const at::Scalar max_val = promoted_max.scalar();

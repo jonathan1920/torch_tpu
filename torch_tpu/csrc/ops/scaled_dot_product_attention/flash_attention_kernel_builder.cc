@@ -81,7 +81,7 @@ bool IsDefined(const std::optional<at::Tensor>& tensor) {
   return tensor.has_value() && tensor->defined();
 }
 
-absl::Status CheckDtype(at::ScalarType dtype) {
+absl::Status ValidateDtype(at::ScalarType dtype) {
   if (dtype == at::kFloat || dtype == at::kBFloat16) {
     return absl::OkStatus();
   }
@@ -310,7 +310,7 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
                                const std::optional<at::Tensor>& attn_bias,
                                bool is_causal, std::optional<double> scale,
                                bool return_lse) {
-  TT_RETURN_IF_ERROR(CheckDtype(query.scalar_type()));
+  TT_RETURN_IF_ERROR(ValidateDtype(query.scalar_type()));
 
   int rank = query.ndimension();
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
@@ -481,7 +481,7 @@ CreateFlashAttentionBackwardKernel(
     const at::Tensor& value, const at::Tensor& out, const at::Tensor& logsumexp,
     std::optional<at::Tensor> attn_bias, std::optional<double> scale,
     bool is_causal) {
-  TT_RETURN_IF_ERROR(CheckDtype(query.scalar_type()));
+  TT_RETURN_IF_ERROR(ValidateDtype(query.scalar_type()));
 
   int rank = query.ndimension();
 

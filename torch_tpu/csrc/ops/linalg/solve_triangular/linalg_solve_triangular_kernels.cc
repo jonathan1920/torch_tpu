@@ -45,8 +45,8 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status CheckDimensions(const at::Tensor& a, const at::Tensor& b,
-                             bool left) {
+absl::Status ValidateDimensions(const at::Tensor& a, const at::Tensor& b,
+                                bool left) {
   // Solving A * X = B if left == true, X * A = B if left == false.
   TT_RET_CHECK(a.dim() >= 2, error::kInvalidArgument)
       << "expected the first argument to have at least 2 dimensions, got "
@@ -108,7 +108,7 @@ at::Tensor& AtenLinalgSolveTriangularOut(const at::Tensor& a,
   TT_KERNEL(
       OpName::kLinalgSolveTriangularOut, param_keys,
       (a, b, upper, left, unitriangular, out), {
-        TT_THROW_IF_ERROR(CheckDimensions(a, b, left));
+        TT_THROW_IF_ERROR(ValidateDimensions(a, b, left));
         TT_CHECK_THROW(a.scalar_type() != c10::ScalarType::BFloat16 &&
                            a.scalar_type() != c10::ScalarType::Half &&
                            !at::isIntegralType(a.scalar_type(),
@@ -148,7 +148,7 @@ at::Tensor AtenLinalgSolveTriangular(const at::Tensor& a, const at::Tensor& b,
   TT_KERNEL(
       OpName::kLinalgSolveTriangular, param_keys,
       (a, b, upper, left, unitriangular), {
-        TT_THROW_IF_ERROR(CheckDimensions(a, b, left));
+        TT_THROW_IF_ERROR(ValidateDimensions(a, b, left));
         TT_CHECK_THROW(a.scalar_type() != c10::ScalarType::BFloat16 &&
                            a.scalar_type() != c10::ScalarType::Half &&
                            !at::isIntegralType(a.scalar_type(),

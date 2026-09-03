@@ -50,8 +50,8 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status CheckInputs(const at::Tensor& input,
-                         const at::IntArrayRef normalized_shape) {
+absl::Status ValidateInputs(const at::Tensor& input,
+                            const at::IntArrayRef normalized_shape) {
   TT_RET_CHECK(IsFloatingPoint(input), error::kInvalidArgument)
       << "expected the input dtype to be floating point, got "
       << ToString(input.scalar_type());
@@ -76,7 +76,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeLayerNorm(
   TT_KERNEL(
       OpName::kLayerNorm, param_keys,
       (input, normalized_shape, weight_opt, bias_opt, eps), {
-        TT_THROW_IF_ERROR(CheckInputs(input, normalized_shape));
+        TT_THROW_IF_ERROR(ValidateInputs(input, normalized_shape));
 
         const bool has_weight = weight_opt.has_value() && weight_opt->defined();
         const bool has_bias = bias_opt.has_value() && bias_opt->defined();
@@ -178,7 +178,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenLayerNormBackward(
       (dY, input, normalized_shape, mean, rstd, weight_opt, bias_opt,
        grad_input_mask),
       {
-        TT_THROW_IF_ERROR(CheckInputs(input, normalized_shape));
+        TT_THROW_IF_ERROR(ValidateInputs(input, normalized_shape));
 
         // Alias input to x, for readability.
         const at::Tensor& x = input;

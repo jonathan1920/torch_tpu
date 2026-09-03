@@ -44,7 +44,7 @@ MlirUnaryOpBuilder GetRoundFunctional(int64_t decimals) {
 }
 
 // Check that the provided dtype is appropriate for rounding.
-absl::Status CheckNumericDtype(at::ScalarType scalar_type) {
+absl::Status ValidateNumericDtype(at::ScalarType scalar_type) {
   TT_ASSIGN_OR_RETURN(const auto dtype,
                       ConvertTo<mlir::ElementType>(scalar_type));
   TT_RET_CHECK(c10::isFloatingType(scalar_type) ||
@@ -58,7 +58,7 @@ absl::Status CheckNumericDtype(at::ScalarType scalar_type) {
 
 at::Tensor& AtenRoundOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kRoundOut, _, (self, out), {
-    TT_THROW_IF_ERROR(CheckNumericDtype(self.scalar_type()));
+    TT_THROW_IF_ERROR(ValidateNumericDtype(self.scalar_type()));
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, GetRoundFunctional(/*decimals=*/0),
                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -69,7 +69,7 @@ at::Tensor& AtenRoundOut(const at::Tensor& self, at::Tensor& out) {
 at::Tensor& AtenRoundDecimalsOut(const at::Tensor& self, int64_t decimals,
                                  at::Tensor& out) {
   TT_KERNEL(OpName::kRoundDecimalsOut, param_keys, (self, decimals, out), {
-    TT_THROW_IF_ERROR(CheckNumericDtype(self.scalar_type()));
+    TT_THROW_IF_ERROR(ValidateNumericDtype(self.scalar_type()));
     TT_CHECK_THROW(!IsInteger(self), error::kInvalidArgument)
         << "expected the input dtype not to be integer when the decimals "
            "argument is specified ("

@@ -46,9 +46,9 @@ Dimensions GetOutputDimensions(const at::Tensor& self, int64_t num_samples) {
                          : Dimensions{self.size(0), num_samples};
 }
 
-absl::Status CheckInputs(const at::Tensor& self, int64_t num_samples,
-                         bool replacement,
-                         c10::optional<at::Generator> generator) {
+absl::Status ValidateInputs(const at::Tensor& self, int64_t num_samples,
+                            bool replacement,
+                            c10::optional<at::Generator> generator) {
   TT_RET_CHECK(IsFloatingPoint(self), error::kInvalidArgument)
       << "expected the input dtype to be floating-point, got "
       << ToString(self.scalar_type());
@@ -73,7 +73,7 @@ absl::Status CheckInputs(const at::Tensor& self, int64_t num_samples,
 absl::StatusOr<DeviceBufferRefArray<1>> Multinomial(
     const at::Tensor& self, int64_t num_samples, bool replacement,
     c10::optional<at::Generator> generator, OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckInputs(self, num_samples, replacement, generator));
+  TT_RETURN_IF_ERROR(ValidateInputs(self, num_samples, replacement, generator));
 
   auto op_builder = [num_samples, replacement](
                         mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {

@@ -32,15 +32,15 @@
 
 namespace torch_tpu {
 
-absl::Status CheckIsVector(const at::Tensor& tensor,
-                           std::string_view arg_name) {
+absl::Status ValidateIsVector(const at::Tensor& tensor,
+                              std::string_view arg_name) {
   TT_RET_CHECK(tensor.dim() == 1, error::kInvalidArgument)
       << "expected the " << arg_name << " argument to be a 1D tensor, got "
       << tensor.dim() << "D of shape " << ToString(tensor.sizes());
   return absl::OkStatus();
 }
 
-absl::StatusOr<mlir::ElementType> CheckedGetDotOutputType(
+absl::StatusOr<mlir::ElementType> ValidateAndGetDotOutputType(
     const at::Tensor& lhs, const at::Tensor& rhs) {
   at::ScalarType output_scalar_type = at::result_type(lhs, rhs);
 

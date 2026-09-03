@@ -139,7 +139,7 @@ at::Tensor AtenVar(const at::Tensor& self, c10::OptionalArrayRef<int64_t> dim,
   TT_KERNEL(
       OpName::kVar, param_keys, (self, dim, promoted_correction, keep_dim), {
         c10::ScalarType scalar_dtype = self.scalar_type();
-        TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
+        TT_THROW_IF_ERROR(ValidateFloatOrComplex(scalar_dtype));
         if (c10::isComplexType(scalar_dtype)) {
           scalar_dtype = c10::toRealValueType(scalar_dtype);
         }
@@ -186,7 +186,7 @@ at::Tensor& AtenVarOut(const at::Tensor& self,
       OpName::kVarOut, param_keys,
       (self, dim, promoted_correction, keep_dim, out), {
         c10::ScalarType scalar_dtype = out.scalar_type();
-        TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
+        TT_THROW_IF_ERROR(ValidateFloatOrComplex(scalar_dtype));
 
         const ReductionMode reduction_mode =
             keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
@@ -236,7 +236,7 @@ std::tuple<at::Tensor, at::Tensor> AtenVarMeanCorrection(
       OpName::kVarMeanCorrection, param_keys,
       (self, dim, promoted_correction, keep_dim), {
         auto scalar_dtype = self.scalar_type();
-        TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
+        TT_THROW_IF_ERROR(ValidateFloatOrComplex(scalar_dtype));
         auto self_scalar_type = scalar_dtype;
         if (c10::isComplexType(scalar_dtype)) {
           scalar_dtype = c10::toRealValueType(scalar_dtype);

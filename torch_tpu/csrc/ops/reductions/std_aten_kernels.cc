@@ -142,7 +142,7 @@ at::Tensor AtenStd(const at::Tensor& self, c10::OptionalArrayRef<int64_t> dim,
       OpName::kStdCorrection, param_keys,
       (self, dim, promoted_correction, keep_dim), {
         c10::ScalarType scalar_dtype = self.scalar_type();
-        TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
+        TT_THROW_IF_ERROR(ValidateFloatOrComplex(scalar_dtype));
         if (c10::isComplexType(scalar_dtype)) {
           scalar_dtype = c10::toRealValueType(scalar_dtype);
         }
@@ -197,7 +197,7 @@ at::Tensor& AtenStdOut(const at::Tensor& self,
       OpName::kStdCorrectionOut, param_keys,
       (self, dim, promoted_correction, keep_dim, out), {
         c10::ScalarType self_scalar_dtype = self.scalar_type();
-        TT_THROW_IF_ERROR(CheckFloatOrComplex(self_scalar_dtype));
+        TT_THROW_IF_ERROR(ValidateFloatOrComplex(self_scalar_dtype));
         c10::ScalarType scalar_dtype = out.scalar_type();
 
         const c10::ScalarType expected_dtype =

@@ -240,8 +240,8 @@ absl::StatusOr<MlirOpResults<1>> BuildNormalShlo(
                              out_dims, out_dtype);
 }
 
-absl::Status CheckNormalPreconditions(const at::Tensor& tensor,
-                                      std::string_view arg_name) {
+absl::Status ValidateNormalPreconditions(const at::Tensor& tensor,
+                                         std::string_view arg_name) {
   TT_RET_CHECK(IsFloatingPoint(tensor) || IsComplex(tensor),
                error::kInvalidArgument)
       << "expected the " << arg_name
@@ -250,14 +250,14 @@ absl::Status CheckNormalPreconditions(const at::Tensor& tensor,
   return absl::OkStatus();
 }
 
-absl::Status CheckNormalStdPreconditions(double std) {
+absl::Status ValidateNormalStdPreconditions(double std) {
   TT_RET_CHECK(std >= 0.0, error::kInvalidArgument)
       << "expected std >= 0.0, got " << std;
   return absl::OkStatus();
 }
 
-absl::Status CheckNormalStdPreconditions(const at::Tensor& std,
-                                         bool allow_integer = true) {
+absl::Status ValidateNormalStdPreconditions(const at::Tensor& std,
+                                            bool allow_integer = true) {
   TT_RET_CHECK(IsFloatingPoint(std) || (allow_integer && IsInteger(std)),
                error::kInvalidArgument)
       << "expected the std tensor to be "
@@ -411,8 +411,9 @@ at::Tensor& AtenNormal_(at::Tensor& self, double mean, double std,
   TT_KERNEL(
       OpName::kNormal_, param_keys,
       (self, mean, std, IgnoreInCacheKey(generator, "Doesn't affect SHLO")), {
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(self, /*arg_name=*/"self"));
-        TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
+        TT_THROW_IF_ERROR(
+            ValidateNormalPreconditions(self, /*arg_name=*/"self"));
+        TT_THROW_IF_ERROR(ValidateNormalStdPreconditions(std));
 
         auto gen =
             generator.has_value() ? *generator : GetDefaultDeviceGenerator();
@@ -442,7 +443,7 @@ at::Tensor AtenNormalFloatTensor(double mean, const at::Tensor& std,
               TT_THROW_IF_ERROR(
                   // This variant (scalar mean, tensor std) does not allow
                   // integer std.
-                  CheckNormalStdPreconditions(std, /*allow_integer=*/false));
+                  ValidateNormalStdPreconditions(std, /*allow_integer=*/false));
 
               auto gen = generator.has_value() ? *generator
                                                : GetDefaultDeviceGenerator();
@@ -473,9 +474,9 @@ at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
         TT_THROW_IF_ERROR(
             // This variant (scalar mean, tensor std) does not allow integer
             // std.
-            CheckNormalStdPreconditions(std, /*allow_integer=*/false));
+            ValidateNormalStdPreconditions(std, /*allow_integer=*/false));
         TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, std.sizes()));
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(out, /*arg_name=*/"out"));
+        TT_THROW_IF_ERROR(ValidateNormalPreconditions(out, /*arg_name=*/"out"));
 
         auto gen =
             generator.has_value() ? *generator : GetDefaultDeviceGenerator();
@@ -499,30 +500,31 @@ at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
 
 at::Tensor AtenNormalTensorFloat(const at::Tensor& mean, double std,
                                  std::optional<at::Generator> generator) {
-  TT_KERNEL(
-      OpName::kNormalTensorFloat, param_keys,
-      (mean, std, IgnoreInCacheKey(generator, "Doesn't affect SHLO")), {
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, /*arg_name=*/"mean"));
-        TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
+  TT_KERNEL(OpName::kNormalTensorFloat, param_keys,
+            (mean, std, IgnoreInCacheKey(generator, "Doesn't affect SHLO")), {
+              TT_THROW_IF_ERROR(
+                  ValidateNormalPreconditions(mean, /*arg_name=*/"mean"));
+              TT_THROW_IF_ERROR(ValidateNormalStdPreconditions(std));
 
-        auto gen =
-            generator.has_value() ? *generator : GetDefaultDeviceGenerator();
+              auto gen = generator.has_value() ? *generator
+                                               : GetDefaultDeviceGenerator();
 
-        auto out_dims = CopyIntVector(mean.sizes());
-        auto out_dtype = mean.scalar_type();
+              auto out_dims = CopyIntVector(mean.sizes());
+              auto out_dtype = mean.scalar_type();
 
-        auto builder = GetNormalTensorFloatBuilder(std, out_dims, out_dtype);
+              auto builder =
+                  GetNormalTensorFloatBuilder(std, out_dims, out_dtype);
 
-        TT_ASSIGN_OR_THROW(auto mlir_type,
-                           ConvertTo<mlir::ElementType>(out_dtype));
+              TT_ASSIGN_OR_THROW(auto mlir_type,
+                                 ConvertTo<mlir::ElementType>(out_dtype));
 
-        TT_ASSIGN_OR_THROW(
-            auto output_buf,
-            DispatchNormal2(gen, std::move(builder), mean, mlir_type, out_dims,
-                            std::move(param_keys)));
+              TT_ASSIGN_OR_THROW(
+                  auto output_buf,
+                  DispatchNormal2(gen, std::move(builder), mean, mlir_type,
+                                  out_dims, std::move(param_keys)));
 
-        return MakeTensor(std::move(output_buf));
-      });
+              return MakeTensor(std::move(output_buf));
+            });
 }
 
 at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
@@ -531,10 +533,11 @@ at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
   TT_KERNEL(
       OpName::kNormalTensorFloatOut, param_keys,
       (mean, std, IgnoreInCacheKey(generator, "Doesn't affect SHLO"), out), {
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, /*arg_name=*/"mean"));
-        TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
+        TT_THROW_IF_ERROR(
+            ValidateNormalPreconditions(mean, /*arg_name=*/"mean"));
+        TT_THROW_IF_ERROR(ValidateNormalStdPreconditions(std));
         TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, mean.sizes()));
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(out, /*arg_name=*/"out"));
+        TT_THROW_IF_ERROR(ValidateNormalPreconditions(out, /*arg_name=*/"out"));
 
         auto gen =
             generator.has_value() ? *generator : GetDefaultDeviceGenerator();
@@ -559,29 +562,29 @@ at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
 
 at::Tensor AtenNormalTensorTensor(const at::Tensor& mean, const at::Tensor& std,
                                   std::optional<at::Generator> generator) {
-  TT_KERNEL(
-      OpName::kNormalTensorTensor, _,
-      (mean, std, IgnoreInCacheKey(generator, "Doesn't affect SHLO")), {
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, /*arg_name=*/"mean"));
-        TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
+  TT_KERNEL(OpName::kNormalTensorTensor, _,
+            (mean, std, IgnoreInCacheKey(generator, "Doesn't affect SHLO")), {
+              TT_THROW_IF_ERROR(
+                  ValidateNormalPreconditions(mean, /*arg_name=*/"mean"));
+              TT_THROW_IF_ERROR(ValidateNormalStdPreconditions(std));
 
-        auto gen =
-            generator.has_value() ? *generator : GetDefaultDeviceGenerator();
-        TT_ASSIGN_OR_THROW(auto out_dims, InferSize(mean, std));
-        auto out_dtype = at::result_type(mean, std);
+              auto gen = generator.has_value() ? *generator
+                                               : GetDefaultDeviceGenerator();
+              TT_ASSIGN_OR_THROW(auto out_dims, InferSize(mean, std));
+              auto out_dtype = at::result_type(mean, std);
 
-        auto builder = GetNormalTensorTensorBuilder(out_dims, out_dtype);
+              auto builder = GetNormalTensorTensorBuilder(out_dims, out_dtype);
 
-        TT_ASSIGN_OR_THROW(auto mlir_type,
-                           ConvertTo<mlir::ElementType>(out_dtype));
+              TT_ASSIGN_OR_THROW(auto mlir_type,
+                                 ConvertTo<mlir::ElementType>(out_dtype));
 
-        TT_ASSIGN_OR_THROW(
-            auto output_buf,
-            DispatchNormal3(gen, std::move(builder), mean, std, mlir_type,
-                            out_dims, OpParamCacheKeys::Empty()));
+              TT_ASSIGN_OR_THROW(
+                  auto output_buf,
+                  DispatchNormal3(gen, std::move(builder), mean, std, mlir_type,
+                                  out_dims, OpParamCacheKeys::Empty()));
 
-        return MakeTensor(std::move(output_buf));
-      });
+              return MakeTensor(std::move(output_buf));
+            });
 }
 
 at::Tensor& AtenNormalTensorTensorOut(const at::Tensor& mean,
@@ -591,11 +594,12 @@ at::Tensor& AtenNormalTensorTensorOut(const at::Tensor& mean,
   TT_KERNEL(
       OpName::kNormalTensorTensorOut, _,
       (mean, std, IgnoreInCacheKey(generator, "Doesn't affect SHLO"), out), {
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, /*arg_name=*/"mean"));
-        TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
+        TT_THROW_IF_ERROR(
+            ValidateNormalPreconditions(mean, /*arg_name=*/"mean"));
+        TT_THROW_IF_ERROR(ValidateNormalStdPreconditions(std));
         TT_ASSIGN_OR_THROW(auto shape, InferSize(mean, std));
         TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, shape));
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(out, /*arg_name=*/"out"));
+        TT_THROW_IF_ERROR(ValidateNormalPreconditions(out, /*arg_name=*/"out"));
 
         auto gen =
             generator.has_value() ? *generator : GetDefaultDeviceGenerator();

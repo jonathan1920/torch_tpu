@@ -53,7 +53,7 @@ NAryMlirOpBuilder<1, 1> GetUniformFunctional(Dimensions dims,
   };
 }
 
-absl::Status CheckUniformPreconditions(const at::Tensor& self) {
+absl::Status ValidateUniformPreconditions(const at::Tensor& self) {
   TT_RET_CHECK(IsFloatingPoint(self) || IsComplex(self),
                error::kInvalidArgument)
       << "expected the input dtype to be floating point or complex, got "
@@ -70,7 +70,7 @@ at::Tensor& AtenUniform_(at::Tensor& self, double from, double to,
     if (self.numel() == 0) {
       return self;
     }
-    TT_THROW_IF_ERROR(CheckUniformPreconditions(self));
+    TT_THROW_IF_ERROR(ValidateUniformPreconditions(self));
     at::Tensor self_real = self.is_complex() ? AtenViewAsReal(self) : self;
 
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,

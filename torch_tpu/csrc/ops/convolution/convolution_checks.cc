@@ -26,7 +26,7 @@
 
 namespace torch_tpu {
 
-absl::Status CheckConvolutionInput(absl::Span<const int64_t> input) {
+absl::Status ValidateConvolutionInput(absl::Span<const int64_t> input) {
   TT_RET_CHECK(input.size() > 2, error::kInvalidArgument)
       << "expected the input to have >= 3 dimensions of shape [batch, in "
          "channels, ... spatial dimensions ...], got shape "
@@ -35,7 +35,7 @@ absl::Status CheckConvolutionInput(absl::Span<const int64_t> input) {
   return absl::OkStatus();
 }
 
-absl::Status CheckConvolutionSpatialDimensionsMatch(
+absl::Status ValidateConvolutionSpatialDimensionsMatch(
     int num_spatial_dims, absl::Span<const int64_t> thing,
     std::string_view arg_name) {
   TT_RET_CHECK(thing.size() == num_spatial_dims, error::kInvalidArgument)
@@ -47,11 +47,11 @@ absl::Status CheckConvolutionSpatialDimensionsMatch(
   return absl::OkStatus();
 }
 
-absl::Status CheckConvolutionWeight(absl::Span<const int64_t> weight,
-                                    const int64_t num_spatial_dims,
-                                    const int64_t in_channels,
-                                    const int64_t groups,
-                                    const bool transposed) {
+absl::Status ValidateConvolutionWeight(absl::Span<const int64_t> weight,
+                                       const int64_t num_spatial_dims,
+                                       const int64_t in_channels,
+                                       const int64_t groups,
+                                       const bool transposed) {
   if (transposed) {
     TT_RET_CHECK(weight.size() == num_spatial_dims + 2, error::kInvalidArgument)
         << "expected the weight tensor to have " << num_spatial_dims + 2
@@ -80,8 +80,8 @@ absl::Status CheckConvolutionWeight(absl::Span<const int64_t> weight,
   return absl::OkStatus();
 }
 
-absl::Status CheckConvolutionBias(absl::Span<const int64_t> bias,
-                                  const int64_t out_channels) {
+absl::Status ValidateConvolutionBias(absl::Span<const int64_t> bias,
+                                     const int64_t out_channels) {
   TT_RET_CHECK(bias.size() == 1 && bias[0] == out_channels,
                error::kInvalidArgument)
       << "expected the bias tensor to have 1 dimension of shape ["

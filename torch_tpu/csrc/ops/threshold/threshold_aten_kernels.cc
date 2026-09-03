@@ -59,7 +59,7 @@ absl::StatusOr<mlir::MlirOp> BuildThresholdBackwardShlo(
   return BuildWhereShlo(condition, grad_output, zero, out_dtype);
 }
 
-absl::Status CheckThresholdInputs(const at::Tensor& self) {
+absl::Status ValidateThresholdInputs(const at::Tensor& self) {
   TT_RET_CHECK(!IsBool(self) && !IsComplex(self),
                error::kPythonNotImplementedError)
       << "expected the input dtype to be non-bool and non-complex, got "
@@ -77,7 +77,7 @@ at::Tensor& AtenThresholdOut(const at::Tensor& self,
   TT_KERNEL(
       OpName::kThresholdOut, param_keys,
       (self, promoted_threshold, promoted_value, out), {
-        TT_THROW_IF_ERROR(CheckThresholdInputs(self));
+        TT_THROW_IF_ERROR(ValidateThresholdInputs(self));
 
         TT_ASSIGN_OR_THROW(auto threshold_tensor,
                            promoted_threshold.GetTensor(self.scalar_type()));
@@ -111,7 +111,7 @@ at::Tensor& AtenThresholdBackwardGradInput(const at::Tensor& grad_output,
   TT_KERNEL(
       OpName::kThresholdBackwardGradInput, param_keys,
       (grad_output, self, promoted_threshold, grad_input), {
-        TT_THROW_IF_ERROR(CheckThresholdInputs(self));
+        TT_THROW_IF_ERROR(ValidateThresholdInputs(self));
 
         TT_ASSIGN_OR_THROW(auto threshold_tensor,
                            promoted_threshold.GetTensor(self.scalar_type()));

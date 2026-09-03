@@ -26,9 +26,10 @@
 
 namespace torch_tpu {
 
-absl::Status CheckIsVector(const at::Tensor& tensor, std::string_view arg_name);
+absl::Status ValidateIsVector(const at::Tensor& tensor,
+                              std::string_view arg_name);
 
-absl::StatusOr<mlir::ElementType> CheckedGetDotOutputType(
+absl::StatusOr<mlir::ElementType> ValidateAndGetDotOutputType(
     const at::Tensor& lhs, const at::Tensor& rhs);
 
 }  // namespace torch_tpu

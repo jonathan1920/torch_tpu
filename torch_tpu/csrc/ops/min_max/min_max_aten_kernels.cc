@@ -120,7 +120,7 @@ absl::StatusOr<std::tuple<at::Tensor, at::Tensor>> AtenMinMaxDim(
   return {{value, indices}};
 }
 
-absl::Status CheckNotZeroElementTensor(const at::Tensor& tensor) {
+absl::Status ValidateNotZeroElementTensor(const at::Tensor& tensor) {
   TT_RET_CHECK(tensor.numel() > 0, error::kInvalidArgument)
       << "the dim argument must be specified when the input tensor has "
          "0 elements";
@@ -216,7 +216,7 @@ at::Tensor& AtenArgminOut(const at::Tensor& self, c10::optional<int64_t> dim,
 
 at::Tensor AtenMax(const at::Tensor& self) {
   TT_KERNEL(OpName::kMax, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotZeroElementTensor(self));
+    TT_THROW_IF_ERROR(ValidateNotZeroElementTensor(self));
     TT_ASSIGN_OR_THROW(at::Tensor max,
                        MakeEmptyTensor({}, self.scalar_type(), self.device()));
     TT_THROW_IF_ERROR(UnaryMinMax(self, MinMaxOp::kMax, max));
@@ -226,7 +226,7 @@ at::Tensor AtenMax(const at::Tensor& self) {
 
 at::Tensor& AtenMaxUnaryOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kMaxUnaryOut, _, (self, out), {
-    TT_THROW_IF_ERROR(CheckNotZeroElementTensor(self));
+    TT_THROW_IF_ERROR(ValidateNotZeroElementTensor(self));
     TT_THROW_IF_ERROR(UnaryMinMax(self, MinMaxOp::kMax, out));
     return out;
   });
@@ -246,7 +246,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxDimMax(const at::Tensor& self,
 
 at::Tensor AtenMin(const at::Tensor& self) {
   TT_KERNEL(OpName::kMin, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotZeroElementTensor(self));
+    TT_THROW_IF_ERROR(ValidateNotZeroElementTensor(self));
     TT_ASSIGN_OR_THROW(at::Tensor min,
                        MakeEmptyTensor({}, self.scalar_type(), self.device()));
     TT_THROW_IF_ERROR(UnaryMinMax(self, MinMaxOp::kMin, min));
@@ -256,7 +256,7 @@ at::Tensor AtenMin(const at::Tensor& self) {
 
 at::Tensor& AtenMinUnaryOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kMinUnaryOut, _, (self, out), {
-    TT_THROW_IF_ERROR(CheckNotZeroElementTensor(self));
+    TT_THROW_IF_ERROR(ValidateNotZeroElementTensor(self));
     TT_THROW_IF_ERROR(UnaryMinMax(self, MinMaxOp::kMin, out));
     return out;
   });

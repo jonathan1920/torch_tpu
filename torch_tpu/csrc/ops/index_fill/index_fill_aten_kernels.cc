@@ -103,8 +103,8 @@ absl::StatusOr<mlir::MlirOp> BuildIndexFillShlo(mlir::MlirOp self, int64_t dim,
                                   scatter_dimension_numbers)[0];
 }
 
-absl::Status CheckIndexFillInputs(const at::Tensor& self, int64_t dim,
-                                  const at::Tensor& index) {
+absl::Status ValidateIndexFillInputs(const at::Tensor& self, int64_t dim,
+                                     const at::Tensor& index) {
   TT_RET_CHECK(index.dim() <= 1, error::kInvalidArgument)
       << "expected index to be at most 1-D, got " << index.dim() << "-D";
   TT_RET_CHECK(IsLong(index), error::kInvalidArgument)
@@ -121,7 +121,7 @@ at::Tensor& AtenIndexFillIntScalar_(at::Tensor& self, int64_t dim,
   TT_KERNEL(
       OpName::kIndexFillIntScalar, param_keys,
       (self, dim, index, promoted_value), {
-        TT_THROW_IF_ERROR(CheckIndexFillInputs(self, dim, index));
+        TT_THROW_IF_ERROR(ValidateIndexFillInputs(self, dim, index));
 
         TT_ASSIGN_OR_THROW(const int64_t wrapped_dim,
                            SafeWrapDim(dim, self.dim()));
@@ -153,7 +153,7 @@ at::Tensor& AtenIndexFillIntTensor_(at::Tensor& self, int64_t dim,
                                     const at::Tensor& value) {
   TT_KERNEL(
       OpName::kIndexFillIntTensor, param_keys, (self, dim, index, value), {
-        TT_THROW_IF_ERROR(CheckIndexFillInputs(self, dim, index));
+        TT_THROW_IF_ERROR(ValidateIndexFillInputs(self, dim, index));
         TT_CHECK_THROW(value.dim() == 0, error::kInvalidArgument)
             << "expected value to be a 0-D tensor, got " << value.dim()
             << "-D tensor";

@@ -230,7 +230,7 @@ namespace {
 // datatypes (Integer, Floating Point, or Boolean). We reject complex scalars
 // here to match PyTorch constraints as complex alphas are not yet supported on
 // TPU.
-absl::Status CheckAlphaTypeSupported(const at::Scalar& alpha) {
+absl::Status ValidateAlphaTypeSupported(const at::Scalar& alpha) {
   if (!alpha.isIntegral(/*include_bool=*/false) && !alpha.isFloatingPoint() &&
       !alpha.isBoolean()) {
     // TODO: add support to complex alpha on TPU.
@@ -421,8 +421,8 @@ absl::StatusOr<DivOpOptions> GetDivOpBuilder(
          << "Unsupported mode for div: " << mode.value();
 }
 
-absl::Status CheckFloorDivideInputs(const at::Tensor& self,
-                                    const at::Tensor& other) {
+absl::Status ValidateFloorDivideInputs(const at::Tensor& self,
+                                       const at::Tensor& other) {
   TT_RET_CHECK(!IsComplex(self) && !IsBool(self), error::kInvalidArgument)
       << "expected dtype of the first argument to be neither complex nor "
          "bool, got "
@@ -436,7 +436,7 @@ absl::Status CheckFloorDivideInputs(const at::Tensor& self,
   return absl::OkStatus();
 }
 
-absl::Status CheckAtan2Inputs(const at::Tensor& x, const at::Tensor& y) {
+absl::Status ValidateAtan2Inputs(const at::Tensor& x, const at::Tensor& y) {
   TT_RET_CHECK(!IsComplex(x), error::kInvalidArgument)
       << "expected the dtype of the first argument not to be complex, got "
       << ToString(x.scalar_type());
@@ -448,8 +448,8 @@ absl::Status CheckAtan2Inputs(const at::Tensor& x, const at::Tensor& y) {
   return absl::OkStatus();
 }
 
-absl::Status CheckBitwiseOpsInputs(const at::Tensor& self,
-                                   const at::Tensor& other) {
+absl::Status ValidateBitwiseOpsInputs(const at::Tensor& self,
+                                      const at::Tensor& other) {
   TT_RET_CHECK(!IsFloatingPoint(self) && !IsComplex(self),
                error::kInvalidArgument)
       << "expected the dtype of the first argument to be neither "
@@ -465,8 +465,8 @@ absl::Status CheckBitwiseOpsInputs(const at::Tensor& self,
   return absl::OkStatus();
 }
 
-absl::Status CheckBitwiseShiftInputs(const at::Tensor& self,
-                                     const at::Tensor& other) {
+absl::Status ValidateBitwiseShiftInputs(const at::Tensor& self,
+                                        const at::Tensor& other) {
   TT_RET_CHECK(IsInteger(self), error::kInvalidArgument)
       << "expected the dtype of the first argument to be integer, got "
       << ToString(self.scalar_type());
@@ -478,9 +478,9 @@ absl::Status CheckBitwiseShiftInputs(const at::Tensor& self,
   return absl::OkStatus();
 }
 
-absl::Status CheckComplexOutInputs(const at::Tensor& real,
-                                   const at::Tensor& imag,
-                                   const at::Tensor& out) {
+absl::Status ValidateComplexOutInputs(const at::Tensor& real,
+                                      const at::Tensor& imag,
+                                      const at::Tensor& out) {
   TT_RET_CHECK(IsFloatOrDouble(real), error::kInvalidArgument)
       << "expected the dtype of the first argument to be float32 or float64, "
          "got "
@@ -508,7 +508,7 @@ absl::Status CheckComplexOutInputs(const at::Tensor& real,
 //   - at::Tensor
 //   - at::Scalar
 template <typename T>
-absl::Status CheckInputsNotComplex(const at::Tensor& self, const T& other) {
+absl::Status ValidateInputsNotComplex(const at::Tensor& self, const T& other) {
   TT_RET_CHECK(!IsComplex(self), error::kInvalidArgument)
       << "expected the dtype of the first argument not to be complex, got "
       << ToString(self.scalar_type());
@@ -529,7 +529,7 @@ absl::Status CheckInputsNotComplex(const at::Tensor& self, const T& other) {
 template <typename T, typename U>
   requires((std::is_same_v<T, at::Tensor> || std::is_same_v<T, at::Scalar>) &&
            (std::is_same_v<U, at::Tensor> || std::is_same_v<U, at::Scalar>))
-absl::Status CheckPowInputs(const T& self, const U& exponent) {
+absl::Status ValidatePowInputs(const T& self, const U& exponent) {
   if constexpr (std::is_same_v<U, at::Tensor>) {
     at::ScalarType result_type = at::result_type(self, exponent);
     TT_RET_CHECK(!IsBool(result_type), error::kInvalidArgument)
@@ -546,7 +546,7 @@ absl::Status CheckPowInputs(const T& self, const U& exponent) {
 //   - at::Tensor
 //   - at::Scalar
 template <typename T>
-absl::Status CheckRemainderInputs(const T& self, const at::Tensor& other) {
+absl::Status ValidateRemainderInputs(const T& self, const at::Tensor& other) {
   at::ScalarType result_type = at::result_type(self, other);
 
   TT_RET_CHECK(!IsBool(result_type) && !IsComplex(result_type),
@@ -558,7 +558,8 @@ absl::Status CheckRemainderInputs(const T& self, const at::Tensor& other) {
   return absl::OkStatus();
 }
 
-absl::Status CheckPolarInputs(const at::Tensor& abs, const at::Tensor& angle) {
+absl::Status ValidatePolarInputs(const at::Tensor& abs,
+                                 const at::Tensor& angle) {
   TT_RET_CHECK(IsFloatOrDouble(abs), error::kInvalidArgument)
       << "expected the dtype of the first argument to be float32 or float64, "
          "got "
@@ -572,7 +573,8 @@ absl::Status CheckPolarInputs(const at::Tensor& abs, const at::Tensor& angle) {
   return absl::OkStatus();
 }
 
-absl::Status CheckSubInputs(const at::Tensor& self, const at::Tensor& other) {
+absl::Status ValidateSubInputs(const at::Tensor& self,
+                               const at::Tensor& other) {
   TT_RET_CHECK(!IsBool(self), error::kInvalidArgument)
       << "the dtype of the first argument cannot be bool";
 
@@ -588,7 +590,7 @@ absl::Status AtenComparisonScalarOutHelper(
   // We can compare complex numbers for equality but not for ordering.
   if (direction != stablehlo::ComparisonDirection::EQ &&
       direction != stablehlo::ComparisonDirection::NE) {
-    TT_RETURN_IF_ERROR(CheckInputsNotComplex(self, promoted_other.scalar()));
+    TT_RETURN_IF_ERROR(ValidateInputsNotComplex(self, promoted_other.scalar()));
   }
   const at::ScalarType promoted_scalar_type =
       at::result_type(self, promoted_other.scalar());
@@ -637,7 +639,7 @@ absl::Status BitwiseShiftScalarHelper(const at::Tensor& self,
 
   TT_ASSIGN_OR_RETURN(const at::Tensor other_tensor,
                       promoted_other.GetTensor(out.scalar_type()));
-  TT_RETURN_IF_ERROR(CheckBitwiseShiftInputs(self, other_tensor));
+  TT_RETURN_IF_ERROR(ValidateBitwiseShiftInputs(self, other_tensor));
 
   MlirBinaryOpBuilder builder = direction == BitwiseShiftDirection::kLeft
                                     ? BuildBitwiseLeftShiftShlo
@@ -673,7 +675,7 @@ absl::StatusOr<at::Tensor> AddReluScalarHelper(
     const at::Tensor& self, PromotedScalar& promoted_other,
     MaybePromotedScalar& promoted_alpha, at::Tensor& out,
     OpParamCacheKeys& param_keys) {
-  TT_RETURN_IF_ERROR(CheckAlphaTypeSupported(promoted_alpha.scalar()));
+  TT_RETURN_IF_ERROR(ValidateAlphaTypeSupported(promoted_alpha.scalar()));
 
   const at::ScalarType promoted_scalar_type =
       at::result_type(self, promoted_other.scalar());
@@ -708,7 +710,7 @@ absl::Status DivOutMode(const at::Tensor& self, const at::Tensor& other,
 absl::Status BitwiseLeftShiftTensor(
     const at::Tensor& self, const at::Tensor& other, at::Tensor& out,
     std::optional<OpName> op_name = OpName::kBitwiseLeftShiftTensorOut) {
-  TT_RETURN_IF_ERROR(CheckBitwiseShiftInputs(self, other));
+  TT_RETURN_IF_ERROR(ValidateBitwiseShiftInputs(self, other));
   // Input/output type conversions are automatically handled in BinaryOpOut.
   // We override op_name to allow all callers of this helper to share the same
   // compilation cache entry.
@@ -720,7 +722,7 @@ absl::Status BitwiseLeftShiftTensor(
 absl::Status BitwiseRightShiftTensor(
     const at::Tensor& self, const at::Tensor& other, at::Tensor& out,
     std::optional<OpName> op_name = OpName::kBitwiseRightShiftTensorOut) {
-  TT_RETURN_IF_ERROR(CheckBitwiseShiftInputs(self, other));
+  TT_RETURN_IF_ERROR(ValidateBitwiseShiftInputs(self, other));
   // Input/output type conversions are automatically handled in BinaryOpOut.
   // We override op_name to allow all callers of this helper to share the same
   // compilation cache entry.
@@ -776,7 +778,7 @@ absl::StatusOr<ScaleStepResult> ScaleStep(mlir::MlirOp self,
   return ScaleStepResult{result, remaining_exponent};
 }
 
-absl::Status CheckLdexpOutput(const at::Tensor& out) {
+absl::Status ValidateLdexpOutput(const at::Tensor& out) {
   TT_RET_CHECK(IsFloatingPoint(out) || IsComplex(out), error::kInvalidArgument)
       << "ldexp can't be cast to the desired output type "
       << ToString(out.scalar_type());
@@ -947,7 +949,7 @@ at::Tensor& AtenAddOut(const at::Tensor& self, const at::Tensor& other,
                        const at::Scalar& alpha, at::Tensor& out) {
   auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(OpName::kAddOut, param_keys, (self, other, promoted_alpha, out), {
-    TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
+    TT_THROW_IF_ERROR(ValidateAlphaTypeSupported(alpha));
 
     // As an optimization, skip the scaling if alpha is 1.
     if (promoted_alpha.IsOne()) {
@@ -980,7 +982,7 @@ at::Tensor& AtenAddReluOut(const at::Tensor& self, const at::Tensor& other,
       PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(
       OpName::kAddReluOut, param_keys, (self, other, promoted_alpha, out), {
-        TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
+        TT_THROW_IF_ERROR(ValidateAlphaTypeSupported(alpha));
 
         // As an optimization, skip the scaling if alpha is 1.
         if (promoted_alpha.IsOne()) {
@@ -1026,7 +1028,7 @@ at::Tensor AtenAddReluTensor(const at::Tensor& self, const at::Tensor& other,
   MaybePromotedScalar promoted_alpha =
       PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(OpName::kAddReluTensor, param_keys, (self, other, promoted_alpha), {
-    TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
+    TT_THROW_IF_ERROR(ValidateAlphaTypeSupported(alpha));
 
     const at::ScalarType promoted_scalar_type = at::result_type(self, other);
     TT_ASSIGN_OR_THROW(const Dimensions output_dims,
@@ -1073,7 +1075,7 @@ at::Tensor& AtenAddRelu_Tensor(at::Tensor& self, const at::Tensor& other,
       PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(
       OpName::kAddRelu_Tensor, param_keys, (self, other, promoted_alpha), {
-        TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
+        TT_THROW_IF_ERROR(ValidateAlphaTypeSupported(alpha));
 
         const at::ScalarType promoted_scalar_type =
             at::result_type(self, other);
@@ -1097,7 +1099,7 @@ at::Tensor& AtenAddRelu_Tensor(at::Tensor& self, const at::Tensor& other,
 at::Tensor& AtenAtan2Out(const at::Tensor& x, const at::Tensor& y,
                          at::Tensor& out) {
   TT_KERNEL(OpName::kAtan2Out, _, (x, y, out), {
-    TT_THROW_IF_ERROR(CheckAtan2Inputs(x, y));
+    TT_THROW_IF_ERROR(ValidateAtan2Inputs(x, y));
     TT_THROW_IF_ERROR(
         BinaryOpOut(x, y, out, BuildAtan2Shlo,
                     {.force_float_inputs = true,
@@ -1109,7 +1111,7 @@ at::Tensor& AtenAtan2Out(const at::Tensor& x, const at::Tensor& y,
 at::Tensor& AtenBitwiseAndTensorOut(const at::Tensor& self,
                                     const at::Tensor& other, at::Tensor& out) {
   TT_KERNEL(OpName::kBitwiseAndOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckBitwiseOpsInputs(self, other));
+    TT_THROW_IF_ERROR(ValidateBitwiseOpsInputs(self, other));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildBitwiseAndShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1132,7 +1134,7 @@ at::Tensor& AtenBitwiseLeftShiftTensorOut(const at::Tensor& self,
 at::Tensor& AtenBitwiseOrTensorOut(const at::Tensor& self,
                                    const at::Tensor& other, at::Tensor& out) {
   TT_KERNEL(OpName::kBitwiseOrOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckBitwiseOpsInputs(self, other));
+    TT_THROW_IF_ERROR(ValidateBitwiseOpsInputs(self, other));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildBitwiseOrShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1155,7 +1157,7 @@ at::Tensor& AtenBitwiseRightShiftTensorOut(const at::Tensor& self,
 at::Tensor& AtenBitwiseXorTensorOut(const at::Tensor& self,
                                     const at::Tensor& other, at::Tensor& out) {
   TT_KERNEL(OpName::kBitwiseXorOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckBitwiseOpsInputs(self, other));
+    TT_THROW_IF_ERROR(ValidateBitwiseOpsInputs(self, other));
     TT_ASSIGN_OR_THROW(auto output_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
     TT_THROW_IF_ERROR(
@@ -1169,7 +1171,7 @@ at::Tensor& AtenBitwiseXorTensorOut(const at::Tensor& self,
 at::Tensor& AtenComplexOut(const at::Tensor& real, const at::Tensor& imag,
                            at::Tensor& out) {
   TT_KERNEL(OpName::kComplexOut, _, (real, imag, out), {
-    TT_THROW_IF_ERROR(CheckComplexOutInputs(real, imag, out));
+    TT_THROW_IF_ERROR(ValidateComplexOutInputs(real, imag, out));
     TT_THROW_IF_ERROR(
         BinaryOpOut(real, imag, out, BuildComplexShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1241,7 +1243,7 @@ at::Tensor& AtenEqTensorOut(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor AtenFloorDivide(const at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kFloorDivide, _, (self, other), {
-    TT_THROW_IF_ERROR(CheckFloorDivideInputs(self, other));
+    TT_THROW_IF_ERROR(ValidateFloorDivideInputs(self, other));
     TT_ASSIGN_OR_THROW(auto div_opts, GetDivOpOptionsFloorMode());
     TT_ASSIGN_OR_THROW(auto result,
                        BinaryOp(self, other, std::move(div_opts.op_builder),
@@ -1254,7 +1256,7 @@ at::Tensor AtenFloorDivide(const at::Tensor& self, const at::Tensor& other) {
 at::Tensor& AtenFloorDivideOut(const at::Tensor& self, const at::Tensor& other,
                                at::Tensor& out) {
   TT_KERNEL(OpName::kFloorDivideOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckFloorDivideInputs(self, other));
+    TT_THROW_IF_ERROR(ValidateFloorDivideInputs(self, other));
     TT_THROW_IF_ERROR(DivOutMode(self, other, "floor", out));
     return out;
   });
@@ -1262,7 +1264,7 @@ at::Tensor& AtenFloorDivideOut(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor& AtenFloorDivide_Tensor(at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kFloorDivide_Tensor, _, (self, other), {
-    TT_THROW_IF_ERROR(CheckFloorDivideInputs(self, other));
+    TT_THROW_IF_ERROR(ValidateFloorDivideInputs(self, other));
     TT_THROW_IF_ERROR(DivOutMode(self, other, "floor", self));
     return self;
   });
@@ -1299,7 +1301,7 @@ at::Tensor& AtenGeScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenGeTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kGeOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckInputsNotComplex(self, other));
+    TT_THROW_IF_ERROR(ValidateInputsNotComplex(self, other));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildGeShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1320,7 +1322,7 @@ at::Tensor& AtenGtScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenGtTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kGtOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckInputsNotComplex(self, other));
+    TT_THROW_IF_ERROR(ValidateInputsNotComplex(self, other));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildGtShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1363,7 +1365,7 @@ at::Tensor& AtenIrshiftTensor(at::Tensor& self, const at::Tensor& other) {
 at::Tensor& AtenLdexpOut(const at::Tensor& self, const at::Tensor& other,
                          at::Tensor& out) {
   TT_KERNEL(OpName::kLdexpOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckLdexpOutput(out));
+    TT_THROW_IF_ERROR(ValidateLdexpOutput(out));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildLdexpShlo,
                     {.force_float_inputs = true,
@@ -1385,7 +1387,7 @@ at::Tensor AtenLdexpTensor(const at::Tensor& self, const at::Tensor& other) {
 
 at::Tensor& AtenLdexp_(at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kLdexp_, _, (self, other), {
-    TT_THROW_IF_ERROR(CheckLdexpOutput(self));
+    TT_THROW_IF_ERROR(ValidateLdexpOutput(self));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, self, BuildLdexpShlo,
                     {.force_float_inputs = true,
@@ -1407,7 +1409,7 @@ at::Tensor& AtenLeScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenLeTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kLeOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckInputsNotComplex(self, other));
+    TT_THROW_IF_ERROR(ValidateInputsNotComplex(self, other));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildLeShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1451,7 +1453,7 @@ at::Tensor& AtenLtScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenLtTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kLtOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckInputsNotComplex(self, other));
+    TT_THROW_IF_ERROR(ValidateInputsNotComplex(self, other));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildLtShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1533,7 +1535,7 @@ at::Tensor& AtenNeTensorOut(const at::Tensor& self, const at::Tensor& other,
 at::Tensor& AtenPolarOut(const at::Tensor& abs, const at::Tensor& angle,
                          at::Tensor& out) {
   TT_KERNEL(OpName::kPolarOut, _, (abs, angle, out), {
-    TT_THROW_IF_ERROR(CheckPolarInputs(abs, angle));
+    TT_THROW_IF_ERROR(ValidatePolarInputs(abs, angle));
     TT_THROW_IF_ERROR(
         BinaryOpOut(abs, angle, out, BuildPolarShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1545,7 +1547,7 @@ at::Tensor& AtenPowScalarOut(const at::Scalar& self, const at::Tensor& exponent,
                              at::Tensor& out) {
   auto promoted_self = PromoteScalar(self);
   TT_KERNEL(OpName::kPowScalarOut, _, (promoted_self, exponent, out), {
-    TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
+    TT_THROW_IF_ERROR(ValidatePowInputs(self, exponent));
     // Can't use reverse_operands here because a^b != b^a.
     // Cast to out tensor dtype to be consistent with PyTorch.
     TT_ASSIGN_OR_THROW(at::Tensor self_tensor,
@@ -1565,7 +1567,7 @@ at::Tensor& AtenPowTensorScalarOut(const at::Tensor& self,
                                    at::Tensor& out) {
   auto promoted_exponent = PromoteScalar(exponent);
   TT_KERNEL(OpName::kPowTensorScalarOut, _, (self, promoted_exponent, out), {
-    TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
+    TT_THROW_IF_ERROR(ValidatePowInputs(self, exponent));
     // Cast to self dtype to be consistent with PyTorch.
     TT_ASSIGN_OR_THROW(const at::Tensor exponent_tensor,
                        promoted_exponent.GetTensor(self.scalar_type()));
@@ -1583,7 +1585,7 @@ at::Tensor& AtenPowTensorTensorOut(const at::Tensor& self,
                                    const at::Tensor& exponent,
                                    at::Tensor& out) {
   TT_KERNEL(OpName::kPowOut, _, (self, exponent, out), {
-    TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
+    TT_THROW_IF_ERROR(ValidatePowInputs(self, exponent));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, exponent, out, BuildPowShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1595,7 +1597,7 @@ at::Tensor AtenRemainderScalarTensor(const at::Scalar& self,
                                      const at::Tensor& other) {
   auto promoted_self = PromoteScalar(self);
   TT_KERNEL(OpName::kRemainderScalarTensor, _, (promoted_self, other), {
-    TT_THROW_IF_ERROR(CheckRemainderInputs(self, other));
+    TT_THROW_IF_ERROR(ValidateRemainderInputs(self, other));
     TT_ASSIGN_OR_THROW(auto div_opts, GetDivOpOptionsFloorMode());
 
     auto remainder_builder =
@@ -1625,7 +1627,7 @@ at::Tensor AtenRemainderScalarTensor(const at::Scalar& self,
 at::Tensor& AtenRemainderTensorOut(const at::Tensor& self,
                                    const at::Tensor& other, at::Tensor& out) {
   TT_KERNEL(OpName::kRemainderOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckRemainderInputs(self, other));
+    TT_THROW_IF_ERROR(ValidateRemainderInputs(self, other));
     TT_ASSIGN_OR_THROW(auto div_opts, GetDivOpOptionsFloorMode());
 
     auto remainder_builder =
@@ -1673,8 +1675,8 @@ at::Tensor AtenRsubTensor(const at::Tensor& self, const at::Tensor& other,
                           const at::Scalar& alpha) {
   auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(OpName::kRsub, param_keys, (self, other, promoted_alpha), {
-    TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
-    TT_THROW_IF_ERROR(CheckSubInputs(other, self));
+    TT_THROW_IF_ERROR(ValidateAlphaTypeSupported(alpha));
+    TT_THROW_IF_ERROR(ValidateSubInputs(other, self));
 
     const at::ScalarType promoted_scalar_type = at::result_type(other, self);
     TT_ASSIGN_OR_THROW(const Dimensions output_dims,
@@ -1693,8 +1695,8 @@ at::Tensor& AtenSubOut(const at::Tensor& self, const at::Tensor& other,
                        const at::Scalar& alpha, at::Tensor& out) {
   auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(OpName::kSubOut, param_keys, (self, other, promoted_alpha, out), {
-    TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
-    TT_THROW_IF_ERROR(CheckSubInputs(self, other));
+    TT_THROW_IF_ERROR(ValidateAlphaTypeSupported(alpha));
+    TT_THROW_IF_ERROR(ValidateSubInputs(self, other));
 
     TT_THROW_IF_ERROR(SubHelperOut(self, other, std::move(promoted_alpha),
                                    out.scalar_type(), out, param_keys));

@@ -25,19 +25,19 @@
 
 namespace torch_tpu {
 
-absl::Status CheckConvolutionInput(absl::Span<const int64_t> input);
+absl::Status ValidateConvolutionInput(absl::Span<const int64_t> input);
 
-absl::Status CheckConvolutionSpatialDimensionsMatch(
+absl::Status ValidateConvolutionSpatialDimensionsMatch(
     int num_spatial_dims, absl::Span<const int64_t> thing,
     std::string_view arg_name);
 
-absl::Status CheckConvolutionWeight(absl::Span<const int64_t> weight,
-                                    int64_t num_spatial_dims,
-                                    int64_t in_channels, int64_t groups,
-                                    bool transposed);
+absl::Status ValidateConvolutionWeight(absl::Span<const int64_t> weight,
+                                       int64_t num_spatial_dims,
+                                       int64_t in_channels, int64_t groups,
+                                       bool transposed);
 
-absl::Status CheckConvolutionBias(absl::Span<const int64_t> bias,
-                                  int64_t out_channels);
+absl::Status ValidateConvolutionBias(absl::Span<const int64_t> bias,
+                                     int64_t out_channels);
 
 }  // namespace torch_tpu
 

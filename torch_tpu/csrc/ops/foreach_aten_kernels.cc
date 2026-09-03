@@ -443,10 +443,10 @@ absl::StatusOr<DtypeVec> GetOutputDtypes(at::TensorList self,
 
 // Helper functions for input validation.
 
-absl::Status CheckScalarType(mlir::ElementType out_dtype,
-                             mlir::ElementType compute_dtype,
-                             at::ScalarType tensor_type,
-                             at::ScalarType scalar_type) {
+absl::Status ValidateScalarType(mlir::ElementType out_dtype,
+                                mlir::ElementType compute_dtype,
+                                at::ScalarType tensor_type,
+                                at::ScalarType scalar_type) {
   TT_RET_CHECK(out_dtype == compute_dtype, error::kInvalidArgument)
       << "expected the scalar dtype to be castable to the tensor dtype "
          "(e.g. bool to int or int to float), got "
@@ -454,41 +454,42 @@ absl::Status CheckScalarType(mlir::ElementType out_dtype,
   return absl::OkStatus();
 }
 
-absl::Status CheckInplaceScalarType(at::TensorList self,
-                                    const at::Scalar& scalar) {
+absl::Status ValidateInplaceScalarType(at::TensorList self,
+                                       const at::Scalar& scalar) {
   TT_ASSIGN_OR_RETURN(auto out_dtypes, GetOutputDtypes(self));
   TT_ASSIGN_OR_RETURN(const auto result_out_dtypes,
                       GetOutputDtypes(self, scalar));
   for (size_t i = 0; i < self.size(); ++i) {
-    TT_RETURN_IF_ERROR(CheckScalarType(out_dtypes[i], result_out_dtypes[i],
-                                       self[i].scalar_type(), scalar.type()));
+    TT_RETURN_IF_ERROR(ValidateScalarType(out_dtypes[i], result_out_dtypes[i],
+                                          self[i].scalar_type(),
+                                          scalar.type()));
   }
   return absl::OkStatus();
 }
 
-absl::Status CheckInplaceScalarType(at::TensorList self,
-                                    at::ArrayRef<at::Scalar> scalars) {
+absl::Status ValidateInplaceScalarType(at::TensorList self,
+                                       at::ArrayRef<at::Scalar> scalars) {
   TT_ASSIGN_OR_RETURN(auto out_dtypes, GetOutputDtypes(self));
   TT_ASSIGN_OR_RETURN(const auto result_out_dtypes,
                       GetOutputDtypes(self, scalars));
   for (size_t i = 0; i < self.size(); ++i) {
-    TT_RETURN_IF_ERROR(CheckScalarType(out_dtypes[i], result_out_dtypes[i],
-                                       self[i].scalar_type(),
-                                       scalars[i].type()));
+    TT_RETURN_IF_ERROR(ValidateScalarType(out_dtypes[i], result_out_dtypes[i],
+                                          self[i].scalar_type(),
+                                          scalars[i].type()));
   }
   return absl::OkStatus();
 }
 
-inline absl::Status CheckNotBool(const at::Scalar& scalar,
-                                 const std::string_view arg_name) {
+inline absl::Status ValidateNotBool(const at::Scalar& scalar,
+                                    const std::string_view arg_name) {
   TT_RET_CHECK(!IsBool(scalar), error::kInvalidArgument)
       << "expected the " << arg_name << " argument not to be bool, got "
       << ToString(scalar);
   return absl::OkStatus();
 }
 
-absl::Status CheckNotBool(at::ArrayRef<at::Scalar> scalars,
-                          const std::string_view arg_name) {
+absl::Status ValidateNotBool(at::ArrayRef<at::Scalar> scalars,
+                             const std::string_view arg_name) {
   const Indices& bool_indices =
       FilterIndices(scalars.size(),
                     [scalars](const int64_t i) { return IsBool(scalars[i]); });
@@ -506,10 +507,10 @@ absl::Status CheckNotBool(at::ArrayRef<at::Scalar> scalars,
 }
 
 template <typename IsType>
-absl::Status CheckTensorsNotTypeImpl(at::TensorList tensors,
-                                     const std::string_view arg_name,
-                                     const IsType& is_type,
-                                     const std::string_view type_name) {
+absl::Status ValidateTensorsNotTypeImpl(at::TensorList tensors,
+                                        const std::string_view arg_name,
+                                        const IsType& is_type,
+                                        const std::string_view type_name) {
   const Indices& bad_indices = FilterIndices(
       tensors.size(),
       [tensors, &is_type](const int64_t i) { return is_type(tensors[i]); });
@@ -528,33 +529,34 @@ absl::Status CheckTensorsNotTypeImpl(at::TensorList tensors,
   return absl::OkStatus();
 }
 
-absl::Status CheckNotBool(at::TensorList tensors,
-                          const std::string_view arg_name) {
-  TT_RETURN_IF_ERROR(CheckTensorsNotTypeImpl(tensors, arg_name,
-                                             /* is_type= */ IsBool<at::Tensor>,
-                                             /* type_name= */ "bool"));
-  return absl::OkStatus();
-}
-
-absl::Status CheckNotIntegral(at::TensorList tensors,
-                              const std::string_view arg_name) {
-  TT_RETURN_IF_ERROR(
-      CheckTensorsNotTypeImpl(tensors, arg_name,
-                              /* is_type= */ IsIntegral<at::Tensor>,
-                              /* type_name= */ "integral"));
-  return absl::OkStatus();
-}
-
-absl::Status CheckNotComplex(at::TensorList tensors,
+absl::Status ValidateNotBool(at::TensorList tensors,
                              const std::string_view arg_name) {
   TT_RETURN_IF_ERROR(
-      CheckTensorsNotTypeImpl(tensors, arg_name,
-                              /* is_type= */ IsComplex<at::Tensor>,
-                              /* type_name= */ "complex"));
+      ValidateTensorsNotTypeImpl(tensors, arg_name,
+                                 /* is_type= */ IsBool<at::Tensor>,
+                                 /* type_name= */ "bool"));
   return absl::OkStatus();
 }
 
-absl::Status CheckForeachUnaryNotBool(at::TensorList self) {
+absl::Status ValidateNotIntegral(at::TensorList tensors,
+                                 const std::string_view arg_name) {
+  TT_RETURN_IF_ERROR(
+      ValidateTensorsNotTypeImpl(tensors, arg_name,
+                                 /* is_type= */ IsIntegral<at::Tensor>,
+                                 /* type_name= */ "integral"));
+  return absl::OkStatus();
+}
+
+absl::Status ValidateNotComplex(at::TensorList tensors,
+                                const std::string_view arg_name) {
+  TT_RETURN_IF_ERROR(
+      ValidateTensorsNotTypeImpl(tensors, arg_name,
+                                 /* is_type= */ IsComplex<at::Tensor>,
+                                 /* type_name= */ "complex"));
+  return absl::OkStatus();
+}
+
+absl::Status ValidateForeachUnaryNotBool(at::TensorList self) {
   for (const auto& t : self) {
     TT_RET_CHECK(t.scalar_type() != at::kBool,
                  error::kPythonNotImplementedError)
@@ -574,7 +576,7 @@ absl::StatusOr<at::ScalarType> ForeachScalarResultType(
   return out_dtype;
 }
 
-absl::Status CheckPairwiseAddcdivAtLeastOneNotIntegral(
+absl::Status ValidatePairwiseAddcdivAtLeastOneNotIntegral(
     at::TensorList tensors1, at::TensorList tensors2) {
   const Indices& bad_indices =
       FilterIndices(tensors1.size(), [tensors1, tensors2](const int64_t i) {
@@ -1020,7 +1022,7 @@ std::vector<at::Tensor> AtenForeachAbs(at::TensorList self) {
 void AtenForeachAbs_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachAbs_, _, (self), {
     // _foreach_abs_ does not support complex dtype.
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, std::move(out_dtypes), BuildAbsShlo,
@@ -1044,7 +1046,7 @@ std::vector<at::Tensor> AtenForeachAcos(at::TensorList self) {
 
 void AtenForeachAcos_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachAcos_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1068,7 +1070,7 @@ std::vector<at::Tensor> AtenForeachAsin(at::TensorList self) {
 
 void AtenForeachAsin_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachAsin_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1092,7 +1094,7 @@ std::vector<at::Tensor> AtenForeachAtan(at::TensorList self) {
 
 void AtenForeachAtan_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachAtan_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1106,8 +1108,8 @@ void AtenForeachAtan_(at::TensorList self) {
 
 std::vector<at::Tensor> AtenForeachCeil(at::TensorList self) {
   TT_KERNEL(OpName::kForeachCeil, _, (self), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, out_dtypes, BuildCeilShlo));
@@ -1117,8 +1119,8 @@ std::vector<at::Tensor> AtenForeachCeil(at::TensorList self) {
 
 void AtenForeachCeil_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachCeil_, _, (self), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1142,7 +1144,7 @@ std::vector<at::Tensor> AtenForeachCos(at::TensorList self) {
 
 void AtenForeachCos_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachCos_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, std::move(out_dtypes), BuildCosShlo,
@@ -1165,7 +1167,7 @@ std::vector<at::Tensor> AtenForeachCosh(at::TensorList self) {
 
 void AtenForeachCosh_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachCosh_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1179,7 +1181,7 @@ void AtenForeachCosh_(at::TensorList self) {
 
 std::vector<at::Tensor> AtenForeachErf(at::TensorList self) {
   TT_KERNEL(OpName::kForeachErf, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
                        GetOutputDtypes(self, /*cast_integral_to_float=*/true));
     TT_ASSIGN_OR_THROW(auto result_buffers,
@@ -1190,8 +1192,8 @@ std::vector<at::Tensor> AtenForeachErf(at::TensorList self) {
 
 void AtenForeachErf_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachErf_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, std::move(out_dtypes), BuildErfShlo,
@@ -1204,7 +1206,7 @@ void AtenForeachErf_(at::TensorList self) {
 
 std::vector<at::Tensor> AtenForeachErfc(at::TensorList self) {
   TT_KERNEL(OpName::kForeachErfc, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
                        GetOutputDtypes(self, /*cast_integral_to_float=*/true));
     TT_ASSIGN_OR_THROW(auto result_buffers,
@@ -1215,8 +1217,8 @@ std::vector<at::Tensor> AtenForeachErfc(at::TensorList self) {
 
 void AtenForeachErfc_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachErfc_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1240,7 +1242,7 @@ std::vector<at::Tensor> AtenForeachExp(at::TensorList self) {
 
 void AtenForeachExp_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachExp_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, std::move(out_dtypes), BuildExpShlo,
@@ -1263,7 +1265,7 @@ std::vector<at::Tensor> AtenForeachExpm1(at::TensorList self) {
 
 void AtenForeachExpm1_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachExpm1_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1277,8 +1279,8 @@ void AtenForeachExpm1_(at::TensorList self) {
 
 std::vector<at::Tensor> AtenForeachFloor(at::TensorList self) {
   TT_KERNEL(OpName::kForeachFloor, _, (self), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, out_dtypes, BuildFloorShlo));
@@ -1288,8 +1290,8 @@ std::vector<at::Tensor> AtenForeachFloor(at::TensorList self) {
 
 void AtenForeachFloor_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachFloor_, _, (self), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1303,8 +1305,8 @@ void AtenForeachFloor_(at::TensorList self) {
 
 std::vector<at::Tensor> AtenForeachFrac(at::TensorList self) {
   TT_KERNEL(OpName::kForeachFrac, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
                        GetOutputDtypes(self, /*cast_integral_to_float=*/true));
     TT_ASSIGN_OR_THROW(auto result_buffers,
@@ -1315,8 +1317,8 @@ std::vector<at::Tensor> AtenForeachFrac(at::TensorList self) {
 
 void AtenForeachFrac_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachFrac_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1330,7 +1332,7 @@ void AtenForeachFrac_(at::TensorList self) {
 
 std::vector<at::Tensor> AtenForeachLgamma(at::TensorList self) {
   TT_KERNEL(OpName::kForeachLgamma, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
                        GetOutputDtypes(self, /*cast_integral_to_float=*/true));
     TT_ASSIGN_OR_THROW(auto result_buffers,
@@ -1341,8 +1343,8 @@ std::vector<at::Tensor> AtenForeachLgamma(at::TensorList self) {
 
 void AtenForeachLgamma_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachLgamma_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1366,7 +1368,7 @@ std::vector<at::Tensor> AtenForeachLog(at::TensorList self) {
 
 void AtenForeachLog_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachLog_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, std::move(out_dtypes), BuildLogShlo,
@@ -1389,7 +1391,7 @@ std::vector<at::Tensor> AtenForeachLog10(at::TensorList self) {
 
 void AtenForeachLog10_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachLog10_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1413,7 +1415,7 @@ std::vector<at::Tensor> AtenForeachLog1p(at::TensorList self) {
 
 void AtenForeachLog1p_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachLog1p_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1437,7 +1439,7 @@ std::vector<at::Tensor> AtenForeachLog2(at::TensorList self) {
 
 void AtenForeachLog2_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachLog2_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1482,7 +1484,7 @@ std::vector<at::Tensor> AtenForeachReciprocal(at::TensorList self) {
 
 void AtenForeachReciprocal_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachReciprocal_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1496,7 +1498,7 @@ void AtenForeachReciprocal_(at::TensorList self) {
 
 absl::StatusOr<std::vector<DeviceBufferRef>> ForeachRound(
     at::TensorList self, DtypeSpan out_dtypes) {
-  TT_RETURN_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+  TT_RETURN_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
   // BuildRoundShlo has a different signature from the other unary transforms.
   auto tensor_transform = [](mlir::MlirOp input, mlir::ElementType) {
     return BuildRoundShlo(input, 0);
@@ -1507,7 +1509,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachRound(
 
 std::vector<at::Tensor> AtenForeachRound(at::TensorList self) {
   TT_KERNEL(OpName::kForeachRound, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers, ForeachRound(self, out_dtypes));
     return ForeachConvertToTensor(result_buffers, out_dtypes);
@@ -1516,7 +1518,7 @@ std::vector<at::Tensor> AtenForeachRound(at::TensorList self) {
 
 void AtenForeachRound_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachRound_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachRound(self, std::move(out_dtypes)));
@@ -1536,7 +1538,7 @@ std::vector<at::Tensor> AtenForeachRsqrt(at::TensorList self) {
 
 void AtenForeachRsqrt_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachRsqrt_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1560,7 +1562,7 @@ std::vector<at::Tensor> AtenForeachSigmoid(at::TensorList self) {
 
 void AtenForeachSigmoid_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachSigmoid_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1574,7 +1576,7 @@ void AtenForeachSigmoid_(at::TensorList self) {
 
 std::vector<at::Tensor> AtenForeachSign(at::TensorList self) {
   TT_KERNEL(OpName::kForeachSign, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, out_dtypes, BuildSignShlo));
@@ -1584,7 +1586,7 @@ std::vector<at::Tensor> AtenForeachSign(at::TensorList self) {
 
 void AtenForeachSign_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachSign_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1608,7 +1610,7 @@ std::vector<at::Tensor> AtenForeachSin(at::TensorList self) {
 
 void AtenForeachSin_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachSin_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, std::move(out_dtypes), BuildSinShlo,
@@ -1631,7 +1633,7 @@ std::vector<at::Tensor> AtenForeachSinh(at::TensorList self) {
 
 void AtenForeachSinh_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachSinh_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1655,7 +1657,7 @@ std::vector<at::Tensor> AtenForeachSqrt(at::TensorList self) {
 
 void AtenForeachSqrt_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachSqrt_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1679,7 +1681,7 @@ std::vector<at::Tensor> AtenForeachTan(at::TensorList self) {
 
 void AtenForeachTan_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachTan_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, std::move(out_dtypes), BuildTanShlo,
@@ -1702,7 +1704,7 @@ std::vector<at::Tensor> AtenForeachTanh(at::TensorList self) {
 
 void AtenForeachTanh_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachTanh_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1716,8 +1718,8 @@ void AtenForeachTanh_(at::TensorList self) {
 
 std::vector<at::Tensor> AtenForeachTrunc(at::TensorList self) {
   TT_KERNEL(OpName::kForeachTrunc, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, out_dtypes, BuildTruncShlo));
@@ -1727,8 +1729,8 @@ std::vector<at::Tensor> AtenForeachTrunc(at::TensorList self) {
 
 void AtenForeachTrunc_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachTrunc_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1872,7 +1874,7 @@ void AtenForeachAdd_List(at::TensorList self, at::TensorList other,
 void AtenForeachAdd_Scalar(at::TensorList self, const at::Scalar& scalar) {
   auto promoted_scalar = PromoteScalar(scalar);
   TT_KERNEL(OpName::kForeachAdd_Scalar, _, (self, promoted_scalar), {
-    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalar));
+    TT_THROW_IF_ERROR(ValidateInplaceScalarType(self, scalar));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     std::vector<at::Tensor> other;
     other.reserve(self.size());
@@ -1895,7 +1897,7 @@ void AtenForeachAdd_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars) {
   auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(OpName::kForeachAdd_ScalarList, _, (self, promoted_scalars), {
-    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalars));
+    TT_THROW_IF_ERROR(ValidateInplaceScalarType(self, scalars));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     std::vector<at::Tensor> other;
     other.reserve(self.size());
@@ -1940,7 +1942,7 @@ std::vector<at::Tensor> AtenForeachAddcdivScalar(at::TensorList self,
         // _foreach_div supports two integral tensors, but _foreach_addcdiv
         // doesn't.
         TT_THROW_IF_ERROR(
-            CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
+            ValidatePairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list;
         value_list.reserve(self.size());
@@ -1966,7 +1968,7 @@ std::vector<at::Tensor> AtenForeachAddcdivScalarList(
         // _foreach_div supports two integral tensors, but
         // _foreach_addcdiv doesn't.
         TT_THROW_IF_ERROR(
-            CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
+            ValidatePairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list;
         value_list.reserve(self.size());
@@ -1991,7 +1993,7 @@ std::vector<at::Tensor> AtenForeachAddcdivTensor(at::TensorList self,
         // _foreach_div supports two integral tensors, but _foreach_addcdiv
         // doesn't.
         TT_THROW_IF_ERROR(
-            CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
+            ValidatePairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list(self.size(), scalars);
         return ForeachConvertToTensor(
@@ -2010,7 +2012,7 @@ void AtenForeachAddcdiv_Scalar(at::TensorList self, at::TensorList tensor1,
         // _foreach_div supports two integral tensors, but _foreach_addcdiv
         // doesn't.
         TT_THROW_IF_ERROR(
-            CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
+            ValidatePairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list;
         value_list.reserve(self.size());
@@ -2035,7 +2037,7 @@ void AtenForeachAddcdiv_ScalarList(at::TensorList self, at::TensorList tensor1,
         // _foreach_div supports two integral tensors, but
         // _foreach_addcdiv doesn't.
         TT_THROW_IF_ERROR(
-            CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
+            ValidatePairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list;
         value_list.reserve(self.size());
@@ -2059,7 +2061,7 @@ void AtenForeachAddcdiv_Tensor(at::TensorList self, at::TensorList tensor1,
         // _foreach_div supports two integral tensors, but _foreach_addcdiv
         // doesn't.
         TT_THROW_IF_ERROR(
-            CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
+            ValidatePairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list(self.size(), scalars);
         TT_THROW_IF_ERROR(ForeachAssignToTensor(
@@ -2078,7 +2080,7 @@ std::vector<at::Tensor> AtenForeachAddcmulScalar(at::TensorList self,
       (self, tensor1, tensor2, promoted_value), {
         // _foreach_mul and _foreach_add supports bool tensors, but
         // _foreach_addcmul doesn't.
-        TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+        TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list;
         value_list.reserve(self.size());
@@ -2103,7 +2105,7 @@ std::vector<at::Tensor> AtenForeachAddcmulScalarList(
       (self, tensor1, tensor2, promoted_scalars), {
         // _foreach_mul and _foreach_add supports bool tensors, but
         // _foreach_addcmul doesn't.
-        TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+        TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list;
         value_list.reserve(self.size());
@@ -2127,7 +2129,7 @@ std::vector<at::Tensor> AtenForeachAddcmulTensor(at::TensorList self,
       OpName::kForeachAddcmulTensor, _, (self, tensor1, tensor2, scalars), {
         // _foreach_mul and _foreach_add supports bool tensors, but
         // _foreach_addcmul doesn't.
-        TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+        TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list(self.size(), scalars);
         return ForeachConvertToTensor(
@@ -2145,7 +2147,7 @@ void AtenForeachAddcmul_Scalar(at::TensorList self, at::TensorList tensor1,
       (self, tensor1, tensor2, promoted_value), {
         // _foreach_mul and _foreach_add supports bool tensors, but
         // _foreach_addcmul doesn't.
-        TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+        TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list;
         value_list.reserve(self.size());
@@ -2169,7 +2171,7 @@ void AtenForeachAddcmul_ScalarList(at::TensorList self, at::TensorList tensor1,
       (self, tensor1, tensor2, promoted_scalars), {
         // _foreach_mul and _foreach_add supports bool tensors, but
         // _foreach_addcmul doesn't.
-        TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+        TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list;
         value_list.reserve(self.size());
@@ -2192,7 +2194,7 @@ void AtenForeachAddcmul_Tensor(at::TensorList self, at::TensorList tensor1,
       OpName::kForeachAddcmul_Tensor, _, (self, tensor1, tensor2, scalars), {
         // _foreach_mul and _foreach_add supports bool tensors, but
         // _foreach_addcmul doesn't.
-        TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+        TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> value_list(self.size(), scalars);
         TT_THROW_IF_ERROR(ForeachAssignToTensor(
@@ -2264,7 +2266,7 @@ void AtenForeachDiv_List(at::TensorList self, at::TensorList other) {
   TT_KERNEL(OpName::kForeachDiv_List, _, (self, other), {
     // In-place division on integral tensors must fail. The result type
     // promotes to float, which cannot be cast back to the integral inputs.
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
                        GetOutputDtypes(self, other, /*is_div=*/true));
     TT_THROW_IF_ERROR(ForeachAssignToTensor(ForeachDiv(self, other, out_dtypes),
@@ -2277,7 +2279,7 @@ void AtenForeachDiv_Scalar(at::TensorList self, const at::Scalar& scalar) {
   TT_KERNEL(OpName::kForeachDiv_Scalar, _, (self, promoted_scalar), {
     // In-place division on integral tensors must fail. The result type
     // promotes to float, which cannot be cast back to the integral inputs.
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
                        GetOutputDtypes(self, scalar, /*is_div=*/true));
     std::vector<at::Tensor> other;
@@ -2299,7 +2301,7 @@ void AtenForeachDiv_ScalarList(at::TensorList self,
   TT_KERNEL(OpName::kForeachDiv_ScalarList, _, (self, promoted_scalars), {
     // In-place division on integral tensors must fail. The result type
     // promotes to float, which cannot be cast back to the integral inputs.
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
                        GetOutputDtypes(self, scalars, /*is_div=*/true));
     std::vector<at::Tensor> other;
@@ -2319,7 +2321,7 @@ void AtenForeachDiv_Tensor(at::TensorList self, const at::Tensor& other) {
   TT_KERNEL(OpName::kForeachDiv_Tensor, _, (self, other), {
     // In-place division on integral tensors must fail. The result type
     // promotes to float, which cannot be cast back to the integral inputs.
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     std::vector<at::Tensor> other_list(self.size(), other);
     TT_ASSIGN_OR_THROW(auto out_dtypes,
                        GetOutputDtypes(self, other_list, /*is_div=*/true));
@@ -2332,7 +2334,7 @@ std::vector<at::Tensor> AtenForeachLerpList(at::TensorList self,
                                             at::TensorList other,
                                             at::TensorList weight) {
   TT_KERNEL(OpName::kForeachLerpList, _, (self, other, weight), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     return ForeachConvertToTensor(ForeachLerp(self, other, weight, out_dtypes),
                                   out_dtypes);
@@ -2344,7 +2346,7 @@ std::vector<at::Tensor> AtenForeachLerpScalar(at::TensorList self,
                                               const at::Scalar& weight) {
   auto promoted_weight = PromoteScalar(weight);
   TT_KERNEL(OpName::kForeachLerpScalar, _, (self, other, promoted_weight), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     std::vector<at::Tensor> weight_list;
     weight_list.reserve(self.size());
@@ -2363,7 +2365,7 @@ std::vector<at::Tensor> AtenForeachLerpScalarList(
   auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(
       OpName::kForeachLerpScalarList, _, (self, other, promoted_scalars), {
-        TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+        TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
         std::vector<at::Tensor> weight_list;
         weight_list.reserve(self.size());
@@ -2380,7 +2382,7 @@ std::vector<at::Tensor> AtenForeachLerpScalarList(
 void AtenForeachLerp_List(at::TensorList self, at::TensorList other,
                           at::TensorList weight) {
   TT_KERNEL(OpName::kForeachLerp_List, _, (self, other, weight), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
         ForeachLerp(self, other, weight, out_dtypes), self, out_dtypes));
@@ -2391,7 +2393,7 @@ void AtenForeachLerp_Scalar(at::TensorList self, at::TensorList other,
                             const at::Scalar& weight) {
   auto promoted_weight = PromoteScalar(weight);
   TT_KERNEL(OpName::kForeachLerp_Scalar, _, (self, other, promoted_weight), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     std::vector<at::Tensor> weight_list;
     weight_list.reserve(self.size());
@@ -2407,21 +2409,21 @@ void AtenForeachLerp_Scalar(at::TensorList self, at::TensorList other,
 void AtenForeachLerp_ScalarList(at::TensorList self, at::TensorList other,
                                 at::ArrayRef<at::Scalar> scalars) {
   auto promoted_scalars = PromoteScalar(scalars);
-  TT_KERNEL(OpName::kForeachLerp_ScalarList, _, (self, other, promoted_scalars),
-            {
-              TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
-              TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-              std::vector<at::Tensor> weight_list;
-              weight_list.reserve(self.size());
-              for (size_t i = 0; i < self.size(); ++i) {
-                TT_ASSIGN_OR_THROW(at::Tensor weight_tensor,
-                                   promoted_scalars[i].GetTensor());
-                weight_list.push_back(weight_tensor);
-              }
-              TT_THROW_IF_ERROR(ForeachAssignToTensor(
-                  ForeachLerp(self, other, weight_list, out_dtypes), self,
-                  out_dtypes));
-            });
+  TT_KERNEL(
+      OpName::kForeachLerp_ScalarList, _, (self, other, promoted_scalars), {
+        TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        std::vector<at::Tensor> weight_list;
+        weight_list.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          TT_ASSIGN_OR_THROW(at::Tensor weight_tensor,
+                             promoted_scalars[i].GetTensor());
+          weight_list.push_back(weight_tensor);
+        }
+        TT_THROW_IF_ERROR(ForeachAssignToTensor(
+            ForeachLerp(self, other, weight_list, out_dtypes), self,
+            out_dtypes));
+      });
 }
 
 std::vector<at::Tensor> AtenForeachMulList(at::TensorList self,
@@ -2490,7 +2492,7 @@ void AtenForeachMul_List(at::TensorList self, at::TensorList other) {
 void AtenForeachMul_Scalar(at::TensorList self, const at::Scalar& scalar) {
   auto promoted_scalar = PromoteScalar(scalar);
   TT_KERNEL(OpName::kForeachMul_Scalar, _, (self, promoted_scalar), {
-    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalar));
+    TT_THROW_IF_ERROR(ValidateInplaceScalarType(self, scalar));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     std::vector<at::Tensor> other;
     other.reserve(self.size());
@@ -2508,7 +2510,7 @@ void AtenForeachMul_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars) {
   auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(OpName::kForeachMul_ScalarList, _, (self, promoted_scalars), {
-    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalars));
+    TT_THROW_IF_ERROR(ValidateInplaceScalarType(self, scalars));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     std::vector<at::Tensor> other;
     other.reserve(self.size());
@@ -2542,9 +2544,9 @@ std::vector<at::Tensor> AtenForeachSubList(at::TensorList self,
   TT_KERNEL(
       OpName::kForeachSubList, param_keys, (self, other, promoted_neg_alpha), {
         // _foreach_add supports bool, but _foreach_sub does not.
-        TT_THROW_IF_ERROR(CheckNotBool(alpha, /* arg_name= */ "alpha"));
-        TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
-        TT_THROW_IF_ERROR(CheckNotBool(other, /* arg_name= */ "other"));
+        TT_THROW_IF_ERROR(ValidateNotBool(alpha, /* arg_name= */ "alpha"));
+        TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
+        TT_THROW_IF_ERROR(ValidateNotBool(other, /* arg_name= */ "other"));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other));
 
         // Check for invalid input types.
@@ -2575,9 +2577,9 @@ void AtenForeachSub_List(at::TensorList self, at::TensorList other,
   TT_KERNEL(
       OpName::kForeachSub_List, param_keys, (self, other, promoted_neg_alpha), {
         // _foreach_add supports bool, but _foreach_sub does not.
-        TT_THROW_IF_ERROR(CheckNotBool(alpha, /* arg_name= */ "alpha"));
-        TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
-        TT_THROW_IF_ERROR(CheckNotBool(other, /* arg_name= */ "other"));
+        TT_THROW_IF_ERROR(ValidateNotBool(alpha, /* arg_name= */ "alpha"));
+        TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
+        TT_THROW_IF_ERROR(ValidateNotBool(other, /* arg_name= */ "other"));
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other));
 
         // Check for invalid input types.
@@ -2606,8 +2608,8 @@ std::vector<at::Tensor> AtenForeachSubScalar(at::TensorList self,
   auto promoted_scalar = PromoteScalar(scalar);
   TT_KERNEL(OpName::kForeachSubScalar, _, (self, promoted_scalar), {
     // _foreach_add supports bool, but _foreach_sub does not.
-    TT_THROW_IF_ERROR(CheckNotBool(scalar, /* arg_name= */ "scalar"));
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotBool(scalar, /* arg_name= */ "scalar"));
+    TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalar));
     std::vector<at::Tensor> other;
     other.reserve(self.size());
@@ -2631,8 +2633,8 @@ void AtenForeachSub_Scalar(at::TensorList self, const at::Scalar& scalar) {
   auto promoted_scalar = PromoteScalar(scalar);
   TT_KERNEL(OpName::kForeachSub_Scalar, _, (self, promoted_scalar), {
     // _foreach_add supports bool, but _foreach_sub does not.
-    TT_THROW_IF_ERROR(CheckNotBool(scalar, /* arg_name= */ "scalar"));
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotBool(scalar, /* arg_name= */ "scalar"));
+    TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalar));
     std::vector<at::Tensor> other;
     other.reserve(self.size());
@@ -2657,8 +2659,8 @@ std::vector<at::Tensor> AtenForeachSubScalarList(
   auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(OpName::kForeachSubScalarList, _, (self, promoted_scalars), {
     // _foreach_add supports bool, but _foreach_sub does not.
-    TT_THROW_IF_ERROR(CheckNotBool(scalars, /* arg_name= */ "scalars"));
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotBool(scalars, /* arg_name= */ "scalars"));
+    TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalars));
     std::vector<at::Tensor> other;
     other.reserve(self.size());
@@ -2684,8 +2686,8 @@ void AtenForeachSub_ScalarList(at::TensorList self,
   auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(OpName::kForeachSub_ScalarList, _, (self, promoted_scalars), {
     // _foreach_add supports bool, but _foreach_sub does not.
-    TT_THROW_IF_ERROR(CheckNotBool(scalars, /* arg_name= */ "scalars"));
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateNotBool(scalars, /* arg_name= */ "scalars"));
+    TT_THROW_IF_ERROR(ValidateNotBool(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalars));
     std::vector<at::Tensor> other;
     other.reserve(self.size());
@@ -2744,7 +2746,7 @@ std::vector<at::Tensor> AtenForeachClampMaxScalar(at::TensorList self,
 void AtenForeachClampMax_Scalar(at::TensorList self, const at::Scalar& scalar) {
   auto promoted_scalar = PromoteScalar(scalar);
   TT_KERNEL(OpName::kForeachClampMax_Scalar, _, (self, promoted_scalar), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
     for (const auto& tensor : self) {
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
                          promoted_scalar.GetTensor(tensor.scalar_type()));
@@ -2800,7 +2802,7 @@ void AtenForeachClampMax_ScalarList(at::TensorList self,
                                     at::ArrayRef<at::Scalar> scalars) {
   auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(OpName::kForeachClampMax_ScalarList, _, (self, promoted_scalars), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
     for (size_t i = 0; i < self.size(); ++i) {
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
                          promoted_scalars[i].GetTensor(self[i].scalar_type()));
@@ -2851,7 +2853,7 @@ std::vector<at::Tensor> AtenForeachClampMinScalar(at::TensorList self,
 void AtenForeachClampMin_Scalar(at::TensorList self, const at::Scalar& scalar) {
   auto promoted_scalar = PromoteScalar(scalar);
   TT_KERNEL(OpName::kForeachClampMin_Scalar, _, (self, promoted_scalar), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
     for (const auto& tensor : self) {
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
                          promoted_scalar.GetTensor(tensor.scalar_type()));
@@ -2907,7 +2909,7 @@ void AtenForeachClampMin_ScalarList(at::TensorList self,
                                     at::ArrayRef<at::Scalar> scalars) {
   auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(OpName::kForeachClampMin_ScalarList, _, (self, promoted_scalars), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
     for (size_t i = 0; i < self.size(); ++i) {
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
                          promoted_scalars[i].GetTensor(self[i].scalar_type()));
@@ -2937,7 +2939,7 @@ std::vector<at::Tensor> AtenForeachNormScalar(
       (self, promoted_ord,
        IgnoreInCacheKey(dtype, "Delegates to AtenLinalgVectorNormOut")),
       {
-        TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+        TT_THROW_IF_ERROR(ValidateNotIntegral(self, /* arg_name= */ "self"));
         TT_ASSIGN_OR_THROW(at::Tensor ord_tensor, promoted_ord.GetTensor());
         std::vector<at::Tensor> result;
         result.reserve(self.size());
@@ -3009,7 +3011,7 @@ std::vector<at::Tensor> AtenForeachMaximumScalar(at::TensorList self,
 void AtenForeachMaximum_Scalar(at::TensorList self, const at::Scalar& scalar) {
   auto promoted_scalar = PromoteScalar(scalar);
   TT_KERNEL(OpName::kForeachMaximum_Scalar, _, (self, promoted_scalar), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
     TT_ASSIGN_OR_THROW(auto scalar_tensor, promoted_scalar.GetTensor());
     for (const auto& tensor : self) {
       AtenMaximumOut(tensor, scalar_tensor, const_cast<at::Tensor&>(tensor));
@@ -3062,7 +3064,7 @@ void AtenForeachMaximum_ScalarList(at::TensorList self,
                                    at::ArrayRef<at::Scalar> scalars) {
   auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(OpName::kForeachMaximum_ScalarList, _, (self, promoted_scalars), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
     for (size_t i = 0; i < self.size(); ++i) {
       TT_ASSIGN_OR_THROW(auto scalar_tensor, promoted_scalars[i].GetTensor());
       AtenMaximumOut(self[i], scalar_tensor, const_cast<at::Tensor&>(self[i]));
@@ -3102,7 +3104,7 @@ std::vector<at::Tensor> AtenForeachMinimumScalar(at::TensorList self,
 void AtenForeachMinimum_Scalar(at::TensorList self, const at::Scalar& scalar) {
   auto promoted_scalar = PromoteScalar(scalar);
   TT_KERNEL(OpName::kForeachMinimum_Scalar, _, (self, promoted_scalar), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
     TT_ASSIGN_OR_THROW(auto scalar_tensor, promoted_scalar.GetTensor());
     for (const auto& tensor : self) {
       AtenMinimumOut(tensor, scalar_tensor, const_cast<at::Tensor&>(tensor));
@@ -3155,7 +3157,7 @@ void AtenForeachMinimum_ScalarList(at::TensorList self,
                                    at::ArrayRef<at::Scalar> scalars) {
   auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(OpName::kForeachMinimum_ScalarList, _, (self, promoted_scalars), {
-    TT_THROW_IF_ERROR(CheckForeachUnaryNotBool(self));
+    TT_THROW_IF_ERROR(ValidateForeachUnaryNotBool(self));
     for (size_t i = 0; i < self.size(); ++i) {
       TT_ASSIGN_OR_THROW(auto scalar_tensor, promoted_scalars[i].GetTensor());
       AtenMinimumOut(self[i], scalar_tensor, const_cast<at::Tensor&>(self[i]));
@@ -3240,7 +3242,7 @@ std::vector<at::Tensor> AtenForeachPowScalar(at::TensorList self,
 void AtenForeachPow_Scalar(at::TensorList self, const at::Scalar& exponent) {
   auto promoted_exponent = PromoteScalar(exponent);
   TT_KERNEL(OpName::kForeachPow_Scalar, _, (self, promoted_exponent), {
-    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, exponent));
+    TT_THROW_IF_ERROR(ValidateInplaceScalarType(self, exponent));
     for (const auto& tensor : self) {
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
                          promoted_exponent.GetTensor(tensor.scalar_type()));
@@ -3280,7 +3282,7 @@ void AtenForeachPow_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> exponent) {
   auto promoted_exponent = PromoteScalar(exponent);
   TT_KERNEL(OpName::kForeachPow_ScalarList, _, (self, promoted_exponent), {
-    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, exponent));
+    TT_THROW_IF_ERROR(ValidateInplaceScalarType(self, exponent));
     for (size_t i = 0; i < self.size(); ++i) {
       TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
                          promoted_exponent[i].GetTensor(self[i].scalar_type()));

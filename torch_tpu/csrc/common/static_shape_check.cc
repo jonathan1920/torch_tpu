@@ -112,7 +112,7 @@ std::string GetShapeStringWithDynamicDimensionsUpperBound(
 
 // Runs the actual static shape check.
 template <typename GetExtraErrorMessage>
-absl::Status CheckStaticShapeImpl(
+absl::Status ValidateStaticShapeImpl(
     const int64_t dynamic_dimensions_number, const std::string_view name,
     const GetExtraErrorMessage& get_extra_error_message) {
   TT_RET_CHECK(dynamic_dimensions_number == 0, error::kInvalidArgument)
@@ -126,20 +126,20 @@ absl::Status CheckStaticShapeImpl(
 
 }  // namespace
 
-absl::Status CheckStaticShape(mlir::RankedTensorType type,
-                              const std::string_view arg_name) {
+absl::Status ValidateStaticShape(mlir::RankedTensorType type,
+                                 const std::string_view arg_name) {
   auto get_extra_error_message = [type]() {
     return absl::StrCat(" within shape ",
                         GetShapeStringWithDynamicDimensions(type));
   };
 
-  return CheckStaticShapeImpl(type.getNumDynamicDims(), arg_name,
-                              get_extra_error_message);
+  return ValidateStaticShapeImpl(type.getNumDynamicDims(), arg_name,
+                                 get_extra_error_message);
 }
 
-absl::Status CheckStaticShape(const at::Tensor& tensor,
-                              const DeviceBufferRef& buffer_ref,
-                              const std::string_view arg_name) {
+absl::Status ValidateStaticShape(const at::Tensor& tensor,
+                                 const DeviceBufferRef& buffer_ref,
+                                 const std::string_view arg_name) {
   absl::Span<const BoundedDynamicDimension> dynamic_dimensions_info =
       buffer_ref.dynamic_dimensions();
 
@@ -158,8 +158,8 @@ absl::Status CheckStaticShape(const at::Tensor& tensor,
                             tensor.sizes(), dynamic_dimensions_info));
   };
 
-  return CheckStaticShapeImpl(dynamic_dimensions_info.size(), arg_name,
-                              get_extra_error_message);
+  return ValidateStaticShapeImpl(dynamic_dimensions_info.size(), arg_name,
+                                 get_extra_error_message);
 }
 
 }  // namespace torch_tpu

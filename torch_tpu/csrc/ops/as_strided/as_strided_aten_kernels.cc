@@ -60,7 +60,7 @@ absl::StatusOr<at::Tensor> AsStrided(const at::Tensor& self,
   Dimensions size_dims = CopyIntVector(size);
   Strides stride_dims = CopyIntVector(stride);
 
-  TT_RETURN_IF_ERROR(CheckProvidedLayoutDataFitsInStorage(
+  TT_RETURN_IF_ERROR(ValidateProvidedLayoutDataFitsInStorage(
       storage_numel, storage_element_type, size_dims, stride_dims,
       storage_offset, tensor_element_type));
 

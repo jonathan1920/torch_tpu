@@ -550,16 +550,16 @@ bool IsBFloatOrHalf(const at::Tensor& tensor) {
          tensor.scalar_type() == at::ScalarType::Half;
 }
 
-absl::Status CheckIsFloatingPoint(const at::Tensor& tensor,
-                                  const std::string_view name) {
+absl::Status ValidateIsFloatingPoint(const at::Tensor& tensor,
+                                     const std::string_view name) {
   TT_RET_CHECK(IsFloatingPoint(tensor), error::kInvalidArgument)
       << "expected the " << name << " dtype to be floating point, got "
       << ToString(tensor.scalar_type());
   return absl::OkStatus();
 }
 
-absl::Status CheckNotBFloatOrHalf(const at::Tensor& tensor,
-                                  const std::string_view name) {
+absl::Status ValidateNotBFloatOrHalf(const at::Tensor& tensor,
+                                     const std::string_view name) {
   TT_RET_CHECK(!IsBFloatOrHalf(tensor), error::kInvalidArgument)
       << "expected the " << name << " dtype not to be bfloat16 or float16, got "
       << ToString(tensor.scalar_type());
@@ -574,8 +574,8 @@ at::Tensor AtenCdistForward(const at::Tensor& x1, const at::Tensor& x2,
     TT_ASSIGN_OR_THROW(auto out_dtype,
                        ConvertTo<mlir::ElementType>(x1.scalar_type()));
 
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(x1, "first argument's"));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(x2, "second argument's"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(x1, "first argument's"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(x2, "second argument's"));
 
     TT_CHECK_THROW(p >= 0, error::kInvalidArgument)
         << "expected the p value to be >= 0, got " << p;
@@ -606,8 +606,8 @@ at::Tensor AtenCdistForward(const at::Tensor& x1, const at::Tensor& x2,
 
     // Add check for bf16 and float16 after the empty dimension check,
     // because they are supported for empty tensors but not for non-empty ones.
-    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(x1, "first argument's"));
-    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(x2, "second argument's"));
+    TT_THROW_IF_ERROR(ValidateNotBFloatOrHalf(x1, "first argument's"));
+    TT_THROW_IF_ERROR(ValidateNotBFloatOrHalf(x2, "second argument's"));
 
     auto op_builder = [p, mode, common_batch_shape, r1, r2,
                        c](FixedSizeSpan<mlir::MlirOp, 2> inputs)
@@ -635,10 +635,10 @@ at::Tensor AtenCdistBackward(const at::Tensor& grad, const at::Tensor& x1,
     TT_ASSIGN_OR_THROW(auto out_dtype,
                        ConvertTo<mlir::ElementType>(x1.scalar_type()));
 
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(x1, "first argument's"));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(x2, "second argument's"));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(grad, "gradient"));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(cdist, "cdist"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(x1, "first argument's"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(x2, "second argument's"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(grad, "gradient"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(cdist, "cdist"));
 
     TT_CHECK_THROW(p >= 0, error::kInvalidArgument)
         << "expected the p value to be >= 0, got " << p;
@@ -663,8 +663,8 @@ at::Tensor AtenCdistBackward(const at::Tensor& grad, const at::Tensor& x1,
       }
     }
 
-    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(x1, "first argument's"));
-    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(x2, "second argument's"));
+    TT_THROW_IF_ERROR(ValidateNotBFloatOrHalf(x1, "first argument's"));
+    TT_THROW_IF_ERROR(ValidateNotBFloatOrHalf(x2, "second argument's"));
 
     auto op_builder = [p, common_batch_shape, r1, r2,
                        c](FixedSizeSpan<mlir::MlirOp, 4> inputs)
@@ -705,7 +705,7 @@ at::Tensor AtenPdistForward(const at::Tensor& self, double p) {
 
     // Add check for bfloat16 and float16 after the empty dimension check,
     // because empty tensors are supported for these dtypes
-    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(self, /* name= */ "input"));
+    TT_THROW_IF_ERROR(ValidateNotBFloatOrHalf(self, /* name= */ "input"));
 
     auto op_builder = [p](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
       return BuildPdistForwardHlo(input, p);
@@ -728,9 +728,9 @@ at::Tensor AtenPdistBackward(const at::Tensor& grad, const at::Tensor& self,
     TT_ASSIGN_OR_THROW(auto out_dtype,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
 
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(self, "input"));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(grad, "gradient"));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(pdist, "pdist"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(self, "input"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(grad, "gradient"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(pdist, "pdist"));
 
     TT_CHECK_THROW(p >= 0, error::kInvalidArgument)
         << "expected the p value to be >= 0, got " << p;
@@ -747,9 +747,9 @@ at::Tensor AtenPdistBackward(const at::Tensor& grad, const at::Tensor& self,
       return out;
     }
 
-    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(self, "input"));
-    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(grad, "gradient"));
-    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(pdist, "pdist"));
+    TT_THROW_IF_ERROR(ValidateNotBFloatOrHalf(self, "input"));
+    TT_THROW_IF_ERROR(ValidateNotBFloatOrHalf(grad, "gradient"));
+    TT_THROW_IF_ERROR(ValidateNotBFloatOrHalf(pdist, "pdist"));
 
     auto op_builder = [p](FixedSizeSpan<mlir::MlirOp, 3> inputs)
         -> absl::StatusOr<mlir::MlirOp> {

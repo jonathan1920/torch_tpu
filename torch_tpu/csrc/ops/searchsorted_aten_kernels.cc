@@ -86,9 +86,9 @@ absl::StatusOr<c10::optional<at::Tensor>> ResolveAuxiliaryTensorDevice(
   return c10::make_optional(std::move(resolved_tensor));
 }
 
-absl::Status CheckSearchsortedInputs(const at::Tensor& sorted,
-                                     const at::Tensor& values,
-                                     const c10::optional<at::Tensor>& sorter) {
+absl::Status ValidateSearchsortedInputs(
+    const at::Tensor& sorted, const at::Tensor& values,
+    const c10::optional<at::Tensor>& sorter) {
   // Reject booleans for non-empty inputs to keep consistent with CUDA impl,
   // which short-circuits and returns success for empty inputs before
   // dispatching on the input dtype.
@@ -276,8 +276,8 @@ absl::StatusOr<DeviceBufferRef> SearchsortedTensorInternal(
   TT_ASSIGN_OR_RETURN(c10::optional<at::Tensor> resolved_sorter,
                       ResolveAuxiliaryTensorDevice(sorter));
 
-  TT_RETURN_IF_ERROR(CheckSearchsortedInputs(resolved_sorted, resolved_values,
-                                             resolved_sorter));
+  TT_RETURN_IF_ERROR(ValidateSearchsortedInputs(
+      resolved_sorted, resolved_values, resolved_sorter));
   TT_ASSIGN_OR_RETURN(bool is_right, ResolveSearchsortedIsRight(right, side));
 
   at::ScalarType out_dtype =

@@ -57,7 +57,7 @@ namespace torch_tpu {
 namespace {
 enum class AttnWeightsReduction { kNone, kAverage };
 
-absl::Status CheckNativeMultiHeadAttentionInputs(
+absl::Status ValidateNativeMultiHeadAttentionInputs(
     const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
     int64_t embed_dim, int64_t num_head, const at::Tensor& qkv_weight,
     const at::Tensor& qkv_bias, const at::Tensor& proj_weight,
@@ -475,7 +475,7 @@ std::tuple<at::Tensor, at::Tensor> AtenNativeMultiHeadAttention(
        mask_type),
       {
         // Validate input tensor shapes, ranks, dimensions, and data types.
-        TT_THROW_IF_ERROR(CheckNativeMultiHeadAttentionInputs(
+        TT_THROW_IF_ERROR(ValidateNativeMultiHeadAttentionInputs(
             query, key, value, embed_dim, num_head, qkv_weight, qkv_bias,
             proj_weight, proj_bias, mask));
 

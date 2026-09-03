@@ -1012,8 +1012,8 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerNearestShlo(
 
 // Checks for the `input` and `padding_mode` arguments.
 // These are common for both 2D and 3D grid sampler implementations.
-absl::Status CheckInputAndPaddingMode(const at::Tensor& input,
-                                      const int64_t padding_mode) {
+absl::Status ValidateInputAndPaddingMode(const at::Tensor& input,
+                                         const int64_t padding_mode) {
   TT_RET_CHECK(padding_mode == 0 || padding_mode == 1 || padding_mode == 2,
                error::kPythonNotImplementedError)
       << "expected the padding mode to be 0 (zeros), 1 (border), or 2 "
@@ -1028,7 +1028,7 @@ absl::Status CheckInputAndPaddingMode(const at::Tensor& input,
 }
 
 // Checks for the `interpolation_mode` argument for 2D grid sampler.
-absl::Status Check2DInterpolationMode(
+absl::Status Validate2DInterpolationMode(
     const InterpolationMode interpolation_mode) {
   TT_RET_CHECK(interpolation_mode == InterpolationMode::kBilinear ||
                    interpolation_mode == InterpolationMode::kNearest ||
@@ -1042,7 +1042,7 @@ absl::Status Check2DInterpolationMode(
 }
 
 // Checks for the `interpolation_mode` argument for 3D grid sampler.
-absl::Status Check3DInterpolationMode(
+absl::Status Validate3DInterpolationMode(
     const InterpolationMode interpolation_mode) {
   TT_RET_CHECK(interpolation_mode == InterpolationMode::kBilinear ||
                    interpolation_mode == InterpolationMode::kNearest,
@@ -1971,8 +1971,8 @@ at::Tensor AtenGridSampler2d(const at::Tensor& input, const at::Tensor& grid,
         auto interpolation_mode_enum =
             static_cast<InterpolationMode>(interpolation_mode);
 
-        TT_THROW_IF_ERROR(CheckInputAndPaddingMode(input, padding_mode));
-        TT_THROW_IF_ERROR(Check2DInterpolationMode(interpolation_mode_enum));
+        TT_THROW_IF_ERROR(ValidateInputAndPaddingMode(input, padding_mode));
+        TT_THROW_IF_ERROR(Validate2DInterpolationMode(interpolation_mode_enum));
 
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(input.scalar_type()));
@@ -2023,8 +2023,8 @@ at::Tensor AtenGridSampler3d(const at::Tensor& input, const at::Tensor& grid,
       (input, grid, interpolation_mode, padding_mode, align_corners), {
         auto interpolation_mode_enum =
             static_cast<InterpolationMode>(interpolation_mode);
-        TT_THROW_IF_ERROR(CheckInputAndPaddingMode(input, padding_mode));
-        TT_THROW_IF_ERROR(Check3DInterpolationMode(interpolation_mode_enum));
+        TT_THROW_IF_ERROR(ValidateInputAndPaddingMode(input, padding_mode));
+        TT_THROW_IF_ERROR(Validate3DInterpolationMode(interpolation_mode_enum));
 
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(input.scalar_type()));
@@ -2049,7 +2049,7 @@ at::Tensor AtenGridSampler3d(const at::Tensor& input, const at::Tensor& grid,
             };
           }
           // InterpolationMode::kBicubic is not supported for 3D grid sampler
-          // and this is checked above Check3DInterpolationMode.
+          // and this is checked above Validate3DInterpolationMode.
         }();
         TT_ASSIGN_OR_THROW(
             auto out_buf,
@@ -2074,8 +2074,8 @@ std::tuple<at::Tensor, at::Tensor> AtenGridSampler2dBackward(
       {
         auto interpolation_mode_enum =
             static_cast<InterpolationMode>(interpolation_mode);
-        TT_THROW_IF_ERROR(CheckInputAndPaddingMode(input, padding_mode));
-        TT_THROW_IF_ERROR(Check2DInterpolationMode(interpolation_mode_enum));
+        TT_THROW_IF_ERROR(ValidateInputAndPaddingMode(input, padding_mode));
+        TT_THROW_IF_ERROR(Validate2DInterpolationMode(interpolation_mode_enum));
 
         TT_ASSIGN_OR_THROW(
             const auto element_type,
@@ -2142,8 +2142,8 @@ std::tuple<at::Tensor, at::Tensor> AtenGridSampler3dBackward(
       {
         auto interpolation_mode_enum =
             static_cast<InterpolationMode>(interpolation_mode);
-        TT_THROW_IF_ERROR(CheckInputAndPaddingMode(input, padding_mode));
-        TT_THROW_IF_ERROR(Check3DInterpolationMode(interpolation_mode_enum));
+        TT_THROW_IF_ERROR(ValidateInputAndPaddingMode(input, padding_mode));
+        TT_THROW_IF_ERROR(Validate3DInterpolationMode(interpolation_mode_enum));
 
         TT_ASSIGN_OR_THROW(auto element_type, ConvertTo<mlir::ElementType>(
                                                   grad_output.scalar_type()));

@@ -96,8 +96,8 @@
 
 namespace torch_tpu {
 
-absl::Status CheckNotComplex(const at::Tensor& tensor,
-                             const std::string_view arg_name) {
+absl::Status ValidateNotComplex(const at::Tensor& tensor,
+                                const std::string_view arg_name) {
   TT_RET_CHECK(!IsComplex(tensor), error::kInvalidArgument)
       << "expected " << arg_name << " not to be complex, got "
       << ToString(tensor.scalar_type());
@@ -247,7 +247,7 @@ at::Tensor& AtenAbsOut(const at::Tensor& self, at::Tensor& out) {
 
 at::Tensor& AtenErfOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kErfOut, param_keys, (self, out), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(const auto out_dtype,
                        ConvertTo<mlir::ElementType>(InferOutputDtype(self)));
     auto op_builder =
@@ -263,7 +263,7 @@ at::Tensor& AtenErfOut(const at::Tensor& self, at::Tensor& out) {
 
 at::Tensor& AtenErfInvOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kErfInvOut, param_keys, (self, out), {
-    TT_THROW_IF_ERROR(CheckNotComplex(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotComplex(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(const auto out_dtype,
                        ConvertTo<mlir::ElementType>(InferOutputDtype(self)));
     auto op_builder =

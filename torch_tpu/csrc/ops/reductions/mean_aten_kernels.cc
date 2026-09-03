@@ -50,7 +50,7 @@ namespace {
 absl::StatusOr<c10::ScalarType> GetOutputScalarType(
     const at::Tensor& tensor, std::optional<c10::ScalarType> dtype) {
   c10::ScalarType scalar_dtype = dtype.value_or(tensor.scalar_type());
-  TT_RETURN_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
+  TT_RETURN_IF_ERROR(ValidateFloatOrComplex(scalar_dtype));
   return scalar_dtype;
 }
 

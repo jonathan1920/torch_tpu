@@ -95,7 +95,7 @@ at::Tensor& AtenSet_SourceStorageOffset(at::Tensor& self, c10::Storage src,
         const mlir::ElementType storage_dtype = buffer_ref.element_type();
         TT_ASSIGN_OR_THROW(const mlir::ElementType tensor_dtype,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
-        TT_THROW_IF_ERROR(CheckProvidedLayoutDataFitsInStorage(
+        TT_THROW_IF_ERROR(ValidateProvidedLayoutDataFitsInStorage(
             storage_numel, storage_dtype, size_vec, stride_vec,
             concrete_storage_offset, tensor_dtype));
         impl->set_storage_keep_dtype(std::move(src));

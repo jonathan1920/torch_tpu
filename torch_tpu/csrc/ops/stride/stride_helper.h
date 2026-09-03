@@ -51,7 +51,7 @@ bool IsOverlapping(absl::Span<const int64_t> sizes,
 
 // Checks that the provided sizes, strides, and storage offset fit within the
 // provided number of storage bytes.
-absl::Status CheckProvidedLayoutDataFitsInStorage(
+absl::Status ValidateProvidedLayoutDataFitsInStorage(
     int64_t storage_numel, mlir::ElementType storage_element_type,
     Dimensions sizes, Strides strides, int64_t storage_offset,
     mlir::ElementType layout_element_type);

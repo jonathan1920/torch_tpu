@@ -67,7 +67,7 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status CheckLuSupportedDtype(const at::Tensor& tensor) {
+absl::Status ValidateLuSupportedDtype(const at::Tensor& tensor) {
   const c10::ScalarType dtype = tensor.scalar_type();
   const bool is_f32_or_f64 = (dtype == c10::kFloat || dtype == c10::kDouble);
   const bool is_c64_or_c128 =
@@ -225,7 +225,7 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
           return std::forward_as_tuple(lu, pivots, info);
         }
 
-        TT_THROW_IF_ERROR(CheckLuSupportedDtype(a));
+        TT_THROW_IF_ERROR(ValidateLuSupportedDtype(a));
 
         TT_ASSIGN_OR_THROW(mlir::ElementType out_mlir_type,
                            ConvertTo<mlir::ElementType>(a.scalar_type()));

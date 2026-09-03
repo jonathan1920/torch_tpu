@@ -331,7 +331,7 @@ at::Tensor DeviceGeneratorImpl::DeviceStateTensor() const {
 
 absl::Status DeviceGeneratorImpl::SetDeviceStateTensor(
     at::Tensor device_state_tensor) {
-  TT_RETURN_IF_ERROR(CheckDeviceStateTensor(device_state_tensor));
+  TT_RETURN_IF_ERROR(ValidateDeviceStateTensor(device_state_tensor));
   return state_->SetDeviceStateTensor(std::move(device_state_tensor));
 }
 
@@ -347,7 +347,7 @@ DeviceGeneratorImpl::DeviceGeneratorImpl(c10::DeviceIndex device_index)
 DeviceGeneratorImpl::DeviceGeneratorImpl(c10::DeviceIndex device_index,
                                          at::Tensor rng_state)
     : DeviceGeneratorImpl(device_index) {
-  if (CheckDeviceStateTensor(rng_state).ok()) {
+  if (ValidateDeviceStateTensor(rng_state).ok()) {
     state_ = c10::make_intrusive<DeviceGeneratorState>(std::move(rng_state));
   } else {
     // Already initialized in delegating constructor.
@@ -474,7 +474,7 @@ at::Generator& GetDefaultDeviceGenerator(c10::DeviceIndex idx) {
   return DeviceGenerators::GetDefaultInstance().GetDefaultGenerator(idx);
 }
 
-absl::Status DeviceGeneratorImpl::CheckDeviceStateTensor(
+absl::Status DeviceGeneratorImpl::ValidateDeviceStateTensor(
     const at::Tensor& rng_state) const {
   TT_RET_CHECK(rng_state.device() == device(), error::kFailedPrecondition)
       << "expected rng_state to be on device " << device() << ", got "

@@ -81,8 +81,8 @@ absl::StatusOr<mlir::MlirOp> BuildGluShlo(int64_t dim, mlir::MlirOp input) {
   return result;
 }
 
-absl::Status CheckIsFloatingPoint(const at::Tensor& tensor,
-                                  const std::string_view name) {
+absl::Status ValidateIsFloatingPoint(const at::Tensor& tensor,
+                                     const std::string_view name) {
   TT_RET_CHECK(IsFloatingPoint(tensor), error::kInvalidArgument)
       << "expected the " << name << " dtype to be floating point, got "
       << ToString(tensor.scalar_type());
@@ -167,9 +167,9 @@ absl::StatusOr<DeviceBufferRef> BuildGluBackwardBuffer(
     OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.sizes().size()));
 
-  TT_RETURN_IF_ERROR(CheckIsFloatingPoint(self, /* name= */ "self"));
+  TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(self, /* name= */ "self"));
   TT_RETURN_IF_ERROR(
-      CheckIsFloatingPoint(grad_output, /* name= */ "grad_output"));
+      ValidateIsFloatingPoint(grad_output, /* name= */ "grad_output"));
   TT_RET_CHECK(self.scalar_type() == grad_output.scalar_type(),
                error::kInvalidArgument)
       << "expected self and grad_output to have the same dtype, got "
@@ -210,8 +210,8 @@ absl::StatusOr<DeviceBufferRef> BuildGluBackwardBuffer(
 at::Tensor& AtenGluOut(const at::Tensor& self, int64_t dim, at::Tensor& out) {
   TT_KERNEL(OpName::kGluOut, params_key, (self, dim, out), {
     TT_ASSIGN_OR_THROW(dim, SafeWrapDim(dim, self.sizes().size()));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(self, /* name= */ "self"));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(out, /* name= */ "out"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(self, /* name= */ "self"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(out, /* name= */ "out"));
 
     const auto& shape = self.sizes();
     TT_CHECK_THROW(!shape.empty(), error::kInvalidArgument)
@@ -246,8 +246,8 @@ at::Tensor& AtenGluBackwardGradInput(const at::Tensor& grad_output,
                                      at::Tensor& grad_input) {
   TT_KERNEL(OpName::kGluBackwardGradInput, params_key,
             (grad_output, self, dim, grad_input), {
-              TT_THROW_IF_ERROR(
-                  CheckIsFloatingPoint(grad_input, /* name= */ "grad_input"));
+              TT_THROW_IF_ERROR(ValidateIsFloatingPoint(
+                  grad_input, /* name= */ "grad_input"));
               TT_CHECK_THROW(self.scalar_type() == grad_input.scalar_type(),
                              error::kInvalidArgument)
                   << "expected self and grad_input to have the same dtype, got "

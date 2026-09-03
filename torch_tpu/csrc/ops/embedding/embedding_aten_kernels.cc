@@ -48,7 +48,7 @@
 
 namespace torch_tpu {
 namespace {
-absl::Status CheckWeightType(const at::Tensor& weight) {
+absl::Status ValidateWeightType(const at::Tensor& weight) {
   auto scalar_type = weight.scalar_type();
   TT_RET_CHECK(scalar_type == at::kHalf || scalar_type == at::kBFloat16 ||
                    scalar_type == at::kFloat || scalar_type == at::kDouble,
@@ -58,10 +58,10 @@ absl::Status CheckWeightType(const at::Tensor& weight) {
       << ToString(scalar_type);
   return absl::OkStatus();
 }
-absl::Status CheckStaticShape(const at::Tensor& tensor,
-                              const std::string_view arg_name) {
+absl::Status ValidateStaticShape(const at::Tensor& tensor,
+                                 const std::string_view arg_name) {
   TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBaseBuffer(tensor));
-  return CheckStaticShape(tensor, buffer_ref, arg_name);
+  return ValidateStaticShape(tensor, buffer_ref, arg_name);
 }
 
 }  // namespace
@@ -76,10 +76,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> AtenEmbeddingBag(
       (weight, indices, offsets, scale_grad_by_freq, mode, sparse,
        per_sample_weights, include_last_offset, padding_idx),
       {
-        TT_THROW_IF_ERROR(CheckWeightType(weight));
-        TT_THROW_IF_ERROR(CheckStaticShape(weight, "weight"));
-        TT_THROW_IF_ERROR(CheckStaticShape(indices, "indices"));
-        TT_THROW_IF_ERROR(CheckStaticShape(offsets, "offsets"));
+        TT_THROW_IF_ERROR(ValidateWeightType(weight));
+        TT_THROW_IF_ERROR(ValidateStaticShape(weight, "weight"));
+        TT_THROW_IF_ERROR(ValidateStaticShape(indices, "indices"));
+        TT_THROW_IF_ERROR(ValidateStaticShape(offsets, "offsets"));
 
         TT_ASSIGN_OR_THROW(auto weight_dtype,
                            ConvertTo<mlir::ElementType>(weight.scalar_type()));

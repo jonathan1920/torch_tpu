@@ -64,8 +64,8 @@ inline at::ScalarType GetScalarType(at::ScalarType scalar_type) {
 absl::StatusOr<mlir::ElementType> InferComputationDtype(
     mlir::ElementType input_dtype);
 
-inline absl::Status CheckIsMatrix(const at::Tensor& tensor,
-                                  std::string_view arg_name) {
+inline absl::Status ValidateIsMatrix(const at::Tensor& tensor,
+                                     std::string_view arg_name) {
   TT_RET_CHECK(tensor.dim() == 2, error::kInvalidArgument)
       << "expected the " << arg_name
       << " argument to be a 2D tensor (matrix), got " << tensor.dim()

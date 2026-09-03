@@ -49,8 +49,8 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status CheckFusedRmsNormInputs(const at::Tensor& input,
-                                     at::IntArrayRef normalized_shape) {
+absl::Status ValidateFusedRmsNormInputs(const at::Tensor& input,
+                                        at::IntArrayRef normalized_shape) {
   TT_RET_CHECK(IsFloatingPoint(input), error::kInvalidArgument)
       << "expected the input dtype to be floating point, got "
       << ToString(input.scalar_type());
@@ -80,7 +80,7 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNorm(
   TT_KERNEL(
       OpName::kFusedRmsNorm, param_keys,
       (input, normalized_shape, weight, epsilon), {
-        TT_THROW_IF_ERROR(CheckFusedRmsNormInputs(input, normalized_shape));
+        TT_THROW_IF_ERROR(ValidateFusedRmsNormInputs(input, normalized_shape));
 
         const size_t normalized_shape_dims = normalized_shape.size();
 

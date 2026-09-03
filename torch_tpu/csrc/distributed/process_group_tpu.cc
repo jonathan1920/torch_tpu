@@ -168,7 +168,8 @@ std::string DeviceBufferRefDebugString(const at::Tensor& input) {
   return maybe_base_buffer_ref->DebugString();
 }
 
-absl::Status CheckTensorsUniformShape(const std::vector<at::Tensor>& tensors) {
+absl::Status ValidateTensorsUniformShape(
+    const std::vector<at::Tensor>& tensors) {
   if (tensors.empty()) {
     return absl::OkStatus();
   }
@@ -192,7 +193,7 @@ enum class ReduceScatterShapeMode {
 
 // Helper to validate the reduce-scatter input tensor shape, and determine if
 // input tensor is concatenated or stacked (PyTorch API allows both).
-absl::StatusOr<ReduceScatterShapeMode> CheckReduceScatterInputTensorShape(
+absl::StatusOr<ReduceScatterShapeMode> ValidateReduceScatterInputTensorShape(
     at::Tensor& output, at::Tensor& input, size_t process_group_size) {
   // Concat mode: same shape as output, but dim=0 is pg_size times larger:
   Dimensions concat_mode_dims;
@@ -202,7 +203,7 @@ absl::StatusOr<ReduceScatterShapeMode> CheckReduceScatterInputTensorShape(
     concat_mode_dims = CopyIntVector(output.sizes());
     concat_mode_dims[0] *= process_group_size;
   }
-  ABSL_VLOG(1) << "CheckReduceScatterInputTensorShape: concat_mode_dims: "
+  ABSL_VLOG(1) << "ValidateReduceScatterInputTensorShape: concat_mode_dims: "
                << ToString(concat_mode_dims);
 
   // Stack mode: prepend new dimension of size pg_size, and remaining dims same.
@@ -211,11 +212,11 @@ absl::StatusOr<ReduceScatterShapeMode> CheckReduceScatterInputTensorShape(
   for (int i = 0; i < output.dim(); ++i) {
     stack_mode_dims[i + 1] = output.size(i);
   }
-  ABSL_VLOG(1) << "CheckReduceScatterInputTensorShape: stack_mode_dims: "
+  ABSL_VLOG(1) << "ValidateReduceScatterInputTensorShape: stack_mode_dims: "
                << ToString(stack_mode_dims);
 
   Dimensions actual_input_dims{input.sizes().begin(), input.sizes().end()};
-  ABSL_VLOG(1) << "CheckReduceScatterInputTensorShape: actual_input_dims: "
+  ABSL_VLOG(1) << "ValidateReduceScatterInputTensorShape: actual_input_dims: "
                << ToString(actual_input_dims);
 
   if (actual_input_dims == concat_mode_dims) {
@@ -231,7 +232,7 @@ absl::StatusOr<ReduceScatterShapeMode> CheckReduceScatterInputTensorShape(
   }
 }
 
-absl::Status CheckSplitSizesForAllToAllSingle(
+absl::Status ValidateSplitSizesForAllToAllSingle(
     const std::vector<int64_t>& split_sizes,  // INT_VEC_OK
     const at::Tensor& tensor, size_t group_size) {
   auto dim0 = tensor.sizes()[0];
@@ -269,7 +270,7 @@ bool IsEqualSplits(const std::vector<int64_t>& split_sizes) {  // INT_VEC_OK
 
 // All input and output tensors must have the same shape, and the number of
 // input tensors must be the same as the number of output tensors.
-absl::Status CheckAllToAllShapeConsistency(
+absl::Status ValidateAllToAllShapeConsistency(
     const std::vector<at::Tensor>& output_tensors,             // INT_VEC_OK
     const std::vector<at::Tensor>& input_tensors) {            // INT_VEC_OK
   ABSL_CHECK_EQ(output_tensors.size(), input_tensors.size());  // CRASH_OK
@@ -765,7 +766,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
         // NOTE: PyTorch NCCL backend does support non-uniform shapes
         // (implemented as a sequence of broadcasts, one per tensor). We decided
         // not to support this yet. Revisit later if needed.
-        TT_THROW_IF_ERROR(CheckTensorsUniformShape(output_tensor_list));
+        TT_THROW_IF_ERROR(ValidateTensorsUniformShape(output_tensor_list));
 
         TT_CHECK_THROW(input_tensor.sizes() == output_tensor_list[0].sizes(),
                        error::kInvalidArgument)
@@ -987,7 +988,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::gather(
                  "equal to the group size, got "
               << output_tensor_list.size() << " tensors and " << getSize()
               << " processes";
-          TT_THROW_IF_ERROR(CheckTensorsUniformShape(output_tensor_list))
+          TT_THROW_IF_ERROR(ValidateTensorsUniformShape(output_tensor_list))
                   .SetPrepend()
               << "output tensors on the root rank: ";
           TT_CHECK_THROW(input.sizes() == output_tensor_list[0].sizes(),
@@ -1064,7 +1065,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::scatter(
               << input_tensors.size() << " tensors and " << getSize()
               << " processes";
 
-          TT_THROW_IF_ERROR(CheckTensorsUniformShape(input_tensors))
+          TT_THROW_IF_ERROR(ValidateTensorsUniformShape(input_tensors))
                   .SetPrepend()
               << "input tensors on the root rank: ";
           TT_CHECK_THROW(output.sizes() == input_tensors[0].sizes(),
@@ -1136,7 +1137,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
         // sequence of world_size separate reduce calls (coalesced). Revisit
         // later if we want to support this case too. It would be very
         // problematic for error handling.
-        TT_THROW_IF_ERROR(CheckTensorsUniformShape(inputs));
+        TT_THROW_IF_ERROR(ValidateTensorsUniformShape(inputs));
 
         TT_CHECK_THROW(output.sizes() == inputs[getRank()].sizes(),
                        error::kInvalidArgument)
@@ -1165,8 +1166,9 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::_reduce_scatter_base(
         TT_THROW_IF_ERROR(
             ValidateReductionOp(opts.reduceOp, input.scalar_type()));
 
-        TT_ASSIGN_OR_THROW(auto input_mode, CheckReduceScatterInputTensorShape(
-                                                output, input, getSize()));
+        TT_ASSIGN_OR_THROW(
+            auto input_mode,
+            ValidateReduceScatterInputTensorShape(output, input, getSize()));
 
         // Reduces to the concat case as that's what StableHLO expects.
         at::Tensor input_concat;  // UNINITIALIZED_TENSOR_OK
@@ -1265,9 +1267,9 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall_base(
               // PyTorch layer. Hence, we do not need to check for dtypes
               // here.
 
-              TT_THROW_IF_ERROR(CheckSplitSizesForAllToAllSingle(
+              TT_THROW_IF_ERROR(ValidateSplitSizesForAllToAllSingle(
                   input_split_sizes, input, group_size));
-              TT_THROW_IF_ERROR(CheckSplitSizesForAllToAllSingle(
+              TT_THROW_IF_ERROR(ValidateSplitSizesForAllToAllSingle(
                   output_split_sizes, output, group_size));
 
               const bool equal_input_splits = IsEqualSplits(input_split_sizes);
@@ -1361,7 +1363,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(
             << " for process group size";
 
         TT_THROW_IF_ERROR(
-            CheckAllToAllShapeConsistency(output_tensors, input_tensors));
+            ValidateAllToAllShapeConsistency(output_tensors, input_tensors));
 
         auto op_builder = [device_groups = subgroup_device_ids_](
                               absl::Span<mlir::MlirOp> inputs,

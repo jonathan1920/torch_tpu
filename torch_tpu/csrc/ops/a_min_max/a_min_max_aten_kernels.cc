@@ -55,7 +55,7 @@ OpName GetOpName(AMinMaxOp op) {
   return op == AMinMaxOp::kAmax ? OpName::kAmax : OpName::kAmin;
 }
 
-absl::Status CheckAMinMaxInputs(const at::Tensor& self, at::Tensor& out) {
+absl::Status ValidateAMinMaxInputs(const at::Tensor& self, at::Tensor& out) {
   TT_RET_CHECK(IsPrivateUse1Device(out), error::kInvalidArgument)
       << "expected output tensor to be on " << GetPrivateUse1DeviceDebugName()
       << ", got " << out.device();
@@ -76,7 +76,7 @@ absl::Status CheckAMinMaxInputs(const at::Tensor& self, at::Tensor& out) {
 absl::Status AMinMax(const at::Tensor& self, const at::IntArrayRef dims,
                      const bool keep_dim, const AMinMaxOp a_min_max_op,
                      at::Tensor& out) {
-  TT_RETURN_IF_ERROR(CheckAMinMaxInputs(self, out));
+  TT_RETURN_IF_ERROR(ValidateAMinMaxInputs(self, out));
   TT_ASSIGN_OR_RETURN(auto param_keys,
                       TT_MAKE_OP_PARAM_CACHE_KEYS(dims, keep_dim));
 
@@ -139,8 +139,8 @@ std::tuple<at::Tensor&, at::Tensor&> AtenAminmaxOut(
     const at::Tensor& self, const c10::optional<int64_t> dim,
     const bool keep_dim, at::Tensor& min, at::Tensor& max) {
   TT_KERNEL(OpName::kAminmaxOut, param_keys, (self, dim, keep_dim, min, max), {
-    TT_THROW_IF_ERROR(CheckAMinMaxInputs(self, min));
-    TT_THROW_IF_ERROR(CheckAMinMaxInputs(self, max));
+    TT_THROW_IF_ERROR(ValidateAMinMaxInputs(self, min));
+    TT_THROW_IF_ERROR(ValidateAMinMaxInputs(self, max));
 
     // aminmax only supports one optional dimension, but the builder expects
     // a vector of dimensions, so we build a vector here for the optional

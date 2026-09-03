@@ -53,8 +53,8 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status CheckIsFloatingPoint(const at::Tensor& tensor,
-                                  const std::string_view name) {
+absl::Status ValidateIsFloatingPoint(const at::Tensor& tensor,
+                                     const std::string_view name) {
   TT_RET_CHECK(IsFloatingPoint(tensor), error::kInvalidArgument)
       << "expected the " << name << " dtype to be floating point, got "
       << ToString(tensor.scalar_type());
@@ -140,8 +140,8 @@ absl::StatusOr<MlirOpResults<2>> BuildPreluKernelBackwardShlo(
 
 at::Tensor AtenPreluKernel(const at::Tensor& self, const at::Tensor& weight) {
   TT_KERNEL(OpName::kPreluKernel, _, (self, weight), {
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(self, "self"));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(weight, "weight"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(self, "self"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(weight, "weight"));
 
     TT_CHECK_THROW(self.scalar_type() == weight.scalar_type(),
                    error::kInvalidArgument)
@@ -181,9 +181,9 @@ std::tuple<at::Tensor, at::Tensor> AtenPreluKernelBackward(
     const at::Tensor& grad_output, const at::Tensor& self,
     const at::Tensor& weight) {
   TT_KERNEL(OpName::kPreluKernelBackward, _, (grad_output, self, weight), {
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(grad_output, "grad_output"));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(self, "self"));
-    TT_THROW_IF_ERROR(CheckIsFloatingPoint(weight, "weight"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(grad_output, "grad_output"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(self, "self"));
+    TT_THROW_IF_ERROR(ValidateIsFloatingPoint(weight, "weight"));
 
     TT_CHECK_THROW(grad_output.scalar_type() == self.scalar_type() &&
                        self.scalar_type() == weight.scalar_type(),

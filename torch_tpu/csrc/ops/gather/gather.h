@@ -27,9 +27,9 @@
 
 namespace torch_tpu {
 
-absl::Status CheckGatherInputs(absl::Span<const int64_t> self, int64_t dim,
-                               absl::Span<const int64_t> index,
-                               bool sparse_grad);
+absl::Status ValidateGatherInputs(absl::Span<const int64_t> self, int64_t dim,
+                                  absl::Span<const int64_t> index,
+                                  bool sparse_grad);
 
 absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
     mlir::MlirOp self, int64_t dim, mlir::MlirOp index, bool sparse_grad,

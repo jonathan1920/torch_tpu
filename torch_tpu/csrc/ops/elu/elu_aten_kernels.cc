@@ -119,8 +119,8 @@ absl::StatusOr<mlir::MlirOp> BuildEluBackwardGradInputShlo(
                                  /*on_false=*/positive_val);
 }
 
-absl::Status CheckIsFloatingPoint(const at::Tensor& tensor,
-                                  const std::string_view name) {
+absl::Status ValidateIsFloatingPoint(const at::Tensor& tensor,
+                                     const std::string_view name) {
   TT_RET_CHECK(IsFloatingPoint(tensor), error::kInvalidArgument)
       << "expected the " << name << " dtype to be floating point, got "
       << ToString(tensor.scalar_type());
@@ -138,7 +138,7 @@ at::Tensor& AtenEluOut(const at::Tensor& input, const at::Scalar& alpha,
   TT_KERNEL(
       OpName::kEluOut, param_keys,
       (input, promoted_alpha, promoted_scale, promoted_input_scale, out), {
-        TT_THROW_IF_ERROR(CheckIsFloatingPoint(input, /* name= */ "input"));
+        TT_THROW_IF_ERROR(ValidateIsFloatingPoint(input, /* name= */ "input"));
 
         TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
                            promoted_alpha.GetTensor(input.scalar_type()));
@@ -183,7 +183,7 @@ at::Tensor& AtenEluBackwardGradInput(
        is_result, self_or_result, grad_input),
       {
         TT_THROW_IF_ERROR(
-            CheckIsFloatingPoint(grad_output, /* name= */ "grad output"));
+            ValidateIsFloatingPoint(grad_output, /* name= */ "grad output"));
 
         TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
                            promoted_alpha.GetTensor(grad_output.scalar_type()));

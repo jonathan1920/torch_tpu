@@ -33,8 +33,8 @@ namespace torch_tpu {
 //
 // `arg_name` should be set to the corresponding argument name of the op. This
 // will be used for displaying a better error message.
-absl::Status CheckStaticShape(mlir::RankedTensorType type,
-                              std::string_view arg_name);
+absl::Status ValidateStaticShape(mlir::RankedTensorType type,
+                                 std::string_view arg_name);
 
 // Checks that the given `tensor` only has static dimensions.
 //
@@ -53,9 +53,9 @@ absl::Status CheckStaticShape(mlir::RankedTensorType type,
 //
 // `arg_name` should be set to the corresponding argument name of the op. This
 // will be used for displaying a better error message.
-absl::Status CheckStaticShape(const at::Tensor& tensor,
-                              const DeviceBufferRef& buffer_ref,
-                              std::string_view arg_name);
+absl::Status ValidateStaticShape(const at::Tensor& tensor,
+                                 const DeviceBufferRef& buffer_ref,
+                                 std::string_view arg_name);
 
 }  // namespace torch_tpu
 

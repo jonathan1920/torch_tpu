@@ -53,7 +53,7 @@ absl::Status ValidateBmmOut(const at::Tensor& out, at::ScalarType out_dtype) {
   return absl::OkStatus();
 }
 
-absl::Status CheckBmmInputs(const at::Tensor& self, const at::Tensor& mat2) {
+absl::Status ValidateBmmInputs(const at::Tensor& self, const at::Tensor& mat2) {
   TT_RET_CHECK(self.dim() == 3, error::kInvalidArgument)
       << "expected the first argument to be a 3D tensor (batch of matrices), "
          "got "
@@ -98,7 +98,7 @@ absl::StatusOr<DeviceBufferRef> Bmm(const at::Tensor& self,
                                     const at::Tensor& mat2,
                                     at::ScalarType out_dtype,
                                     OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckBmmInputs(self, mat2));
+  TT_RETURN_IF_ERROR(ValidateBmmInputs(self, mat2));
   TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype_mlir,
                       ConvertTo<mlir::ElementType>(out_dtype));
   Dimensions output_dims_vec = {self.size(0), self.size(1), mat2.size(2)};
@@ -125,7 +125,7 @@ absl::StatusOr<DeviceBufferRef> Bmm(const at::Tensor& self,
 absl::Status BmmOut(const at::Tensor& self, const at::Tensor& mat2,
                     at::ScalarType out_dtype, at::Tensor& out,
                     OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckBmmInputs(self, mat2));
+  TT_RETURN_IF_ERROR(ValidateBmmInputs(self, mat2));
   TT_RETURN_IF_ERROR(ValidateBmmOut(out, out_dtype));
   TT_ASSIGN_OR_RETURN(auto result_buffer,
                       Bmm(self, mat2, out_dtype, std::move(param_keys)));

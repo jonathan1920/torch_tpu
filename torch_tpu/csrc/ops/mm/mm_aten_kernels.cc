@@ -49,9 +49,9 @@
 namespace torch_tpu {
 namespace {
 
-absl::Status CheckMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
-                              at::Tensor& out,
-                              std::optional<at::ScalarType> out_dtype) {
+absl::Status ValidateMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
+                                 at::Tensor& out,
+                                 std::optional<at::ScalarType> out_dtype) {
   // DType checks.
   TT_RET_CHECK(lhs.scalar_type() == rhs.scalar_type(), error::kInvalidArgument)
       << "expected the two arguments to have the same dtype, got "
@@ -74,8 +74,8 @@ absl::Status CheckMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
   }
 
   // Dimension checks.
-  TT_RETURN_IF_ERROR(CheckIsMatrix(lhs, /* arg_name= */ "first"));
-  TT_RETURN_IF_ERROR(CheckIsMatrix(rhs, /* arg_name= */ "second"));
+  TT_RETURN_IF_ERROR(ValidateIsMatrix(lhs, /* arg_name= */ "first"));
+  TT_RETURN_IF_ERROR(ValidateIsMatrix(rhs, /* arg_name= */ "second"));
   TT_RET_CHECK(lhs.size(1) == rhs.size(0), error::kInvalidArgument)
       << "expected the column size of the first matrix to match the row size "
          "of the second matrix, got shape "
@@ -97,7 +97,7 @@ absl::StatusOr<DeviceBufferRef> Mm(
     const at::Tensor& lhs, const at::Tensor& rhs, at::Tensor& out,
     OpParamCacheKeys param_keys,
     std::optional<at::ScalarType> out_dtype = std::nullopt) {
-  TT_RETURN_IF_ERROR(CheckMmOutInputs(lhs, rhs, out, out_dtype));
+  TT_RETURN_IF_ERROR(ValidateMmOutInputs(lhs, rhs, out, out_dtype));
   int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
 
   // if out_dtype is not specified, use the scalar type of the inputs

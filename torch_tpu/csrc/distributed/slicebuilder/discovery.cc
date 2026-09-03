@@ -44,7 +44,7 @@ const absl::StatusOr<std::string>& GetRequiredEnvOnce() {
   return *env_var;
 }
 
-static absl::Status CheckRequiredDistributedEnvVars() {
+static absl::Status ValidateRequiredDistributedEnvVars() {
   std::vector<std::string> missing_vars;
   if (!GetEnvOnce<kRankEnvVar>().has_value()) {
     missing_vars.push_back(kRankEnvVar);
@@ -78,7 +78,7 @@ static absl::Status CheckRequiredDistributedEnvVars() {
 
 absl::StatusOr<DistributedWorkerConfiguration>
 GetDistributedWorkerConfiguration() {
-  TT_RETURN_IF_ERROR(CheckRequiredDistributedEnvVars());
+  TT_RETURN_IF_ERROR(ValidateRequiredDistributedEnvVars());
 
   int rank = -1;
   TT_ASSIGN_OR_RETURN(std::string env_rank, GetRequiredEnvOnce<kRankEnvVar>());

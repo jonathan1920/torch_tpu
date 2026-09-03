@@ -399,10 +399,10 @@ absl::StatusOr<mlir::MlirOp> BuildFftC2rShlo(
   return fft_op;
 }
 
-absl::Status FFTCheckStaticShape(const at::Tensor& tensor,
-                                 const std::string_view arg_name) {
+absl::Status FFTValidateStaticShape(const at::Tensor& tensor,
+                                    const std::string_view arg_name) {
   TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBaseBuffer(tensor));
-  return CheckStaticShape(tensor, buffer_ref, arg_name);
+  return ValidateStaticShape(tensor, buffer_ref, arg_name);
 }
 
 }  // namespace
@@ -417,7 +417,7 @@ at::Tensor AtenFftR2c(const at::Tensor& self, at::IntArrayRef dim,
     // NOTE: This implementation is not dynamism safe. It currently
     // uses static shape indices, more work is needed to determine how
     // this op supports bounded dynamic values.
-    TT_THROW_IF_ERROR(FFTCheckStaticShape(self, "input"));
+    TT_THROW_IF_ERROR(FFTValidateStaticShape(self, "input"));
 
     TT_ASSIGN_OR_THROW(auto normalized_dims, GetNormalizedDims(self, dim));
     auto out_sizes = CopyIntVector(self.sizes());
@@ -462,7 +462,7 @@ at::Tensor& AtenFftR2cOut(const at::Tensor& self, at::IntArrayRef dim,
         // NOTE: This implementation is not dynamism safe. It currently uses
         // static shape indices, more work is needed to determine how this op
         // supports bounded dynamic values.
-        TT_THROW_IF_ERROR(FFTCheckStaticShape(self, "input"));
+        TT_THROW_IF_ERROR(FFTValidateStaticShape(self, "input"));
 
         TT_ASSIGN_OR_THROW(auto normalized_dims, GetNormalizedDims(self, dim));
         auto out_sizes = CopyIntVector(self.sizes());
@@ -504,7 +504,7 @@ at::Tensor AtenFftC2c(const at::Tensor& self, at::IntArrayRef dim,
     // NOTE: This implementation is not dynamism safe. It currently uses
     // static shape indices, more work is needed to determine how this op
     // supports bounded dynamic values.
-    TT_THROW_IF_ERROR(FFTCheckStaticShape(self, "input"));
+    TT_THROW_IF_ERROR(FFTValidateStaticShape(self, "input"));
 
     TT_ASSIGN_OR_THROW(auto normalized_dims, GetNormalizedDims(self, dim));
 
@@ -545,7 +545,7 @@ at::Tensor& AtenFftC2cOut(const at::Tensor& self, at::IntArrayRef dim,
         // NOTE: This implementation is not dynamism safe. It currently uses
         // static shape indices, more work is needed to determine how this op
         // supports bounded dynamic values.
-        TT_THROW_IF_ERROR(FFTCheckStaticShape(self, "input"));
+        TT_THROW_IF_ERROR(FFTValidateStaticShape(self, "input"));
 
         TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
 
@@ -584,7 +584,7 @@ at::Tensor AtenFftC2r(const at::Tensor& self, at::IntArrayRef dim,
         // NOTE: This implementation is not dynamism safe. It currently uses
         // static shape indices, more work is needed to determine how this op
         // supports bounded dynamic values.
-        TT_THROW_IF_ERROR(FFTCheckStaticShape(self, "input"));
+        TT_THROW_IF_ERROR(FFTValidateStaticShape(self, "input"));
 
         TT_ASSIGN_OR_THROW(auto normalized_dims, GetNormalizedDims(self, dim));
         auto out_sizes = CopyIntVector(self.sizes());
@@ -632,7 +632,7 @@ at::Tensor& AtenFftC2rOut(const at::Tensor& self, at::IntArrayRef dim,
         // NOTE: This implementation is not dynamism safe. It currently uses
         // static shape indices, more work is needed to determine how this op
         // supports bounded dynamic values.
-        TT_THROW_IF_ERROR(FFTCheckStaticShape(self, "input"));
+        TT_THROW_IF_ERROR(FFTValidateStaticShape(self, "input"));
 
         TT_ASSIGN_OR_THROW(auto normalized_dims, GetNormalizedDims(self, dim));
         auto out_sizes = CopyIntVector(self.sizes());

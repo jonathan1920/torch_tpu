@@ -84,7 +84,7 @@ std::string GetInputsTypeStr(const at::Tensor& self,
 //   - at::Scalar
 //   - at::Tensor
 template <typename T>
-absl::Status CheckCanCastComputationToOutput(
+absl::Status ValidateCanCastComputationToOutput(
     const at::Tensor& self, const c10::optional<T>& min,
     const c10::optional<T>& max, at::ScalarType computation_scalar_type,
     at::ScalarType output_scalar_type) {
@@ -148,7 +148,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
   at::ScalarType computation_scalar_type = GetComputationType(self, min, max);
   TT_ASSIGN_OR_RETURN(const auto computation_dtype,
                       ConvertTo<mlir::ElementType>(computation_scalar_type));
-  TT_RETURN_IF_ERROR(CheckCanCastComputationToOutput(
+  TT_RETURN_IF_ERROR(ValidateCanCastComputationToOutput(
       self, min, max, computation_scalar_type, output_scalar_type));
 
   if (min && max) {
@@ -217,8 +217,8 @@ absl::StatusOr<DeviceBufferRef> ClampScalarHelper(
                                std::move(param_keys));
 }
 
-absl::Status CheckNotBool(const at::Tensor& tensor,
-                          const std::string_view arg_name) {
+absl::Status ValidateNotBool(const at::Tensor& tensor,
+                             const std::string_view arg_name) {
   TT_RET_CHECK(!IsBool(tensor), error::kInvalidArgument)
       << arg_name << " must not be bool";
   return absl::OkStatus();
@@ -234,7 +234,7 @@ at::Tensor& AtenClampOut(const at::Tensor& self,
   auto promoted_max = PromoteScalar(max);
   TT_KERNEL(
       OpName::kClampOut, param_keys, (self, promoted_min, promoted_max, out), {
-        TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
+        TT_THROW_IF_ERROR(ValidateNotBool(self, /*arg_name=*/"self"));
         TT_ASSIGN_OR_THROW(
             auto result_buf,
             ClampScalarHelper(self, std::move(promoted_min),
@@ -251,7 +251,7 @@ at::Tensor& AtenClampMinOut(const at::Tensor& self, const at::Scalar& min,
                             at::Tensor& out) {
   auto promoted_min = PromoteScalar(min);
   TT_KERNEL(OpName::kClampMinOut, param_keys, (self, promoted_min, out), {
-    TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotBool(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         ClampScalarHelper(self, std::move(promoted_min), std::nullopt,
@@ -266,7 +266,7 @@ at::Tensor& AtenClampMaxOut(const at::Tensor& self, const at::Scalar& max,
                             at::Tensor& out) {
   auto promoted_max = PromoteScalar(max);
   TT_KERNEL(OpName::kClampMaxOut, param_keys, (self, promoted_max, out), {
-    TT_THROW_IF_ERROR(CheckNotBool(self, /*arg_name=*/"self"));
+    TT_THROW_IF_ERROR(ValidateNotBool(self, /*arg_name=*/"self"));
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         ClampScalarHelper(self, std::nullopt, std::move(promoted_max),

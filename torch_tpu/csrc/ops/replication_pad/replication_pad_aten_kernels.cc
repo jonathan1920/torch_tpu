@@ -269,8 +269,8 @@ absl::Status ReplicationPadHelper(
   return AssignBufferToAtTensor(std::move(out_buf), out);
 }
 
-absl::Status Check3DPaddingIsValid(absl::Span<const int64_t> grad_output,
-                                   absl::Span<const int64_t> padding) {
+absl::Status Validate3DPaddingIsValid(absl::Span<const int64_t> grad_output,
+                                      absl::Span<const int64_t> padding) {
   constexpr size_t kNumSpatialDimensions = 3;
   constexpr std::array<std::string_view, kNumSpatialDimensions>
       spatial_dimension_names = {"depth", "height", "width"};
@@ -450,7 +450,8 @@ at::Tensor AtenReplicationPad3dBackward(const at::Tensor& grad_output,
             padding.size() == 6, error::kInvalidArgument)
             << "expected padding to have " << 6 << " elements"
             << ", got " << padding.size() << " elements";
-        TT_THROW_IF_ERROR(Check3DPaddingIsValid(grad_output.sizes(), padding));
+        TT_THROW_IF_ERROR(
+            Validate3DPaddingIsValid(grad_output.sizes(), padding));
         gidims[gidims.size() - 3] -= (padding[4] + padding[5]);
         gidims[gidims.size() - 2] -= (padding[2] + padding[3]);
         gidims[gidims.size() - 1] -= (padding[0] + padding[1]);

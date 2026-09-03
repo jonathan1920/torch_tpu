@@ -65,8 +65,8 @@ namespace {
 // smaller than 0, i.e. int64_t to double conversion issue is not a concern
 // here.
 template <typename RangeBound>
-absl::Status CheckArangeInputs(const RangeBound start, const RangeBound end,
-                               const double step) {
+absl::Status ValidateArangeInputs(const RangeBound start, const RangeBound end,
+                                  const double step) {
   TT_RET_CHECK(step != 0, error::kInvalidArgument)
       << "expected step to be non-zero, got " << step;
 
@@ -145,10 +145,10 @@ absl::StatusOr<int64_t> GetArangeNumElements(
   // fallback to their double value.
   if (bounds_are_integral) {
     TT_RETURN_IF_ERROR(
-        CheckArangeInputs(start.toLong(), end.toLong(), step_f64));
+        ValidateArangeInputs(start.toLong(), end.toLong(), step_f64));
   } else {
     TT_RETURN_IF_ERROR(
-        CheckArangeInputs(start.toDouble(), end.toDouble(), step_f64));
+        ValidateArangeInputs(start.toDouble(), end.toDouble(), step_f64));
   }
 
   // From this point on, we know that the inputs are valid. In other words:

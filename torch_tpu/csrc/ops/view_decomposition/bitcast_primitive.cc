@@ -504,7 +504,7 @@ absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
   const absl::Span<const int64_t> shape = input_type.getShape();
   // Need to propagate dynamic bound to output shape for bitcast.
-  TT_RETURN_IF_ERROR(CheckStaticShape(input_type, "bitcast input"))
+  TT_RETURN_IF_ERROR(ValidateStaticShape(input_type, "bitcast input"))
       << GetViewPrimitiveShloErrorSuffix(bitcast, shape,
                                          ViewPrimitiveBugSuffix::kHide);
   Dimensions result_shape = GetShapeAfterRealToRealBitcast(

@@ -41,9 +41,10 @@ namespace torch_tpu {
 
 namespace stablehlo = mlir::stablehlo;
 
-absl::Status CheckGatherInputs(absl::Span<const int64_t> self_dims, int64_t dim,
-                               absl::Span<const int64_t> index_dims,
-                               bool sparse_grad) {
+absl::Status ValidateGatherInputs(absl::Span<const int64_t> self_dims,
+                                  int64_t dim,
+                                  absl::Span<const int64_t> index_dims,
+                                  bool sparse_grad) {
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error is caught by caller `Gather`
                  // function.
       sparse_grad == false, error::kPythonNotImplementedError)
@@ -105,8 +106,8 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
                << ", index_type: " << mlir::debugString(index_type)
                << ", sparse_grad: " << (sparse_grad ? "true" : "false");
 
-  TT_RETURN_IF_ERROR(CheckGatherInputs(self_type.getShape(), dim,
-                                       index_type.getShape(), sparse_grad));
+  TT_RETURN_IF_ERROR(ValidateGatherInputs(self_type.getShape(), dim,
+                                          index_type.getShape(), sparse_grad));
 
   // self and index should have the same rank, except when one of them is a
   // scalar and the other is a vector.

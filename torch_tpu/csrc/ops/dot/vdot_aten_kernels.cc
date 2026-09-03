@@ -45,9 +45,9 @@ absl::StatusOr<mlir::MlirOp> BuildVdotShlo(
   return BuildDotShlo(conjugated_lhs, rhs, precision);
 }
 
-absl::Status CheckInputs(const at::Tensor& lhs, const at::Tensor& rhs) {
-  TT_RETURN_IF_ERROR(CheckIsVector(lhs, "first"));
-  TT_RETURN_IF_ERROR(CheckIsVector(rhs, "second"));
+absl::Status ValidateInputs(const at::Tensor& lhs, const at::Tensor& rhs) {
+  TT_RETURN_IF_ERROR(ValidateIsVector(lhs, "first"));
+  TT_RETURN_IF_ERROR(ValidateIsVector(rhs, "second"));
 
   TT_RET_CHECK(lhs.size(0) == rhs.size(0), error::kInvalidArgument)
       << "expected inputs to have the same shape, got " << ToString(lhs.sizes())
@@ -59,10 +59,10 @@ absl::Status CheckInputs(const at::Tensor& lhs, const at::Tensor& rhs) {
 absl::StatusOr<DeviceBufferRef> Vdot(const at::Tensor& lhs,
                                      const at::Tensor& rhs,
                                      OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckInputs(lhs, rhs));
+  TT_RETURN_IF_ERROR(ValidateInputs(lhs, rhs));
 
   TT_ASSIGN_OR_RETURN(auto result_scalar_type,
-                      CheckedGetDotOutputType(lhs, rhs));
+                      ValidateAndGetDotOutputType(lhs, rhs));
 
   const auto current_precision = GetAndAddPrecisionTo(param_keys);
 

@@ -79,47 +79,48 @@ Dimensions ExpandIfNecessary(at::IntArrayRef param, int num_spatial_dims) {
   return Dimensions(param.begin(), param.end());
 }
 
-absl::Status CheckConvolutionInputs(
+absl::Status ValidateConvolutionInputs(
     const at::Tensor& input, const at::Tensor& weight,
     absl::Span<const int64_t> bias, absl::Span<const int64_t> stride,
     absl::Span<const int64_t> padding, absl::Span<const int64_t> dilation,
     bool transposed, absl::Span<const int64_t> output_padding, int64_t groups) {
-  TT_RETURN_IF_ERROR(CheckConvolutionInput(input.sizes()));
+  TT_RETURN_IF_ERROR(ValidateConvolutionInput(input.sizes()));
 
   // Number of dimensions, excluding the batch and channel dimensions.
   const int64_t num_spatial_dims = input.dim() - 2;
   const int64_t in_channels = input.size(1);
 
-  TT_RETURN_IF_ERROR(CheckConvolutionSpatialDimensionsMatch(num_spatial_dims,
-                                                            stride, "stride"));
-  TT_RETURN_IF_ERROR(CheckConvolutionSpatialDimensionsMatch(
+  TT_RETURN_IF_ERROR(ValidateConvolutionSpatialDimensionsMatch(
+      num_spatial_dims, stride, "stride"));
+  TT_RETURN_IF_ERROR(ValidateConvolutionSpatialDimensionsMatch(
       num_spatial_dims, padding, "padding"));
-  TT_RETURN_IF_ERROR(CheckConvolutionSpatialDimensionsMatch(
+  TT_RETURN_IF_ERROR(ValidateConvolutionSpatialDimensionsMatch(
       num_spatial_dims, dilation, "dilation"));
-  TT_RETURN_IF_ERROR(CheckConvolutionSpatialDimensionsMatch(
+  TT_RETURN_IF_ERROR(ValidateConvolutionSpatialDimensionsMatch(
       num_spatial_dims, output_padding, "output_padding"));
 
-  TT_RETURN_IF_ERROR(CheckConvolutionWeight(weight.sizes(), num_spatial_dims,
-                                            in_channels, groups, transposed));
+  TT_RETURN_IF_ERROR(ValidateConvolutionWeight(
+      weight.sizes(), num_spatial_dims, in_channels, groups, transposed));
 
   if (!bias.empty()) {
     const int64_t out_channels =
         transposed ? weight.size(1) * groups : weight.size(0);
-    TT_RETURN_IF_ERROR(CheckConvolutionBias(bias, out_channels));
+    TT_RETURN_IF_ERROR(ValidateConvolutionBias(bias, out_channels));
   }
 
   return absl::OkStatus();
 }
 
-absl::Status CheckConvolutionInputs(
+absl::Status ValidateConvolutionInputs(
     const at::Tensor& input, const at::Tensor& weight,
     const std::optional<at::Tensor>& bias_opt, absl::Span<const int64_t> stride,
     absl::Span<const int64_t> padding, absl::Span<const int64_t> dilation,
     bool transposed, absl::Span<const int64_t> output_padding, int64_t groups) {
   auto bias_dimensions =
       bias_opt.has_value() ? bias_opt->sizes() : at::IntArrayRef();
-  return CheckConvolutionInputs(input, weight, bias_dimensions, stride, padding,
-                                dilation, transposed, output_padding, groups);
+  return ValidateConvolutionInputs(input, weight, bias_dimensions, stride,
+                                   padding, dilation, transposed,
+                                   output_padding, groups);
 }
 
 absl::StatusOr<Dimensions> GetOutputDimensions(
@@ -211,7 +212,7 @@ absl::StatusOr<DeviceBufferRef> ConvolutionBinary(
       ExpandIfNecessary(output_padding, num_spatial_dims);
 
   const auto current_precision = GetAndAddPrecisionTo(param_keys);
-  TT_RETURN_IF_ERROR(CheckConvolutionInputs(
+  TT_RETURN_IF_ERROR(ValidateConvolutionInputs(
       input, weight, std::nullopt, expanded_stride, expanded_padding,
       expanded_dilation, transposed, expanded_output_padding, groups));
   TT_ASSIGN_OR_RETURN(
@@ -260,7 +261,7 @@ absl::StatusOr<DeviceBufferRef> ConvolutionTernary(
 
   const auto current_precision = GetAndAddPrecisionTo(param_keys);
 
-  TT_RETURN_IF_ERROR(CheckConvolutionInputs(
+  TT_RETURN_IF_ERROR(ValidateConvolutionInputs(
       input, weight, bias, expanded_stride, expanded_padding, expanded_dilation,
       transposed, expanded_output_padding, groups));
   TT_ASSIGN_OR_RETURN(
@@ -350,7 +351,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> ConvolutionBackward(
                              ? bias_sizes.value()
                              : at::IntArrayRef();
 
-  TT_RETURN_IF_ERROR(CheckConvolutionInputs(
+  TT_RETURN_IF_ERROR(ValidateConvolutionInputs(
       input, weight, bias_dimensions, expanded_stride, expanded_padding,
       expanded_dilation, transposed, expanded_output_padding, groups));
   TT_ASSIGN_OR_RETURN(at::ScalarType promoted_dtype,
