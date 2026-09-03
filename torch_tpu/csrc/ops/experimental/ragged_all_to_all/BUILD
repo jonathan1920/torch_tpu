@@ -20,10 +20,25 @@ package(
 )
 
 torch_tpu_cc_library(
+    name = "ragged_all_to_all_builder",
+    srcs = ["ragged_all_to_all_builder.cc"],
+    hdrs = ["ragged_all_to_all_builder.h"],
+    deps = [
+        "//torch_tpu/csrc/ops:op_builder_utils",
+        "//torch_tpu/csrc/pjrt:pjrt_utils",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "ragged_all_to_all_aten_kernels",
     srcs = ["ragged_all_to_all_aten_kernels.cc"],
     hdrs = ["ragged_all_to_all_aten_kernels.h"],
     deps = [
+        ":ragged_all_to_all_builder",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base_headers",
@@ -47,7 +62,6 @@ torch_tpu_cc_library(
         "@llvm-project//mlir:IR",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 

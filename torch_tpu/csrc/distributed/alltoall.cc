@@ -17,21 +17,25 @@
 #include "torch_tpu/csrc/distributed/alltoall.h"
 
 #include <cstdint>
-#include <vector>
 
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/error_utils.h"
+#include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/distributed/types.h"
 #include "torch_tpu/csrc/distributed/utils.h"
+#include "torch_tpu/csrc/ops/experimental/ragged_all_to_all/ragged_all_to_all_builder.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 
 namespace torch_tpu {
@@ -65,6 +69,43 @@ absl::StatusOr<mlir::MlirOp> BuildDistributedAllToAllBaseShlo(
   ABSL_VLOG(3) << "BuildDistributedAllToAllBaseShlo: output: "
                << result.ToString();
   return result;
+}
+
+absl::StatusOr<mlir::MlirOp> BuildDistributedAllToAllBaseUnevenSplitsShlo(
+    mlir::MlirOp input, mlir::MlirOp output,
+    absl::Span<const int32_t> input_offsets,
+    absl::Span<const int32_t> send_sizes,
+    absl::Span<const int32_t> output_offsets,
+    absl::Span<const int32_t> recv_sizes,
+    const DeviceGroupList& device_groups) {
+  auto& builder = input.getBuilder();
+  auto replica_groups_attr = BuildReplicaGroupsAttr(builder, device_groups);
+
+  auto i32_type =
+      mlir::RankedTensorType::get({static_cast<int64_t>(input_offsets.size())},
+                                  builder.getOpBuilder().getI32Type());
+
+  auto input_offsets_op = mlir::stablehlo::Constant(
+      builder, mlir::makeConstant(llvm::ArrayRef<int32_t>(input_offsets.data(),
+                                                          input_offsets.size()),
+                                  i32_type));
+  auto send_sizes_op = mlir::stablehlo::Constant(
+      builder, mlir::makeConstant(llvm::ArrayRef<int32_t>(send_sizes.data(),
+                                                          send_sizes.size()),
+                                  i32_type));
+  auto output_offsets_op = mlir::stablehlo::Constant(
+      builder,
+      mlir::makeConstant(
+          llvm::ArrayRef<int32_t>(output_offsets.data(), output_offsets.size()),
+          i32_type));
+  auto recv_sizes_op = mlir::stablehlo::Constant(
+      builder, mlir::makeConstant(llvm::ArrayRef<int32_t>(recv_sizes.data(),
+                                                          recv_sizes.size()),
+                                  i32_type));
+
+  return BuildRaggedAllToAllShlo(input, output, input_offsets_op, send_sizes_op,
+                                 output_offsets_op, recv_sizes_op,
+                                 replica_groups_attr);
 }
 
 absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildDistributedAllToAllShlo(

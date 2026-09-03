@@ -25,6 +25,7 @@
 // PyTorch has a default implementation for functional collectives via
 // "non-functional" ones, but as some point we may want to specialize.
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -314,10 +315,23 @@ class ProcessGroupTpu : public c10d::Backend {
   absl::StatusOr<DeviceBufferRef> AllToAllBaseEqualSplits(at::Tensor& output,
                                                           at::Tensor& input);
 
+  // Handles all_to_all_single with non-uniform (uneven) split sizes along
+  // dimension 0. Computes input/output slice offsets, synchronizes remote
+  // destination offsets across ranks via store_, and dispatches the StableHLO
+  // ragged_all_to_all custom call.
+  //
+  // Args:
+  //   output: Pre-allocated destination tensor buffer.
+  //   input: Source tensor to scatter to peer ranks.
+  //   output_split_sizes: Number of elements received from each peer rank
+  //   (0..N-1). input_split_sizes: Number of elements sent to each peer rank
+  //   (0..N-1).
+  //
+  // Returns:
+  //   A DeviceBufferRef representing the collective output buffer on TPU.
   absl::StatusOr<DeviceBufferRef> AllToAllBaseUnevenSplits(
       at::Tensor& output, at::Tensor& input,
-      const std::vector<int64_t>& output_split_sizes,  // INT_VEC_OK
-      const std::vector<int64_t>& input_split_sizes);  // INT_VEC_OK
+      c10::IntArrayRef output_split_sizes, c10::IntArrayRef input_split_sizes);
 
   // Extracts receive descriptors from store_ and sends buffers to a
   // remote device.
@@ -350,6 +364,10 @@ class ProcessGroupTpu : public c10d::Backend {
   // Converts a physical TPU device ID to its 0-based logical index in
   // device_ids_.
   int64_t GetLogicalDeviceId(int64_t physical_device_id) const;
+
+  // Monotonic sequence counter for uneven all_to_all_single offset
+  // coordination.
+  std::atomic<uint64_t> alltoall_seq_{0};
 };
 
 }  // namespace torch_tpu

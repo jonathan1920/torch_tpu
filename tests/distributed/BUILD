@@ -276,7 +276,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "alltoall_collective_test",
     srcs = ["alltoall_collective_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     tags = if_oss(
         ["exclusive"],
         [],
@@ -685,6 +685,7 @@ torch_tpu_py_test(
     srcs = ["ragged_all_to_all_test.py"],
     nonightly_oss = "This test requires TPU v7. Exclude this test from workflow nightly_tpu.yml running on TPU v6.",
     nopresubmit = "Requires 4 tpu v7x chips.",
+    shard_count = 3,
     tags = [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.

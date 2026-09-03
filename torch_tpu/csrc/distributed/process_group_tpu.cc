@@ -20,6 +20,7 @@
 #include <chrono>  // NOLINT - needed for PyTorch API
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <memory>
 #include <numeric>
@@ -71,6 +72,7 @@
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fingerprint_utils.h"
+#include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/distributed/allgather.h"
@@ -232,9 +234,9 @@ absl::StatusOr<ReduceScatterShapeMode> ValidateReduceScatterInputTensorShape(
   }
 }
 
-absl::Status ValidateSplitSizesForAllToAllSingle(
-    const std::vector<int64_t>& split_sizes,  // INT_VEC_OK
-    const at::Tensor& tensor, size_t group_size) {
+absl::Status ValidateSplitSizesForAllToAllSingle(c10::IntArrayRef split_sizes,
+                                                 const at::Tensor& tensor,
+                                                 size_t group_size) {
   auto dim0 = tensor.sizes()[0];
   if (split_sizes.empty()) {
     TT_RET_CHECK(dim0 % group_size == 0, error::kInvalidArgument)
@@ -246,6 +248,11 @@ absl::Status ValidateSplitSizesForAllToAllSingle(
         << "got " << split_sizes.size() << " for split sizes and " << group_size
         << " for process group size";
 
+    for (int64_t size : split_sizes) {
+      TT_RET_CHECK(size >= 0, error::kInvalidArgument)
+          << "expected split sizes to be non-negative, got " << size;
+    }
+
     const int64_t split_sizes_sum = absl::c_accumulate(split_sizes, 0L);
     TT_RET_CHECK(split_sizes_sum == dim0, error::kInvalidArgument)
         << "expected split sizes sum to be equal to tensor first dimension, "
@@ -255,7 +262,7 @@ absl::Status ValidateSplitSizesForAllToAllSingle(
   return absl::OkStatus();
 }
 
-bool IsEqualSplits(const std::vector<int64_t>& split_sizes) {  // INT_VEC_OK
+bool IsEqualSplits(c10::IntArrayRef split_sizes) {
   if (split_sizes.empty()) {
     return true;
   }
@@ -1325,14 +1332,143 @@ absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseEqualSplits(
                         .split_mode = GetCollectiveSplitMode()});
 }
 
-// TODO(mkkhanna): Implement support for uneven splits.
-// b/446982820
 absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseUnevenSplits(
-    at::Tensor& output, at::Tensor& input,
-    const std::vector<int64_t>& output_split_sizes,   // INT_VEC_OK
-    const std::vector<int64_t>& input_split_sizes) {  // INT_VEC_OK
-  return TT_ERROR(error::kPythonNotImplementedError)
-         << "uneven splits is not implemented";
+    at::Tensor& output, at::Tensor& input, c10::IntArrayRef output_split_sizes,
+    c10::IntArrayRef input_split_sizes) {
+  // 1. Validate tensor shapes and rank compatibility.
+  // Both input and output must have identical dimension rank (e.g. both 2D),
+  // and all trailing feature dimensions (dim 1 onwards) must match exactly.
+  auto& maybe_materialized_input_tensor = input;
+  TT_RET_CHECK(output.dim() == input.dim(), error::kInvalidArgument)
+      << "expected input and output tensors to have the same number of "
+      << "dimensions, got " << input.dim() << " and " << output.dim();
+  TT_RET_CHECK(output.sizes().slice(1) == input.sizes().slice(1),
+               error::kInvalidArgument)
+      << "expected trailing dimensions of input and output to match, got "
+      << input.sizes() << " and " << output.sizes();
+
+  const size_t group_size = subgroup_device_ids_[0].size();
+
+  // 2. Compute local slice offsets and element counts for sending and
+  // receiving.
+  // - send_sizes_vec[i]: Number of rows sent from local rank to peer rank i.
+  // - input_offsets_vec[i]: Starting row index in local `input` tensor for peer
+  // i.
+  // - recv_sizes_vec[i]: Number of rows received by local rank from peer rank
+  // i.
+  // - local_output_offsets_vec[i]: Starting row index in local `output` buffer
+  //   where the slice received from peer rank i will be written.
+  std::vector<int32_t> input_offsets_vec(group_size, 0);
+  std::vector<int32_t> send_sizes_vec(group_size, 0);
+  std::vector<int32_t> local_output_offsets_vec(group_size, 0);
+  std::vector<int32_t> recv_sizes_vec(group_size, 0);
+
+  const bool uniform_input = input_split_sizes.empty();
+  const bool uniform_output = output_split_sizes.empty();
+  const int32_t uniform_input_size =
+      uniform_input ? static_cast<int32_t>(input.size(0) / group_size) : 0;
+  const int32_t uniform_output_size =
+      uniform_output ? static_cast<int32_t>(output.size(0) / group_size) : 0;
+
+  int32_t current_input_offset = 0;
+  int32_t current_output_offset = 0;
+  for (size_t i = 0; i < group_size; ++i) {
+    int32_t in_size = uniform_input
+                          ? uniform_input_size
+                          : static_cast<int32_t>(input_split_sizes[i]);
+    send_sizes_vec[i] = in_size;
+    input_offsets_vec[i] = current_input_offset;
+    current_input_offset += in_size;
+
+    int32_t out_size = uniform_output
+                           ? uniform_output_size
+                           : static_cast<int32_t>(output_split_sizes[i]);
+    recv_sizes_vec[i] = out_size;
+    local_output_offsets_vec[i] = current_output_offset;
+    current_output_offset += out_size;
+  }
+
+  // 3. Synchronize remote destination output offsets across all ranks.
+  // In the StableHLO `ragged_all_to_all` specification, each sender must supply
+  // `output_offsets`, which defines the exact element offset on the
+  // *destination* rank where the sender's data slice will land. Since
+  // destination output offsets depend on the sizes of all preceding slices (src
+  // < sender) arriving at destination `peer`, we exchange
+  // `local_output_offsets` as binary buffers via c10d::Store:
+  //   a. Each rank writes its `local_output_offsets_vec` binary payload.
+  //   b. Each rank queries all peer payloads via multiGet and directly reads
+  //      `peer_offsets[my_rank]`.
+  std::vector<int32_t> output_offsets_vec(group_size, 0);
+  if (group_size > 1) {
+    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=store is always non-null in
+                   // distributed runtime
+        store_ != nullptr, error::kInvalidArgument)
+        << "c10d::Store is required for multi-rank uneven all_to_all_single";
+    uint64_t seq = alltoall_seq_.fetch_add(1);
+    const int my_rank = getRank();
+    std::string key_prefix = absl::StrCat("alltoall_offsets:", seq, ":");
+    std::string my_key = absl::StrCat(key_prefix, my_rank);
+
+    std::vector<uint8_t> my_bytes(local_output_offsets_vec.size() *
+                                  sizeof(int32_t));
+    std::memcpy(my_bytes.data(), local_output_offsets_vec.data(),
+                my_bytes.size());
+    store_->set(my_key, my_bytes);
+
+    std::vector<std::string> peer_keys;
+    peer_keys.reserve(group_size);
+    for (size_t peer = 0; peer < group_size; ++peer) {
+      peer_keys.push_back(absl::StrCat(key_prefix, peer));
+    }
+    std::vector<std::vector<uint8_t>> peer_values = store_->multiGet(peer_keys);
+    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=store multiGet returns one entry per
+                   // queried key
+        peer_values.size() == group_size, error::kInternal)
+        << "expected " << group_size << " peer values, got "
+        << peer_values.size();
+
+    const size_t expected_payload_bytes = group_size * sizeof(int32_t);
+    for (size_t peer = 0; peer < group_size; ++peer) {
+      const auto& peer_val = peer_values[peer];
+      TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Store bytes are generated
+                     // internally
+          peer_val.size() == expected_payload_bytes, error::kInternal)
+          << "peer " << peer << " payload size mismatch: " << peer_val.size();
+      const int32_t* peer_offsets =
+          reinterpret_cast<const int32_t*>(peer_val.data());
+      output_offsets_vec[peer] = peer_offsets[my_rank];
+    }
+  }
+
+  TT_ASSIGN_OR_RETURN(auto param_keys,
+                      TT_MAKE_OP_PARAM_CACHE_KEYS(
+                          subgroup_device_ids_, input_offsets_vec,
+                          send_sizes_vec, output_offsets_vec, recv_sizes_vec));
+
+  // 4. Build the MLIR StableHLO custom call with device replica group
+  // attributes and MLIR constant metadata tensors.
+  auto op_builder = [device_groups = subgroup_device_ids_,
+                     input_offsets = std::move(input_offsets_vec),
+                     send_sizes = std::move(send_sizes_vec),
+                     output_offsets = std::move(output_offsets_vec),
+                     recv_sizes = std::move(recv_sizes_vec)](
+                        FixedSizeSpan<mlir::MlirOp, 2> inputs) {
+    auto& [input, output] = inputs;
+    return BuildDistributedAllToAllBaseUnevenSplitsShlo(
+        input, output, input_offsets, send_sizes, output_offsets, recv_sizes,
+        device_groups);
+  };
+
+  TT_ASSIGN_OR_RETURN(auto output_dtype,
+                      ConvertTo<mlir::ElementType>(output.scalar_type()));
+
+  // 5. Dispatch the custom call with input and output buffers.
+  return DispatchOp<2>(std::move(op_builder),
+                       {maybe_materialized_input_tensor, output},
+                       {.out_dtype = output_dtype,
+                        .out_dims = output.sizes(),
+                        .op_param_cache_keys = std::move(param_keys),
+                        .split_mode = GetCollectiveSplitMode()});
 }
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(

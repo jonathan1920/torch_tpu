@@ -91,6 +91,11 @@ absl::StatusOr<AsyncDmaResult> TpuAsyncDmaCopyHtoD(
 
 std::string ToString(const xla::PjRtBuffer& buffer);
 
+// Returns true if the active TPU device has SparseCore hardware on chip and
+// supports SparseCore offloading. Returns false on architectures without
+// SparseCore (e.g., TPU v2, v3, v4, v5e).
+bool TpuDeviceSupportsSparseCore();
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_CSRC_PJRT_PJRT_UTILS_H_

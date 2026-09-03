@@ -28,6 +28,38 @@ namespace torch_tpu {
 absl::StatusOr<mlir::MlirOp> BuildDistributedAllToAllBaseShlo(
     mlir::MlirOp input, const DeviceGroupList& device_groups);
 
+// Builds and emits a StableHLO ragged all-to-all custom call for
+// `all_to_all_single` with uneven / non-uniform split sizes across ranks.
+//
+// Uneven all-to-all communicates non-uniform slices of `input` across devices
+// in `device_groups`, where each rank sends dynamic slice sizes specified by
+// `send_sizes` and receives dynamic slice sizes specified by `recv_sizes`.
+//
+// Args:
+//   input: The local input tensor containing slices to send to peer ranks.
+//   output: The output tensor providing shape, rank, and element type for the
+//     destination buffer where incoming slices will be written.
+//   input_offsets: Starting offsets (in elements along dimension 0) of each
+//     outgoing slice in `input`.
+//   send_sizes: Number of elements along dimension 0 to send to each peer rank.
+//   output_offsets: Starting offsets (in elements along dimension 0) in the
+//     destination rank's output buffer where this rank's sent slice should be
+//     placed.
+//   recv_sizes: Number of elements along dimension 0 to receive from each peer
+//     rank.
+//   device_groups: List of process group device IDs participating in the
+//     collective communication.
+//
+// Returns:
+//   An `mlir::MlirOp` representing the result of the ragged_all_to_all custom
+//   call operation, or an error status on failure.
+absl::StatusOr<mlir::MlirOp> BuildDistributedAllToAllBaseUnevenSplitsShlo(
+    mlir::MlirOp input, mlir::MlirOp output,
+    absl::Span<const int32_t> input_offsets,
+    absl::Span<const int32_t> send_sizes,
+    absl::Span<const int32_t> output_offsets,
+    absl::Span<const int32_t> recv_sizes, const DeviceGroupList& device_groups);
+
 absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildDistributedAllToAllShlo(
     absl::Span<mlir::MlirOp> inputs, const DeviceGroupList& device_groups);
 

@@ -23,6 +23,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -660,6 +661,20 @@ std::string ToString(const xla::PjRtBuffer& buffer) {
   std::ostringstream os;
   os << "PjRtBuffer[shape=" << buffer.on_device_shape().ToString() << "]";
   return os.str();
+}
+
+bool TpuDeviceSupportsSparseCore() {
+  xla::PjRtDevice* const device = PjrtBackend::GetInstance().GetDevice();
+  if (device == nullptr) {
+    return false;
+  }
+  std::string_view kind = device->device_kind();
+  if (kind == "TPU v5 lite" || kind == "TPU v5e" || kind == "TPU v4" ||
+      kind == "TPU v4 lite" || kind == "TPU v3" || kind == "TPU v2" ||
+      kind == "cpu" || kind.empty()) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace torch_tpu
