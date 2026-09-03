@@ -729,7 +729,6 @@ torch_tpu_py_test(
         "TORCH_TPU_TIER2_COMPILATION_CACHE": "disabled",
         "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "",
     },
-    notest_oss = "TODO(b/537411907): Re-enable in OSS once fixed.",
     tags = if_oss(
         # In OSS, we have to run the test exclusively to avoid the
         # "TPU initialization failed ... Device or resource busy" error.
@@ -737,6 +736,8 @@ torch_tpu_py_test(
         [],
     ) + [
         "noasan",  # TODO(b/555774204): fix the test in asan mode.
+        # Exactly 8 chips are required because the test hardcodes _world_size = 8 to match the
+        # topology and avoid uninitialized chips in OSS CI.
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -762,6 +763,8 @@ torch_tpu_py_test(
     ) + [
         "noasan",  # TODO(b/555734615): fix the test in asan mode.
         "notsan",  # TODO(b/555734615): fix the time-out in tsan mode.
+        # Exactly 8 chips are required because the test hardcodes _world_size = 8 to match the
+        # topology and avoid uninitialized chips in OSS CI.
         "requires-tpu-v5lite:8",
     ],
     deps = [
