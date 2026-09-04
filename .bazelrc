@@ -353,11 +353,11 @@ common:remote_execution_rbe_tpu_oss --jobs=200
 common:remote_execution_rbe_tpu_oss --remote_timeout=3600
 common:remote_execution_rbe_tpu_oss --test_timeout=3600
 common:remote_execution_rbe_tpu_oss --define=EXECUTOR=remote
-common:remote_execution_rbe_tpu_oss --remote_executor=grpcs://remotebuildexecution.googleapis.com
+common:remote_execution_rbe_tpu_oss --remote_executor=grpcs://us-west1-remotebuildexecution.googleapis.com
 common:remote_execution_rbe_tpu_oss --extra_execution_platforms="@ml_build_config_platform//:platform"
 
 common:remote_caching_rbe_tpu_oss --remote_upload_local_results=false
-common:remote_caching_rbe_tpu_oss --remote_cache=grpcs://remotebuildexecution.googleapis.com
+common:remote_caching_rbe_tpu_oss --remote_cache=grpcs://us-west1-remotebuildexecution.googleapis.com
 common:remote_caching_rbe_tpu_oss --remote_instance_name=projects/rbe-tpu-oss/instances/default_instance_west1
 common:remote_caching_rbe_tpu_oss --remote_default_exec_properties=cache-silo-key=FirstCachedBuild
 common:remote_caching_rbe_tpu_oss --google_default_credentials
