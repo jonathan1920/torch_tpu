@@ -121,7 +121,6 @@ torch_tpu_py_library(
     deps = [
         ":graph_transformations",
         ":sym_shape_manager",
-        ":symbol_bounds",
         ":view_ops_passes",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",

@@ -27,7 +27,6 @@ from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.dynamic import view_ops_passes
 from torch_tpu._internal.compile.dynamic.graph_transformations import apply_dynamism_transformations
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
-from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
 
 
 class ShapeBoundInfo(NamedTuple):
@@ -79,7 +78,7 @@ def _get_example_inputs(
       aligned_bounds.append(bounds_obj)
 
     elif isinstance(arg, torch.SymInt):
-      _, upper = get_symint_bounds(arg)
+      upper = sym_shape_manager.get_symint_upper_bound(arg)
       updated_example_inputs.append(upper)
       aligned_bounds.append(None)
       # Add an input for the runtime size placeholder for the symint.
@@ -586,6 +585,10 @@ class DynamicCompiler(compiler.Compiler):
 
     # Create a SymInt shape manager.
     sym_shape_manager = SymShapeManager(graph_module, example_inputs)
+
+    # Validate bounds. If the bounds are not valid, this may lead to MLIR error
+    # hence we raise an error here.
+    sym_shape_manager.validate_bounds()
 
     # Add bound checks on symints. This forces dynamo to trigger a recompilation
     # if the bound constraint isn't satisfied.
