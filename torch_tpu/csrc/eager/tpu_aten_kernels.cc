@@ -1133,6 +1133,9 @@ TORCH_LIBRARY(tpu, m) {
       "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor group_sizes, *, "
       "Tensor(a!) out) -> Tensor(a!)");
   m.def(
+      "ragged_dot_weight_grad(Tensor lhs, Tensor grad_output, Tensor "
+      "group_sizes) -> Tensor");
+  m.def(
       "ragged_all_to_all(Tensor operand, Tensor output, Tensor "
       "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
       "recv_sizes, str process_group_name) -> "
@@ -1369,6 +1372,13 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
         at::native::resize_output(out, {lhs.size(0), rhs.size(2)});
         return out;
       });
+  ImplExperimental<OpName::kRaggedDotWeightGrad>(
+      m, +[](const at::Tensor& lhs, const at::Tensor& grad_output,
+             const at::Tensor& group_sizes) {
+        return at::empty(
+            {group_sizes.size(0), lhs.size(1), grad_output.size(1)},
+            lhs.options().dtype(at::result_type(lhs, grad_output)));
+      });
   ImplExperimental<OpName::kRaggedAllToAll>(
       m, +[](const at::Tensor& operand, const at::Tensor& output,
              const at::Tensor& input_offsets, const at::Tensor& send_sizes,
@@ -1409,6 +1419,7 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
   ImplExperimental<OpName::kMaxPool2dBackward>(m, TpuMaxPool2dBackward);
   ImplExperimental<OpName::kRaggedDot>(m, AtenRaggedDot);
   ImplExperimental<OpName::kRaggedDotOut>(m, AtenRaggedDotOut);
+  ImplExperimental<OpName::kRaggedDotWeightGrad>(m, AtenRaggedDotWeightGrad);
   ImplExperimental<OpName::kRaggedAllToAll>(m, AtenRaggedAllToAll);
   ImplExperimental<OpName::kRaggedAllToAllOut>(m, AtenRaggedAllToAllOut);
   ImplExperimental<OpName::kTorchTpuOptimizationBarrier>(
@@ -1429,12 +1440,19 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
   ImplExperimental<OpName::kSparseGather>(m, AtenSparseGather);
 }
 
+// Registers custom autograd for torch.ops.tpu ops.
+TORCH_LIBRARY_IMPL(tpu, AutogradPrivateUse1, m) {
+  ImplExperimental<OpName::kRaggedDot>(
+      m, +[](const at::Tensor& lhs, const at::Tensor& rhs,
+             const at::Tensor& group_sizes) {
+        return AtenRaggedDotAutograd::apply(lhs, rhs, group_sizes);
+      });
+}
+
 // Registers implementations for torch.ops.tpu ops for CPU tensors.
 TORCH_LIBRARY_IMPL(tpu, CPU, m) {
   // All entries here should be registered via ImplStable, ImplExperimental, or
   // ImplDeprecated to mark their API stages.
-  ImplExperimental<OpName::kRaggedDot>(m, AtenRaggedDot);
-  ImplExperimental<OpName::kRaggedDotOut>(m, AtenRaggedDotOut);
   ImplExperimental<OpName::kRaggedAllToAll>(m, AtenRaggedAllToAll);
   ImplExperimental<OpName::kRaggedAllToAllOut>(m, AtenRaggedAllToAllOut);
 }

@@ -19,6 +19,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "torch/csrc/autograd/custom_function.h"
 
 namespace torch_tpu {
 
@@ -65,6 +66,43 @@ at::Tensor AtenRaggedDot(const at::Tensor& lhs, const at::Tensor& rhs,
 //   A 2D tensor of shape (m, n).
 at::Tensor& AtenRaggedDotOut(const at::Tensor& lhs, const at::Tensor& rhs,
                              const at::Tensor& group_sizes, at::Tensor& out);
+
+// Ragged dot product weight gradient.
+//
+// Computes the gradient with respect to the weights (rhs) of a ragged dot
+// operation, contracting along the ragged token dimension.
+//
+// Given lhs (m x k), grad_output (m x n), and group_sizes (g),
+// where m is the total number of samples, k is the feature dimension,
+// g is the number of groups (experts), and n is the output dimension.
+// The result is an array of shape (g x k x n), where each expert slice
+// is computed as:
+// grad_weight[i, :, :] =
+// dot(lhs[start_i:end_i, :].T, grad_output[start_i:end_i, :])
+// where start_i = sum(group_sizes[:i]) and end_i = sum(group_sizes[:i+1]).
+//
+// Args:
+//   lhs: A 2D tensor of shape (m, k).
+//   grad_output: A 2D tensor of shape (m, n).
+//   group_sizes: A 1D tensor of shape (g), containing the size of each group.
+//
+// Returns:
+//   A 3D tensor of shape (g, k, n).
+at::Tensor AtenRaggedDotWeightGrad(const at::Tensor& lhs,
+                                   const at::Tensor& grad_output,
+                                   const at::Tensor& group_sizes);
+
+// Autograd function for ragged dot product.
+struct AtenRaggedDotAutograd
+    : public torch::autograd::Function<AtenRaggedDotAutograd> {
+  static at::Tensor forward(torch::autograd::AutogradContext* ctx,
+                            const at::Tensor& lhs, const at::Tensor& rhs,
+                            const at::Tensor& group_sizes);
+
+  static torch::autograd::variable_list backward(
+      torch::autograd::AutogradContext* ctx,
+      torch::autograd::variable_list grad_outputs);
+};
 
 }  // namespace torch_tpu
 

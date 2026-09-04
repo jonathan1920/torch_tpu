@@ -1165,6 +1165,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "ragged_dot";
     case OpName::kRaggedDotOut:
       return "ragged_dot.out";
+    case OpName::kRaggedDotWeightGrad:
+      return "ragged_dot_weight_grad";
     case OpName::kRandom_:
       return "random_";
     case OpName::kRandom_From:

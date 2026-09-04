@@ -596,6 +596,7 @@ enum class OpName {
   kRaggedAllToAllOut,
   kRaggedDot,
   kRaggedDotOut,
+  kRaggedDotWeightGrad,
   kRandom_,
   kRandom_From,
   kRandom_To,

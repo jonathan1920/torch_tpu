@@ -3253,6 +3253,64 @@ module {
     ):
       torch.tpu.window_stripe_chunk_mb = -1
 
+  @parameterized.named_parameters(
+      # Tests that non-2D lhs tensors are rejected.
+      dict(
+          testcase_name="invalid_lhs_shape",
+          lhs_arg=(2,),
+          grad_output_arg=(2, 2),
+          group_sizes_arg=[1, 1],
+          expected_error="""ragged_dot_weight_grad(): expected lhs to be 2D, got dim: 1""",
+      ),
+      # Tests that non-2D grad_output tensors are rejected.
+      dict(
+          testcase_name="invalid_grad_output_shape",
+          lhs_arg=(3, 2),
+          grad_output_arg=(2,),
+          group_sizes_arg=[1, 1],
+          expected_error="""ragged_dot_weight_grad(): expected grad_output to be 2D, got dim: 1""",
+      ),
+      # Tests that non-1D group_sizes tensors are rejected.
+      dict(
+          testcase_name="invalid_group_sizes_shape",
+          lhs_arg=(3, 2),
+          grad_output_arg=(3, 2),
+          group_sizes_arg=[[1, 1]],
+          expected_error="""ragged_dot_weight_grad(): expected group_sizes to be 1D, got dim: 2""",
+      ),
+      # Tests that mismatched batch dimensions between lhs and grad_output are rejected.
+      dict(
+          testcase_name="mismatched_batch_dim",
+          lhs_arg=(3, 2),
+          grad_output_arg=(4, 2),
+          group_sizes_arg=[1, 1],
+          expected_error="""ragged_dot_weight_grad(): expected lhs and grad_output to have the same batch dimension, got 3 vs 4""",
+      ),
+  )
+  @et.why_tpu_only("torch.ops.tpu.ragged_dot_weight_grad is a TPU-specific op")
+  def test_ragged_dot_weight_grad(
+      self, lhs_arg, grad_output_arg, group_sizes_arg, expected_error
+  ):
+    """Verifies that tpu.ragged_dot_weight_grad enforces shape validation.
+
+    Ensures that invalid input dimensions (lhs not 2D, grad_output not 2D,
+    group_sizes not 1D) or batch size mismatches (lhs.size(0) !=
+    grad_output.size(0))
+    raise a RuntimeError with the expected descriptive error message.
+    """
+    lhs = torch.ones(*lhs_arg, dtype=torch.float32, device=et.device())
+    grad_output = torch.ones(
+        *grad_output_arg, dtype=torch.float32, device=et.device()
+    )
+    group_sizes = torch.tensor(
+        group_sizes_arg, dtype=torch.int32, device=et.device()
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=expected_error,
+    ):
+      torch.ops.tpu.ragged_dot_weight_grad(lhs, grad_output, group_sizes)
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -28,6 +28,7 @@ torch_tpu_cc_library(
         "//shims/torch:torch_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/csrc/common:cache_key",
+        "//torch_tpu/csrc/common:dimension_types",
         "//torch_tpu/csrc/common:dtype",
         "//torch_tpu/csrc/common:error_utils",
         "//torch_tpu/csrc/common:fixed_size_span",
@@ -45,6 +46,7 @@ torch_tpu_cc_library(
         "@stablehlo//:chlo_builder",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
         "@stablehlo//:stablehlo_ops",
     ],
 )

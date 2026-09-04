@@ -8221,6 +8221,125 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase):
     self.assert_close(golden_result=expected.cpu(), torch_tpu_result=res.cpu())
     self.assert_close(golden_result=expected.cpu(), torch_tpu_result=out.cpu())
 
+  def test_ragged_dot_weight_grad_on_tpu(self):
+    """Tests the tpu.ragged_dot_weight_grad custom op on TPU.
+
+    Verifies that torch.ops.tpu.ragged_dot_weight_grad computes the gradient
+    with respect to the 3D weights tensor (grad_rhs) by contracting activations
+    and output gradients along the ragged token dimension.
+
+    Expected behavior:
+      For each group i with token count gs = group_sizes[i], the weight slice
+      is computed as:
+        expected[i] = lhs[start:end].T @ grad_output[start:end]
+      where [start:end] corresponds to the tokens assigned to group i.
+      The TPU kernel result must match this CPU golden slice contraction.
+    """
+    device = torch.device("tpu")
+    m, k, n, g = 5, 4, 3, 2
+    lhs = torch.arange(m * k, dtype=torch.float32, device=device).reshape(m, k)
+    grad_output = torch.ones(m, n, dtype=torch.float32, device=device)
+    group_sizes = torch.tensor([2, 3], dtype=torch.int32, device=device)
+    res = torch.ops.tpu.ragged_dot_weight_grad(lhs, grad_output, group_sizes)
+
+    # Compute expected golden reference slice-by-slice on CPU.
+    lhs_cpu = lhs.cpu()
+    grad_output_cpu = grad_output.cpu()
+    expected = torch.zeros(g, k, n, dtype=torch.float32)
+    idx = 0
+    for i, gs in enumerate([2, 3]):
+      if gs > 0:
+        expected[i] = (
+            lhs_cpu[idx : idx + gs].T @ grad_output_cpu[idx : idx + gs]
+        )
+        idx += gs
+
+    self.assert_close(golden_result=expected, torch_tpu_result=res.cpu())
+
+  @parameterized.named_parameters(
+      dict(testcase_name="eager", compile_test=False),
+      dict(testcase_name="compiled", compile_test=True),
+  )
+  def test_ragged_dot_autograd_on_tpu(self, compile_test: bool = False):
+    """Tests full autograd backward differentiation for tpu.ragged_dot on TPU.
+
+    Verifies that calling .backward() on the output of torch.ops.tpu.ragged_dot
+    (under both eager execution and torch.compile with TpuBackend):
+      1. Accurately differentiates with respect to activations (lhs, shape [M,
+      K]).
+         Activations gradient (grad_lhs) is computed via ragged contracting
+         matmul:
+           grad_lhs[slice_i] = grad_output[slice_i] @ rhs[i].T
+      2. Accurately differentiates with respect to weights (rhs, shape [G, K,
+      N]).
+         Weights gradient (grad_rhs) is computed via ragged_dot_weight_grad:
+           grad_rhs[i] = lhs[slice_i].T @ grad_output[slice_i]
+      3. Gracefully handles zero-sized groups (e.g. gs=[2, 0, 4] where group 1
+         has 0 tokens assigned). For zero-sized groups, the weight gradient
+         slice
+         should remain zero and cause no indexing errors.
+
+    Expected behavior:
+      Both forward output and backward gradients (lhs.grad and rhs.grad) on TPU
+      must match the analytical golden reference computed on CPU.
+    """
+    device = torch.device("tpu")
+    m, k, n, g = 6, 4, 3, 3
+    lhs_cpu = torch.randn(m, k, dtype=torch.float32, requires_grad=True)
+    rhs_cpu = torch.randn(g, k, n, dtype=torch.float32, requires_grad=True)
+    # Include an empty group (size 0) to test ragged boundary edge cases.
+    gs = [2, 0, 4]
+    group_sizes = torch.tensor(gs, dtype=torch.int32, device=device)
+
+    lhs_tpu = lhs_cpu.detach().to(device).requires_grad_(True)
+    rhs_tpu = rhs_cpu.detach().to(device).requires_grad_(True)
+
+    def op_fn(x, w, s):
+      return torch.ops.tpu.ragged_dot(x, w, s)
+
+    # Execute forward pass (either via torch.compile or eager).
+    if compile_test:
+      compiled_op = torch.compile(op_fn, backend="tpu")
+      out_tpu = compiled_op(lhs_tpu, rhs_tpu, group_sizes)
+    else:
+      out_tpu = op_fn(lhs_tpu, rhs_tpu, group_sizes)
+
+    grad_out = torch.randn_like(out_tpu)
+    # Backward pass on TPU via registered AutogradPrivateUse1 kernel.
+    out_tpu.backward(grad_out)
+
+    # Compute golden forward and backward on CPU using slice matmuls.
+    out_slices = []
+    idx = 0
+    for i, size in enumerate(gs):
+      if size > 0:
+        out_slices.append(lhs_cpu[idx : idx + size] @ rhs_cpu[i])
+        idx += size
+    out_cpu = torch.cat(out_slices, dim=0)
+    out_cpu.backward(grad_out.cpu())
+
+    # Verify forward output matches CPU reference.
+    self.assert_close(
+        golden_result=out_cpu,
+        torch_tpu_result=out_tpu.cpu(),
+        atol=5e-2,
+        rtol=1e-1,
+    )
+    # Verify activation gradient (grad_lhs) matches CPU reference.
+    self.assert_close(
+        golden_result=lhs_cpu.grad,
+        torch_tpu_result=lhs_tpu.grad.cpu(),
+        atol=5e-2,
+        rtol=1e-1,
+    )
+    # Verify weight gradient (grad_rhs) matches CPU reference.
+    self.assert_close(
+        golden_result=rhs_cpu.grad,
+        torch_tpu_result=rhs_tpu.grad.cpu(),
+        atol=5e-2,
+        rtol=1e-1,
+    )
+
   def test_experimental_op_warning_once(self):
     """Verifies that experimental ops warn exactly once per operator."""
 
