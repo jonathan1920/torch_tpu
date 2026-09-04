@@ -388,10 +388,6 @@ common:remote_execution_readonly --remote_executor=grpcs://remotebuildexecution.
 # when configs are chained.
 common:remote_execution_readonly --extra_execution_platforms="//bazel/platforms:rbe_default_platform"
 
-# Allow per-user, project-specific bazelrc.
-# Do this last so it takes precedence.
-try-import %workspace%/user.bazelrc
-
 # TPU wheel version extras for local default builds.
 build --define WHEEL_VERSION_EXTRAS=
 
@@ -474,3 +470,8 @@ test:wheel_test_tpu_v7 --spawn_strategy=local
 test:wheel_test_tpu_v5 --test_tag_filters=-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v5,presubmit-v5
 test:wheel_test_tpu_v6 --test_tag_filters=-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v6,presubmit-v6
 test:wheel_test_tpu_v7 --test_tag_filters=-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v7,presubmit-v7
+
+###############################################################################
+# Allow per-user, project-specific bazelrc (gitignored).
+# Keep this last so user options take precedence over everything above.
+try-import %workspace%/user.bazelrc
