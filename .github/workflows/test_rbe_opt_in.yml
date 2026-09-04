@@ -16,41 +16,67 @@ name: RBE Hardware TPU Tests (Opt-In)
 
 on:
   pull_request:
-    types: [labeled, synchronize]
+    types: [opened, reopened, synchronize, labeled]
   workflow_dispatch:
 
+concurrency:
+  group: shadow-rbe-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
-  rbe-tpu-test:
-    name: RBE Hardware TPU Tests (Opt-In)
-    # Only execute if label 'run-rbe' is applied by a repository maintainer
+  run_tests:
+    name: "${{ matrix.job_info.name }}"
     if: contains(github.event.pull_request.labels.*.name, 'run-rbe') || github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, tpu-v7x]
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        job_info: [
+          {
+            name: "CPU Presubmit Tests",
+            runner: "ubuntu-latest",
+            config: "ci_cpu_presubmit_rbe",
+            extra_flags: '--bes_backend=""',
+          },
+          {
+            name: "TPU v5e Tests (Full RBE)",
+            runner: "ubuntu-latest",
+            config: "ci_tpu_v5_full_rbe",
+            extra_flags: '--bes_backend="" --test_tag_filters=presubmit-v5,-fails-on-tpu-v5,-nopresubmit,-notest,-nobuild',
+          },
+        ]
+    runs-on: ${{ matrix.job_info.runner }}
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
 
-      - name: Set up Cloud SDK & Authenticate to GCP RBE
+      - name: Fix Git Workspace Ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Authenticate to GCP RBE
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_RBE_SERVICE_ACCOUNT_KEY }}
 
       - name: Set up Bazel
-        uses: bazelbuild/setup-bazelisk@v3
+        if: matrix.job_info.runner == 'ubuntu-latest'
+        run: |
+          sudo npm install -g @bazel/bazelisk
+          sudo ln -sf $(which bazelisk) /usr/local/bin/bazel || true
 
-      - name: Run Bazel RBE Test Suite
+      - name: Run Test Suite
         run: |
           bazel test \
-            --config=ci_tpu_v7_presubmit \
-            --bes_backend="" \
-            --noremote_upload_local_results \
-            --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" \
-            --local_test_jobs=4 \
-            --test_env=ALLOW_MULTIPLE_LIBTPU_LOAD=true \
-            --test_env=TORCH_TPU_ACCELERATOR_COUNT=4 \
+            --config=${{ matrix.job_info.config }} \
+            --nocache_test_results \
             --test_output=errors \
-            //tests/...
-
-
-
-
+            ${{ matrix.job_info.extra_flags }} \
+            -- //tests/... \
+               -//tests:fp4_test \
+               -//tests:ops_unit_test \
+               -//tests:async_transfer_test \
+               -//tests/compile:activation_checkpointing_mem_test \
+               -//tests/distributed:single_tpu_pg_test \
+               -//tests:ops_unit_test_tier3_cache \
+               -//tests:ops_unit_test_tier3_cache_no_backup

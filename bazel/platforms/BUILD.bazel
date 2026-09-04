@@ -1,0 +1,99 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
+
+package(
+    default_visibility = PACKAGE_DEFAULT_VISIBILITY,
+)
+
+# Execution platforms with dedicated cache silo keys for remote caching / RBE.
+#
+# We define distinct platform targets rather than configuring `cache-silo-key`
+# via `--remote_default_exec_properties` in `.bazelrc` because Bazel's options
+# parser collects `--remote_default_exec_properties` into an ImmutableMap.
+# If a chained config (e.g. `wheel_nightly` -> `wheel_common`) or multiple CLI
+# flags specify `--remote_default_exec_properties=cache-silo-key=...`, Bazel
+# crashes with a duplicate-key IllegalArgumentException during execution.
+# See https://github.com/bazelbuild/bazel/issues/29552 (fixed in Bazel 9.2).
+#
+# Setting `cache-silo-key` on platform targets and prepending them via
+# `--extra_execution_platforms` allows clean, conflict-free silo key selection
+# across different build pipelines.
+
+# Default platform cache silo key for standard readonly RBE caching.
+platform(
+    name = "rbe_default_platform",
+    exec_properties = {
+        "cache-silo-key": "FirstCachedBuild",
+    },
+    parents = ["@ml_build_config_platform//:platform"],
+    visibility = ["//visibility:public"],
+)
+
+# Isolates nightly wheel build artifacts from PR builds and release builds.
+platform(
+    name = "rbe_wheel_nightly_platform",
+    exec_properties = {
+        "cache-silo-key": "wheel-nightly",
+    },
+    parents = ["@ml_build_config_platform//:platform"],
+    visibility = ["//visibility:public"],
+)
+
+# Isolates release wheel build artifacts from nightly builds and dev snapshots.
+platform(
+    name = "rbe_wheel_release_platform",
+    exec_properties = {
+        "cache-silo-key": "wheel-release",
+    },
+    parents = ["@ml_build_config_platform//:platform"],
+    visibility = ["//visibility:public"],
+)
+
+# RBE platform for TPU v5e (ct5lp-hightpu-1t) remote execution.
+platform(
+    name = "rbe_tpu_v5e",
+    exec_properties = {
+        "Pool": "ci_tpu_v5_full_rbe",
+        "MachineType": "ct5lp-hightpu-1t",
+        "container-image": "docker://us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:ea67e8453d8b09c2ba48853da5e79efef4b65804b4a48dfae4b4da89ffd38405",
+    },
+    parents = ["@ml_build_config_platform//:platform"],
+    visibility = ["//visibility:public"],
+)
+
+# RBE platform for TPU v6e (ct6e-standard-1t) remote execution.
+platform(
+    name = "rbe_tpu_v6e",
+    exec_properties = {
+        "Pool": "linux-tpu6e-pool",
+        "MachineType": "ct6e-standard-1t",
+        "container-image": "docker://us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:ea67e8453d8b09c2ba48853da5e79efef4b65804b4a48dfae4b4da89ffd38405",
+    },
+    parents = ["@ml_build_config_platform//:platform"],
+    visibility = ["//visibility:public"],
+)
+
+# RBE platform for TPU v7x (tpu7x-standard-1t) remote execution.
+platform(
+    name = "rbe_tpu_v7x",
+    exec_properties = {
+        "Pool": "linux-tpu7x-pool",
+        "MachineType": "tpu7x-standard-1t",
+        "container-image": "docker://us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:ea67e8453d8b09c2ba48853da5e79efef4b65804b4a48dfae4b4da89ffd38405",
+    },
+    parents = ["@ml_build_config_platform//:platform"],
+    visibility = ["//visibility:public"],
+)
