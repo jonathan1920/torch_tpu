@@ -1247,6 +1247,28 @@ class ModuleTest(seed_test_utils.RepeatableTest):
         inputs = [torch.randn(shape)]
         self._run_and_compare(GeqrfModule, inputs)
 
+  def test_masked_fill_inplace_overflow_tensor_value(self):
+    # Tests that masked_fill_ with an overflowing tensor value succeeds in TPU
+    # compiled mode.
+    #
+    # Makes sure TPU implementation for `masked_fill` has similar behavior to
+    # GPU when the conversion of `value` into the `self` dtype overflows.
+
+    def fn(self_tensor, mask, val_tensor):
+      return self_tensor.masked_fill_(mask, val_tensor)
+
+    compiled_fn = torch.compile(fn, backend="tpu")
+    self_tpu = torch.ones(2, 2, dtype=torch.uint8, device=torch.device("tpu"))
+    mask_tpu = torch.ones(2, 2, dtype=torch.bool, device=torch.device("tpu"))
+    val_tpu = torch.tensor(2**31, dtype=torch.int64, device=torch.device("tpu"))
+
+    # Compiled mode should succeed, even though eager mode errors due to
+    # overflow.
+    actual = compiled_fn(self_tpu, mask_tpu, val_tpu)
+    expected = torch.zeros(2, 2, dtype=torch.uint8)  # (uint8)(2**31) == 0
+
+    utils.assert_close(actual.cpu(), expected)
+
 
 def _reconstruct_none_tuple(inputs, outputs):
   """Module-level (picklable) reconstruct fn returning the (None,) structure."""

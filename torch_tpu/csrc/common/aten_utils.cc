@@ -18,6 +18,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <exception>
 #include <sstream>
 #include <string>
 
@@ -29,6 +30,8 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/csrc/common/dtype.h"
+#include "torch_tpu/csrc/common/error_utils.h"
+#include "torch_tpu/csrc/common/to_string.h"
 
 namespace torch_tpu {
 
@@ -103,6 +106,35 @@ absl::StatusOr<mlir::ElementType> InferComputationDtype(
   }
   at::ScalarType computation_type = at::toOpMathType(input_type);
   return ConvertTo<mlir::ElementType>(computation_type);
+}
+
+absl::StatusOr<bool> CanCastScalarWithoutOverflow(const at::Scalar& scalar,
+                                                  at::ScalarType scalar_type) {
+  try {
+    switch (scalar_type) {
+#define TT_DEFINE_CASE(_, name) \
+  case at::ScalarType::name:    \
+    scalar.to##name();          \
+    break;
+
+      AT_FORALL_SCALAR_TYPES_WITH_COMPLEX(TT_DEFINE_CASE)
+      TT_DEFINE_CASE(uint16_t, UInt16)
+      TT_DEFINE_CASE(uint32_t, UInt32)
+      TT_DEFINE_CASE(uint64_t, UInt64)
+
+#undef TT_DEFINE_CASE
+
+      default:
+        return TT_ERROR(error::kInvalidArgument)
+               << "unsupported cast of " << ToString(scalar.type())
+               << " scalar (" << ToString(scalar) << ") to type "
+               << ToString(scalar_type);
+    }
+  } catch (const std::exception& /*e*/) {
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace torch_tpu

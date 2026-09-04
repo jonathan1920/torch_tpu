@@ -40,6 +40,7 @@ from typing import Any, TypeAlias
 
 from absl import logging
 import torch
+from torch._decomp import get_decompositions
 from torch._dynamo.backends.common import aot_autograd
 from torch._functorch._aot_autograd import autograd_cache as _autograd_cache
 from torch._functorch._aot_autograd import graph_compile as _graph_compile
@@ -52,6 +53,15 @@ from torch_tpu._internal.compile import split_compiler
 from torch_tpu._internal.compile.dynamic import dynamic_compiler
 from torch_tpu._internal.utils import utils
 from torch_tpu._internal.profiler import xprof_adapter
+
+_TPU_DECOMPOSITIONS = get_decompositions([
+    # We decompose masked_fill to align behavior with GPU (Inductor), where
+    # masked_fill_ calls are decomposed into convert_element_type + where and
+    # succeed even on overflow conversion via modular truncation, rather than
+    # failing due to placeholder tensor materialization during compilation.
+    torch.ops.aten.masked_fill.Tensor,
+    torch.ops.aten.masked_fill_.Tensor,
+])
 
 _ExpectedTypes: TypeAlias = torch.Tensor | torch.nn.Module | torch.SymInt
 
@@ -478,6 +488,7 @@ class TpuBackend:
         result = aot_autograd(
             fw_compiler=fw_compiler,
             bw_compiler=bw_compiler,
+            decompositions=_TPU_DECOMPOSITIONS,  # pyrefly: ignore[bad-argument-type]
             keep_inference_input_mutations=False,
         )(
             graph_module, example_inputs

@@ -173,6 +173,17 @@ struct HashableScalar {
 // ourselves as well to support absl containers.
 bool operator==(const HashableScalar& lhs, const HashableScalar& rhs);
 
+// Returns true if `scalar` can be cast to `scalar_type` without overflow,
+// or false if overflow would occur.
+//
+// This function crashes if the given `scalar_type` is a type not supported by
+// `Scalar` conversion, i.e. template function `scalar.to<TYPE>()` is deleted.
+//
+// Returns an error if casting `scalar` to the given `scalar_type` is not
+// supported, i.e. there's no implementation for `scalar.to<type>()`.
+absl::StatusOr<bool> CanCastScalarWithoutOverflow(const at::Scalar& scalar,
+                                                  at::ScalarType scalar_type);
+
 // Make c10::Scalar hashable for absl containers. This encodes both the target
 // type and host value of the scalar.
 template <typename H>

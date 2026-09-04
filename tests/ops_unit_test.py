@@ -8154,6 +8154,22 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  def test_masked_fill_inplace_tensor_value_different_dtype(self):
+    input_value = torch.randn(2, 3, dtype=torch.float32)
+    mask_value = torch.tensor(
+        [[True, False, True], [False, True, False]], dtype=torch.bool
+    )
+    tensor_value = torch.tensor(5, dtype=torch.int32)
+
+    def compute(device):
+      inp = to(input_value, device).clone()
+      mask = to(mask_value, device)
+      val = to(tensor_value, device)
+      inp.masked_fill_(mask, val)
+      return inp
+
+    self.assert_close_tpu_vs_cpu(compute)
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase):
   """Tests for custom ops."""

@@ -6903,22 +6903,29 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""masked_fill_(): only supports 1-element value tensors""",
+        tpu="""masked_fill_(): expected value to be a 0D tensor, got 1D tensor of shape [2]""",
         gpu="""masked_fill_ only supports a 0-dimensional value tensor, but got tensor with 1 dimension(s).""",
     ):
       torch.masked_fill(inp, mask, value)
 
-  def test_masked_fill_type_mismatch(self):
-    inp = torch.ones(2, 2, dtype=torch.float32, device=et.device())
+  def test_masked_fill_value_overflow(self):
+    inp = torch.ones(2, 2, dtype=torch.uint8, device=et.device())
     mask = torch.ones(2, 2, dtype=torch.bool, device=et.device())
-    value = torch.ones(1, dtype=torch.int32, device=et.device())
+    value = torch.tensor(2**31, dtype=torch.int64, device=et.device())
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""masked_fill_(): expected self and value to have the same element type, got int32 and float32""",
-        gpu="""masked_fill_ only supports a 0-dimensional value tensor, but got tensor with 1 dimension(s).""",
+        tpu="""masked_fill_(): expected value to be representable as uint8, got 2147483648""",
+        gpu="""value cannot be converted to type uint8_t without overflow""",
     ):
       torch.masked_fill(inp, mask, value)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""masked_fill_(): expected value to be representable as uint8, got 2147483648""",
+        gpu="""value cannot be converted to type uint8_t without overflow""",
+    ):
+      torch.masked_fill(inp, mask, 2**31)
 
   def test_masked_fill_inplace_invalid_broadcast(self):
     inp = torch.ones(2, dtype=torch.float32, device=et.device())
