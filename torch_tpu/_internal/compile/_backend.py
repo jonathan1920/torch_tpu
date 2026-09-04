@@ -56,6 +56,20 @@ from torch_tpu._internal.profiler import xprof_adapter
 _ExpectedTypes: TypeAlias = torch.Tensor | torch.nn.Module | torch.SymInt
 
 
+def get_default_cpu_backend() -> str:
+  """Returns the default Dynamo backend to use for CPU-only graphs.
+
+  In open-source environments this is inductor which is the PyTorch default.
+
+  Returns:
+    The default backend to use for CPU-only graphs.
+  """
+  # pylint: disable=protected-access
+  if torch._inductor.config.cpp.cxx[0] is None:
+    return "aot_eager"
+  return "inductor"
+
+
 def to_device(
     x: Any,
     backend: str | torch.device,
