@@ -53,6 +53,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "tensor_buffer_test",
     srcs = ["tensor_buffer_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     requires_libtpu = True,
     deps = [
         ":tensor_buffer",
