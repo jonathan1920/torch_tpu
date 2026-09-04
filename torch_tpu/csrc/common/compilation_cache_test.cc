@@ -51,6 +51,7 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/flags.h"
 #include "torch_tpu/csrc/common/shape.h"
+#include "torch_tpu/csrc/common/status_test_utils.h"
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/pjrt/pjrt_state.h"
@@ -276,25 +277,21 @@ TEST_F(CompilationCacheTest, AllowCacheModeDisabled) {
   auto builder2 = make_builder();
 
   // First compilation.
-  auto result1 = cache.GetOrCompile(
-      key, input_shapes, /*output_shapes=*/{}, std::move(builder1),
-      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options);
-  ASSERT_TRUE(result1.ok())
-      << "First GetOrCompile failed: " << result1.status();
-  auto exec1_or = result1->fixed_shape_kernel.get();
-  ASSERT_TRUE(exec1_or.ok())
-      << "First compilation failed: " << exec1_or.status();
-  auto exec1 = *exec1_or;
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto result1,
+      cache.GetOrCompile(key, input_shapes, /*output_shapes=*/{},
+                         std::move(builder1),
+                         GetCompilationSpec(CompilationMode::kFastCompile)
+                             .xla_compile_options));
+  TT_ASSERT_OK_AND_ASSIGN(auto exec1, result1.fixed_shape_kernel.get());
 
-  auto result2 = cache.GetOrCompile(
-      key, input_shapes, /*output_shapes=*/{}, std::move(builder2),
-      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options);
-  ASSERT_TRUE(result2.ok())
-      << "Second GetOrCompile failed: " << result2.status();
-  auto exec2_or = result2->fixed_shape_kernel.get();
-  ASSERT_TRUE(exec2_or.ok())
-      << "Second compilation failed: " << exec2_or.status();
-  auto exec2 = *exec2_or;
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto result2,
+      cache.GetOrCompile(key, input_shapes, /*output_shapes=*/{},
+                         std::move(builder2),
+                         GetCompilationSpec(CompilationMode::kFastCompile)
+                             .xla_compile_options));
+  TT_ASSERT_OK_AND_ASSIGN(auto exec2, result2.fixed_shape_kernel.get());
 
   // Verify they are different executables.
   EXPECT_NE(exec1.get(), exec2.get())
@@ -357,17 +354,17 @@ TEST_F(CompilationCacheTest, PeakMemoryReported) {
         GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options;
 
     auto key = DummyKey(i + 100);
-    auto result = cache.GetOrCompile(key, {}, {}, std::move(builder),
-                                     std::move(compile_options));
-    ASSERT_TRUE(result.ok()) << "GetOrCompile failed: " << result.status();
-    futures.push_back(std::move(result->fixed_shape_kernel));
+    TT_ASSERT_OK_AND_ASSIGN(auto result,
+                            cache.GetOrCompile(key, {}, {}, std::move(builder),
+                                               std::move(compile_options)));
+    futures.push_back(std::move(result.fixed_shape_kernel));
   }
 
   // Wait for the compilation just to make sure we get some signal, but
   // it's OK to get metrics without waiting for the compilation to finish.
   for (auto& future : futures) {
-    auto exec_or = future.get();
-    ASSERT_TRUE(exec_or.ok()) << "Compilation failed: " << exec_or.status();
+    TT_ASSERT_OK_AND_ASSIGN(auto exec, future.get());
+    (void)exec;
   }
 
   PerfStats stats = cache.GetCacheStats();
@@ -393,10 +390,9 @@ TEST_F(CompilationCacheTest, DynamicCacheLayoutMismatch) {
 
   mlir::MLIRContext context;
   mlir::Builder builder(&context);
-  auto f32_type_or =
-      torch_tpu::ConvertTo<mlir::ElementType>(builder.getF32Type());
-  ASSERT_TRUE(f32_type_or.ok()) << f32_type_or.status();
-  mlir::ElementType f32_type = *f32_type_or;
+  TT_ASSERT_OK_AND_ASSIGN(
+      mlir::ElementType f32_type,
+      torch_tpu::ConvertTo<mlir::ElementType>(builder.getF32Type()));
 
   Shape dynamic_shape(
       {4}, f32_type,
@@ -436,21 +432,21 @@ TEST_F(CompilationCacheTest, DynamicCacheLayoutMismatch) {
     };
   };
 
-  auto result1 = cache.GetOrCompile(
-      key1, input_shapes, output_shapes, make_builder(),
-      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options);
-  ASSERT_TRUE(result1.ok()) << result1.status();
-  auto exec1_or = result1->fixed_shape_kernel.get();
-  ASSERT_TRUE(exec1_or.ok()) << exec1_or.status();
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto result1,
+      cache.GetOrCompile(key1, input_shapes, output_shapes, make_builder(),
+                         GetCompilationSpec(CompilationMode::kFastCompile)
+                             .xla_compile_options));
+  TT_ASSERT_OK_AND_ASSIGN(auto exec1, result1.fixed_shape_kernel.get());
 
-  auto result2 = cache.GetOrCompile(
-      key2, input_shapes, output_shapes, make_builder(),
-      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options);
-  ASSERT_TRUE(result2.ok()) << result2.status();
-  auto exec2_or = result2->fixed_shape_kernel.get();
-  ASSERT_TRUE(exec2_or.ok()) << exec2_or.status();
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto result2,
+      cache.GetOrCompile(key2, input_shapes, output_shapes, make_builder(),
+                         GetCompilationSpec(CompilationMode::kFastCompile)
+                             .xla_compile_options));
+  TT_ASSERT_OK_AND_ASSIGN(auto exec2, result2.fixed_shape_kernel.get());
 
-  EXPECT_NE(*exec1_or, *exec2_or);
+  EXPECT_NE(exec1, exec2);
 
   CompilationCache::ShutDown();
 }

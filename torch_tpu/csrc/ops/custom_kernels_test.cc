@@ -36,6 +36,7 @@
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/shape.h"
+#include "torch_tpu/csrc/common/status_test_utils.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/pjrt/pjrt_state.h"
 
@@ -167,9 +168,9 @@ TEST_F(CustomKernelRegistryTest, RegisterAndCallKernelWithHelperFunction) {
   mlir::Type arg_type =
       mlir::makeTensorType(fb.getContext(), {4, 2}, mlir::ElementType::I32);
   mlir::MlirOp op1 = mlir::func::Argument(fb, arg_type);
-  auto results_status = CallCustomKernel(fb, {op1}, "kernel_cumsum", "");
-  ASSERT_TRUE(results_status.ok()) << results_status.status();
-  mlir::func::Return(fb, results_status.value());
+  TT_ASSERT_OK_AND_ASSIGN(auto results,
+                          CallCustomKernel(fb, {op1}, "kernel_cumsum", ""));
+  mlir::func::Return(fb, results);
 
   // Finish building the module and stringify it
   mlir::OwningOpRef<mlir::ModuleOp> module = mb.build();

@@ -590,6 +590,7 @@ torch_tpu_cc_test(
         "//torch_tpu/csrc/common:error_utils",
         "//torch_tpu/csrc/common:oss_test_main",
         "//torch_tpu/csrc/common:shape",
+        "//torch_tpu/csrc/common:status_test_utils",
         "//torch_tpu/csrc/pjrt:pjrt_state",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

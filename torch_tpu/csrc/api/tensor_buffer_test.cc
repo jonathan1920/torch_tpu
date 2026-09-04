@@ -36,6 +36,7 @@
 #include "torch_tpu/csrc/common/compilation_cache.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/shape.h"
+#include "torch_tpu/csrc/common/status_test_utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/materialize.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
@@ -99,9 +100,8 @@ TEST_F(TensorBufferTest, TpuTensorBufferExtraction) {
   const Shape shape(Dimensions{4, 2}, mlir::ElementType::F32);
   at::Tensor tensor = CreateDeferredTpuTensor(shape);
 
-  auto handle_or = GetBaseTensorBuffer(tensor);
-  ASSERT_TRUE(handle_or.ok());
-  TensorBufferHandle handle = std::move(*handle_or);
+  TT_ASSERT_OK_AND_ASSIGN(TensorBufferHandle handle,
+                          GetBaseTensorBuffer(tensor));
   EXPECT_EQ(handle.size_bytes(), 8 * sizeof(float));
   EXPECT_EQ(handle.num_elements(), 8);
   EXPECT_THAT(handle.dimensions(), testing::ElementsAre(4, 2));
@@ -112,9 +112,8 @@ TEST_F(TensorBufferTest, MoveSemantics) {
   const Shape shape(Dimensions{8}, mlir::ElementType::F32);
   at::Tensor tensor = CreateDeferredTpuTensor(shape);
 
-  auto handle_or = GetBaseTensorBuffer(tensor);
-  ASSERT_TRUE(handle_or.ok());
-  TensorBufferHandle handle = std::move(*handle_or);
+  TT_ASSERT_OK_AND_ASSIGN(TensorBufferHandle handle,
+                          GetBaseTensorBuffer(tensor));
   EXPECT_EQ(handle.size_bytes(), 8 * sizeof(float));
 
   // Move construction
@@ -136,15 +135,12 @@ TEST_F(TensorBufferTest, MaterializeAndAwaitBuffer) {
   const Shape shape(Dimensions{16}, mlir::ElementType::F32);
   at::Tensor tensor = CreateDeferredTpuTensor(shape);
 
-  auto handle_or = GetBaseTensorBuffer(tensor);
-  ASSERT_TRUE(handle_or.ok());
-  TensorBufferHandle handle = std::move(*handle_or);
+  TT_ASSERT_OK_AND_ASSIGN(TensorBufferHandle handle,
+                          GetBaseTensorBuffer(tensor));
   EXPECT_EQ(handle.state(), DeviceBufferState::kDeferred);
 
   EXPECT_TRUE(handle.Materialize().ok());
-  auto buffer_or = handle.AwaitBuffer();
-  ASSERT_TRUE(buffer_or.ok());
-  xla::PjRtBuffer* buffer = *buffer_or;
+  TT_ASSERT_OK_AND_ASSIGN(xla::PjRtBuffer * buffer, handle.AwaitBuffer());
   ASSERT_NE(buffer, nullptr);
 
   EXPECT_TRUE(handle.Synchronize().ok());
@@ -161,13 +157,11 @@ TEST_F(TensorBufferTest, ViewTensorBaseBufferSharing) {
   view_tensor.unsafeGetTensorImpl()->set_sizes_and_strides(
       Dimensions{2, 4}, Strides{4, 1}, /*storage_offset=*/0);
 
-  auto base_handle_or = GetBaseTensorBuffer(base_tensor);
-  ASSERT_TRUE(base_handle_or.ok());
-  TensorBufferHandle base_handle = std::move(*base_handle_or);
+  TT_ASSERT_OK_AND_ASSIGN(TensorBufferHandle base_handle,
+                          GetBaseTensorBuffer(base_tensor));
 
-  auto view_handle_or = GetBaseTensorBuffer(view_tensor);
-  ASSERT_TRUE(view_handle_or.ok());
-  TensorBufferHandle view_handle = std::move(*view_handle_or);
+  TT_ASSERT_OK_AND_ASSIGN(TensorBufferHandle view_handle,
+                          GetBaseTensorBuffer(view_tensor));
 
   EXPECT_THAT(base_handle.dimensions(), testing::ElementsAre(8));
   EXPECT_THAT(view_handle.dimensions(), testing::ElementsAre(8));
@@ -175,13 +169,11 @@ TEST_F(TensorBufferTest, ViewTensorBaseBufferSharing) {
 
   EXPECT_TRUE(base_handle.Materialize().ok());
 
-  auto base_buf_or = base_handle.AwaitBuffer();
-  ASSERT_TRUE(base_buf_or.ok());
-  xla::PjRtBuffer* base_buf = *base_buf_or;
+  TT_ASSERT_OK_AND_ASSIGN(xla::PjRtBuffer * base_buf,
+                          base_handle.AwaitBuffer());
 
-  auto view_buf_or = view_handle.AwaitBuffer();
-  ASSERT_TRUE(view_buf_or.ok());
-  xla::PjRtBuffer* view_buf = *view_buf_or;
+  TT_ASSERT_OK_AND_ASSIGN(xla::PjRtBuffer * view_buf,
+                          view_handle.AwaitBuffer());
   EXPECT_EQ(base_buf, view_buf);
 }
 

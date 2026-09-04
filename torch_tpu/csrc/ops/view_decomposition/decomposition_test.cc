@@ -27,6 +27,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/error_utils.h"
+#include "torch_tpu/csrc/common/status_test_utils.h"
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/csrc/ops/view_decomposition/view_sequence.h"
@@ -61,12 +62,10 @@ void DecompositionTest(
     const mlir::ElementType contiguous_base_dtype = mlir::ElementType::F32,
     const mlir::ElementType view_dtype = mlir::ElementType::F32,
     bool is_conj = false) {
-  absl::StatusOr<ViewSequence> sequence_status =
+  TT_ASSERT_OK_AND_ASSIGN(
+      ViewSequence sequence,
       DecomposeIntoViewSequence(contiguous_base_shape, contiguous_base_dtype,
-                                view_layout, view_dtype, is_conj);
-
-  ASSERT_TRUE(sequence_status.ok());
-  ViewSequence sequence = std::move(sequence_status).value();
+                                view_layout, view_dtype, is_conj));
 
   // Un-simplified sequence should be valid.
   EXPECT_TRUE(
@@ -565,12 +564,12 @@ TEST(DecomposeIntoViewSequence, Conjugate_RealBase_RealView) {
 
 void GetContiguousBaseShapeTest(const StridedLayout& view_layout,
                                 absl::Span<const int64_t> expected_base_shape) {
-  absl::StatusOr<Dimensions> base_shape = GetContiguousBaseShape(view_layout);
-  ASSERT_TRUE(base_shape.ok());
+  TT_ASSERT_OK_AND_ASSIGN(Dimensions base_shape,
+                          GetContiguousBaseShape(view_layout));
 
-  EXPECT_THAT(*base_shape, testing::ElementsAreArray(expected_base_shape));
+  EXPECT_THAT(base_shape, testing::ElementsAreArray(expected_base_shape));
 
-  DecompositionTest(*base_shape, view_layout);
+  DecompositionTest(base_shape, view_layout);
 }
 
 TEST(GetContiguousBaseShape, ScalarView) {

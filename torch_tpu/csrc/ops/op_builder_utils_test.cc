@@ -335,13 +335,13 @@ TEST(OpBuilderUtils, GetMaxFiniteValueAttr_UnsupportedType) {
 TEST(OpBuilderUtils, InferSize_Broadcastable_Check) {
   Dimensions dims1_broadcastable = {2, 1};
   Dimensions dims2_broadcastible = {1, 3};
-  auto result = InferSize(dims1_broadcastable, dims2_broadcastible);
-  ASSERT_TRUE(result.ok());
-  EXPECT_THAT(result.value(), ElementsAre(2, 3));
+  TT_ASSERT_OK_AND_ASSIGN(auto broadcastable_size,
+                          InferSize(dims1_broadcastable, dims2_broadcastible));
+  EXPECT_THAT(broadcastable_size, ElementsAre(2, 3));
 
   Dimensions dims1_non_broadcastable = {2};
   Dimensions dims2_non_broadcastable = {3};
-  result = InferSize(dims1_non_broadcastable, dims2_non_broadcastable);
+  auto result = InferSize(dims1_non_broadcastable, dims2_non_broadcastable);
   ASSERT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), error::kInvalidArgument);
   EXPECT_THAT(result.status().message(),
@@ -351,27 +351,24 @@ TEST(OpBuilderUtils, InferSize_Broadcastable_Check) {
 TEST(InferSize, WorksWithTwoTensors) {
   at::Tensor tensor1 = at::ones({2, 1});
   at::Tensor tensor2 = at::ones({1, 3});
-  auto result = InferSize(tensor1, tensor2);
-  ASSERT_TRUE(result.ok());
-  EXPECT_THAT(result.value(), ElementsAre(2, 3));
+  TT_ASSERT_OK_AND_ASSIGN(auto result, InferSize(tensor1, tensor2));
+  EXPECT_THAT(result, ElementsAre(2, 3));
 }
 
 TEST(InferSize, WorksWithMoreThanTwoTensors) {
   at::Tensor tensor1 = at::ones({4, 2, 1});
   at::Tensor tensor2 = at::ones({1, 3});
   at::Tensor tensor3 = at::ones({1, 2, 1});
-  auto result = InferSize(tensor1, tensor2, tensor3);
-  ASSERT_TRUE(result.ok());
-  EXPECT_THAT(result.value(), ElementsAre(4, 2, 3));
+  TT_ASSERT_OK_AND_ASSIGN(auto result, InferSize(tensor1, tensor2, tensor3));
+  EXPECT_THAT(result, ElementsAre(4, 2, 3));
 }
 
 TEST(InferSize, WorksWithDimsAndTensors) {
   at::Tensor tensor1 = at::ones({4, 2, 1});
   Dimensions dims2 = {1, 3};
   at::Tensor tensor3 = at::ones({1, 2, 1});
-  auto result = InferSize(tensor1, dims2, tensor3);
-  ASSERT_TRUE(result.ok());
-  EXPECT_THAT(result.value(), ElementsAre(4, 2, 3));
+  TT_ASSERT_OK_AND_ASSIGN(auto result, InferSize(tensor1, dims2, tensor3));
+  EXPECT_THAT(result, ElementsAre(4, 2, 3));
 }
 
 TEST(BroadcastIfNeeded, Scalar) {
@@ -380,9 +377,8 @@ TEST(BroadcastIfNeeded, Scalar) {
   mlir::OpBuilder& op_builder = builder.getOpBuilder();
   mlir::MlirOp op = MakeConstant(builder, 1.0f, op_builder.getF32Type(), {});
   Dimensions target_shape = {2, 3};
-  auto result = BroadcastIfNeeded(op, target_shape);
-  ASSERT_TRUE(result.ok());
-  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result->getType());
+  TT_ASSERT_OK_AND_ASSIGN(auto result, BroadcastIfNeeded(op, target_shape));
+  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result.getType());
   ASSERT_TRUE(result_type);
   EXPECT_THAT(result_type.getShape(), ElementsAre(2, 3));
 }
@@ -394,9 +390,8 @@ TEST(BroadcastIfNeeded, SameShape) {
   mlir::MlirOp op =
       MakeConstant(builder, 1.0f, op_builder.getF32Type(), {2, 3});
   Dimensions target_shape = {2, 3};
-  auto result = BroadcastIfNeeded(op, target_shape);
-  ASSERT_TRUE(result.ok());
-  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result->getType());
+  TT_ASSERT_OK_AND_ASSIGN(auto result, BroadcastIfNeeded(op, target_shape));
+  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result.getType());
   ASSERT_TRUE(result_type);
   EXPECT_THAT(result_type.getShape(), ElementsAre(2, 3));
 }
@@ -407,9 +402,8 @@ TEST(BroadcastIfNeeded, BroadcastDim) {
   mlir::OpBuilder& op_builder = builder.getOpBuilder();
   mlir::MlirOp op = MakeConstant(builder, 1.0f, op_builder.getF32Type(), {3});
   Dimensions target_shape = {2, 3};
-  auto result = BroadcastIfNeeded(op, target_shape);
-  ASSERT_TRUE(result.ok());
-  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result->getType());
+  TT_ASSERT_OK_AND_ASSIGN(auto result, BroadcastIfNeeded(op, target_shape));
+  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result.getType());
   ASSERT_TRUE(result_type);
   EXPECT_THAT(result_type.getShape(), ElementsAre(2, 3));
 }
@@ -421,9 +415,8 @@ TEST(BroadcastIfNeeded, Broadcast1x3to2x3) {
   mlir::MlirOp op =
       MakeConstant(builder, 1.0f, op_builder.getF32Type(), {1, 3});
   Dimensions target_shape = {2, 3};
-  auto result = BroadcastIfNeeded(op, target_shape);
-  ASSERT_TRUE(result.ok());
-  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result->getType());
+  TT_ASSERT_OK_AND_ASSIGN(auto result, BroadcastIfNeeded(op, target_shape));
+  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result.getType());
   ASSERT_TRUE(result_type);
   EXPECT_THAT(result_type.getShape(), ElementsAre(2, 3));
 }
@@ -434,9 +427,8 @@ TEST(BroadcastIfNeeded, StablehloDims) {
   mlir::OpBuilder& op_builder = builder.getOpBuilder();
   mlir::MlirOp op = MakeConstant(builder, 5, op_builder.getI32Type(), {1, 3});
   mlir::stablehlo::Dimensions target_shape = {{2}, {3}};
-  auto result = BroadcastIfNeeded(op, target_shape);
-  ASSERT_TRUE(result.ok());
-  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result->getType());
+  TT_ASSERT_OK_AND_ASSIGN(auto result, BroadcastIfNeeded(op, target_shape));
+  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result.getType());
   ASSERT_TRUE(result_type);
   EXPECT_THAT(result_type.getShape(), ElementsAre(2, 3));
 }
@@ -450,14 +442,13 @@ TEST(BroadcastIfNeeded, StablehloDimsWithBoundOp) {
       MakeConstant(builder, 5, op_builder.getI32Type(), {1});
   mlir::stablehlo::Dimensions target_shape = {{10, bound_op.getValue(), 0},
                                               {3}};
-  auto result = BroadcastIfNeeded(op, target_shape);
-  ASSERT_TRUE(result.ok());
-  auto dims = GetDimensions(*result);
+  TT_ASSERT_OK_AND_ASSIGN(auto result, BroadcastIfNeeded(op, target_shape));
+  auto dims = GetDimensions(result);
   EXPECT_EQ(dims.size(), 2);
   EXPECT_EQ(dims[0].size, 10);  // check padded size
   EXPECT_EQ(dims[1].size, 3);   // check static size
 
-  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result->getType());
+  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result.getType());
   ASSERT_TRUE(result_type);
   EXPECT_TRUE(result_type.isDynamicDim(0));
   EXPECT_FALSE(result_type.isDynamicDim(1));
@@ -485,9 +476,8 @@ TEST(BroadcastIfNeeded, ExplicitBroadcastDims) {
       MakeConstant(builder, 1.0f, op_builder.getF32Type(), {2, 3});
   mlir::MlirOp target =
       MakeConstant(builder, 1.0f, op_builder.getF32Type(), {2, 5, 3});
-  auto result = BroadcastIfNeeded(op, target, {0, 2});
-  ASSERT_TRUE(result.ok());
-  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result->getType());
+  TT_ASSERT_OK_AND_ASSIGN(auto result, BroadcastIfNeeded(op, target, {0, 2}));
+  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result.getType());
   ASSERT_TRUE(result_type);
   EXPECT_THAT(result_type.getShape(), ElementsAre(2, 5, 3));
 }
@@ -513,10 +503,10 @@ TEST(BroadcastIfNeeded, ExplicitBroadcastDimsBothDynamic) {
       bound_op.getValue(), 0);
   mlir::MlirOp target_op(builder, target_val);
 
-  auto result = BroadcastIfNeeded(input_op, target_op, {0, 2});
-  ASSERT_TRUE(result.ok());
+  TT_ASSERT_OK_AND_ASSIGN(auto result,
+                          BroadcastIfNeeded(input_op, target_op, {0, 2}));
 
-  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result->getType());
+  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result.getType());
   ASSERT_TRUE(result_type);
   EXPECT_EQ(result_type.getRank(), 3);
   EXPECT_TRUE(result_type.isDynamicDim(0));
@@ -525,7 +515,7 @@ TEST(BroadcastIfNeeded, ExplicitBroadcastDimsBothDynamic) {
   EXPECT_EQ(result_type.getDimSize(1), 4);
   EXPECT_EQ(result_type.getDimSize(2), 3);
 
-  auto dims = GetDimensions(*result);
+  auto dims = GetDimensions(result);
   EXPECT_EQ(dims.size(), 3);
   EXPECT_EQ(dims[0].size, 10);
   EXPECT_TRUE(dims[0].boundOp.has_value());
@@ -594,10 +584,10 @@ TEST(BroadcastIfNeeded, ExplicitBroadcastDimsStaticInputToDynamicTarget) {
 
   // Map input dim 0 -> target dim 0, input dim 1 -> target dim 1 (non-numpy
   // alignment)
-  auto result = BroadcastIfNeeded(input_op, target_op, {0, 1});
-  ASSERT_TRUE(result.ok());
+  TT_ASSERT_OK_AND_ASSIGN(auto result,
+                          BroadcastIfNeeded(input_op, target_op, {0, 1}));
 
-  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result->getType());
+  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(result.getType());
   ASSERT_TRUE(result_type);
   EXPECT_EQ(result_type.getRank(), 3);
   EXPECT_FALSE(result_type.isDynamicDim(0));
@@ -606,7 +596,7 @@ TEST(BroadcastIfNeeded, ExplicitBroadcastDimsStaticInputToDynamicTarget) {
   EXPECT_EQ(result_type.getDimSize(0), 3);
   EXPECT_EQ(result_type.getDimSize(1), 4);
 
-  auto dims = GetDimensions(*result);
+  auto dims = GetDimensions(result);
   EXPECT_EQ(dims.size(), 3);
   EXPECT_EQ(dims[0].size, 3);
   EXPECT_EQ(dims[1].size, 4);
@@ -621,20 +611,19 @@ TEST(CastIfNeeded, I32ToF32) {
   mlir::RankedTensorType int_type =
       mlir::RankedTensorType::get({}, op_builder.getI32Type());
   mlir::MlirOp op = MakeScalarConstant(builder, 1, int_type.getElementType());
-  auto result = CastIfNeeded(op, mlir::ElementType::F32);
-  ASSERT_TRUE(result.ok());
+  TT_ASSERT_OK_AND_ASSIGN(auto result,
+                          CastIfNeeded(op, mlir::ElementType::F32));
   mlir::RankedTensorType float_type =
       mlir::RankedTensorType::get({}, op_builder.getF32Type());
-  EXPECT_EQ(result->getType(), float_type);
+  EXPECT_EQ(result.getType(), float_type);
 }
 
 TEST(InferSize, WorksWithDimsAndScalars) {
   at::Tensor tensor1 = at::ones({4, 2, 1});
   Dimensions dims2 = {1, 3};
   at::Scalar scalar3 = 1;
-  auto result = InferSize(tensor1, dims2, scalar3);
-  ASSERT_TRUE(result.ok());
-  EXPECT_THAT(result.value(), ElementsAre(4, 2, 3));
+  TT_ASSERT_OK_AND_ASSIGN(auto result, InferSize(tensor1, dims2, scalar3));
+  EXPECT_THAT(result, ElementsAre(4, 2, 3));
 }
 
 TEST(AnnotateBufferDonations, SmokeTest) {
@@ -665,11 +654,10 @@ TEST(ReshapeFromStaticDimensions, StaticShape) {
   mlir::MlirOp op = MakeConstant(mb, 1.0f, op_builder.getF32Type(), {2, 3});
   Dimensions static_input_shape = {2, 3};
   Dimensions static_output_shape = {6};
-  auto reshaped =
-      ReshapeFromStaticDimensions(op, static_input_shape, static_output_shape);
-  ASSERT_TRUE(reshaped.ok());
-  auto result_type =
-      mlir::dyn_cast<mlir::RankedTensorType>(reshaped->getType());
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto reshaped,
+      ReshapeFromStaticDimensions(op, static_input_shape, static_output_shape));
+  auto result_type = mlir::dyn_cast<mlir::RankedTensorType>(reshaped.getType());
   ASSERT_TRUE(result_type);
   EXPECT_THAT(result_type.getShape(), ElementsAre(6));
 }
@@ -851,11 +839,10 @@ TEST_P(DynamicReshapeFromStaticDimensionsTest, ValidReshape) {
   ReshapeTestResult result = BuildReshapeGraph(
       params.bounded_input_shape, params.bound_dims, params.static_input_shape,
       params.static_output_shape, op_builder_utils_builder);
-  ASSERT_TRUE(result.reshaped_op.ok());
+  TT_ASSERT_OK_AND_ASSIGN(auto reshaped_op, result.reshaped_op);
 
   // Check that the reshaped op has proper bounded dynamic dimensions.
-  mlir::stablehlo::Dimensions reshaped_dims =
-      GetDimensions(*result.reshaped_op);
+  mlir::stablehlo::Dimensions reshaped_dims = GetDimensions(reshaped_op);
   for (int i = 0; i < params.expected_bounded_output_shape.size(); ++i) {
     ASSERT_EQ(reshaped_dims[i].size, params.expected_bounded_output_shape[i]);
     ASSERT_EQ(reshaped_dims[i].boundOp.has_value(),
@@ -1052,10 +1039,10 @@ TEST_P(BroadcastTest, ValidBroadcast) {
   BroadcastTestResult result =
       BuildBroadcastGraph(params.input_shape, params.output_shape,
                           params.bcast_dims, op_builder_utils_builder);
-  ASSERT_TRUE(result.broadcasted_op.ok());
+  TT_ASSERT_OK_AND_ASSIGN(auto broadcasted_op, result.broadcasted_op);
 
   auto result_type =
-      mlir::dyn_cast<mlir::RankedTensorType>(result.broadcasted_op->getType());
+      mlir::dyn_cast<mlir::RankedTensorType>(broadcasted_op.getType());
   ASSERT_TRUE(result_type);
   EXPECT_THAT(result_type.getShape(),
               testing::ElementsAreArray(params.expected_output_shape));
@@ -1152,11 +1139,10 @@ TEST_P(DynamicBroadcastTest, ValidBroadcast) {
   DynamicBroadcastTestResult result = BuildDynamicBroadcastGraph(
       params.bounded_input_shape, params.bound_dims, params.output_shape,
       params.bcast_dims, op_builder_utils_builder);
-  ASSERT_TRUE(result.broadcasted_op.ok());
+  TT_ASSERT_OK_AND_ASSIGN(auto broadcasted_op, result.broadcasted_op);
 
   // Check that the broadcasted op has proper bounded dynamic dimensions.
-  mlir::stablehlo::Dimensions broadcasted_dims =
-      GetDimensions(*result.broadcasted_op);
+  mlir::stablehlo::Dimensions broadcasted_dims = GetDimensions(broadcasted_op);
   for (int i = 0; i < params.expected_bounded_output_shape.size(); ++i) {
     ASSERT_EQ(broadcasted_dims[i].size,
               params.expected_bounded_output_shape[i]);
@@ -1209,9 +1195,8 @@ TEST(OpBuilderUtils, SerializeBytecode) {
   mlir::func::Return(fb, {});
   mlir::OwningOpRef<mlir::ModuleOp> module = mb.build();
 
-  auto bytecode_or = SerializeBytecode(module.get());
-  ASSERT_TRUE(bytecode_or.ok());
-  std::string bytecode = bytecode_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(std::string bytecode,
+                          SerializeBytecode(module.get()));
 
   // Check for the MLIR magic string that denotes bytecode.
   EXPECT_THAT(bytecode, testing::HasSubstr("\x4D\x4C\xEF\x52"));
@@ -1224,9 +1209,8 @@ TEST(OpBuilderUtils, SerializePortableArtifact) {
   mlir::func::Return(fb, {});
   mlir::OwningOpRef<mlir::ModuleOp> module = mb.build();
 
-  auto artifact_or = SerializePortableArtifact(module.get());
-  ASSERT_TRUE(artifact_or.ok());
-  std::string artifact = artifact_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(std::string artifact,
+                          SerializePortableArtifact(module.get()));
 
   // Check for the MLIR magic string that denotes bytecode.
   EXPECT_THAT(artifact, testing::HasSubstr("\x4D\x4C\xEF\x52"));
@@ -1239,9 +1223,9 @@ TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirType_DefaultShape) {
   mlir::MlirBuilder& builder = op_builder_utils_builder.get();
   mlir::OpBuilder& op_builder = builder.getOpBuilder();
 
-  auto op_or = MakeZeroSizedTensor(builder, op_builder.getF32Type());
-  ASSERT_TRUE(op_or.ok());
-  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op_or->getType());
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto op, MakeZeroSizedTensor(builder, op_builder.getF32Type()));
+  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op.getType());
   ASSERT_TRUE(type);
   EXPECT_TRUE(type.getElementType().isF32());
   EXPECT_THAT(type.getShape(), ElementsAre(0));
@@ -1252,9 +1236,10 @@ TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirType_CustomShape) {
   mlir::MlirBuilder& builder = op_builder_utils_builder.get();
   mlir::OpBuilder& op_builder = builder.getOpBuilder();
 
-  auto op_or = MakeZeroSizedTensor(builder, op_builder.getI32Type(), {2, 0, 3});
-  ASSERT_TRUE(op_or.ok());
-  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op_or->getType());
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto op,
+      MakeZeroSizedTensor(builder, op_builder.getI32Type(), {2, 0, 3}));
+  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op.getType());
   ASSERT_TRUE(type);
   EXPECT_TRUE(type.getElementType().isSignlessInteger(32));
   EXPECT_THAT(type.getShape(), ElementsAre(2, 0, 3));
@@ -1277,9 +1262,9 @@ TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirElementType_DefaultShape) {
   OpBuilderUtilsBuilder op_builder_utils_builder;
   mlir::MlirBuilder& builder = op_builder_utils_builder.get();
 
-  auto op_or = MakeZeroSizedTensor(builder, mlir::ElementType::F32);
-  ASSERT_TRUE(op_or.ok());
-  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op_or->getType());
+  TT_ASSERT_OK_AND_ASSIGN(auto op,
+                          MakeZeroSizedTensor(builder, mlir::ElementType::F32));
+  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op.getType());
   ASSERT_TRUE(type);
   EXPECT_TRUE(type.getElementType().isF32());
   EXPECT_THAT(type.getShape(), ElementsAre(0));
@@ -1289,9 +1274,9 @@ TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirElementType_CustomShape) {
   OpBuilderUtilsBuilder op_builder_utils_builder;
   mlir::MlirBuilder& builder = op_builder_utils_builder.get();
 
-  auto op_or = MakeZeroSizedTensor(builder, mlir::ElementType::I32, {2, 0, 3});
-  ASSERT_TRUE(op_or.ok());
-  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op_or->getType());
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto op, MakeZeroSizedTensor(builder, mlir::ElementType::I32, {2, 0, 3}));
+  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op.getType());
   ASSERT_TRUE(type);
   EXPECT_TRUE(type.getElementType().isSignlessInteger(32));
   EXPECT_THAT(type.getShape(), ElementsAre(2, 0, 3));

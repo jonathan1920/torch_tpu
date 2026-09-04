@@ -25,6 +25,7 @@
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/shape.h"
+#include "torch_tpu/csrc/common/status_test_utils.h"
 
 namespace torch_tpu {
 namespace {
@@ -54,9 +55,7 @@ TEST(LayoutUtilsTest, CustomLayoutTilingAndEquality) {
 
 TEST(LayoutUtilsTest, ResolveTpuLayout_StandardTensor_Success) {
   auto tensor = at::empty({2, 3}, at::TensorOptions().dtype(at::kFloat));
-  auto layout_or = ResolveTpuLayout(tensor);
-  ASSERT_TRUE(layout_or.ok()) << layout_or.status();
-  auto layout = layout_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto layout, ResolveTpuLayout(tensor));
 
   EXPECT_EQ(layout.sizes, Dimensions({2, 3}));
   EXPECT_EQ(layout.strides, Strides({3, 1}));
@@ -66,10 +65,8 @@ TEST(LayoutUtilsTest, ResolveTpuLayout_StandardTensor_Success) {
 
 TEST(LayoutUtilsTest, ResolveTpuLayout_StandardTensorZeroDim_Success) {
   auto tensor = at::empty({}, at::TensorOptions().dtype(at::kFloat));
-  auto layout_or = ResolveTpuLayout(tensor);
-  ASSERT_TRUE(layout_or.ok()) << layout_or.status();
+  TT_ASSERT_OK_AND_ASSIGN(auto layout, ResolveTpuLayout(tensor));
 
-  auto layout = layout_or.value();
   EXPECT_EQ(layout.sizes, Dimensions({}));
   EXPECT_EQ(layout.strides, Strides({}));
   EXPECT_EQ(layout.storage_offset, 0);
@@ -80,9 +77,7 @@ TEST(LayoutUtilsTest, ResolveTpuLayout_FP4Tensor_Success) {
   auto tensor =
       at::empty({2, 3}, at::TensorOptions().dtype(at::kFloat4_e2m1fn_x2));
 
-  auto layout_or = ResolveTpuLayout(tensor);
-  ASSERT_TRUE(layout_or.ok()) << layout_or.status();
-  auto layout = layout_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto layout, ResolveTpuLayout(tensor));
 
   EXPECT_EQ(layout.sizes, Dimensions({2, 6}));
   EXPECT_EQ(layout.strides, Strides({6, 1}));
@@ -95,9 +90,7 @@ TEST(LayoutUtilsTest, ResolveTpuLayout_FP4TensorWithOffset_Success) {
       at::empty({10, 8}, at::TensorOptions().dtype(at::kFloat4_e2m1fn_x2));
   auto tensor = base_tensor.slice(0, 1, 3).slice(1, 1, 4);
 
-  auto layout_or = ResolveTpuLayout(tensor);
-  ASSERT_TRUE(layout_or.ok()) << layout_or.status();
-  auto layout = layout_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto layout, ResolveTpuLayout(tensor));
 
   EXPECT_EQ(layout.sizes, Dimensions({2, 6}));
   EXPECT_EQ(layout.strides, Strides({16, 1}));

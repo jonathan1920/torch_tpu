@@ -68,6 +68,7 @@ torch_tpu_cc_test(
         "//torch_tpu/csrc/common:dimension_types",
         "//torch_tpu/csrc/common:oss_test_main",
         "//torch_tpu/csrc/common:shape",
+        "//torch_tpu/csrc/common:status_test_utils",
         "//torch_tpu/csrc/eager:device_buffer",
         "//torch_tpu/csrc/eager:materialize",
         "//torch_tpu/csrc/eager:tensor_to_buffer",

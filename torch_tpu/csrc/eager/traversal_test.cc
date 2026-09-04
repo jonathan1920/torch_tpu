@@ -181,10 +181,11 @@ TEST_F(TraversalTest, ReadableStringWithTraceback) {
 }
 
 TEST_F(TraversalTest, CompileAnnotatesArgumentLayouts) {
-  auto refs_a = DeviceBufferList::CreateDeferred(
-      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape_});
-  ASSERT_TRUE(refs_a.ok());
-  auto ref_a = (*refs_a)[0];  // NOLINT
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto refs_a,
+      DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder, {},
+                                       OpParamCacheKeys::Empty(), {shape_}));
+  auto ref_a = refs_a[0];  // NOLINT
 
   auto identity_builder = [](mlir::MlirBuilder& /*builder*/,
                              absl::Span<mlir::MlirOp> inputs)
@@ -192,21 +193,21 @@ TEST_F(TraversalTest, CompileAnnotatesArgumentLayouts) {
     return DynamicMlirOpResults{inputs[0]};
   };
 
-  auto refs_b =
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto refs_b,
       DeviceBufferList::CreateDeferred(OpName::kAdd, identity_builder, {ref_a},
-                                       OpParamCacheKeys::Empty(), {shape_});
-  ASSERT_TRUE(refs_b.ok());
-  auto ref_b = (*refs_b)[0];  // NOLINT
+                                       OpParamCacheKeys::Empty(), {shape_}));
+  auto ref_b = refs_b[0];  // NOLINT
 
-  auto traversal =
-      Traversal::Create({ref_b}, {ref_a.device_buffer_list().get()});
-  ASSERT_TRUE(traversal.ok());
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto traversal,
+      Traversal::Create({ref_b}, {ref_a.device_buffer_list().get()}));
 
   CompilationSpec spec(std::make_unique<xla::CompileOptions>(),
                        CompileOptionsKey(12345));
   std::string mlir_text;
   ASSERT_TRUE(
-      (*traversal)
+      traversal
           ->Compile(
               std::move(spec), &mlir_text,
               /*use_stablehlo_bounds=*/false,
@@ -217,14 +218,11 @@ TEST_F(TraversalTest, CompileAnnotatesArgumentLayouts) {
 
 TEST_F(TraversalTest, CompileAnnotatesArgumentLayoutsWithTilingAndCaching) {
   Shape shape_2d(Dimensions{128, 64}, mlir::ElementType::F32);
-  absl::StatusOr<std::vector<DeviceBufferRef>> refs_a =
+  TT_ASSERT_OK_AND_ASSIGN(
+      std::vector<DeviceBufferRef> refs_a,
       DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder, {},
-                                       OpParamCacheKeys::Empty(), {shape_2d});
-  ASSERT_TRUE(refs_a.ok());
-  if (!refs_a.ok()) {
-    return;
-  }
-  DeviceBufferRef ref_a = (*refs_a)[0];
+                                       OpParamCacheKeys::Empty(), {shape_2d}));
+  DeviceBufferRef ref_a = refs_a[0];
 
   MlirOpBuilder identity_builder = [](mlir::MlirBuilder& /*builder*/,
                                       absl::Span<mlir::MlirOp> inputs)
@@ -232,23 +230,15 @@ TEST_F(TraversalTest, CompileAnnotatesArgumentLayoutsWithTilingAndCaching) {
     return DynamicMlirOpResults{inputs[0]};
   };
 
-  absl::StatusOr<std::vector<DeviceBufferRef>> refs_b =
-      DeviceBufferList::CreateDeferred(OpName::kAdd,
-                                       std::move(identity_builder), {ref_a},
-                                       OpParamCacheKeys::Empty(), {shape_2d});
-  ASSERT_TRUE(refs_b.ok());
-  if (!refs_b.ok()) {
-    return;
-  }
-  DeviceBufferRef ref_b = (*refs_b)[0];
+  TT_ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_b,
+                          DeviceBufferList::CreateDeferred(
+                              OpName::kAdd, std::move(identity_builder),
+                              {ref_a}, OpParamCacheKeys::Empty(), {shape_2d}));
+  DeviceBufferRef ref_b = refs_b[0];
 
-  absl::StatusOr<std::unique_ptr<Traversal>> traversal =
-      Traversal::Create({ref_b}, {ref_a.device_buffer_list().get()});
-  ASSERT_TRUE(traversal.ok());
-  if (!traversal.ok()) {
-    return;
-  }
-  std::unique_ptr<Traversal> tr = std::move(*traversal);
+  TT_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Traversal> tr,
+      Traversal::Create({ref_b}, {ref_a.device_buffer_list().get()}));
 
   CustomLayout tiled_layout{.minor_to_major = {1, 0}, .tiles = {{8}}};
   CompilationSpec spec(std::make_unique<xla::CompileOptions>(),

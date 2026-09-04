@@ -37,6 +37,7 @@
 #include "torch_tpu/csrc/common/context_states.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/shape.h"
+#include "torch_tpu/csrc/common/status_test_utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/device_buffer_utils.h"
 #include "torch_tpu/csrc/eager/eager_mode.h"
@@ -112,10 +113,9 @@ TEST(OpDispatcher, OutputCastingWithoutComputationDtype) {
     return DynamicMlirOpResults{res};
   };
 
-  auto input_ref_or = DeviceBufferList::CreatePlaceholder(
-      Dimensions{2, 2}, mlir::ElementType::BF16);
-  ASSERT_TRUE(input_ref_or.ok());
-  auto input_ref = input_ref_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto input_ref,
+                          DeviceBufferList::CreatePlaceholder(
+                              Dimensions{2, 2}, mlir::ElementType::BF16));
 
   internal::DeferredOpParams params{
       .op_name = OpName::kAdd,
@@ -125,19 +125,18 @@ TEST(OpDispatcher, OutputCastingWithoutComputationDtype) {
       .output_shapes = {Shape(Dimensions{2, 2}, mlir::ElementType::BF16)},
   };
 
-  auto results_or = internal::CreateDeferredDeviceBufferList(std::move(params));
-  ASSERT_TRUE(results_or.ok());
-  auto results = results_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto results,
+      internal::CreateDeferredDeviceBufferList(std::move(params)));
   ASSERT_EQ(results.size(), 1);
 
   auto deferred_op = results[0].deferred_op();
   ASSERT_TRUE(deferred_op != nullptr);
   const auto& wrapped_builder = deferred_op->op_builder();
 
-  auto wrapped_results_or =
-      wrapped_builder(builder, absl::MakeSpan(&input_op, 1));
-  ASSERT_TRUE(wrapped_results_or.ok());
-  auto wrapped_results = wrapped_results_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto wrapped_results,
+      wrapped_builder(builder, absl::MakeSpan(&input_op, 1)));
   ASSERT_EQ(wrapped_results.size(), 1);
 
   // The output should have been casted to BF16

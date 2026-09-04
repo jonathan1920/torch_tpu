@@ -37,6 +37,7 @@
 #include "gtest/gtest.h"
 #include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/env_vars.h"
+#include "torch_tpu/csrc/common/status_test_utils.h"
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/eager_mode.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
@@ -1264,26 +1265,26 @@ TEST(SafeWrapDim, ReturnsErrorOnInvalidDimForZeroDimBound) {
 }
 
 TEST(SafeWrapDim, WrapsValidNegativeDim) {
-  const auto result = SafeWrapDim(/*dim=*/-1, /*dim_bound=*/3);
-  ASSERT_TRUE(result.ok());
-  EXPECT_EQ(*result, 2);
+  TT_ASSERT_OK_AND_ASSIGN(const auto result,
+                          SafeWrapDim(/*dim=*/-1, /*dim_bound=*/3));
+  EXPECT_EQ(result, 2);
 }
 
 TEST(SafeWrapDim, ReturnsValidPositiveDim) {
-  const auto result = SafeWrapDim(/*dim=*/1, /*dim_bound=*/3);
-  ASSERT_TRUE(result.ok());
-  EXPECT_EQ(*result, 1);
+  TT_ASSERT_OK_AND_ASSIGN(const auto result,
+                          SafeWrapDim(/*dim=*/1, /*dim_bound=*/3));
+  EXPECT_EQ(result, 1);
 }
 
 TEST(SafeWrapDim, ReturnsZeroOnValidDimForZeroDimBound) {
   // For 0-dimensional tensors, only dims 0 and -1 are valid.
-  const auto result0 = SafeWrapDim(/*dim=*/0, /*dim_bound=*/0);
-  ASSERT_TRUE(result0.ok());
-  EXPECT_EQ(*result0, 0);
+  TT_ASSERT_OK_AND_ASSIGN(const auto result0,
+                          SafeWrapDim(/*dim=*/0, /*dim_bound=*/0));
+  EXPECT_EQ(result0, 0);
 
-  const auto result1 = SafeWrapDim(/*dim=*/-1, /*dim_bound=*/0);
-  ASSERT_TRUE(result1.ok());
-  EXPECT_EQ(*result1, 0);
+  TT_ASSERT_OK_AND_ASSIGN(const auto result1,
+                          SafeWrapDim(/*dim=*/-1, /*dim_bound=*/0));
+  EXPECT_EQ(result1, 0);
 }
 
 // Tests for AdaptVfioDeviceCollisionError.

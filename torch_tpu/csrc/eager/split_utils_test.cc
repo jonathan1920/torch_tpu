@@ -31,6 +31,7 @@
 #include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/shape.h"
+#include "torch_tpu/csrc/common/status_test_utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/traversal.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
@@ -54,33 +55,29 @@ TEST(SplitUtilsTest, ApplySplitPointsSorted) {
   //       / -> c
   // a -> b
   //       \ -> d
-  absl::StatusOr<std::vector<DeviceBufferRef>> refs_or;
-  refs_or = DeviceBufferList::CreateDeferred(
-      OpName::kEmpty, DummyBuilder,
-      /*inputs=*/{}, OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(refs_or.ok());
-  DeviceBufferRef ref_a = refs_or.value()[0];
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto refs_a, DeviceBufferList::CreateDeferred(
+                       OpName::kEmpty, DummyBuilder,
+                       /*inputs=*/{}, OpParamCacheKeys::Empty(), {shape}));
+  DeviceBufferRef ref_a = refs_a[0];
 
-  refs_or = DeviceBufferList::CreateDeferred(
-      OpName::kAdd, DummyBuilder, {ref_a}, OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(refs_or.ok());
-  DeviceBufferRef ref_b = refs_or.value()[0];
+  TT_ASSERT_OK_AND_ASSIGN(auto refs_b, DeviceBufferList::CreateDeferred(
+                                           OpName::kAdd, DummyBuilder, {ref_a},
+                                           OpParamCacheKeys::Empty(), {shape}));
+  DeviceBufferRef ref_b = refs_b[0];
 
-  refs_or = DeviceBufferList::CreateDeferred(
-      OpName::kAdd, DummyBuilder, {ref_b}, OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(refs_or.ok());
-  DeviceBufferRef ref_c = refs_or.value()[0];
+  TT_ASSERT_OK_AND_ASSIGN(auto refs_c, DeviceBufferList::CreateDeferred(
+                                           OpName::kAdd, DummyBuilder, {ref_b},
+                                           OpParamCacheKeys::Empty(), {shape}));
+  DeviceBufferRef ref_c = refs_c[0];
 
-  refs_or = DeviceBufferList::CreateDeferred(
-      OpName::kAdd, DummyBuilder, {ref_b}, OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(refs_or.ok());
-  DeviceBufferRef ref_d = refs_or.value()[0];
+  TT_ASSERT_OK_AND_ASSIGN(auto refs_d, DeviceBufferList::CreateDeferred(
+                                           OpName::kAdd, DummyBuilder, {ref_b},
+                                           OpParamCacheKeys::Empty(), {shape}));
+  DeviceBufferRef ref_d = refs_d[0];
 
   // Get the traversal of the graph.
-  absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>> traversal_or;
-  traversal_or = Traversal::Create({ref_c, ref_d});
-  ASSERT_TRUE(traversal_or.ok());
-  auto& traversal = traversal_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto traversal, Traversal::Create({ref_c, ref_d}));
 
   // Sort here so we can `use_sorted=true` in ApplySplitPoints later.
   traversal->SortByCreationOrder();
@@ -89,12 +86,9 @@ TEST(SplitUtilsTest, ApplySplitPointsSorted) {
   absl::flat_hash_set<const DeviceBufferList*> split_points = {
       ref_b.device_buffer_list().get(), ref_d.device_buffer_list().get()};
 
-  absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
-      traversals_or;
-  traversals_or =
-      ApplySplitPoints(std::move(traversal), split_points, /*use_sorted=*/true);
-  ASSERT_TRUE(traversals_or.ok());
-  auto& traversals = traversals_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto traversals,
+                          ApplySplitPoints(std::move(traversal), split_points,
+                                           /*use_sorted=*/true));
 
   // We should get two traversals; one for {a, b} and one for {c, d}.
   // Node c is not in the graph for any split point; but, because we are using
@@ -119,44 +113,37 @@ TEST(SplitUtilsTest, ApplySplitPointsUnsorted) {
   //       / -> c
   // a -> b
   //       \ -> d
-  absl::StatusOr<std::vector<DeviceBufferRef>> refs_or;
-  refs_or = DeviceBufferList::CreateDeferred(
-      OpName::kEmpty, DummyBuilder,
-      /*inputs=*/{}, OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(refs_or.ok());
-  DeviceBufferRef ref_a = refs_or.value()[0];
+  TT_ASSERT_OK_AND_ASSIGN(
+      auto refs_a, DeviceBufferList::CreateDeferred(
+                       OpName::kEmpty, DummyBuilder,
+                       /*inputs=*/{}, OpParamCacheKeys::Empty(), {shape}));
+  DeviceBufferRef ref_a = refs_a[0];
 
-  refs_or = DeviceBufferList::CreateDeferred(
-      OpName::kAdd, DummyBuilder, {ref_a}, OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(refs_or.ok());
-  DeviceBufferRef ref_b = refs_or.value()[0];
+  TT_ASSERT_OK_AND_ASSIGN(auto refs_b, DeviceBufferList::CreateDeferred(
+                                           OpName::kAdd, DummyBuilder, {ref_a},
+                                           OpParamCacheKeys::Empty(), {shape}));
+  DeviceBufferRef ref_b = refs_b[0];
 
-  refs_or = DeviceBufferList::CreateDeferred(
-      OpName::kAdd, DummyBuilder, {ref_b}, OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(refs_or.ok());
-  DeviceBufferRef ref_c = refs_or.value()[0];
+  TT_ASSERT_OK_AND_ASSIGN(auto refs_c, DeviceBufferList::CreateDeferred(
+                                           OpName::kAdd, DummyBuilder, {ref_b},
+                                           OpParamCacheKeys::Empty(), {shape}));
+  DeviceBufferRef ref_c = refs_c[0];
 
-  refs_or = DeviceBufferList::CreateDeferred(
-      OpName::kAdd, DummyBuilder, {ref_b}, OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(refs_or.ok());
-  DeviceBufferRef ref_d = refs_or.value()[0];
+  TT_ASSERT_OK_AND_ASSIGN(auto refs_d, DeviceBufferList::CreateDeferred(
+                                           OpName::kAdd, DummyBuilder, {ref_b},
+                                           OpParamCacheKeys::Empty(), {shape}));
+  DeviceBufferRef ref_d = refs_d[0];
 
   // Get the traversal of the graph.
-  absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>> traversal_or;
-  traversal_or = Traversal::Create({ref_c, ref_d});
-  ASSERT_TRUE(traversal_or.ok());
-  auto& traversal = traversal_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto traversal, Traversal::Create({ref_c, ref_d}));
 
   // Set nodes b and d as split points.
   absl::flat_hash_set<const DeviceBufferList*> split_points = {
       ref_b.device_buffer_list().get(), ref_d.device_buffer_list().get()};
 
-  absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
-      traversals_or;
-  traversals_or = ApplySplitPoints(std::move(traversal), split_points,
-                                   /*use_sorted=*/false);
-  ASSERT_TRUE(traversals_or.ok());
-  auto& traversals = traversals_or.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto traversals,
+                          ApplySplitPoints(std::move(traversal), split_points,
+                                           /*use_sorted=*/false));
 
   // We should get two traversals; one for {a, b} and one for {d}.
   // Node c is not included since it is not a part of the graph for any split
