@@ -180,6 +180,7 @@ at::Tensor& AtenArangeStartOut(const at::Scalar& start, const at::Scalar& end,
       OpName::kArangeStartOut, param_keys,
       (start_promoted, end_promoted, step_promoted, out), {
         const at::ScalarType output_dtype = out.scalar_type();
+        const at::ScalarType acc_dtype = ToAccumulateType(output_dtype);
 
         TT_ASSIGN_OR_THROW(
             const auto num_elements,
@@ -187,11 +188,11 @@ at::Tensor& AtenArangeStartOut(const at::Scalar& start, const at::Scalar& end,
                                  step_promoted.scalar(), output_dtype));
 
         TT_ASSIGN_OR_THROW(at::Tensor start_tensor,
-                           start_promoted.GetTensor(output_dtype));
+                           start_promoted.GetTensor(acc_dtype));
         TT_ASSIGN_OR_THROW(at::Tensor end_tensor,
-                           end_promoted.GetTensor(output_dtype));
+                           end_promoted.GetTensor(acc_dtype));
         TT_ASSIGN_OR_THROW(at::Tensor step_tensor,
-                           step_promoted.GetTensor(output_dtype));
+                           step_promoted.GetTensor(acc_dtype));
 
         at::native::resize_output(out, {num_elements});
 

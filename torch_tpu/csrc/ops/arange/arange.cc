@@ -56,19 +56,25 @@ absl::StatusOr<mlir::MlirOp> BuildArangeOp(const int64_t num_elements,
                                            mlir::MlirOp start,
                                            mlir::MlirOp step) {
   mlir::MlirBuilder& builder = start.getBuilder();
-  mlir::RankedTensorType output_type =
-      mlir::RankedTensorType::get({num_elements}, dtype);
+  mlir::Type acc_type = GetTensorTypeOrDie(start).getElementType();
+  mlir::RankedTensorType acc_tensor_type =
+      mlir::RankedTensorType::get({num_elements}, acc_type);
 
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=inner checks are all infeasible.
-      start, PrepareScalar(start, output_type),
+      start, PrepareScalar(start, acc_tensor_type),
       _.SetPrepend() << "cannot prepare start: ");
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=inner checks are all infeasible.
-      step, PrepareScalar(step, output_type),
+      step, PrepareScalar(step, acc_tensor_type),
       _.SetPrepend() << "cannot prepare step: ");
 
-  auto iota = mlir::stablehlo::Iota(builder, output_type, 0);
+  auto iota = mlir::stablehlo::Iota(builder, acc_tensor_type, 0);
   auto iota_step = mlir::stablehlo::Mul(iota, step);
-  return mlir::stablehlo::Add(iota_step, start);
+  auto result = mlir::stablehlo::Add(iota_step, start);
+
+  if (acc_type != dtype) {
+    return mlir::stablehlo::ConvertElementType(result, dtype);
+  }
+  return result;
 }
 
 }  // namespace torch_tpu
