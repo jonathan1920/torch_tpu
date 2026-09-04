@@ -746,6 +746,8 @@ torch_tpu_py_test(
         [],
     ) + [
         "noasan",  # TODO(b/555774204): fix the test in asan mode.
+        "nomsan",  # TODO(b/555774204): OOM
+        "notsan",  # TODO(b/555774204): OOM
         # Exactly 8 chips are required because the test hardcodes _world_size = 8 to match the
         # topology and avoid uninitialized chips in OSS CI.
         "requires-tpu-v5lite:8",
