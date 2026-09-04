@@ -1492,6 +1492,7 @@ torch_tpu_cc_test(
         ":dynamism_utils",
         ":error_utils",
         ":shape",
+        ":status_test_utils",
         "//torch_tpu/csrc/common:oss_test_main",
         "//torch_tpu/csrc/eager:device_buffer",
         "//torch_tpu/csrc/eager:traversal",
@@ -1506,7 +1507,6 @@ torch_tpu_cc_test(
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:register",
-        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
