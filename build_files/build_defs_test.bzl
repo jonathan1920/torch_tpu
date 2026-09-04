@@ -100,10 +100,20 @@ def _test_py_test_multi_tpu_targets_impl(env, targets):
     env.expect.that_collection(target_v5_tags).contains("custom_tag")
     env.expect.that_collection(target_v5_tags).not_contains("requires-tpu-v6e")
 
+    # Checking fails-on-tpu tags tests an implementation detail rather than the
+    # behavior we care about (a blaze query skipping mismatched TPU runners).
+    # Update or replace this check if the exclusion mechanism changes.
+    env.expect.that_collection(target_v5_tags).contains("fails-on-tpu-v6")
+    env.expect.that_collection(target_v5_tags).contains("fails-on-tpu-v7")
+    env.expect.that_collection(target_v5_tags).not_contains("fails-on-tpu-v5")
+
     # Target 2 (v6)
     env.expect.that_collection(target_v6_tags).contains("requires-tpu-v6e")
     env.expect.that_collection(target_v6_tags).contains("custom_tag")
     env.expect.that_collection(target_v6_tags).not_contains("requires-tpu-v5lite")
+    env.expect.that_collection(target_v6_tags).contains("fails-on-tpu-v5")
+    env.expect.that_collection(target_v6_tags).contains("fails-on-tpu-v7")
+    env.expect.that_collection(target_v6_tags).not_contains("fails-on-tpu-v6")
 
     # In OSS, the presubmit-v<N> tag picks the runner, so each target must have
     # the one matching its accelerator, with tag isolation across targets.
@@ -140,6 +150,49 @@ def _test_py_test_multi_tpu_targets(name):
     analysis_test(
         name = name,
         impl = _test_py_test_multi_tpu_targets_impl,
+        targets = {
+            "target_v5": name + "_subject_" + get_tpu_version_for_testing("requires-tpu-v5lite"),
+            "target_v6": name + "_subject_" + get_tpu_version_for_testing("requires-tpu-v6e"),
+        },
+        attrs = {
+            "target_v5": {"aspects": [tags_aspect]},
+            "target_v6": {"aspects": [tags_aspect]},
+        },
+    )
+
+def _test_py_test_multi_tpu_targets_existing_fails_on_impl(env, targets):
+    """Verifies that pre-existing fails-on-tpu tags are not duplicated when run_on_accelerators expands."""
+    target_v5_tags = targets.target_v5[_TagsInfo].tags
+    target_v6_tags = targets.target_v6[_TagsInfo].tags
+
+    v7_count_v5 = [t for t in target_v5_tags if t == "fails-on-tpu-v7"]
+    env.expect.that_int(len(v7_count_v5)).equals(1)
+
+    v7_count_v6 = [t for t in target_v6_tags if t == "fails-on-tpu-v7"]
+    env.expect.that_int(len(v7_count_v6)).equals(1)
+
+def _test_py_test_multi_tpu_targets_existing_fails_on(name):
+    torch_tpu_py_test(
+        name = name + "_subject",
+        srcs = ["build_defs_test.py"],
+        main = "build_defs_test.py",
+        is_wheel_test = True,
+        requires_libtpu = True,
+        tags = [
+            "custom_tag",
+            "fails-on-tpu-v7",
+        ],
+        run_on_accelerators = [
+            "requires-tpu-v5lite",
+            "requires-tpu-v6e",
+        ],
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_py_test_multi_tpu_targets_existing_fails_on_impl,
         targets = {
             "target_v5": name + "_subject_" + get_tpu_version_for_testing("requires-tpu-v5lite"),
             "target_v6": name + "_subject_" + get_tpu_version_for_testing("requires-tpu-v6e"),
@@ -745,6 +798,7 @@ def build_defs_test_suite(name):
             # go/keep-sorted start
             _test_macro_tags,
             _test_py_test_multi_tpu_targets,
+            _test_py_test_multi_tpu_targets_existing_fails_on,
             _test_py_test_non_tpu_requires_tags,
             _test_py_test_select_env,
             _test_py_test_single_tpu_target,

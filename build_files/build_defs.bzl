@@ -916,7 +916,9 @@ def torch_tpu_py_test(
             each target will be `<name>_<accelerator>`. For example, if this is set to
             `["requires-tpu-v5lite", "requires-tpu-v6e"]`, two targets will be created:
             `<name>_tpu-v5lite` and `<name>_tpu-v6e`. Each generated target is also tagged with
-            `presubmit-v<N>` matching the specified accelerator version.
+            `presubmit-v<N>` matching the specified accelerator version, and
+            `fails-on-tpu-<other_gen>` tags for all other generations in TPU_GENERATION_PREFERENCES
+            to prevent postsubmit runs on mismatched TPU runners.
         tags: The tags to add to the test.
         requires_libtpu: If True, auto-injects TPU presubmit tags in OSS.
         **kwargs: Any additional arguments.
@@ -1127,9 +1129,14 @@ def torch_tpu_py_test(
                 fail("Unknown accelerator '%s'. Please add it to " % requires_acc +
                      "TPU_VERSION_TO_GENERATION.")
 
+            other_gen_tags = [
+                "fails-on-tpu-" + gen
+                for gen in TPU_GENERATION_PREFERENCES
+                if gen != generation and ("fails-on-tpu-" + gen) not in tags
+            ]
             target_specs.append((
                 name + "_" + _get_tpu_version(requires_acc),
-                [requires_acc],
+                [requires_acc] + other_gen_tags,
                 tpu_gen(
                     generation,
                     "Requested via run_on_accelerators = [\"%s\"]." % requires_acc,
