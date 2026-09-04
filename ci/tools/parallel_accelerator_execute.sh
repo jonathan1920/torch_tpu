@@ -55,6 +55,7 @@ set -m
 
 TEST_PID=""
 TEST_PGID=""
+LOCK_FDS=()
 
 # Terminate the test's entire process group before releasing accelerator locks.
 #
@@ -78,12 +79,16 @@ TEST_PGID=""
 #    See the polling loop below: failed flock attempts should explicitly close
 #    their file descriptors (exec {lock_fd}>&-) on each iteration. Otherwise,
 #    continuous retries under lock contention leak open file descriptors until
-#    the process hits system/ulimit FD thresholds.
+#    the process hits system/ulimit FD thresholds. In addition, acquired lock FDs
+#    are closed in child subshells before exec to avoid inheriting locks into
+#    spawned workers.
 cleanup() {
   local exit_code=$?
+  local sig="${1:-}"
+  [ -n "$sig" ] && exit_code="$sig"
   trap - EXIT INT TERM
 
-  if [ -n "${TEST_PGID:-}" ]; then
+  if [ -n "${TEST_PGID:-}" ] && [ "$TEST_PGID" -gt 1 ]; then
     # Check if any process in the group is still alive.
     if kill -0 -"$TEST_PGID" 2>/dev/null; then
       kill -TERM -"$TEST_PGID" 2>/dev/null || true
@@ -94,17 +99,24 @@ cleanup() {
       done
       # Force-kill surviving stragglers.
       kill -KILL -"$TEST_PGID" 2>/dev/null || true
-      # Allow kernel TPU/VFIO drivers to finish unmapping device buffers.
-      sleep 0.5
     fi
+    # Allow kernel TPU/VFIO drivers to finish unmapping device buffers.
+    sleep 0.5
   fi
   exit "$exit_code"
 }
 
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'cleanup 130' INT
+trap 'cleanup 143' TERM
 
 run_test() {
-  "$TEST_BINARY" "$@" &
+  (
+    for fd in "${LOCK_FDS[@]}"; do
+      eval "exec $fd>&-"
+    done
+    exec "$TEST_BINARY" "$@"
+  ) &
   TEST_PID=$!
   TEST_PGID=$!
   wait "$TEST_PID"
@@ -116,15 +128,18 @@ run_test() {
 # Multi-accelerator/distributed tests require exclusive access across all slots.
 if [ "${TORCH_TPU_EXCLUSIVE_TEST:-0}" = "1" ]; then
   echo "Acquiring ALL accelerator locks for exclusive test $TEST_BINARY..."
+  LOCK_FDS=()
   for j in $(seq 0 $((TORCH_TPU_TESTS_PER_ACCELERATOR-1))); do
     for i in $(seq 0 $((TORCH_TPU_ACCELERATOR_COUNT-1))); do
       # Use >> to prevent lock file truncation race conditions.
       exec {fd}>>"/var/lock/torch_tpu_accelerator_lock_${i}_${j}" || exit 1
       flock "$fd" || exit 1
+      LOCK_FDS+=("$fd")
     done
   done
 
-  export TPU_VISIBLE_CHIPS="$(seq -s, 0 $((TORCH_TPU_ACCELERATOR_COUNT-1)))"
+  export TPU_VISIBLE_DEVICES="$(seq -s, 0 $((TORCH_TPU_ACCELERATOR_COUNT-1)))"
+  export TPU_VISIBLE_CHIPS="$TPU_VISIBLE_DEVICES"
   run_test "$@"
   exit $?
 fi
@@ -141,6 +156,8 @@ while true; do
       # Use >> to prevent file truncation race conditions.
       exec {lock_fd}>>"/var/lock/torch_tpu_accelerator_lock_${i}_${j}" || exit 1
       if flock -n "$lock_fd"; then
+        LOCK_FDS=("$lock_fd")
+        export TPU_VISIBLE_DEVICES=$i
         export TPU_VISIBLE_CHIPS=$i
         echo "Running test $TEST_BINARY $* on accelerator $i"
         run_test "$@"
