@@ -766,6 +766,9 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "split_collective_ops_test",
     srcs = ["split_collective_ops_test.py"],
+    exec_properties = {
+        "test.mem": "28g",
+    },
     shard_count = 4,
     tags = if_oss(
         ["exclusive"],
