@@ -909,6 +909,36 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     v2 = w[16:48, 16:48]
     self._run_and_compare(fn, [v1, v2])
 
+  @absltest.skip(
+      "b/557257476: Dynamo cache hit with different storage_offset causes"
+      " RuntimeProgramInputMismatch."
+  )
+  def test_different_storage_offsets(self):
+    # Reproduction for https://github.com/google-pytorch/torch_tpu/issues/3370
+    def scalar_view(offset: int):
+      base = torch.arange(129, dtype=torch.int32, device="tpu")
+      return base, base[offset]
+
+    def add_self(x):
+      return x + x
+
+    compiled_add_self = torch.compile(
+        add_self,
+        backend=compile_lib.tpu_backend,
+        fullgraph=True,
+        dynamic=False,
+    )
+
+    # Compile and warm up using storage offset 128.
+    _, compile_scalar = scalar_view(128)
+    warm_output = compiled_add_self(compile_scalar)
+    self.assertEqual(warm_output.cpu().item(), 256)
+
+    # Same shape/dtype, but a different storage offset.
+    _, runtime_scalar = scalar_view(125)
+    output = compiled_add_self(runtime_scalar)
+    self.assertEqual(output.cpu().item(), 250)
+
 
 class ModuleTest(seed_test_utils.RepeatableTest):
 
