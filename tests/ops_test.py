@@ -2028,19 +2028,14 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_binary_cross_entropy(self):
     self.do_test_op(
         "nn.functional.binary_cross_entropy",
-        # Exclude non-floating dtypes as they are not supported by the op
-        # and because GPU golden sample generation fails for the integer
-        # dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES  # EXCLUDE_DTYPES_OK=unsupported by op
-        + COMPLEX_DTYPES,
+        # TODO(b/557286629): support data sampling for non-floating-point dtypes.
+        exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
     )
 
   def test_bincount(self):
     self.do_test_op(
         "bincount",
-        # Excluded because they are not supported as input to bincount and
-        # because the op_testing code fails to generate random inputs when
-        # these types are enabled.
+        # TODO(b/557286629): support data sampling for booleans.
         exclude_dtypes={
             "cpu": COMPLEX_DTYPES + FLOAT_DTYPES + (torch.bool,),
             "gpu": COMPLEX_DTYPES + (torch.float64,) + (torch.bool,),
@@ -2170,9 +2165,8 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_ctc_loss(self):
     self.do_test_op(
         "nn.functional.ctc_loss",
-        # Excluded because PyTorch's sample generation (via log_softmax on CPU)
-        # does not support integral, bfloat16, float16, and complex dtypes.
-        # Additionally, CPU and GPU do not support bfloat16 and float16.
+        # TODO(b/557286629): support data sampling for other dtypes than
+        # full-precision floating-point dtypes.
         exclude_dtypes={
             "cpu": (
                 INTEGRAL_DTYPES
@@ -3144,9 +3138,7 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_log_softmax_backward_data(self):
     self.do_test_op(
         "_log_softmax_backward_data",
-        # TODO(unda): this fails for complex and integral dtypes because the
-        # sample generation process calls log_softmax() which is not supported
-        # for these dtypes.
+        # TODO(b/557286629): support data sampling for non-floating-point dtypes.
         exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
     )
 
@@ -3690,8 +3682,8 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_nn_functional_prelu(self):
     self.do_test_op(
         "nn.functional.prelu",
+        # TODO(b/557286629): support data sampling for integral dtypes.
         exclude_dtypes=INTEGRAL_DTYPES,
-        # supports floating point types
     )
 
   def test_nn_functional_hardsigmoid(self):
@@ -3939,7 +3931,7 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_softmax_backward_data(self):
     self.do_test_op(
         "_softmax_backward_data",
-        # TODO: fix the op for these dtypes.
+        # TODO(b/557286629): support data sampling for non-floating-point dtypes.
         exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
     )
 
@@ -4279,6 +4271,7 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_native_multi_head_attention(self):
     self.do_test_op(
         "_native_multi_head_attention",
+        # TODO(b/557286629): Attention only supports floating point dtypes.
         exclude_dtypes=(
             COMPLEX_DTYPES
             + INTEGRAL_DTYPES
@@ -4291,6 +4284,7 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_transformer_encoder_layer_fwd(self):
     self.do_test_op(
         "_transformer_encoder_layer_fwd",
+        # TODO(b/557286629): support data sampling for non-floating-point dtypes.
         exclude_dtypes=((torch.float64,) + COMPLEX_DTYPES + INTEGRAL_DTYPES),
         check_dynamism=False,
         check_grad=False,
