@@ -28,11 +28,15 @@ namespace torch_tpu {
 [[nodiscard]] static EagerMode GetDefaultEagerMode() {
   if (GetEnvOnce<kTpuLaunchBlocking>() == "1") {
     return EagerMode::kDeferNeverAndLaunchBlocking;
-  } else if (GetEnvOnce<kTpuDeferAndFuse>() == "1") {
-    return EagerMode::kDeferAndFuse;
-  } else {
-    return EagerMode::kDeferNever;
   }
+  const auto& defer_and_fuse_public = GetEnvOnce<kTorchTpuDeferAndFuseEnvVar>();
+  const auto& defer_and_fuse = defer_and_fuse_public.has_value()
+                                   ? defer_and_fuse_public
+                                   : GetEnvOnce<kTpuDeferAndFuse>();
+  if (defer_and_fuse == "1") {
+    return EagerMode::kDeferAndFuse;
+  }
+  return EagerMode::kDeferNever;
 }
 
 // Returns the global base eager mode.

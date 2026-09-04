@@ -406,6 +406,61 @@ torch_tpu_cc_library(
     ],
 )
 
+# Tests that defer and fuse can be enabled via legacy env var.
+torch_tpu_cc_test(
+    name = "defer_and_fuse_enablement_test_legacy",
+    srcs = ["defer_and_fuse_enablement_test.cc"],
+    args = [
+        "--expected_defer_and_fuse=true",
+    ],
+    env = {
+        "TPU_DEFER_AND_FUSE": "1",
+    },
+    deps = [
+        ":eager_mode",
+        "//torch_tpu/csrc/common:flags",
+        "//torch_tpu/csrc/common:oss_test_main",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+# Tests that defer and fuse can be explicitly enabled via TORCH_TPU_DEFER_AND_FUSE.
+torch_tpu_cc_test(
+    name = "defer_and_fuse_enablement_test_enabled_public",
+    srcs = ["defer_and_fuse_enablement_test.cc"],
+    args = [
+        "--expected_defer_and_fuse=true",
+    ],
+    env = {
+        "TORCH_TPU_DEFER_AND_FUSE": "1",
+    },
+    deps = [
+        ":eager_mode",
+        "//torch_tpu/csrc/common:flags",
+        "//torch_tpu/csrc/common:oss_test_main",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+# Tests that TORCH_TPU_DEFER_AND_FUSE takes precedence over TPU_DEFER_AND_FUSE.
+torch_tpu_cc_test(
+    name = "defer_and_fuse_enablement_test_precedence",
+    srcs = ["defer_and_fuse_enablement_test.cc"],
+    args = [
+        "--expected_defer_and_fuse=false",
+    ],
+    env = {
+        "TORCH_TPU_DEFER_AND_FUSE": "0",
+        "TPU_DEFER_AND_FUSE": "1",
+    },
+    deps = [
+        ":eager_mode",
+        "//torch_tpu/csrc/common:flags",
+        "//torch_tpu/csrc/common:oss_test_main",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
 torch_tpu_cc_library(
     name = "structured_log_buffer",
     srcs = ["structured_log_buffer.cc"],
