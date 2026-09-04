@@ -653,6 +653,10 @@ def torch_tpu_cc_test(
     cc_test_tags = tags
     effective_tags = list(tags)
 
+    if requires_libtpu and is_oss():
+        if "requires-tpu" not in effective_tags:
+            effective_tags.append("requires-tpu")
+
     result = _check_and_adjust_test_tags(
         name = name,
         is_oss = is_oss(),
@@ -859,6 +863,7 @@ def torch_tpu_py_test(
         oss_presubmit_tpu_generation = None,
         run_on_accelerators = None,
         tags = None,
+        requires_libtpu = None,
         **kwargs):
     """Creates a py_test for torch_tpu.
 
@@ -913,8 +918,14 @@ def torch_tpu_py_test(
             `<name>_tpu-v5lite` and `<name>_tpu-v6e`. Each generated target is also tagged with
             `presubmit-v<N>` matching the specified accelerator version.
         tags: The tags to add to the test.
+        requires_libtpu: If True, auto-injects TPU presubmit tags in OSS.
         **kwargs: Any additional arguments.
     """
+
+    tags = list(tags or [])
+    if requires_libtpu and is_oss() and not run_on_accelerators:
+        if "requires-tpu" not in tags:
+            tags.append("requires-tpu")
 
     if len(srcs) > 1:
         fail("torch_tpu_py_test must contain at most one srcs file. This prevents build bloat " +
@@ -931,7 +942,6 @@ def torch_tpu_py_test(
         # Python tests in OSS don't support flags, so we only do this for the
         # internal build.
         args = ["--suppress_failure_output"] + args
-    tags = tags or []
     data = kwargs.pop("data", [])
     if is_wheel_test:
         if ":torch_tpu_wheel" not in data:

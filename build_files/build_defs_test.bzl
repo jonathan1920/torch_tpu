@@ -106,13 +106,18 @@ def _test_py_test_multi_tpu_targets_impl(env, targets):
     env.expect.that_collection(target_v6_tags).not_contains("requires-tpu-v5lite")
 
     # In OSS, the presubmit-v<N> tag picks the runner, so each target must have
-    # the one matching its accelerator.
+    # the one matching its accelerator, with tag isolation across targets.
     if is_oss():
         env.expect.that_collection(target_v5_tags).contains("presubmit-v5")
         env.expect.that_collection(target_v5_tags).not_contains("presubmit-v6")
+        env.expect.that_collection(target_v5_tags).not_contains("presubmit-v7")
 
         env.expect.that_collection(target_v6_tags).contains("presubmit-v6")
         env.expect.that_collection(target_v6_tags).not_contains("presubmit-v5")
+        env.expect.that_collection(target_v6_tags).not_contains("presubmit-v7")
+    else:
+        env.expect.that_collection(target_v5_tags).not_contains("requires-tpu")
+        env.expect.that_collection(target_v6_tags).not_contains("requires-tpu")
 
 def _test_py_test_multi_tpu_targets(name):
     torch_tpu_py_test(
@@ -120,6 +125,7 @@ def _test_py_test_multi_tpu_targets(name):
         srcs = ["build_defs_test.py"],
         main = "build_defs_test.py",
         is_wheel_test = True,
+        requires_libtpu = True,
         tags = [
             "custom_tag",
         ],
@@ -270,6 +276,122 @@ def _test_requires_libtpu_explicit_true(name):
     analysis_test(
         name = name,
         impl = _test_requires_libtpu_explicit_true_impl,
+        targets = {"subject": name + "_subject"},
+        attrs = {"subject": {"aspects": [tags_aspect]}},
+    )
+
+def _test_requires_libtpu_auto_tags_cc_impl(env, targets):
+    """Verifies that passing requires_libtpu = True in torch_tpu_cc_test auto-injects requires-tpu in OSS and NOT in internal builds."""
+    info = targets.subject[_TagsInfo]
+    if is_oss():
+        env.expect.that_collection(info.tags).contains("requires-tpu")
+        env.expect.that_collection(info.tags).contains("presubmit-v5")
+    else:
+        env.expect.that_collection(info.tags).not_contains("requires-tpu")
+        env.expect.that_collection(info.tags).not_contains("presubmit-v5")
+        env.expect.that_collection(info.tags).not_contains("presubmit-v7")
+
+def _test_requires_libtpu_auto_tags_cc(name):
+    torch_tpu_cc_test(
+        name = name + "_subject",
+        srcs = [],
+        requires_libtpu = True,
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_requires_libtpu_auto_tags_cc_impl,
+        targets = {"subject": name + "_subject"},
+        attrs = {"subject": {"aspects": [tags_aspect]}},
+    )
+
+def _test_requires_libtpu_auto_tags_py_impl(env, targets):
+    """Verifies that passing requires_libtpu = True in torch_tpu_py_test auto-injects requires-tpu in OSS and NOT in internal builds."""
+    info = targets.subject[_TagsInfo]
+    if is_oss():
+        env.expect.that_collection(info.tags).contains("requires-tpu")
+        env.expect.that_collection(info.tags).contains("presubmit-v5")
+    else:
+        env.expect.that_collection(info.tags).not_contains("requires-tpu")
+        env.expect.that_collection(info.tags).not_contains("presubmit-v5")
+        env.expect.that_collection(info.tags).not_contains("presubmit-v7")
+
+def _test_requires_libtpu_auto_tags_py(name):
+    torch_tpu_py_test(
+        name = name + "_subject",
+        srcs = ["build_defs_test.py"],
+        main = "build_defs_test.py",
+        requires_libtpu = True,
+        is_wheel_test = True,
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_requires_libtpu_auto_tags_py_impl,
+        targets = {"subject": name + "_subject"},
+        attrs = {"subject": {"aspects": [tags_aspect]}},
+    )
+
+def _test_requires_libtpu_with_fails_on_tpu_v5_cc_impl(env, targets):
+    """Verifies that fails-on-tpu-v5 in torch_tpu_cc_test prevents presubmit-v5 and falls back to presubmit-v7 when requires_libtpu = True."""
+    info = targets.subject[_TagsInfo]
+    if is_oss():
+        env.expect.that_collection(info.tags).contains("requires-tpu")
+        env.expect.that_collection(info.tags).contains("presubmit-v7")
+        env.expect.that_collection(info.tags).not_contains("presubmit-v5")
+    else:
+        env.expect.that_collection(info.tags).not_contains("requires-tpu")
+        env.expect.that_collection(info.tags).not_contains("presubmit-v5")
+        env.expect.that_collection(info.tags).not_contains("presubmit-v7")
+
+def _test_requires_libtpu_with_fails_on_tpu_v5_cc(name):
+    torch_tpu_cc_test(
+        name = name + "_subject",
+        srcs = [],
+        requires_libtpu = True,
+        tags = ["fails-on-tpu-v5"],
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_requires_libtpu_with_fails_on_tpu_v5_cc_impl,
+        targets = {"subject": name + "_subject"},
+        attrs = {"subject": {"aspects": [tags_aspect]}},
+    )
+
+def _test_requires_libtpu_with_fails_on_tpu_v5_py_impl(env, targets):
+    """Verifies that fails-on-tpu-v5 in torch_tpu_py_test prevents presubmit-v5 and falls back to presubmit-v7 when requires_libtpu = True."""
+    info = targets.subject[_TagsInfo]
+    if is_oss():
+        env.expect.that_collection(info.tags).contains("requires-tpu")
+        env.expect.that_collection(info.tags).contains("presubmit-v7")
+        env.expect.that_collection(info.tags).not_contains("presubmit-v5")
+    else:
+        env.expect.that_collection(info.tags).not_contains("requires-tpu")
+        env.expect.that_collection(info.tags).not_contains("presubmit-v5")
+        env.expect.that_collection(info.tags).not_contains("presubmit-v7")
+
+def _test_requires_libtpu_with_fails_on_tpu_v5_py(name):
+    torch_tpu_py_test(
+        name = name + "_subject",
+        srcs = ["build_defs_test.py"],
+        main = "build_defs_test.py",
+        requires_libtpu = True,
+        is_wheel_test = True,
+        tags = ["fails-on-tpu-v5"],
+        nobuild = "Analysis test subject",
+        nolocal = "Analysis test subject",
+        notap = "Analysis test subject",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_requires_libtpu_with_fails_on_tpu_v5_py_impl,
         targets = {"subject": name + "_subject"},
         attrs = {"subject": {"aspects": [tags_aspect]}},
     )
@@ -626,6 +748,10 @@ def build_defs_test_suite(name):
             _test_py_test_non_tpu_requires_tags,
             _test_py_test_select_env,
             _test_py_test_single_tpu_target,
+            _test_requires_libtpu_auto_tags_cc,
+            _test_requires_libtpu_auto_tags_py,
+            _test_requires_libtpu_with_fails_on_tpu_v5_cc,
+            _test_requires_libtpu_with_fails_on_tpu_v5_py,
             _test_requires_libtpu_explicit_false,
             _test_requires_libtpu_explicit_true,
             _test_requires_libtpu_inferred,
