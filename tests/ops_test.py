@@ -1040,8 +1040,6 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.uint8: {"rtol": 6.9e-5},
     },
     "log_softmax": {
-        torch.bfloat16: {"atol": 6.5e-3},
-        torch.float16: {"rtol": 1.2e-3, "atol": 6.3e-4},
         torch.float32: {"rtol": 5.7e-5, "atol": 8.3e-5},
     },
     "logcumsumexp": {
@@ -1159,10 +1157,6 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.int64: {"rtol": 4e-6},
         torch.int8: {"rtol": 4e-6},
         torch.uint8: {"rtol": 4e-6},
-    },
-    "softmax": {
-        torch.bfloat16: {"atol": 4.7e-3},
-        torch.float16: {"atol": 5.9e-4},
     },
     "tan": {
         torch.complex64: {"rtol": 3.0e-5, "atol": 5.0e-6},
