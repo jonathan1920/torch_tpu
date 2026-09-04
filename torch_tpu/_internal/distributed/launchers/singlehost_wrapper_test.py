@@ -17,29 +17,27 @@
 import os
 
 from absl.testing import absltest
+from torch.google import distributed as g3_distributed
 import torch.multiprocessing as mp
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.distributed import multiprocessing
 from tests import seed_test_utils
-import tests.distributed.distributed_utils as distributed_utils
 
 
 WORLD_SIZE = 8
 
 
-def worker_func(world_size):
+def worker_func(rank, world_size):
   mandatory_vars = [
       "WORLD_SIZE",
+      "RANK",
       "LOCAL_RANK",
       "MASTER_ADDR",
       "MASTER_PORT",
       "TORCH_TPU_SLICEBUILDER_ADDRESSES",
+      "TORCH_TPU_SLICEBUILDER_PORT",
       "TORCH_TPU_TOPOLOGY",
   ]
-
-  if "RANK" not in os.environ:
-    raise RuntimeError("Mandatory variable RANK not set in worker")
-  rank = int(os.environ["RANK"])
   for var in mandatory_vars:
     if var not in os.environ:
       raise RuntimeError(f"Mandatory variable {var} not set in worker {rank}")
@@ -50,9 +48,9 @@ def worker_func(world_size):
         f"WORLD_SIZE mismatch: expected {world_size}, got"
         f" {os.environ['WORLD_SIZE']}"
     )
-  if rank >= world_size:
+  if int(os.environ["RANK"]) != rank:
     raise ValueError(
-        f"RANK out of bounds: expected rank less than {world_size}, got {rank}"
+        f"RANK mismatch: expected {rank}, got {os.environ['RANK']}"
     )
   if int(os.environ["LOCAL_RANK"]) != rank:
     raise ValueError(
@@ -66,6 +64,7 @@ def worker_func(world_size):
 
   # Ensure ports are set and represent integers
   int(os.environ["MASTER_PORT"])
+  int(os.environ["TORCH_TPU_SLICEBUILDER_PORT"])
 
   # Ensure topology and addresses are non-empty
   if not os.environ["TORCH_TPU_TOPOLOGY"]:
@@ -90,12 +89,9 @@ class SingleHostTestLauncherTest(seed_test_utils.RepeatableTest):
           self.create_tempdir().full_path
       )
 
-    distributed_utils.dist_run(
-        nproc_per_node=WORLD_SIZE,
-        fn=singlehost_wrapper.tpu_env_wrapper(
-            worker_func, world_size=WORLD_SIZE
-        ),
-        world_size=WORLD_SIZE,
+    g3_distributed.torchrun(
+        singlehost_wrapper.tpu_env_wrapper(worker_func, world_size=WORLD_SIZE),
+        nproc_per_node=8,
     )
 
   def test_tpu_env_wrapper_no_args(self):
