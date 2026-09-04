@@ -247,7 +247,8 @@ common:tpu_envvars --test_env=VBAR_CONTROL_SERVICE_URL
 common:remote_caching_readonly --remote_upload_local_results=false
 common:remote_caching_readonly --remote_cache=grpcs://remotebuildexecution.googleapis.com
 common:remote_caching_readonly --remote_instance_name=projects/ml-oss-rbe-testing/instances/default_instance
-common:remote_caching_readonly --remote_default_exec_properties=cache-silo-key=FirstCachedBuild
+# Default platform cache silo key for standard readonly RBE remote caching.
+common:remote_caching_readonly --extra_execution_platforms="//bazel/platforms:rbe_default_platform"
 common:remote_caching_readonly --google_default_credentials
 
 # Allow creation of resultstore URLs for ci bazel invocation, must be used in
@@ -321,6 +322,7 @@ common:ci_tpu_v5 --test_tag_filters=requires-tpu,-notest,-nobuild,-fails-on-tpu-
 common:ci_tpu_v5_presubmit --config=ci_tpu_v5
 common:ci_tpu_v5_presubmit --config=remote_execution_readonly
 common:ci_tpu_v5_presubmit --test_tag_filters=-notest,-nobuild,-nopresubmit,-fails-on-tpu-v5,presubmit-v5
+common:ci_tpu_v5_presubmit --local_test_jobs=8
 
 common:ci_tpu_v6 --config=ci_tpu_base
 common:ci_tpu_v6 --test_tag_filters=requires-tpu,-notest,-nobuild,-fails-on-tpu-v6
@@ -338,6 +340,67 @@ common:ci_tpu_v7_presubmit --config=ci_tpu_v7
 common:ci_tpu_v7_presubmit --config=remote_execution_readonly
 common:ci_tpu_v7_presubmit --test_tag_filters=-notest,-nobuild,-nopresubmit,-fails-on-tpu-v7,presubmit-v7
 
+# ==============================================================================
+# Dedicated RBE & TPU Runner Fleet Configs (projects/rbe-tpu-oss)
+# Parallel opt-in flow: completely isolated from standard community presubmits.
+# ==============================================================================
+common:remote_execution_rbe_tpu_oss --remote_upload_local_results=false
+common:remote_execution_rbe_tpu_oss --remote_download_minimal
+common:remote_execution_rbe_tpu_oss --keep_going
+common:remote_execution_rbe_tpu_oss --remote_instance_name=projects/rbe-tpu-oss/instances/default_instance_west1
+common:remote_execution_rbe_tpu_oss --google_default_credentials
+common:remote_execution_rbe_tpu_oss --jobs=200
+common:remote_execution_rbe_tpu_oss --remote_timeout=3600
+common:remote_execution_rbe_tpu_oss --test_timeout=3600
+common:remote_execution_rbe_tpu_oss --define=EXECUTOR=remote
+common:remote_execution_rbe_tpu_oss --remote_executor=grpcs://us-west1-remotebuildexecution.googleapis.com
+common:remote_execution_rbe_tpu_oss --extra_execution_platforms="@ml_build_config_platform//:platform"
+
+common:remote_caching_rbe_tpu_oss --remote_upload_local_results=false
+common:remote_caching_rbe_tpu_oss --remote_cache=grpcs://us-west1-remotebuildexecution.googleapis.com
+common:remote_caching_rbe_tpu_oss --remote_instance_name=projects/rbe-tpu-oss/instances/default_instance_west1
+common:remote_caching_rbe_tpu_oss --remote_default_exec_properties=cache-silo-key=FirstCachedBuild
+common:remote_caching_rbe_tpu_oss --google_default_credentials
+
+common:resultstore_rbe_tpu_oss --bes_backend=buildeventservice.googleapis.com
+common:resultstore_rbe_tpu_oss --bes_timeout=600s
+common:resultstore_rbe_tpu_oss --bes_results_url="https://source.cloud.google.com/results/invocations"
+common:resultstore_rbe_tpu_oss --bes_instance_name="rbe-tpu-oss"
+
+# Parallel CPU opt-in presubmit on rbe-tpu-oss
+common:ci_cpu_presubmit_rbe --config=ci_cpu_presubmit
+common:ci_cpu_presubmit_rbe --config=remote_execution_rbe_tpu_oss
+
+# Parallel GKE Hybrid Runner config: compiles on rbe-tpu-oss, executes locally on spot TPU chips
+common:ci_tpu_v5_hybrid_rbe --config=ci_tpu_v5
+common:ci_tpu_v5_hybrid_rbe --config=remote_execution_rbe_tpu_oss
+common:ci_tpu_v5_hybrid_rbe --modify_execution_info=TestRunner=+no-remote-exec
+common:ci_tpu_v5_hybrid_rbe --test_tag_filters=-notest,-nobuild,-nopresubmit,-fails-on-tpu-v5,presubmit-v5
+
+# Full RBE remote test execution config for TPU v5e worker pools.
+common:ci_tpu_v5_full_rbe --config=ci_tpu_v5
+common:ci_tpu_v5_full_rbe --config=remote_execution_rbe_tpu_oss
+common:ci_tpu_v5_full_rbe --extra_execution_platforms=//bazel/platforms:rbe_tpu_v5e
+common:ci_tpu_v5_full_rbe --modify_execution_info=TestRunner=-no-remote-exec
+common:ci_tpu_v5_full_rbe --spawn_strategy=remote,worker,local
+common:ci_tpu_v5_full_rbe --test_tag_filters=-notest,-nobuild,-nopresubmit,-fails-on-tpu-v5,presubmit-v5
+
+# Full RBE remote test execution config for TPU v6e worker pools.
+common:ci_tpu_v6_full_rbe --config=ci_tpu_v6
+common:ci_tpu_v6_full_rbe --config=remote_execution_rbe_tpu_oss
+common:ci_tpu_v6_full_rbe --extra_execution_platforms=//bazel/platforms:rbe_tpu_v6e
+common:ci_tpu_v6_full_rbe --modify_execution_info=TestRunner=-no-remote-exec
+common:ci_tpu_v6_full_rbe --spawn_strategy=remote,worker,local
+common:ci_tpu_v6_full_rbe --test_tag_filters=-notest,-nobuild,-nopresubmit,-fails-on-tpu-v6,presubmit-v6
+
+# Full RBE remote test execution config for TPU v7x worker pools.
+common:ci_tpu_v7_full_rbe --config=ci_tpu_v7
+common:ci_tpu_v7_full_rbe --config=remote_execution_rbe_tpu_oss
+common:ci_tpu_v7_full_rbe --extra_execution_platforms=//bazel/platforms:rbe_tpu_v7x
+common:ci_tpu_v7_full_rbe --modify_execution_info=TestRunner=-no-remote-exec
+common:ci_tpu_v7_full_rbe --spawn_strategy=remote,worker,local
+common:ci_tpu_v7_full_rbe --test_tag_filters=-notest,-nobuild,-nopresubmit,-fails-on-tpu-v7,presubmit-v7
+
 # Setting TPU support true for profiler trace.
 build --define=with_tpu_support=true
 
@@ -346,6 +409,7 @@ build --define=with_tpu_support=true
 # because it does not have RBE agents setup.
 common:remote_execution_readonly --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 common:remote_execution_readonly --google_default_credentials
+common:remote_execution_readonly --remote_upload_local_results=false
 common:remote_execution_readonly --jobs=200
 common:remote_execution_readonly --remote_timeout=3600
 common:remote_execution_readonly --test_timeout=3600
@@ -353,7 +417,10 @@ common:remote_execution_readonly --test_timeout=3600
 # Revisit removing this with Bazel 9.
 common:remote_execution_readonly --define=EXECUTOR=remote
 common:remote_execution_readonly --remote_executor=grpcs://remotebuildexecution.googleapis.com
-common:remote_execution_readonly --extra_execution_platforms="@ml_build_config_platform//:platform"
+# Use a custom platform to define the default `cache-silo-key` rather than
+# --remote_default_exec_properties to prevent ImmutableMap duplicate-key crashes
+# when configs are chained.
+common:remote_execution_readonly --extra_execution_platforms="//bazel/platforms:rbe_default_platform"
 
 # Allow per-user, project-specific bazelrc.
 # Do this last so it takes precedence.

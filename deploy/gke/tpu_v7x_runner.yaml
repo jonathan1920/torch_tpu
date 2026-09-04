@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tpu-v7x-github-runner
+  namespace: default
+  labels:
+    app: tpu-v7x-github-runner
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: tpu-v7x-github-runner
+  template:
+    metadata:
+      labels:
+        app: tpu-v7x-github-runner
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-tpu-accelerator: tpu7x
+      containers:
+      - name: runner
+        image: gcr.io/tpu-pytorch/tpu-ci-runner@sha256:01702159dba5594e9e238f4c293a2872e15f350599c382d96078a87750b150e4
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          mkdir -p /actions-runner && cd /actions-runner
+          if [ ! -f ./config.sh ]; then
+            curl -o runner.tar.gz -L https://github.com/actions/runner/releases/download/v2.321.0/actions-runner-linux-x64-2.321.0.tar.gz
+            tar xzf runner.tar.gz
+          fi
+          ./config.sh --url https://github.com/jonathan1920/torch_tpu --token "${RUNNER_TOKEN}" --labels tpu-v7x,self-hosted,linux,x64 --unattended --replace
+          ./run.sh
+        env:
+        - name: RUNNER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: github-runner-secret
+              key: runner-token
+        resources:
+          limits:
+            google.com/tpu: "4"
+          requests:
+            google.com/tpu: "4"
+        securityContext:
+          privileged: true

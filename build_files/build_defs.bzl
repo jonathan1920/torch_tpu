@@ -1073,6 +1073,65 @@ def torch_tpu_py_test(
         **kwargs
     )
 
+def torch_tpu_hardware_test(
+        name,
+        srcs = None,
+        num_chips = 1,
+        generation = "auto",
+        exec_properties = None,
+        **kwargs):
+    """Creates a PyTorch-TPU test target that dynamically routes and load-balances across TPU pools.
+
+    Args:
+      name: Target name.
+      srcs: Source files for the test.
+      num_chips: Number of TPU chips (1 or 4).
+      generation: Hardware generation ("v7x", "v6e", "v5", "select", or None).
+      exec_properties: Execution properties dict for RBE worker pool routing.
+      **kwargs: Additional arguments passed to torch_tpu_py_test.
+    """
+    if srcs == None:
+        srcs = []
+    if exec_properties == None:
+        exec_properties = {}
+
+    selected_machine_type = "tpu7x-standard-1t"
+
+    if generation == "v7x":
+        if num_chips == 4:
+            selected_machine_type = "tpu7x-standard-4t"
+        else:
+            selected_machine_type = "tpu7x-standard-1t"
+    elif generation == "v6e":
+        selected_machine_type = "tpu6e-standard-4t"
+    elif generation == "v5":
+        selected_machine_type = "tpu-v5-lite-podslice"
+    else:  # "auto" dynamic load balancing based on tags & chip count
+        tag_list = kwargs.get("tags", []) or []
+        is_v5 = any(["requires-v5" in t or "tpu-v5" in t or "v5" in t for t in tag_list])
+        is_v6e = any(["requires-v6e" in t or "tpu-v6" in t or "v6e" in t for t in tag_list])
+        is_v7x = any(["requires-v7x" in t or "tpu-v7" in t or "v7x" in t for t in tag_list])
+        if is_v5:
+            selected_machine_type = "tpu-v5-lite-podslice"
+        elif is_v6e:
+            selected_machine_type = "tpu6e-standard-4t"
+        elif is_v7x:
+            selected_machine_type = "tpu7x-standard-4t" if num_chips == 4 else "tpu7x-standard-1t"
+        elif num_chips == 4:
+            selected_machine_type = "tpu7x-standard-4t"
+        else:
+            selected_machine_type = "tpu7x-standard-1t"
+
+    merged_exec_properties = {"MachineType": selected_machine_type}
+    merged_exec_properties.update(exec_properties)
+
+    torch_tpu_py_test(
+        name = name,
+        srcs = srcs,
+        exec_properties = merged_exec_properties,
+        **kwargs
+    )
+
 # Enable build_cleaner to clean up deps for torch_tpu_py_test.
 register_extension_info(
     extension = torch_tpu_py_test,
