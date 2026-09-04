@@ -1353,10 +1353,12 @@ torch_tpu_cc_test(
         ":compilation_spec",
         ":compilation_test_helper",
         ":compile_options_key",
+        ":env_vars",
         ":fingerprint_utils",
         "//torch_tpu/csrc/common:oss_test_main",
         "//torch_tpu/csrc/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
+        "@xla//xla/pjrt:pjrt_executable",
     ],
 )
 

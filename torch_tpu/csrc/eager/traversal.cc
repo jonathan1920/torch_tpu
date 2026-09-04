@@ -66,7 +66,6 @@
 #include "torch_tpu/csrc/common/compilation_spec.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
-#include "torch_tpu/csrc/common/env_vars.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fingerprint_utils.h"
 #include "torch_tpu/csrc/common/shape.h"
@@ -81,7 +80,6 @@
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/service/device_assignment.h"
 #include "xla/xla_data.pb.h"
 
@@ -730,8 +728,7 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
       exec_options.set_use_spmd_partitioning(false);
       exec_options.set_use_shardy_partitioner(false);
       spec.compile_options_key =
-          MakeCompileOptionsKey(GetEnvOnce<kXlaFlagsEnvVar>().value_or(""),
-                                *spec.xla_compile_options);
+          MakeCompileOptionsKey(*spec.xla_compile_options);
     }
   }
 

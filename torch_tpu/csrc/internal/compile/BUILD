@@ -117,7 +117,6 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/common:context_states",
         "//torch_tpu/csrc/common:dimension_types",
         "//torch_tpu/csrc/common:dtype",
-        "//torch_tpu/csrc/common:env_vars",
         "//torch_tpu/csrc/common:error_utils",
         "//torch_tpu/csrc/common:pybind_error_utils",
         "//torch_tpu/csrc/common:shape",

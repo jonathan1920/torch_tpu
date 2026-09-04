@@ -754,7 +754,6 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/common:compile_options_key",
         "//torch_tpu/csrc/common:dimension_types",
         "//torch_tpu/csrc/common:dtype",
-        "//torch_tpu/csrc/common:env_vars",
         "//torch_tpu/csrc/common:error_utils",
         "//torch_tpu/csrc/common:fingerprint_utils",
         "//torch_tpu/csrc/common:shape",

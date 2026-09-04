@@ -437,19 +437,22 @@ absl::Status ApplyCompilerOptionOverrides(
 }
 
 [[nodiscard]] CompileOptionsKey MakeCompileOptionsKey(
-    const std::string_view xla_flags, const xla::CompileOptions& options) {
+    const xla::CompileOptions& options) {
   return CompileOptionsKey(FingerprintCat(
-      // Fingerprint of XLA_FLAGS environment variable, effectively fingerprint
-      // of `xla::DebugOptions` fields populated via parsing XLA_FLAGS.
+      // Fingerprint of XLA_FLAGS and LIBTPU_INIT_ARGS environment variables,
+      // effectively fingerprint of flags that might impact the compiled
+      // executable.
       //
-      // It is intended not to replicate parsing XLA_FLAGS into `tsl::Flag`. The
-      // current approach is simpler and practically sufficient to capture XLA
-      // behavioral changes controlled by XLA_FLAGS. Semantically identical
-      // flags in a different order will yield different keys, but it is an
-      // acceptable trade-off.
+      // It is intended not to replicate parsing XLA_FLAGS into `tsl::Flag` or
+      // LIBTPU_INIT_ARGS into `absl::Flag`. The current approach is simpler and
+      // practically sufficient to capture XLA behavioral changes controlled by
+      // these environment variables. Semantically identical flags in a
+      // different order will yield different keys, but it is an acceptable
+      // trade-off.
       // LINT.IfChange(xla_flags_fingerprint)
-      Fingerprint(xla_flags),
+      Fingerprint(GetEnvOnce<kXlaFlagsEnvVar>().value_or("")),
       // LINT.ThenChange()
+      Fingerprint(GetEnvOnce<kLibtpuInitArgsEnvVar>().value_or("")),
       Fingerprint(options)));
 }
 // LINT.ThenChange()
@@ -502,8 +505,7 @@ absl::StatusOr<CompilationSpecsByMode> MakeCompilationSpecs(
         MakeCompilerOptionOverrides(is_tpu, mode, overrides),
         *compile_options));
 
-    const auto compile_options_key = MakeCompileOptionsKey(
-        GetEnvOnce<kXlaFlagsEnvVar>().value_or(""), *compile_options);
+    const auto compile_options_key = MakeCompileOptionsKey(*compile_options);
     specs.try_emplace(mode, std::move(compile_options), compile_options_key);
   }
 

@@ -60,7 +60,6 @@
 #include "torch_tpu/csrc/common/context_states.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
-#include "torch_tpu/csrc/common/env_vars.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/pybind_error_utils.h"
 #include "torch_tpu/csrc/common/shape.h"
@@ -463,8 +462,7 @@ SharedLoadedExecutableWithMetadata PyCompileMlir(
       }
       options.set_device_assignment(da);
       compilation_spec.compile_options_key =
-          MakeCompileOptionsKey(GetEnvOnce<kXlaFlagsEnvVar>().value_or(""),
-                                *compilation_spec.xla_compile_options);
+          MakeCompileOptionsKey(*compilation_spec.xla_compile_options);
     }
   }
 

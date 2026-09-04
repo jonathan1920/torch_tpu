@@ -22,7 +22,6 @@
 #include <future>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -35,6 +34,7 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/csrc/common/compilation_spec.h"
 #include "torch_tpu/csrc/common/compile_options_key.h"
+#include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/shape.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -192,7 +192,7 @@ void PopCompilerOptionOverrides();
 
 // Returns the compile options key for the given compile options.
 [[nodiscard]] CompileOptionsKey MakeCompileOptionsKey(
-    std::string_view xla_flags, const xla::CompileOptions& options);
+    const xla::CompileOptions& options);
 
 }  // namespace torch_tpu
 
