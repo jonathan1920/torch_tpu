@@ -13,10 +13,12 @@
 # limitations under the License.
 
 import functools
+import os
 import struct
 import threading
 from typing import Any, Callable
 import unittest
+from unittest import mock
 
 from absl import flags
 from absl.testing import absltest
@@ -1161,6 +1163,69 @@ class MultiThreadRngTest(_BaseRngTest):
     self.assertFalse(
         torch.equal(generators[0].get_state(), generators[1].get_state())
     )
+
+  @_fail_on_tpu(
+      "b/556256460: Concurrent eager RNG execution during compilation tracing"
+      " hits unmaterialized placeholder state."
+  )
+  @mock.patch.dict(os.environ, {"TORCHINDUCTOR_COMPILE_THREADS": "0"})
+  @torch._inductor.config.patch(compile_threads=1)
+  def test_concurrent_compile_tracing_and_eager_rng(self):
+    """Verifies concurrent eager RNG operations during torch.compile tracing."""
+    # Force single-threaded compilation: the env var prevents subprocess
+    # spawning in hermetic test runners, while compile_threads=1 enforces
+    # single-threaded compilation in this thread's ContextVar scope.
+    stop_event = threading.Event()
+    errors = []
+
+    def eager_worker():
+      try:
+        # Repeatedly execute eager RNG operations to generate contention on the
+        # default generator until the compile worker signals completion.
+        while not stop_event.is_set():
+          _ = torch.rand(10, device=self.device)
+      except Exception as e:  # pylint: disable=broad-exception-caught
+        errors.append(e)
+        stop_event.set()
+
+    def fn_to_compile(x):
+      res = x
+      for _ in range(30):
+        res = res + torch.rand_like(res)
+      return res
+
+    # Force Dynamo to re-compile on each iteration by passing a different shape
+    # with dynamic=False, triggering a fresh compilation cycle without caching.
+    compiled = torch.compile(fn_to_compile, dynamic=False)
+
+    def compile_worker():
+      # Inductor configs are thread-scoped via ContextVar; patch compile_threads
+      # in the worker thread to ensure synchronous compilation during tracing.
+      with torch._inductor.config.patch(compile_threads=1):
+        try:
+          for i in range(10):
+            if stop_event.is_set():
+              break
+            x = torch.zeros(10 + i, device=self.device)
+            _ = compiled(x)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+          errors.append(e)
+        finally:
+          stop_event.set()
+
+    eager_threads = [threading.Thread(target=eager_worker) for _ in range(8)]
+    compile_thread = threading.Thread(target=compile_worker)
+
+    for t in eager_threads:
+      t.start()
+    compile_thread.start()
+
+    compile_thread.join()
+    for t in eager_threads:
+      t.join()
+
+    if errors:
+      raise errors[0]
 
 
 if __name__ == "__main__":
