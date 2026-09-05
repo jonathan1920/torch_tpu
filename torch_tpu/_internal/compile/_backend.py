@@ -33,6 +33,7 @@ The `torch.compile()` function has the following relevant arguments:
 from collections.abc import Callable, Iterator, Sequence
 import concurrent.futures
 import contextlib
+import dataclasses
 import functools
 import hashlib
 import threading
@@ -41,6 +42,8 @@ from typing import Any, TypeAlias
 from absl import logging
 import torch
 from torch._decomp import get_decompositions
+from torch._dynamo import guards as dynamo_guards
+from torch._dynamo import source as dynamo_source
 from torch._dynamo.backends.common import aot_autograd
 from torch._functorch._aot_autograd import autograd_cache as _autograd_cache
 from torch._functorch._aot_autograd import graph_compile as _graph_compile
@@ -135,7 +138,10 @@ def _raise_on_symint(
 
 
 @contextlib.contextmanager
-def _serialization_context(enable: bool = False) -> Iterator[list[Any] | None]:
+def _serialization_context(
+    example_inputs: Sequence[Any],
+    enable: bool = False,
+) -> Iterator[list[Any] | None]:
   """Optionally configures aot_autograd to produce a BundledAOTAutogradResult.
 
   When enabled, patches ``_cache_inference_info`` to inject a per-graph
@@ -145,6 +151,8 @@ def _serialization_context(enable: bool = False) -> Iterator[list[Any] | None]:
   into subsequent compilations).
 
   Args:
+    example_inputs: Example inputs to differentiate cache keys based on input
+      properties such as storage offsets.
     enable: If True, activate the serialization patches and yield a one-element
       list whose ``[0]`` slot will hold the captured
       ``BundledAOTAutogradResult`` after compilation.  If False, yield None and
@@ -176,6 +184,43 @@ def _serialization_context(enable: bool = False) -> Iterator[list[Any] | None]:
         functorch_config.patch("bundled_autograd_cache", True),
     )
 
+    # The default tensor metadata extraction methods below are used during cache
+    # key generation and unfortunately they zero-out `storage_offset` in the
+    # returned metadata object which is harmful for TPU. Override them so that
+    # we can prevent this behavior and restore `storage_offset` as a part of
+    # any cache key that is generated.
+    orig_extract_meta = _autograd_cache.extract_tensor_metadata_for_cache_key
+    orig_codecache_extract_meta = (
+        torch._inductor.codecache.extract_tensor_metadata_for_cache_key
+    )
+
+    # Restores `storage_offset`, but does set `storage_bytes=None` just like
+    # the patched method.
+    def _patched_extract_meta(t: torch.Tensor):
+      meta = torch._subclasses.fake_tensor.extract_tensor_metadata(t)
+      if not hasattr(t, "_is_inductor_static"):
+        meta = dataclasses.replace(meta, storage_bytes=None)
+      return meta
+
+    _autograd_cache.extract_tensor_metadata_for_cache_key = (
+        _patched_extract_meta
+    )
+    torch._inductor.codecache.extract_tensor_metadata_for_cache_key = (
+        _patched_extract_meta
+    )
+    stack.callback(
+        setattr,
+        _autograd_cache,
+        "extract_tensor_metadata_for_cache_key",
+        orig_extract_meta,
+    )
+    stack.callback(
+        setattr,
+        torch._inductor.codecache,
+        "extract_tensor_metadata_for_cache_key",
+        orig_codecache_extract_meta,
+    )
+
     orig_cache_inference_info = _graph_compile._cache_inference_info  # pylint: disable=protected-access
 
     def _patched_cache_inference_info(
@@ -187,6 +232,7 @@ def _serialization_context(enable: bool = False) -> Iterator[list[Any] | None]:
         wrappers,
     ):
       has_cache_info = aot_config.cache_info is not None
+
       if not has_cache_info:
         import torch_tpu  # pylint: disable=g-import-not-at-top; buildcleaner: ignore
 
@@ -194,8 +240,19 @@ def _serialization_context(enable: bool = False) -> Iterator[list[Any] | None]:
             f"torch={torch.__version__}"
             f"_torchtpu={getattr(torch_tpu, '__version__', 'dev')}"
         )
+        # Without inputs_meta, the custom key would collide for graphs
+        # differing only in `storage_offset`, causing runtime input size
+        # mismatches between the compiled artifact and the provided input.
+        inputs_meta = []
+        for t in example_inputs:
+          if isinstance(t, torch.Tensor):
+            inputs_meta.append(_patched_extract_meta(t))
+          else:
+            inputs_meta.append(type(t))
+
         graph_hash = hashlib.sha256(
-            f"{version_prefix}:{aot_forward_graph_str or ''}".encode()
+            f"{version_prefix}:{aot_forward_graph_str or ''}:{inputs_meta}"
+            .encode()
         ).hexdigest()
         object.__setattr__(
             aot_config,
@@ -398,6 +455,35 @@ class AsyncCompilationSubmitted(Exception):
         resolve_fn()
 
 
+def _guard_input_storage_offsets(graph_module: torch.fx.GraphModule) -> None:
+  """Installs Dynamo guards on storage_offset for all tensor placeholder inputs.
+
+  Dynamo's default TENSOR_MATCH guard does not guard against tensor
+  storage_offset. For static shape compilations, tensor views with different
+  storage offsets bake static slice indices into the compiled executable.
+  Installing an EQUALS_MATCH guard on TensorProperty.STORAGE_OFFSET ensures
+  Dynamo recompiles when an input tensor is passed with a different storage
+  offset.
+
+  Args:
+    graph_module: The FX graph module whose placeholder inputs to guard.
+  """
+  # Ensure we're within a tracing context to install guards
+  tracing_context = torch._guards.TracingContext.try_get()
+  if tracing_context is None:
+    return
+
+  for node in graph_module.graph.find_nodes(op="placeholder"):
+    if not isinstance(node.meta.get("example_value"), torch.Tensor):
+      continue
+
+    offset_source = dynamo_source.TensorPropertySource(
+        node._dynamo_source, dynamo_source.TensorProperty.STORAGE_OFFSET
+    )
+    guard = offset_source.make_guard(dynamo_guards.GuardBuilder.EQUALS_MATCH)
+    dynamo_guards.install_guard(guard)
+
+
 class TpuBackend:
   """TPU backend for torch.compile() integration."""
 
@@ -449,6 +535,7 @@ class TpuBackend:
       )
 
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
+    _guard_input_storage_offsets(graph_module)
 
     compiler_instance = make_backend_compiler(
         example_inputs, async_compile=async_compile, debug=self._debug
@@ -483,7 +570,9 @@ class TpuBackend:
         if async_compile
         else contextlib.nullcontext()
     )
-    with _serialization_context(enable_serialization) as captured_entry:
+    with _serialization_context(
+        example_inputs, enable_serialization
+    ) as captured_entry:
       with save_context:
         result = aot_autograd(
             fw_compiler=fw_compiler,

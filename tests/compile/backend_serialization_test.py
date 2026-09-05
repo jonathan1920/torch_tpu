@@ -184,6 +184,86 @@ class BackendSerializationTest(seed_test_utils.RepeatableTest):
     utils.assert_close(r_small[0], x_small.cpu() * 2)
     utils.assert_close(r_large[0], x_large.cpu() * 2)
 
+  def test_different_storage_offsets_produce_different_cache_keys(self):
+    def simple(x):
+      return (x + x,)
+
+    base = torch.arange(129, dtype=torch.int32, device="tpu")
+    x_128 = base[128]
+    x_125 = base[125]
+
+    backend = _backend.TpuBackend(enable_serialization=True)
+    gm_128 = dynamo_graph_capture_for_export(simple)(x_128)
+    compiled_128 = backend(gm_128, [x_128])
+    entry_128 = compiled_128.serialize()
+
+    gm_125 = dynamo_graph_capture_for_export(simple)(x_125)
+    compiled_125 = backend(gm_125, [x_125])
+    entry_125 = compiled_125.serialize()
+
+    self.assertIsNotNone(entry_128)
+    self.assertIsNotNone(entry_125)
+
+    restored_128 = deserialize_bundled_cache_entry(
+        pickle.loads(pickle.dumps(entry_128))
+    )
+    restored_125 = deserialize_bundled_cache_entry(
+        pickle.loads(pickle.dumps(entry_125))
+    )
+    self.assertEqual(
+        _backend.to_device(restored_128(x_128), "cpu")[0].item(), 256
+    )
+    self.assertEqual(
+        _backend.to_device(restored_125(x_125), "cpu")[0].item(), 250
+    )
+
+    with tempfile.TemporaryDirectory() as cache_dir:
+      with temporary_cache_dir(cache_dir):
+        # First run compiles for storage_offset=128 (miss & save)
+        torch._dynamo.reset()
+        counters.clear()
+        compiled_fn_1 = torch.compile(
+            simple,
+            backend="tpu",
+            fullgraph=True,
+            dynamic=False,
+        )
+        res_1 = compiled_fn_1(x_128)
+        self.assertEqual(res_1[0].cpu().item(), 256)
+        c1 = dict(counters["aot_autograd"])
+        self.assertEqual(c1.get("autograd_cache_miss"), 1)
+        self.assertEqual(c1.get("autograd_cache_hit", 0), 0)
+
+        # Second run with different storage_offset=125 in a fresh Dynamo session
+        # must result in a cache MISS (no key collision) and compile cleanly.
+        torch._dynamo.reset()
+        counters.clear()
+        compiled_fn_2 = torch.compile(
+            simple,
+            backend="tpu",
+            fullgraph=True,
+            dynamic=False,
+        )
+        res_2 = compiled_fn_2(x_125)
+        self.assertEqual(res_2[0].cpu().item(), 250)
+        c2 = dict(counters["aot_autograd"])
+        self.assertEqual(c2.get("autograd_cache_miss"), 1)
+        self.assertEqual(c2.get("autograd_cache_hit", 0), 0)
+
+        # Subsequent run for storage_offset=128 hits the autograd cache
+        torch._dynamo.reset()
+        counters.clear()
+        compiled_fn_3 = torch.compile(
+            simple,
+            backend="tpu",
+            fullgraph=True,
+            dynamic=False,
+        )
+        res_3 = compiled_fn_3(x_128)
+        self.assertEqual(res_3[0].cpu().item(), 256)
+        c3 = dict(counters["aot_autograd"])
+        self.assertEqual(c3.get("autograd_cache_hit"), 1)
+
   def test_multiple_serialization_roundtrips(self):
     def simple(x):
       return (x + 1,)
