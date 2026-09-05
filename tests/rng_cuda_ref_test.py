@@ -801,6 +801,47 @@ class CompiledRngTest(_BaseRngTest):
     self.assertTrue(torch.equal(mask_fwd, mask_bwd))
 
 
+class ErrorHandlingRngTest(_BaseRngTest):
+  """Tests verifying RNG contracts under error and exception conditions."""
+
+  def test_compile_tracing_failure_restores_eager_rng(self):
+    """Verifies compilation tracing failure restores eager generator state."""
+    self.backend_mod.manual_seed(42)
+    expected = torch.rand(10, device=self.device)
+
+    self.backend_mod.manual_seed(42)
+
+    def failing_fn(x):
+      _ = torch.rand_like(x)
+      raise RuntimeError("Simulated tracing failure")
+
+    with self.assertRaises(  # ASSERT_RAISES_OK=Tests RNG behavior on crash, not error handling.
+        RuntimeError
+    ):
+      torch.compile(failing_fn, fullgraph=True)(
+          torch.ones(10, device=self.device)
+      )
+
+    actual = torch.rand(10, device=self.device)
+    self.assertTrue(torch.equal(expected, actual))
+
+  def test_eager_exception_after_rng_op_does_not_rollback(self):
+    """Verifies exception in Python does not roll back advanced RNG state."""
+    self.backend_mod.manual_seed(42)
+    _ = torch.rand(10, device=self.device)
+    expected_next = torch.rand(10, device=self.device)
+
+    self.backend_mod.manual_seed(42)
+    try:
+      _ = torch.rand(10, device=self.device)
+      raise RuntimeError("Simulated eager error")
+    except RuntimeError:
+      pass
+
+    actual_next = torch.rand(10, device=self.device)
+    self.assertTrue(torch.equal(expected_next, actual_next))
+
+
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
 
