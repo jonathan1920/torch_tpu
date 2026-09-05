@@ -841,6 +841,56 @@ class ErrorHandlingRngTest(_BaseRngTest):
     actual_next = torch.rand(10, device=self.device)
     self.assertTrue(torch.equal(expected_next, actual_next))
 
+  def test_compiled_runtime_error_without_catch(self):
+    """Verifies runtime error in compiled fn does not rollback RNG state."""
+    self.backend_mod.manual_seed(42)
+    _ = torch.rand(10, device=self.device)
+    expected_next = torch.rand(10, device=self.device)
+
+    self.backend_mod.manual_seed(42)
+
+    @torch.compile(fullgraph=False)
+    def fn(x):
+      r = torch.rand_like(x)
+      # Evaluating a tensor condition triggers a graph break; the exception
+      # is raised eagerly in Python after the compiled RNG op executes.
+      if x.sum() > 0:
+        raise RuntimeError("Runtime error after compiled execution")
+      return r
+
+    with self.assertRaises(  # ASSERT_RAISES_OK=Tests RNG behavior on crash, not error handling.
+        RuntimeError
+    ):
+      fn(torch.ones(10, device=self.device))
+
+    actual_next = torch.rand(10, device=self.device)
+    self.assertTrue(torch.equal(expected_next, actual_next))
+
+  def test_compiled_runtime_error_with_catch(self):
+    """Verifies caught error inside compiled fn preserves RNG progression."""
+    self.backend_mod.manual_seed(42)
+    _ = torch.rand(10, device=self.device)
+    expected_next = torch.rand(10, device=self.device)
+
+    self.backend_mod.manual_seed(42)
+
+    @torch.compile(fullgraph=False)
+    def fn_with_try_catch(x):
+      r = torch.rand_like(x)
+      # Evaluating a tensor condition triggers a graph break; the exception
+      # and catch block execute eagerly in Python after the compiled RNG op.
+      try:
+        if x.sum() > 0:
+          raise RuntimeError("Caught error inside function")
+      except RuntimeError:
+        pass
+      return r
+
+    _ = fn_with_try_catch(torch.ones(10, device=self.device))
+
+    actual_next = torch.rand(10, device=self.device)
+    self.assertTrue(torch.equal(expected_next, actual_next))
+
 
 class SingleProcessMultiDeviceTest(_BaseRngTest):
   """Tests documenting single-process multi-device RNG differences.
