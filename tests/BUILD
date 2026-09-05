@@ -28,6 +28,10 @@ package(
     default_applicable_licenses = ["//:license"],
 )
 
+exports_files([
+    "cpp_style_test_data.cc",
+])
+
 # Certain ops like torch._scaled_mm_v2 require CUDA devices with
 # compute capability 8.9 or >= 9.0.
 # Both golden generation and GPU error tests must stay in sync with the same GPU
@@ -2337,6 +2341,42 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal:testing",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "cpp_style_lib",
+    testonly = True,
+    srcs = ["cpp_style_lib.py"],
+    visibility = ["//:__subpackages__"],
+)
+
+torch_tpu_py_test(
+    name = "cpp_style_test",
+    srcs = ["cpp_style_test.py"],
+    data = [
+        ":all_cpp_files_recursive",
+        "//torch_tpu:all_cpp_files_recursive",
+    ],
+    deps = [
+        ":cpp_style_lib",
+        "//shims/absl_py/testing:absltest",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "unnapproved_nested_namespace_lint_test",
+    srcs = ["unnapproved_nested_namespace_lint_test.py"],
+    data = [
+        ":all_cpp_files_recursive",
+        "//torch_tpu:all_cpp_files_recursive",
+    ],
+    deps = [
+        ":cpp_style_lib",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//torch_tpu",
     ],
 )
 
