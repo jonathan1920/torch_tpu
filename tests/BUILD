@@ -2366,8 +2366,23 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "unnapproved_nested_namespace_lint_test",
-    srcs = ["unnapproved_nested_namespace_lint_test.py"],
+    name = "unapproved_nested_namespace_lint_test",
+    srcs = ["unapproved_nested_namespace_lint_test.py"],
+    data = [
+        ":all_cpp_files_recursive",
+        "//torch_tpu:all_cpp_files_recursive",
+    ],
+    deps = [
+        ":cpp_style_lib",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "header_guard_lint_test",
+    srcs = ["header_guard_lint_test.py"],
     data = [
         ":all_cpp_files_recursive",
         "//torch_tpu:all_cpp_files_recursive",

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for unnapproved nested namespace violations."""
+"""Tests for C++ header guard violations."""
 
 from typing import Generator
 
@@ -21,21 +21,18 @@ from absl.testing import parameterized
 from tests import cpp_style_lib as style
 
 
-def _get_files_to_lint() -> Generator[style.CppCode, None, None]:
-  """Yields all files subject to linting."""
-  cpp_code = style.CppCode()
-  for file in cpp_code.files():
-    if file.torch_tpu_path != 'tests/cpp_style_test_data.cc':
-      yield file
+def _get_files_to_lint() -> Generator[style.CppFile, None, None]:
+  """Yields all header files subject to linting."""
+  yield from style.CppCode().headers(exclude_test_data=True)
 
 
-class UnnapprovedNestedNamespaceTest(
+class HeaderGuardLintTest(
     parameterized.TestCase,  # ABSLTEST_OK=linter tool test
 ):
 
   @parameterized.parameters(_get_files_to_lint())
-  def test_unnapproved_nested_namespace(self, file: style.CppFile):
-    errors = style.check_unnapproved_namespace(file)
+  def test_header_guard(self, file: style.CppFile):
+    errors = style.check_header_guard(file)
     self.assertEmpty(errors, '\n'.join(errors))
 
 
