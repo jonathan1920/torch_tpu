@@ -26,9 +26,7 @@
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/error_utils.h"
-#include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
@@ -125,7 +123,8 @@ at::Tensor& AtenNanToNumOut(const at::Tensor& self, std::optional<double> nan,
 
               TT_THROW_IF_ERROR(
                   UnaryOpOut(self, out, op_builder,
-                             {.op_param_cache_keys = std::move(param_keys)}));
+                             {.op_param_cache_keys = std::move(param_keys),
+                              .allow_out_dtype_cast = false}));
               return out;
             });
 }

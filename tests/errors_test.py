@@ -7434,11 +7434,78 @@ Device-side assertion tracking was not enabled by user.""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""acos(): expected the output dtype to be float32, got int32""",
+        tpu="""acos(): result type float32 can't be cast to the desired output type int32""",
         gpu="""result type Float can't be cast to the desired output type Int""",
         message_reviewed_by="wan",
     ):
       torch.acos(t, out=out)
+
+  def test_abs_out_dtype_mismatch(self):
+    # Real-to-real mismatched out dtype is disallowed.
+    real_f32 = torch.tensor([5.0], device=et.device(), dtype=torch.float32)
+    out_f64 = torch.empty(1, device=et.device(), dtype=torch.float64)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""abs(): expected the output dtype to be float32, got float64""",
+        gpu="""Found dtype Double but expected Float""",
+        message_reviewed_by="wan",
+    ):
+      torch.abs(real_f32, out=out_f64)
+
+    # Complex-to-real invalid downcast.
+    x_complex = torch.tensor(
+        [3.0 + 4.0j], device=et.device(), dtype=torch.complex64
+    )
+    out_i32 = torch.empty(1, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""abs(): result type float32 can't be cast to the desired output type int32""",
+        gpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.abs(x_complex, out=out_i32)
+
+  def test_neg_out_dtype_mismatch(self):
+    t = torch.ones(5, device=et.device(), dtype=torch.float32)
+
+    # Call the out variant with a mismatching dtype for dtype-preserving ops.
+    out = torch.ones(5, device=et.device(), dtype=torch.float64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""neg(): expected the output dtype to be float32, got float64""",
+        gpu="""Found dtype Double but expected Float""",
+        message_reviewed_by="wan",
+    ):
+      torch.neg(t, out=out)
+
+  def test_all_out_dtype_mismatch(self):
+    t = torch.tensor([True, False], device=et.device())
+
+    # Call the out variant with an invalid dtype (not bool or uint8).
+    out = torch.empty(0, device=et.device(), dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""all(): expected the output dtype to be bool or uint8, got float32""",
+        gpu="""all only supports bool tensor for result, got: Float""",
+        message_reviewed_by="wan",
+    ):
+      torch.all(t, out=out)
+
+  def test_any_out_dtype_mismatch(self):
+    t = torch.tensor([True, False], device=et.device())
+
+    # Call the out variant with an invalid dtype (not bool or uint8).
+    out = torch.empty(0, device=et.device(), dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""any(): expected the output dtype to be bool or uint8, got float32""",
+        gpu="""any only supports bool tensor for result, got: Float""",
+        message_reviewed_by="wan",
+    ):
+      torch.any(t, out=out)
 
   def test_angle_out_dtype_mismatch(self):
     t = torch.tensor([1.0 + 1.0j], device=et.device())

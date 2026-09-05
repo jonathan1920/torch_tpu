@@ -37,13 +37,21 @@ struct UnaryOpOptions {
   // Parameters (if any) that were used to construct op_builder and will be used
   // by the compilation cache.
   OpParamCacheKeys op_param_cache_keys;
-  // dtype of the output tensor. If not specified, use self's dtype.
+  // Natural result dtype of the operation.
+  // - In UnaryOp: dtype of the returned tensor (defaults to self's dtype).
+  // - In UnaryOpOut: expected dtype before casting to `out` (checked via
+  //   ValidateOutDtype).
   std::optional<mlir::ElementType> out_dtype;
   // Size of the output tensor. If not specified use self's size.
   std::optional<at::IntArrayRef> out_dims;
   // If specified, all inputs will be casted to this dtype before
   // the op_builder is applied.
   std::optional<mlir::ElementType> computation_dtype;
+  // Whether the out-variant kernel allows casting the natural result dtype
+  // to a different output tensor dtype via c10::canCast (true for math/float
+  // ops, false for dtype-preserving ops that enforce check_all_same_dtype in
+  // ATen).
+  bool allow_out_dtype_cast = true;
 };
 
 // Safely applies a functional unary operation to the input tensor.
@@ -64,8 +72,11 @@ absl::Status UnaryOpInPlace(at::Tensor& self, MlirUnaryOpBuilder op_builder,
                             UnaryOpOptions options);
 
 // Like UnaryOpCallback, but the result overwrites the provided `out` tensor.
-// `out` is resized to `out_dims` and must have dtype `out_dtype`.
-// If they are not provided then the values from `self` are used.
+// `out` is resized to `out_dims`. If `options.allow_out_dtype_cast` is true,
+// `out` can be any dtype that the natural result dtype (`out_dtype` or
+// `self.scalar_type()`) can be safely cast to per c10::canCast; otherwise,
+// `out` must strictly match the natural result dtype.
+// If not provided, `out_dims` and `out_dtype` default to values from `self`.
 absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
                         MlirUnaryOpBuilder op_builder, UnaryOpOptions options);
 

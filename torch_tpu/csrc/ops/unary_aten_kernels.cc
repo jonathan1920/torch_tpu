@@ -58,7 +58,8 @@
     TT_KERNEL(op_name, _, (self, out), {                                \
       TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(                        \
           self, out, op_builder,                                        \
-          {.op_param_cache_keys = OpParamCacheKeys::Empty()}));         \
+          {.op_param_cache_keys = OpParamCacheKeys::Empty(),            \
+           .allow_out_dtype_cast = false}));                            \
       return out;                                                       \
     });                                                                 \
   }                                                                     \
@@ -173,18 +174,16 @@ absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
   const at::IntArrayRef shape =
       options.out_dims.has_value() ? *options.out_dims : self.sizes();
 
-  mlir::ElementType output_dtype;
-  if (options.out_dtype.has_value()) {
-    output_dtype = *options.out_dtype;
-  } else {
-    TT_ASSIGN_OR_RETURN(output_dtype,
-                        ConvertTo<mlir::ElementType>(out.scalar_type()));
-  }
+  const at::ScalarType expected_result_type =
+      options.out_dtype.has_value()
+          ? ConvertTo<at::ScalarType>(*options.out_dtype)
+          : self.scalar_type();
 
-  const at::ScalarType expected_dtype = ConvertTo<at::ScalarType>(output_dtype);
-  TT_RET_CHECK(out.scalar_type() == expected_dtype, error::kInvalidArgument)
-      << "expected the output dtype to be " << ToString(expected_dtype)
-      << ", got " << ToString(out.scalar_type());
+  TT_RETURN_IF_ERROR(ValidateOutDtype(out, expected_result_type,
+                                      options.allow_out_dtype_cast));
+
+  TT_ASSIGN_OR_RETURN(const auto output_dtype,
+                      ConvertTo<mlir::ElementType>(out.scalar_type()));
 
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
@@ -238,9 +237,17 @@ TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanhOut, AtenTanh, BuildTanhShlo);
 
 at::Tensor& AtenAbsOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kAbsOut, _, (self, out), {
-    TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, BuildAbsShlo,
-                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    TT_ASSIGN_OR_THROW(
+        const auto out_dtype,
+        ConvertTo<mlir::ElementType>(c10::toRealValueType(self.scalar_type())));
+    // PyTorch ATen's abs enforces check_all_same_dtype(true) for real inputs,
+    // but allows promotional safe-casting for complex-to-real outputs (matching
+    // unary_op_impl_with_complex_to_float_out in PyTorch's UnaryOps.cpp).
+    TT_THROW_IF_ERROR(UnaryOpOut(
+        self, out, BuildAbsShlo,
+        {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+         .out_dtype = out_dtype,
+         .allow_out_dtype_cast = self.is_complex() && !out.is_complex()}));
     return out;
   });
 }
@@ -281,7 +288,8 @@ at::Tensor& AtenNegOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kNegOut, _, (self, out), {
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, BuildNegShlo,
-                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                    .allow_out_dtype_cast = false}));
     return out;
   });
 }
@@ -312,17 +320,10 @@ at::Tensor& AtenSignOut(const at::Tensor& self, at::Tensor& out) {
         << ToString(self.scalar_type())
         << "; use torch.sgn() instead if you intend to normalize a complex "
            "tensor to each complex element having magnitude 1";
-    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
-    TT_ASSIGN_OR_THROW(auto out_dtype,
-                       ConvertTo<mlir::ElementType>(self.scalar_type()));
-    TT_ASSIGN_OR_THROW(
-        auto result_buf,
-        DispatchOp<1>(BuildSignShlo, self,
-                      /*options=*/
-                      {.out_dtype = out_dtype,
-                       .out_dims = self.sizes(),
-                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, BuildSignShlo,
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                    .allow_out_dtype_cast = false}));
     return out;
   });
 }
@@ -350,16 +351,11 @@ at::Tensor& AtenSignbitOut(const at::Tensor& self, at::Tensor& out) {
       }
     };
 
-    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
-    TT_ASSIGN_OR_THROW(
-        auto result_buf,
-        DispatchOp<1>(std::move(op_builder), self,
-                      /*options=*/
-                      {.out_dtype = output_dtype,
-                       .out_dims = out.sizes(),
-                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
-
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, std::move(op_builder),
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                    .out_dtype = output_dtype,
+                    .allow_out_dtype_cast = false}));
     return out;
   });
 }
@@ -370,7 +366,8 @@ at::Tensor& AtenTruncOut(const at::Tensor& self, at::Tensor& out) {
         << "does not support boolean types";
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, BuildTruncShlo,
-                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                    .allow_out_dtype_cast = false}));
     return out;
   });
 }
@@ -391,7 +388,8 @@ at::Tensor& AtenCeilOut(const at::Tensor& self, at::Tensor& out) {
         << "not implemented for " << ToString(self.scalar_type());
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, BuildCeilShlo,
-                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                    .allow_out_dtype_cast = false}));
     return out;
   });
 }
@@ -403,7 +401,8 @@ at::Tensor& AtenFloorOut(const at::Tensor& self, at::Tensor& out) {
         << "not implemented for " << ToString(self.scalar_type());
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, BuildFloorShlo,
-                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                    .allow_out_dtype_cast = false}));
     return out;
   });
 }
@@ -417,7 +416,8 @@ at::Tensor& AtenSiluOut(const at::Tensor& self, at::Tensor& out) {
         << "not implemented for " << ToString(self.scalar_type());
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, BuildSiluShlo,
-                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                    .allow_out_dtype_cast = false}));
     return out;
   });
 }

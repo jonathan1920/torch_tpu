@@ -17,7 +17,6 @@
 #include "torch_tpu/csrc/ops/is/is_aten_kernels.h"
 
 #include "ATen/core/TensorBody.h"
-#include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/error_utils.h"
@@ -44,7 +43,8 @@ at::Tensor& AtenIsNegInfOut(const at::Tensor& self, at::Tensor& out) {
     TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(
         self, out, BuildIsNegInfShlo,
         {.op_param_cache_keys = OpParamCacheKeys::Empty(),
-         .out_dtype = mlir::ElementType::PRED}));
+         .out_dtype = mlir::ElementType::PRED,
+         .allow_out_dtype_cast = false}));
     return out;
   });
 }
@@ -54,7 +54,8 @@ at::Tensor& AtenIsPosInfOut(const at::Tensor& self, at::Tensor& out) {
     TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(
         self, out, BuildIsPosInfShlo,
         {.op_param_cache_keys = OpParamCacheKeys::Empty(),
-         .out_dtype = mlir::ElementType::PRED}));
+         .out_dtype = mlir::ElementType::PRED,
+         .allow_out_dtype_cast = false}));
     return out;
   });
 }

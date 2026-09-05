@@ -73,6 +73,30 @@ inline absl::Status ValidateIsMatrix(const at::Tensor& tensor,
   return absl::OkStatus();
 }
 
+// Verifies that result_dtype matches or can be safely cast to the out tensor's
+// dtype according to PyTorch type casting rules.
+//
+// If allow_out_dtype_cast is false, requires out.scalar_type() == result_dtype
+// (matching PyTorch TensorIterator's check_all_same_dtype(true)).
+// Otherwise, verifies that result_dtype can be safely cast to out.scalar_type()
+// via c10::canCast.
+inline absl::Status ValidateOutDtype(const at::Tensor& out,
+                                     const at::ScalarType result_dtype,
+                                     const bool allow_out_dtype_cast = true) {
+  if (!allow_out_dtype_cast) {
+    TT_RET_CHECK(out.scalar_type() == result_dtype, error::kInvalidArgument)
+        << "expected the output dtype to be " << ToString(result_dtype)
+        << ", got " << ToString(out.scalar_type());
+    return absl::OkStatus();
+  }
+  TT_RET_CHECK(c10::canCast(result_dtype, out.scalar_type()),
+               error::kInvalidArgument)
+      << "result type " << ToString(result_dtype)
+      << " can't be cast to the desired output type "
+      << ToString(out.scalar_type());
+  return absl::OkStatus();
+}
+
 // Returns whether `thing` holds boolean data.
 //
 // The template parameter `T` should be one of:

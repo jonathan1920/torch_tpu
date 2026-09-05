@@ -31,6 +31,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/common:cache_key",
         "//torch_tpu/csrc/common:dimension_types",
         "//torch_tpu/csrc/common:error_utils",
+        "//torch_tpu/csrc/common:to_string",
         "//torch_tpu/csrc/ops:op_builder_utils",
         "//torch_tpu/csrc/ops:op_names",
         "//torch_tpu/csrc/ops:unary_aten_kernels",
@@ -38,7 +39,9 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/reductions",
         "//torch_tpu/csrc/ops/reductions:reduction_utils",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@stablehlo//:attr_type_builder_util",
     ],
 )
 

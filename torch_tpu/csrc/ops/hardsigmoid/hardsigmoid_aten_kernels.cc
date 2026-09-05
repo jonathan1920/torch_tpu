@@ -90,7 +90,8 @@ at::Tensor& AtenHardsigmoidOut(const at::Tensor& self, at::Tensor& out) {
         << ToString(self.scalar_type());
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, BuildHardsigmoidShlo,
-                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                    .allow_out_dtype_cast = false}));
     return out;
   });
 }

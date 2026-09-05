@@ -19,16 +19,20 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "c10/core/ScalarType.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/error_utils.h"
+#include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/ops/all_any/all_any.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
@@ -83,15 +87,23 @@ absl::StatusOr<AllAnyReductionParams> GetAllAnyReductionParams(
   };
 }
 
-// Conditionally casts the result tensor to at::kByte if the original self
-// tensor has scalar type at::kByte.
-// See https://docs.pytorch.org/docs/stable/generated/torch.all.html#torch.all
-// for why this cast is needed.
-at::Tensor& MaybeCastToByte(const at::Tensor& self, at::Tensor& result) {
-  if (self.scalar_type() == at::kByte) {
-    result = result.to(at::kByte);
-  }
-  return result;
+// Verifies that the out tensor has a valid dtype for `all` and `any`.
+// PyTorch only allows `bool` and `uint8` (`kByte`) for out (refer to
+// check_result_is_bytebool in PyTorch's ReduceOps.cpp).
+absl::Status ValidateAllAnyOut(const at::Tensor& out) {
+  TT_RET_CHECK(out.scalar_type() == at::kBool || out.scalar_type() == at::kByte,
+               error::kInvalidArgument)
+      << "expected the output dtype to be bool or uint8, got "
+      << ToString(out.scalar_type());
+  return absl::OkStatus();
+}
+
+// Returns the output element type for `all` and `any` out-variants.
+// If the out tensor is uint8, produces UI8 (refer to
+// get_result_or_bytebool_dtype in PyTorch's ReduceOps.cpp), otherwise PRED.
+mlir::ElementType GetAllAnyOutDtype(const at::Tensor& out) {
+  return out.scalar_type() == at::kByte ? mlir::ElementType::UI8
+                                        : mlir::ElementType::PRED;
 }
 
 }  // namespace
@@ -99,20 +111,24 @@ at::Tensor& MaybeCastToByte(const at::Tensor& self, at::Tensor& result) {
 at::Tensor& AtenAllOut(const at::Tensor& self, int64_t dim, bool keep_dim,
                        at::Tensor& out) {
   TT_KERNEL(OpName::kAllOut, param_keys, (self, dim, keep_dim, out), {
+    TT_THROW_IF_ERROR(ValidateAllAnyOut(out));
     TT_ASSIGN_OR_THROW(auto params,
                        GetAllAnyReductionParams(self, {dim}, keep_dim));
     TT_THROW_IF_ERROR(UnaryOpOut(
         self, out,
         GetAllBuilder(std::move(params.dims_to_reduce), params.reduction_mode),
         {.op_param_cache_keys = std::move(param_keys),
-         .out_dims = std::move(params.reduced_shape)}));
-    return MaybeCastToByte(self, out);
+         .out_dtype = GetAllAnyOutDtype(out),
+         .out_dims = std::move(params.reduced_shape),
+         .allow_out_dtype_cast = false}));
+    return out;
   });
 }
 
 // This is all.all_out, NOT all.out.
 at::Tensor& AtenAllAllOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kAllAllOut, _, (self, out), {
+    TT_THROW_IF_ERROR(ValidateAllAnyOut(out));
     TT_ASSIGN_OR_THROW(
         auto params,
         GetAllAnyReductionParams(self, std::nullopt, /*keep_dims=*/false));
@@ -120,27 +136,33 @@ at::Tensor& AtenAllAllOut(const at::Tensor& self, at::Tensor& out) {
         self, out,
         GetAllBuilder(std::move(params.dims_to_reduce), params.reduction_mode),
         {.op_param_cache_keys = OpParamCacheKeys::Empty(),
-         .out_dims = std::move(params.reduced_shape)}));
-    return MaybeCastToByte(self, out);
+         .out_dtype = GetAllAnyOutDtype(out),
+         .out_dims = std::move(params.reduced_shape),
+         .allow_out_dtype_cast = false}));
+    return out;
   });
 }
 
 at::Tensor& AtenAnyOut(const at::Tensor& self, int64_t dim, bool keep_dim,
                        at::Tensor& out) {
   TT_KERNEL(OpName::kAnyOut, param_keys, (self, dim, keep_dim, out), {
+    TT_THROW_IF_ERROR(ValidateAllAnyOut(out));
     TT_ASSIGN_OR_THROW(auto params,
                        GetAllAnyReductionParams(self, {dim}, keep_dim));
     TT_THROW_IF_ERROR(UnaryOpOut(
         self, out,
         GetAnyBuilder(std::move(params.dims_to_reduce), params.reduction_mode),
         {.op_param_cache_keys = std::move(param_keys),
-         .out_dims = std::move(params.reduced_shape)}));
-    return MaybeCastToByte(self, out);
+         .out_dtype = GetAllAnyOutDtype(out),
+         .out_dims = std::move(params.reduced_shape),
+         .allow_out_dtype_cast = false}));
+    return out;
   });
 }
 
 at::Tensor& AtenAnyAllOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kAnyAllOut, _, (self, out), {
+    TT_THROW_IF_ERROR(ValidateAllAnyOut(out));
     TT_ASSIGN_OR_THROW(
         auto params,
         GetAllAnyReductionParams(self, std::nullopt, /*keep_dims=*/false));
@@ -148,8 +170,10 @@ at::Tensor& AtenAnyAllOut(const at::Tensor& self, at::Tensor& out) {
         self, out,
         GetAnyBuilder(std::move(params.dims_to_reduce), params.reduction_mode),
         {.op_param_cache_keys = OpParamCacheKeys::Empty(),
-         .out_dims = std::move(params.reduced_shape)}));
-    return MaybeCastToByte(self, out);
+         .out_dtype = GetAllAnyOutDtype(out),
+         .out_dims = std::move(params.reduced_shape),
+         .allow_out_dtype_cast = false}));
+    return out;
   });
 }
 

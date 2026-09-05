@@ -61,7 +61,8 @@ at::Tensor& AtenRoundOut(const at::Tensor& self, at::Tensor& out) {
     TT_THROW_IF_ERROR(ValidateNumericDtype(self.scalar_type()));
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, GetRoundFunctional(/*decimals=*/0),
-                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                    .allow_out_dtype_cast = false}));
     return out;
   });
 }
@@ -74,9 +75,9 @@ at::Tensor& AtenRoundDecimalsOut(const at::Tensor& self, int64_t decimals,
         << "expected the input dtype not to be integer when the decimals "
            "argument is specified ("
         << decimals << "), got " << ToString(self.scalar_type());
-    TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, GetRoundFunctional(decimals),
-                   {.op_param_cache_keys = std::move(param_keys)}));
+    TT_THROW_IF_ERROR(UnaryOpOut(self, out, GetRoundFunctional(decimals),
+                                 {.op_param_cache_keys = std::move(param_keys),
+                                  .allow_out_dtype_cast = false}));
     return out;
   });
 }

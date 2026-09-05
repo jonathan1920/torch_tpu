@@ -1212,6 +1212,23 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
 
         self.assert_close_tpu_vs_cpu(run)
 
+  def test_complex_abs_out_dtype(self):
+    device = torch.device("tpu")
+    x = torch.tensor([3.0 + 4.0j], dtype=torch.complex64, device=device)
+    # Valid cast to real float32
+    out_f32 = torch.empty(1, dtype=torch.float32, device=device)
+    torch.abs(x, out=out_f32)
+    utils.assert_close(
+        out_f32, torch.tensor([5.0], dtype=torch.float32, device=device)
+    )
+
+    # Valid upcast to real float64
+    out_f64 = torch.empty(1, dtype=torch.float64, device=device)
+    torch.abs(x, out=out_f64)
+    utils.assert_close(
+        out_f64, torch.tensor([5.0], dtype=torch.float64, device=device)
+    )
+
   def test_bool_abs(self):
     device = torch.device("tpu")
     x = torch.tensor(
@@ -6009,6 +6026,82 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
     self.assert_close_tpu_vs_cpu(functools.partial(compute, 0, True))
     self.assert_close_tpu_vs_cpu(functools.partial(compute, 1, False))
     self.assert_close_tpu_vs_cpu(functools.partial(compute, 1, True))
+
+  def test_all_byte(self):
+    device = torch.device("tpu")
+    # For uint8 inputs, PyTorch returns uint8 for backward compatibility.
+    x = torch.tensor([[1, 1], [1, 0], [1, 1]], dtype=torch.uint8, device=device)
+    out = torch.empty(0, dtype=torch.uint8, device=device)
+    torch.all(x, dim=0, out=out)
+    self.assertEqual(out.dtype, torch.uint8)
+    utils.assert_close(
+        out, torch.tensor([1, 0], dtype=torch.uint8, device=device)
+    )
+
+    out_all = torch.empty((), dtype=torch.uint8, device=device)
+    torch.all(x, out=out_all)
+    self.assertEqual(out_all.dtype, torch.uint8)
+    utils.assert_close(
+        out_all, torch.tensor(0, dtype=torch.uint8, device=device)
+    )
+
+    def compute(dim, keep_dim, dev):
+      x_dev = torch.tensor(
+          [[1, 1], [1, 0], [1, 1]], dtype=torch.uint8, device=dev
+      )
+      out_dev = torch.empty(0, dtype=torch.uint8, device=dev)
+      torch.all(x_dev, dim=dim, keepdim=keep_dim, out=out_dev)
+      return out_dev
+
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 0, False))
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 0, True))
+
+    # Float input with uint8 output is supported.
+    x_float = torch.tensor([1.0, 1.0], dtype=torch.float32, device=device)
+    out_byte = torch.empty(0, dtype=torch.uint8, device=device)
+    torch.all(x_float, out=out_byte)
+    self.assertEqual(out_byte.dtype, torch.uint8)
+    utils.assert_close(
+        out_byte, torch.tensor(1, dtype=torch.uint8, device=device)
+    )
+
+  def test_any_byte(self):
+    device = torch.device("tpu")
+    # For uint8 inputs, PyTorch returns uint8 for backward compatibility.
+    x = torch.tensor([[0, 0], [1, 0], [0, 0]], dtype=torch.uint8, device=device)
+    out = torch.empty(0, dtype=torch.uint8, device=device)
+    torch.any(x, dim=0, out=out)
+    self.assertEqual(out.dtype, torch.uint8)
+    utils.assert_close(
+        out, torch.tensor([1, 0], dtype=torch.uint8, device=device)
+    )
+
+    out_any = torch.empty((), dtype=torch.uint8, device=device)
+    torch.any(x, out=out_any)
+    self.assertEqual(out_any.dtype, torch.uint8)
+    utils.assert_close(
+        out_any, torch.tensor(1, dtype=torch.uint8, device=device)
+    )
+
+    def compute(dim, keep_dim, dev):
+      x_dev = torch.tensor(
+          [[0, 0], [1, 0], [0, 0]], dtype=torch.uint8, device=dev
+      )
+      out_dev = torch.empty(0, dtype=torch.uint8, device=dev)
+      torch.any(x_dev, dim=dim, keepdim=keep_dim, out=out_dev)
+      return out_dev
+
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 0, False))
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 0, True))
+
+    # Float input with uint8 output is supported.
+    x_float = torch.tensor([0.0, 1.0], dtype=torch.float32, device=device)
+    out_byte = torch.empty(0, dtype=torch.uint8, device=device)
+    torch.any(x_float, out=out_byte)
+    self.assertEqual(out_byte.dtype, torch.uint8)
+    utils.assert_close(
+        out_byte, torch.tensor(1, dtype=torch.uint8, device=device)
+    )
 
   def test_multinomial_output_properties(self):
     device = torch.device("tpu")
