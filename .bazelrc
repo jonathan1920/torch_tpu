@@ -320,16 +320,16 @@ common:bench --spawn_strategy=standalone,local
 
 # Settings specific to CPU CI runs.
 common:ci_cpu --config=ci
-common:ci_cpu --build_tag_filters=-nobuild,-requires-gpu,-requires-tpu
-common:ci_cpu --test_tag_filters=-nobuild,-notest,-requires-gpu,-requires-tpu
+common:ci_cpu --build_tag_filters=-nobuild,-requires-gpu,-requires-tpu,-cuda-build-test
+common:ci_cpu --test_tag_filters=-nobuild,-notest,-requires-gpu,-requires-tpu,-cuda-build-test
 
 # Settings specific to CPU presubmit.
 common:ci_cpu_presubmit --config=ci_cpu
-common:ci_cpu_presubmit --test_tag_filters=-nobuild,-notest,-requires-gpu,-requires-tpu,-nopresubmit
+common:ci_cpu_presubmit --test_tag_filters=-nobuild,-notest,-requires-gpu,-requires-tpu,-nopresubmit,-cuda-build-test
 
 # Settings for nightly runs on CPU.
 common:ci_cpu_nightly --config=ci_cpu
-common:ci_cpu_nightly --test_tag_filters=-nobuild,-notest,-requires-gpu,-requires-tpu,-nonightly
+common:ci_cpu_nightly --test_tag_filters=-nobuild,-notest,-requires-gpu,-requires-tpu,-nonightly,-cuda-build-test
 
 # Settings specific to TPU CI runs.
 common:ci_tpu_base --config=ci
@@ -448,7 +448,7 @@ test:wheel_common_test --test_lang_filters=py  # Only run python tests
 # Config for CPU wheel test.
 test:wheel_test_cpu --config=ci_cpu
 test:wheel_test_cpu --config=wheel_common_test
-test:wheel_test_cpu --test_tag_filters=-nobuild,-notest,-nopresubmit,-requires-gpu,-requires-tpu,-wheel_test_excluded
+test:wheel_test_cpu --test_tag_filters=-nobuild,-notest,-nopresubmit,-requires-gpu,-requires-tpu,-wheel_test_excluded,-cuda-build-test
 
 # Split wheel test configurations for presubmits
 test:wheel_test_tpu_v5 --config=wheel_common_test

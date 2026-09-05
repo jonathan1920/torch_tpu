@@ -1820,7 +1820,7 @@ torch_tpu_py_test(
     },
     main = "autoload_gpu_test.py",
     tags = [
-        "requires-gpu-nvidia",
+        _REQUIRES_GPU_SM90,
     ],
     deps = [
         "//shims/absl_py/testing:absltest",
@@ -1867,7 +1867,7 @@ torch_tpu_py_test(
     srcs = ["autoload_disabled_backend_test.py"],
     main = "autoload_disabled_backend_test.py",
     tags = [
-        "requires-gpu-nvidia",
+        _REQUIRES_GPU_SM90,
     ],
     deps = [
         ":seed_test_utils",
@@ -1985,7 +1985,7 @@ torch_tpu_py_test(
     },
     main = "tracing_test.py",
     tags = [
-        "requires-gpu-nvidia",
+        _REQUIRES_GPU_SM90,
     ],
     deps = [
         ":seed_test_utils",

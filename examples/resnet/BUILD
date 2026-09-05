@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_package_end",
+    "torch_tpu_py_test",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -46,7 +50,7 @@ torch_tpu_py_test(
     main = "resnet50_tv_test.py",
     notap = "This manual test validates that the code runs on cuda.",
     tags = [
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
         "requires-net:external",
     ],
     deps = [
@@ -103,7 +107,6 @@ torch_tpu_py_test(
     main = "resnet50_tv_tool.py",
     notap = "This is a tool, not a test.",
     tags = [
-        "requires-gpu-nvidia",
         "requires-net:external",
     ],
     deps = [
@@ -128,7 +131,7 @@ torch_tpu_py_test(
     main = "resnet50_tv_tool.py",
     notap = "This is a tool, not a test.",
     tags = [
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
         "requires-net:external",
     ],
     deps = [
@@ -203,6 +206,7 @@ torch_tpu_py_test(
     ],
 )
 
+# buildifier: disable=forbidden-tag-requires-gpu
 torch_tpu_py_test(
     name = "resnet_hf_example_test_cuda",
     timeout = "eternal",  # This causes the test to be skipped on TAP.
@@ -213,7 +217,7 @@ torch_tpu_py_test(
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
         "requires-accel-hbm",
-        "requires-gpu-sm100-full-only",
+        "requires-gpu-sm100-full",
         "requires-net:external",
     ],
     deps = [
@@ -234,6 +238,7 @@ torch_tpu_py_test(
     ],
 )
 
+# buildifier: disable=forbidden-tag-requires-gpu
 torch_tpu_py_test(
     name = "resnet_hf_example_test_xla_cuda",
     timeout = "eternal",  # This causes the test to be skipped on TAP.
@@ -243,7 +248,7 @@ torch_tpu_py_test(
     notap = "slow example",
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
-        "requires-gpu-sm100-full-only",
+        "requires-gpu-sm100-full",
         "requires-net:external",
     ],
     deps = [

@@ -612,19 +612,43 @@ def _test_oss_notest_oss(env):
     env.expect.that_bool(result.create_build_test).equals(True)
     env.expect.that_collection(result.build_test_tags).contains_exactly([])
 
-def _test_cuda_build_test(env):
-    """Tests the notap parameter for CUDA tests."""
-    tags = ["requires-gpu-a100"]
+def _test_build_test_excludes_cpu_tags(env):
+    """Tests that cpu:* reservation tags are excluded from build_test_tags."""
+    tags = ["custom_tag", "cpu:8", "cpu:16"]
     result = check_and_adjust_test_tags_for_testing(
         is_oss = False,
         notap = "reason",
         tags = tags,
     )
 
-    expected_tags = ["manual", "notap", "notest", "requires-gpu", "requires-gpu-a100"] if is_oss() else ["manual", "notap", "notest", "requires-gpu-a100"]  # NOTAP_OK=Testing notap tagging
+    env.expect.that_bool(result.create_build_test).equals(True)
+    env.expect.that_collection(result.build_test_tags).contains_exactly(["custom_tag"])
+
+def _test_build_test_excludes_tpu_tags(env):
+    """Tests that requires-tpu* and TPU generation tags are excluded from build_test_tags."""
+    tags = ["custom_tag", "requires-accel-hbm", "requires-tpu", "requires-tpu-v5p:2", "requires-tpu-v5lite"]
+    result = check_and_adjust_test_tags_for_testing(
+        is_oss = False,
+        notap = "reason",
+        tags = tags,
+    )
+
+    env.expect.that_bool(result.create_build_test).equals(True)
+    env.expect.that_collection(result.build_test_tags).contains_exactly(["custom_tag"])
+
+def _test_cuda_build_test(env):
+    """Tests the notap parameter for CUDA tests."""
+    tags = ["requires-gpu-sm90"]
+    result = check_and_adjust_test_tags_for_testing(
+        is_oss = False,
+        notap = "reason",
+        tags = tags,
+    )
+
+    expected_tags = ["manual", "notap", "notest", "requires-gpu", "requires-gpu-sm90"] if is_oss() else ["manual", "notap", "notest", "requires-gpu-sm90"]  # NOTAP_OK=Testing notap tagging
     env.expect.that_collection(tags).contains_exactly(expected_tags)
     env.expect.that_bool(result.create_build_test).equals(True)
-    env.expect.that_collection(result.build_test_tags).contains_exactly(["requires-gpu-nvidia"])
+    env.expect.that_collection(result.build_test_tags).contains_exactly(["cuda-build-test"])
 
 def _test_internal_notap_nobuild(env):
     """Tests using both notap and nobuild in internal builds."""
@@ -813,6 +837,8 @@ def build_defs_test_suite(name):
         ],
         basic_tests = [
             # go/keep-sorted start
+            _test_build_test_excludes_cpu_tags,
+            _test_build_test_excludes_tpu_tags,
             _test_cuda_build_test,
             _test_get_tpu_version,
             _test_internal_manual_nonightly_oss_tag,

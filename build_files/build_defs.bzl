@@ -239,9 +239,17 @@ def _is_cuda_test(tags):
             return True
     return False
 
-# Tags that should propagate to the build_test target.
-_BUILD_TEST_ALLOWED_TAGS = (
-    "nobuild",
+def _is_tpu_tag(tag):
+    """Returns true if the tag is a TPU accelerator requirement tag."""
+    return tag.startswith("requires-tpu") or _get_tpu_generation(tag) != None
+
+# build_test targets verify skipped tests still build, thus exclude skip tags
+# to ensure they are picked up by build.
+_BUILD_TEST_EXCLUDED_TAGS = (
+    "notap",  # NOTAP_OK=for implementing notap logic
+    "nopresubmit",
+    "notest",
+    "nonightly",
 )
 
 def _sort_inplace(a_list):
@@ -428,13 +436,31 @@ def _check_and_adjust_test_tags(
     else:
         create_build_test = "notap" in tags and "nobuild" not in tags  # NOTAP_OK=for implementing notap logic
     if create_build_test:
-        build_test_tags = [tag for tag in tags if tag in _BUILD_TEST_ALLOWED_TAGS]
-
-        # The torch_tpu.cuda build only runs tests with requires-gpu-* tags.
-        # Therefore, to ensure that the build_test for a CUDA test is picked
-        # up by the torch_tpu.cuda build, we must add a requires-gpu-* tag to the build_test.
+        # build_test targets only verify compilation and do not execute test logic.
+        # 1. Exclude skip tags and CPU reservation tags (cpu:*) to avoid inflating
+        #    Forge CPU reservations (go/forge-cpu).
+        # 2. Exclude TPU accelerator tags: TPU compilation does not require physical TPU hardware,
+        #    and reserving TPUs for a no-op build_test triggers Forge's accelerator watchdog
+        #    (go/forge-accel-or-fail).
+        # 3. Exclude GPU accelerator tags (requires-gpu*): CUDA build_test targets only verify
+        #    compilation under --config=cuda and execute a trivial exit 0 script. Reserving physical
+        #    GPUs (especially constrained H100/B200 hardware) exhausts Forge test capacity.
+        #    Instead, tag them with "cuda-build-test" so the third_party.py.torch_tpu.cuda TAP
+        #    blueprint builds and runs them under --config=cuda on standard CPU test runners.
+        build_test_tags = [
+            tag
+            for tag in tags
+            if (
+                tag not in _BUILD_TEST_EXCLUDED_TAGS and
+                not tag.startswith("cpu:") and
+                not _is_tpu_tag(tag) and
+                not tag.startswith("requires-gpu") and
+                not tag.startswith("requires-accel-")
+            )
+        ]
         if _is_cuda_test(tags):
-            build_test_tags.append("requires-gpu-nvidia")
+            build_test_tags.append("cuda-build-test")
+        _sort_inplace(build_test_tags)
 
     # Adjust tags for nopresubmit.
     if nopresubmit != None:
@@ -477,6 +503,13 @@ def _check_and_adjust_test_tags(
     if "oss_ready_cpu" in tags or "oss_ready_tpu" in tags:
         fail("The 'oss_ready_cpu' and 'oss_ready_tpu' tags no longer have any " +
              "effect. Tests are enabled by default in OSS.")
+
+    # Ensure requires-gpu-* and TPU requirements are mutually exclusive.
+    gpu_tags = [t for t in tags if t.startswith("requires-gpu-")]
+    if gpu_tags:
+        has_tpu_tag = any([_is_tpu_tag(t) for t in tags])
+        if has_tpu_tag or oss_presubmit_tpu_generation != None:
+            fail("Test '%s' has both TPU requirements and GPU tags (%s). A test cannot require both TPU and GPU." % (name, gpu_tags))
 
     if is_oss:
         if oss_presubmit_tpu_generation != None:
@@ -1116,6 +1149,7 @@ def torch_tpu_py_test(
         rule = pytype_strict_contrib_test
     else:
         rule = py_test
+
     run_on_accelerators = run_on_accelerators or []
     if run_on_accelerators:
         if oss_presubmit_tpu_generation != None:
