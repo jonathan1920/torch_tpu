@@ -16,12 +16,17 @@
 
 #include "torch_tpu/csrc/ops/experimental/ragged_all_to_all/ragged_all_to_all_aten_kernels.h"
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/LegacyTypeDispatch.h"
 #include "ATen/core/TensorBody.h"
+#include "ATen/core/dispatch/Dispatcher.h"
+#include "ATen/ops/zeros.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -30,6 +35,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "torch/csrc/autograd/custom_function.h"
 #include "torch/csrc/distributed/c10d/Backend.hpp"
 #include "torch/csrc/distributed/c10d/GroupRegistry.hpp"
 #include "torch/csrc/distributed/c10d/ProcessGroup.hpp"
@@ -148,6 +154,75 @@ at::Tensor& AtenRaggedAllToAllOut(
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;
             });
+}
+
+at::Tensor AtenRaggedAllToAllAutograd::forward(
+    torch::autograd::AutogradContext* ctx, const at::Tensor& operand,
+    const at::Tensor& output, const at::Tensor& input_offsets,
+    const at::Tensor& send_sizes, const at::Tensor& output_offsets,
+    const at::Tensor& recv_sizes, std::string_view process_group_name) {
+  // Cache the operator handle to avoid string schema lookup on every call.
+  static const absl::NoDestructor op(
+      at::Dispatcher::singleton()
+          .findSchemaOrThrow("tpu::ragged_all_to_all", "")
+          .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
+                            const at::Tensor&, const at::Tensor&,
+                            const at::Tensor&, const at::Tensor&,
+                            std::string_view)>());
+
+  ctx->save_for_backward(
+      {input_offsets, send_sizes, output_offsets, recv_sizes});
+  ctx->saved_data["operand_sizes"] = operand.sizes().vec();  // VEC_OK
+  ctx->saved_data["operand_scalar_type"] =
+      static_cast<int64_t>(operand.scalar_type());
+  ctx->saved_data["process_group_name"] = std::string(process_group_name);
+
+  at::AutoDispatchBelowADInplaceOrView guard;
+  return op->call(operand, output, input_offsets, send_sizes, output_offsets,
+                  recv_sizes, process_group_name);
+}
+
+torch::autograd::variable_list AtenRaggedAllToAllAutograd::backward(
+    torch::autograd::AutogradContext* ctx,
+    torch::autograd::variable_list grad_outputs) {
+  // Cache the operator handle to avoid string schema lookup on every call.
+  static const absl::NoDestructor op(
+      at::Dispatcher::singleton()
+          .findSchemaOrThrow("tpu::ragged_all_to_all", "")
+          .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
+                            const at::Tensor&, const at::Tensor&,
+                            const at::Tensor&, const at::Tensor&,
+                            std::string_view)>());
+
+  const auto saved = ctx->get_saved_variables();
+  const at::Tensor& input_offsets = saved[0];
+  const at::Tensor& send_sizes = saved[1];
+  const at::Tensor& output_offsets = saved[2];
+  const at::Tensor& recv_sizes = saved[3];
+
+  const auto operand_sizes = ctx->saved_data["operand_sizes"].toIntVector();
+  const auto operand_scalar_type = static_cast<at::ScalarType>(
+      ctx->saved_data["operand_scalar_type"].toInt());
+  const std::string& process_group_name =
+      ctx->saved_data["process_group_name"].toStringRef();
+
+  const at::Tensor& grad_output = grad_outputs[0];
+
+  at::Tensor grad_operand_template = at::zeros(
+      operand_sizes, grad_output.options().dtype(operand_scalar_type));
+
+  // The backward pass performs dual communication routing by symmetrically
+  // swapping send and receive metadata: `grad_output` is routed back using
+  // `output_offsets` as send offsets and `recv_sizes` as send sizes, written
+  // into a zero-initialized operand gradient buffer at `input_offsets` with
+  // `send_sizes` to route gradients back to their source positions.
+  at::AutoDispatchBelowADInplaceOrView guard;
+  at::Tensor grad_operand =
+      op->call(grad_output, grad_operand_template, output_offsets, recv_sizes,
+               input_offsets, send_sizes, process_group_name);
+
+  return {grad_operand, at::Tensor(), at::Tensor(), at::Tensor(),
+          at::Tensor(), at::Tensor(), at::Tensor()};
 }
 
 }  // namespace torch_tpu

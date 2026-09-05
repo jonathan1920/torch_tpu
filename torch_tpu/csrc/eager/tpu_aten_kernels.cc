@@ -1447,14 +1447,15 @@ TORCH_LIBRARY_IMPL(tpu, AutogradPrivateUse1, m) {
              const at::Tensor& group_sizes) {
         return AtenRaggedDotAutograd::apply(lhs, rhs, group_sizes);
       });
-}
-
-// Registers implementations for torch.ops.tpu ops for CPU tensors.
-TORCH_LIBRARY_IMPL(tpu, CPU, m) {
-  // All entries here should be registered via ImplStable, ImplExperimental, or
-  // ImplDeprecated to mark their API stages.
-  ImplExperimental<OpName::kRaggedAllToAll>(m, AtenRaggedAllToAll);
-  ImplExperimental<OpName::kRaggedAllToAllOut>(m, AtenRaggedAllToAllOut);
+  ImplExperimental<OpName::kRaggedAllToAll>(
+      m, +[](const at::Tensor& operand, const at::Tensor& output,
+             const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+             const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+             std::string_view process_group_name) {
+        return AtenRaggedAllToAllAutograd::apply(
+            operand, output, input_offsets, send_sizes, output_offsets,
+            recv_sizes, process_group_name);
+      });
 }
 
 // Returns a mutable reference to the global CPU fallback mode (defaulted to

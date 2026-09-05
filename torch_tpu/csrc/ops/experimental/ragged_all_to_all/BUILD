@@ -56,6 +56,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops:op_builder_utils",
         "//torch_tpu/csrc/ops:op_names",
         "//torch_tpu/csrc/ops/macros:kernel",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",

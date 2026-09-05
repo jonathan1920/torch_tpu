@@ -216,6 +216,269 @@ def run_dist_all_to_all_single_uneven_test() -> None:
   dist.destroy_process_group()
 
 
+def run_ragged_all_to_all_autograd_test() -> None:
+  """Tests the backward pass of torch.ops.tpu.ragged_all_to_all with uneven splits."""
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+
+  # Communication split matrix: matrix[src][dst] is the number of elements
+  # sent from src to dst. Rank i sends 2 elements to (i+1)%world_size, 1 to others.
+  matrix = [
+      [(2 if j == (i + 1) % world_size else 1) for j in range(world_size)]
+      for i in range(world_size)
+  ]
+  send_sizes_list = matrix[rank]
+  recv_sizes_list = [matrix[src][rank] for src in range(world_size)]
+
+  # Calculate local input offsets for each destination slice in operand.
+  input_offsets_list = []
+  curr = 0
+  for s in send_sizes_list:
+    input_offsets_list.append(curr)
+    curr += s
+
+  # Calculate remote output offsets: where each outgoing slice will be placed
+  # on destination `dst`. On rank `dst`, slices from src=0..rank-1 arrive before `rank`.
+  output_offsets_list = []
+  for dst in range(world_size):
+    dst_offset = sum(matrix[src][dst] for src in range(rank))
+    output_offsets_list.append(dst_offset)
+
+  send_sizes = torch.tensor(send_sizes_list, dtype=torch.int32).tpu()
+  recv_sizes = torch.tensor(recv_sizes_list, dtype=torch.int32).tpu()
+  input_offsets = torch.tensor(input_offsets_list, dtype=torch.int32).tpu()
+  output_offsets = torch.tensor(output_offsets_list, dtype=torch.int32).tpu()
+
+  total_send = sum(send_sizes_list)
+  total_recv = sum(recv_sizes_list)
+
+  # Initialize input operand with requires_grad=True.
+  operand = (
+      torch.arange(rank * 100, rank * 100 + total_send, dtype=torch.float32)
+      .tpu()
+      .requires_grad_(True)
+  )
+  output = torch.zeros(total_recv, dtype=torch.float32).tpu()
+
+  # Invoke the ragged_all_to_all ATen custom call.
+  result = torch.ops.tpu.ragged_all_to_all(
+      operand,
+      output,
+      input_offsets,
+      send_sizes,
+      output_offsets,
+      recv_sizes,
+      dist.group.WORLD.group_name,
+  )
+
+  # Construct rank-identifiable grad_output.
+  grad_output = torch.arange(
+      (rank + 1) * 1000.0,
+      (rank + 1) * 1000.0 + total_recv,
+      dtype=torch.float32,
+  ).tpu()
+
+  result.backward(grad_output)
+
+  # Verify operand.grad against analytical backward routing.
+  # On destination `dst`, the slice received from `rank` starts at `dst_offset`
+  # with length `matrix[rank][dst]`.
+  # In backward, `dst` routes its `grad_output[dst_offset : dst_offset + length]`
+  # back to `rank` into `operand.grad[input_offsets[dst] : input_offsets[dst] + length]`.
+  expected_grad_slices = []
+  for dst in range(world_size):
+    count = matrix[rank][dst]
+    dst_offset = sum(matrix[src][dst] for src in range(rank))
+    expected_grad_slices.append(
+        torch.arange(
+            (dst + 1) * 1000.0 + dst_offset,
+            (dst + 1) * 1000.0 + dst_offset + count,
+            dtype=torch.float32,
+        )
+    )
+  expected_grad = torch.cat(expected_grad_slices)
+  utils.assert_close(operand.grad.cpu(), expected_grad)
+
+  dist.barrier()
+  dist.destroy_process_group()
+
+
+def run_ragged_all_to_all_autograd_zero_sized_and_padding_test() -> None:
+  """Tests ragged_all_to_all backward with zero-sized slices and unsent padding."""
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+
+  # Asymmetric split matrix containing non-uniform sizes and zero-sized slices.
+  matrix = [
+      [
+          (3 if j == (i + 1) % world_size else (0 if (i + j) % 3 == 0 else 1))
+          for j in range(world_size)
+      ]
+      for i in range(world_size)
+  ]
+  send_sizes_list = matrix[rank]
+  recv_sizes_list = [matrix[src][rank] for src in range(world_size)]
+
+  input_offsets_list = []
+  curr = 0
+  for s in send_sizes_list:
+    input_offsets_list.append(curr)
+    curr += s
+
+  output_offsets_list = []
+  for dst in range(world_size):
+    dst_offset = sum(matrix[src][dst] for src in range(rank))
+    output_offsets_list.append(dst_offset)
+
+  send_sizes = torch.tensor(send_sizes_list, dtype=torch.int32).tpu()
+  recv_sizes = torch.tensor(recv_sizes_list, dtype=torch.int32).tpu()
+  input_offsets = torch.tensor(input_offsets_list, dtype=torch.int32).tpu()
+  output_offsets = torch.tensor(output_offsets_list, dtype=torch.int32).tpu()
+
+  total_send = sum(send_sizes_list)
+  total_recv = sum(recv_sizes_list)
+
+  # Allocate operand with extra unsent padding elements at the end.
+  pad_len = 5
+  operand = (
+      torch.arange(
+          rank * 100.0,
+          rank * 100.0 + total_send + pad_len,
+          dtype=torch.float32,
+      )
+      .tpu()
+      .requires_grad_(True)
+  )
+  output = torch.zeros(total_recv, dtype=torch.float32).tpu()
+
+  result = torch.ops.tpu.ragged_all_to_all(
+      operand,
+      output,
+      input_offsets,
+      send_sizes,
+      output_offsets,
+      recv_sizes,
+      dist.group.WORLD.group_name,
+  )
+
+  grad_output = torch.arange(
+      (rank + 1) * 1000.0,
+      (rank + 1) * 1000.0 + total_recv,
+      dtype=torch.float32,
+  ).tpu()
+
+  result.backward(grad_output)
+
+  # Verify sent slices in operand.grad.
+  expected_grad_slices = []
+  for dst in range(world_size):
+    count = matrix[rank][dst]
+    if count > 0:
+      dst_offset = sum(matrix[src][dst] for src in range(rank))
+      expected_grad_slices.append(
+          torch.arange(
+              (dst + 1) * 1000.0 + dst_offset,
+              (dst + 1) * 1000.0 + dst_offset + count,
+              dtype=torch.float32,
+          )
+      )
+  expected_sent_grad = torch.cat(expected_grad_slices)
+  utils.assert_close(operand.grad[:total_send].cpu(), expected_sent_grad)
+
+  # Verify unsent padding elements receive strictly zero gradient.
+  utils.assert_close(
+      operand.grad[total_send:].cpu(),
+      torch.zeros(pad_len, dtype=torch.float32),
+  )
+
+  dist.barrier()
+  dist.destroy_process_group()
+
+
+def run_ragged_all_to_all_autograd_bfloat16_and_chained_test() -> None:
+  """Tests autograd backward with bfloat16 dtype and chained operations."""
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+
+  # Cyclic communication pattern: rank i sends 3 tokens to (i+1)%world_size,
+  # and 0 tokens to all other peers.
+  matrix = [
+      [(3 if j == (i + 1) % world_size else 0) for j in range(world_size)]
+      for i in range(world_size)
+  ]
+  send_sizes_list = matrix[rank]
+  recv_sizes_list = [matrix[src][rank] for src in range(world_size)]
+
+  input_offsets_list = []
+  curr = 0
+  for s in send_sizes_list:
+    input_offsets_list.append(curr)
+    curr += s
+
+  output_offsets_list = []
+  for dst in range(world_size):
+    dst_offset = sum(matrix[src][dst] for src in range(rank))
+    output_offsets_list.append(dst_offset)
+
+  send_sizes = torch.tensor(send_sizes_list, dtype=torch.int32).tpu()
+  recv_sizes = torch.tensor(recv_sizes_list, dtype=torch.int32).tpu()
+  input_offsets = torch.tensor(input_offsets_list, dtype=torch.int32).tpu()
+  output_offsets = torch.tensor(output_offsets_list, dtype=torch.int32).tpu()
+
+  total_send = sum(send_sizes_list)
+  total_recv = sum(recv_sizes_list)
+
+  # Initialize input operand in bfloat16 with requires_grad=True.
+  operand = (
+      torch.arange(
+          rank * 10.0,
+          rank * 10.0 + total_send,
+          dtype=torch.bfloat16,
+      )
+      .tpu()
+      .requires_grad_(True)
+  )
+  output = torch.zeros(total_recv, dtype=torch.bfloat16).tpu()
+
+  # Chain an operation before the collective: z = operand * 2.0
+  z = operand * 2.0
+
+  # Invoke ragged_all_to_all on intermediate tensor z
+  res = torch.ops.tpu.ragged_all_to_all(
+      z,
+      output,
+      input_offsets,
+      send_sizes,
+      output_offsets,
+      recv_sizes,
+      dist.group.WORLD.group_name,
+  )
+
+  # Chain an operation after the collective: loss = ((res + 1.0) ** 2).sum()
+  loss = ((res + 1.0) ** 2).sum()
+  loss.backward()
+
+  # Verify gradient dtype is bfloat16.
+  assert (
+      operand.grad.dtype == torch.bfloat16
+  ), f"Expected bfloat16, got {operand.grad.dtype}"
+
+  # Analytical gradient via chain rule: d/dx (2x + 1)^2 = 4(2x + 1) = 8x + 4
+  expected_grad = 8.0 * operand.detach().cpu().float() + 4.0
+  utils.assert_close(
+      operand.grad.cpu().float(),
+      expected_grad,
+      atol=1e-2,
+      rtol=1e-2,
+  )
+
+  dist.barrier()
+  dist.destroy_process_group()
+
+
 class RaggedAllToAllTest(seed_test_utils.MultiProcessRepeatableTest):
   """Tests the ragged_all_to_all TPU collective operation.
 
@@ -237,6 +500,33 @@ class RaggedAllToAllTest(seed_test_utils.MultiProcessRepeatableTest):
         nproc_per_node=world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_ragged_all_to_all_uneven_test
+        ),
+    )
+
+  def test_ragged_all_to_all_autograd(self):
+    world_size = 8
+    distributed_utils.dist_run(
+        nproc_per_node=world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_ragged_all_to_all_autograd_test
+        ),
+    )
+
+  def test_ragged_all_to_all_autograd_zero_sized_and_padding(self):
+    world_size = 8
+    distributed_utils.dist_run(
+        nproc_per_node=world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_ragged_all_to_all_autograd_zero_sized_and_padding_test
+        ),
+    )
+
+  def test_ragged_all_to_all_autograd_bfloat16_and_chained(self):
+    world_size = 8
+    distributed_utils.dist_run(
+        nproc_per_node=world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_ragged_all_to_all_autograd_bfloat16_and_chained_test
         ),
     )
 
