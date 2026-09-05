@@ -108,6 +108,11 @@ class TpuProfiler : public libkineto::IActivityProfiler {
   }
 };
 
+// Returns the base output directory for profiling artifacts, resolved in order
+// of priority from TORCH_TPU_PROFILER_OUTPUT_DIR, the provided `run_dir`,
+// TMPDIR, or defaulting to "/tmp".
+[[nodiscard]] std::string GetProfilerBaseOutputDir(std::string_view run_dir);
+
 absl::Status UpdateProfileOptions(std::string_view custom_config,
                                   tensorflow::ProfileOptions& opts,
                                   std::string& out_run_dir,
