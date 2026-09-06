@@ -61,8 +61,8 @@ static absl::Status ValidateRequiredDistributedEnvVars() {
   if (!GetEnvOnce<kMasterPortEnvVar>().has_value()) {
     missing_vars.push_back(kMasterPortEnvVar);
   }
-  if (!GetEnvOnce<kTpuSlicebuilderAddressesEnvVar>().has_value()) {
-    missing_vars.push_back(kTpuSlicebuilderAddressesEnvVar);
+  if (!GetEnvOnce<kTorchTpuSlicebuilderAddressesEnvVar>().has_value()) {
+    missing_vars.push_back(kTorchTpuSlicebuilderAddressesEnvVar);
   }
   if (!GetEnvOnce<kTpuTopologyEnvVar>().has_value()) {
     missing_vars.push_back(kTpuTopologyEnvVar);
@@ -110,12 +110,13 @@ GetDistributedWorkerConfiguration() {
   TT_ASSIGN_OR_RETURN(const int world_size, GetWorldSizeFromEnvOnce());
 
   // Get the slice builder addresses from the environment variables.
-  TT_ASSIGN_OR_RETURN(std::string sb_addrs,
-                      GetRequiredEnvOnce<kTpuSlicebuilderAddressesEnvVar>());
+  TT_ASSIGN_OR_RETURN(
+      std::string sb_addrs,
+      GetRequiredEnvOnce<kTorchTpuSlicebuilderAddressesEnvVar>());
 
   if (sb_addrs.empty()) {
     return TT_ERROR(error::kFailedPrecondition)
-           << kTpuSlicebuilderAddressesEnvVar << " is empty.";
+           << kTorchTpuSlicebuilderAddressesEnvVar << " is empty.";
   }
   if (rank < 0) {
     return TT_ERROR(error::kFailedPrecondition)
@@ -129,7 +130,8 @@ GetDistributedWorkerConfiguration() {
   std::vector<std::string> my_parts = absl::StrSplit(my_addr, ':');
   if (my_parts.size() != 2) {
     return TT_ERROR(error::kFailedPrecondition)
-           << "Invalid address format in " << kTpuSlicebuilderAddressesEnvVar
+           << "Invalid address format in "
+           << kTorchTpuSlicebuilderAddressesEnvVar
            << " for current rank: " << my_addr;
   }
   std::string sb_port = my_parts[1];

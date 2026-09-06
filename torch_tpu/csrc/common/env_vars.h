@@ -125,6 +125,8 @@ inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
 // TORCH_TPU_PROFILER_OUTPUT_DIR takes precedence.
 inline constexpr char kTorchTpuProfilerOutputDirEnvVar[] =
     "TORCH_TPU_PROFILER_OUTPUT_DIR";
+inline constexpr char kTorchTpuSlicebuilderAddressesEnvVar[] =
+    "TORCH_TPU_SLICEBUILDER_ADDRESSES";  // Set by Torch TPU specific launchers.
 // The name of the tier-2 compilation cache. The special name "disabled" can be
 // used to disable the tier-2 cache. If not set, TorchTPU decides whether to use
 // the tier-2 cache or not based on the world size: if the world size is 1, the
@@ -161,8 +163,6 @@ inline constexpr char kTpuProcessPortEnvVar[] =
     "TPU_PROCESS_PORT";  // Read by Google Cloud.
 // The output directory for TPU profiler XPlane files.
 inline constexpr char kTpuProfilerOutputDirEnvVar[] = "TPU_PROFILER_OUTPUT_DIR";
-inline constexpr char kTpuSlicebuilderAddressesEnvVar[] =
-    "TORCH_TPU_SLICEBUILDER_ADDRESSES";  // Set by Torch TPU specific launchers.
 inline constexpr char kTpuTopologyEnvVar[] =
     "TORCH_TPU_TOPOLOGY";  // Set by Torch TPU specific launchers.
 // Specifies which TPU chips are visible to this process. Read by libtpu.
@@ -207,6 +207,7 @@ inline constexpr auto kEnvVarToStage =
          std::nullopt},
         {kTorchTpuInternalXlaOptionsEnvVar, std::nullopt},
         {kTorchTpuProfilerOutputDirEnvVar, SymbolStage::Experimental()},
+        {kTorchTpuSlicebuilderAddressesEnvVar, SymbolStage::Experimental()},
         {kTorchTpuTier2CompilationCacheEnvVar, SymbolStage::Experimental()},
         {kTorchTpuTier3CompilationCacheRootEnvVar, SymbolStage::Experimental()},
         {kTorchTraceEnvVar, SymbolStage::Experimental()},
@@ -221,7 +222,6 @@ inline constexpr auto kEnvVarToStage =
         {kTpuProcessBoundsEnvVar, SymbolStage::InternalImplementation()},
         {kTpuProcessPortEnvVar, SymbolStage::InternalImplementation()},
         {kTpuProfilerOutputDirEnvVar, std::nullopt},
-        {kTpuSlicebuilderAddressesEnvVar, std::nullopt},
         {kTpuTopologyEnvVar, std::nullopt},
         {kTpuVisibleChipsEnvVar, SymbolStage::InternalImplementation()},
         {kTpuVisibleDevicesEnvVar, std::nullopt},

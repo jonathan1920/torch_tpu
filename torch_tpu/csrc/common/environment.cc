@@ -36,7 +36,7 @@ absl::Status InitializeDistributedEnvironment(
     const DistributedWorkerConfiguration& config) {
   if (config.sb_addrs.empty()) {
     return TT_ERROR(error::kFailedPrecondition)
-           << kTpuSlicebuilderAddressesEnvVar << " is empty.";
+           << kTorchTpuSlicebuilderAddressesEnvVar << " is empty.";
   }
   if (config.rank < 0) {
     return TT_ERROR(error::kFailedPrecondition)
