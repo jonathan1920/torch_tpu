@@ -111,6 +111,18 @@ at::Tensor& AtenLerpTensorOut(const at::Tensor& self, const at::Tensor& end,
 
     TT_THROW_IF_ERROR(ValidateLerpSelfInput(self));
 
+    // If `out` aliases `self`, `end`, or `weight`, donate that device buffer to
+    // the output in eligible eager modes (DeferNever) to avoid memory
+    // allocation churn.
+    Indices donated_indices;
+    if (ShouldDonateInPlaceBuffer(out, self, output_dtype)) {
+      donated_indices = {0};
+    } else if (ShouldDonateInPlaceBuffer(out, end, output_dtype)) {
+      donated_indices = {1};
+    } else if (ShouldDonateInPlaceBuffer(out, weight, output_dtype)) {
+      donated_indices = {2};
+    }
+
     TT_ASSIGN_OR_THROW(
         auto result,
         DispatchOp<3>(GetLerpTensorOutFunctional(common_type),
@@ -118,7 +130,8 @@ at::Tensor& AtenLerpTensorOut(const at::Tensor& self, const at::Tensor& end,
                       /*options=*/
                       {.out_dtype = output_dtype,
                        .out_dims = out.sizes(),
-                       .op_param_cache_keys = std::move(param_keys)}));
+                       .op_param_cache_keys = std::move(param_keys),
+                       .donated_indices = std::move(donated_indices)}));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(result, out));
     return out;
   });

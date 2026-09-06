@@ -27,12 +27,12 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
+#include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
@@ -123,6 +123,13 @@ at::Tensor& AtenLinalgSolveTriangularOut(const at::Tensor& a,
         TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
                            ConvertTo<mlir::ElementType>(out_scalar_type));
 
+        // If `out` aliases `b`, donate input 1's device buffer to the output in
+        // eligible eager modes (DeferNever) to avoid memory allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(out, b, out_dtype)) {
+          donated_indices = {1};
+        }
+
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
             DispatchOp<2>(
@@ -132,7 +139,8 @@ at::Tensor& AtenLinalgSolveTriangularOut(const at::Tensor& a,
                 {a, b},
                 {.out_dtype = out_dtype,
                  .out_dims = CopyIntVector(b.sizes()),
-                 .op_param_cache_keys = std::move(param_keys)}));
+                 .op_param_cache_keys = std::move(param_keys),
+                 .donated_indices = std::move(donated_indices)}));
 
         TT_THROW_IF_ERROR(
             ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));

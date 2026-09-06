@@ -230,13 +230,21 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
         TT_ASSIGN_OR_THROW(mlir::ElementType out_mlir_type,
                            ConvertTo<mlir::ElementType>(a.scalar_type()));
 
+        // If `lu` aliases `a`, donate input 0 (a)'s device buffer to output 0
+        // in eligible eager modes (DeferNever) to avoid allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(lu, a, out_mlir_type, a.sizes())) {
+          donated_indices = {0};
+        }
+
         TT_ASSIGN_OR_THROW(
             auto results,
             (DispatchOp<1, 2>(
                 LuDecompositionBuilder, {a},
                 {.out_dtypes = {out_mlir_type, mlir::ElementType::I32},
                  .out_dims_list = {a.sizes(), pivot_dims},
-                 .op_param_cache_keys = std::move(param_keys)})));
+                 .op_param_cache_keys = std::move(param_keys),
+                 .donated_indices = std::move(donated_indices)})));
 
         TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(lu, a.sizes()));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[0], lu));
@@ -388,6 +396,14 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
                               ConvertTo<mlir::ElementType>(t.scalar_type()));
           auto step_keys = param_keys.Clone();
           TT_RETURN_IF_ERROR(step_keys.SetParam("step", "L"));
+
+          // Donate input 1 (t)'s device buffer to the output in eligible eager
+          // modes (DeferNever) to avoid allocation churn.
+          Indices donated_indices;
+          if (ShouldDonateInPlaceBuffer(t, t.sizes(), out_dtype)) {
+            donated_indices = {1};
+          }
+
           TT_ASSIGN_OR_RETURN(
               auto buffer,
               DispatchOp<2>(LinalgSolveTriangularBuilder({.upper = false,
@@ -397,7 +413,8 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
                             {lu, t},
                             {.out_dtype = out_dtype,
                              .out_dims = CopyIntVector(t.sizes()),
-                             .op_param_cache_keys = std::move(step_keys)}));
+                             .op_param_cache_keys = std::move(step_keys),
+                             .donated_indices = std::move(donated_indices)}));
 
           TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(buffer), t));
           return absl::OkStatus();
@@ -409,6 +426,14 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
                               ConvertTo<mlir::ElementType>(t.scalar_type()));
           auto step_keys = param_keys.Clone();
           TT_RETURN_IF_ERROR(step_keys.SetParam("step", "U"));
+
+          // Donate input 1 (t)'s device buffer to the output in eligible eager
+          // modes (DeferNever) to avoid allocation churn.
+          Indices donated_indices;
+          if (ShouldDonateInPlaceBuffer(t, t.sizes(), out_dtype)) {
+            donated_indices = {1};
+          }
+
           TT_ASSIGN_OR_RETURN(
               auto buffer,
               DispatchOp<2>(
@@ -419,7 +444,8 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
                   {lu, t},
                   {.out_dtype = out_dtype,
                    .out_dims = CopyIntVector(t.sizes()),
-                   .op_param_cache_keys = std::move(step_keys)}));
+                   .op_param_cache_keys = std::move(step_keys),
+                   .donated_indices = std::move(donated_indices)}));
 
           TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(buffer), t));
           return absl::OkStatus();

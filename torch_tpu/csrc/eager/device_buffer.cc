@@ -46,6 +46,7 @@
 #include "torch_tpu/csrc/common/shape.h"
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/common/utils.h"
+#include "torch_tpu/csrc/eager/eager_mode.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/pjrt/pjrt_state.h"
@@ -347,7 +348,73 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
     TT_RETURN_IF_ERROR(ValidateTensorByteSize(output_shape.dimensions(),
                                               output_shape.dtype()));
   }
+  // Validate that donated input indices are within bounds.
+  for (int64_t idx : donated_indices) {
+    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=internal invariant; input indices are
+                   // verified at dispatch call sites.
+        idx >= 0 && idx < static_cast<int64_t>(inputs.size()), error::kInternal)
+        << "donated input index " << idx << " is out of bounds for op "
+        << op_name << " with " << inputs.size() << " inputs.";
+  }
   int64_t num_outputs = output_shapes.size();
+
+  const auto eager_mode = GetEagerMode();
+  const bool is_defer_never = IsDeferNeverMode(eager_mode);
+
+  // Runtime validation for in-place buffer donation in DeferNever mode:
+  //
+  // In PjRt, buffer donation transfers physical ownership of the underlying
+  // device memory buffer to the operation output, consuming and invalidating
+  // the input PjRtBuffer.
+  //
+  // Although the ATen dispatch site requests donation when an op's output
+  // aliases its input (e.g., `a.add_(1)`), the dispatch kernel only inspects
+  // local arguments and cannot know if other references share the storage.
+  // We therefore verify that a valid underlying buffer exists (`dbl !=
+  // nullptr`) and has exclusive ownership (`dbl->live_data_ptrs() == 1`) as a
+  // final safety check:
+  //
+  // 1. Storage Aliasing & Views:
+  //    Consider the following Python example:
+  //      a = torch.randn(1024, device="tpu")
+  //      b = a             # b references the same storage
+  //      # or:
+  //      v = a.view_as(a)  # view sharing the same storage
+  //      a.add_(1.0)       # in-place operation on a
+  //
+  //    If `a` were donated, PjRt would invalidate `a`'s input buffer to reuse
+  //    it for the output. While `a`'s storage pointer is updated to the newly
+  //    produced buffer, `b` (or `v`) would still point to the old, invalidated
+  //    buffer. Subsequent accesses (e.g., `b.cpu()`) would cause
+  //    use-after-free, memory corruption, or PjRt runtime crashes. Because
+  //    `live_data_ptrs() >= 2` when multiple references or views exist,
+  //    requiring `live_data_ptrs() == 1` prevents this.
+  //
+  // 2. Autograd Saved Tensors (`ctx.save_for_backward`):
+  //    If an activation was saved for backward, its storage reference count
+  //    is > 1. Skipping donation ensures in-place mutations do not corrupt
+  //    the buffer needed for gradient computation.
+  //
+  // We only donate an input buffer if it exists (`dbl != nullptr`) and
+  // satisfies the exclusivity check (`dbl->live_data_ptrs() == 1`), falling
+  // back safely to normal allocation otherwise.
+  //
+  // Note: We bypass this check for custom kernels (Pallas), which manage buffer
+  // donation explicitly through their compiler/runtime signatures, and for
+  // non-DeferNever modes (where DAG buffer assignment is handled globally).
+  if (is_defer_never && !donated_indices.empty() &&
+      op_name != OpName::kCustomKernel) {
+    Indices safe_donated_indices;
+    safe_donated_indices.reserve(donated_indices.size());
+    for (int64_t idx : donated_indices) {
+      const auto& input_ref = inputs[idx];
+      const auto& dbl = input_ref.device_buffer_list();
+      if (dbl != nullptr && dbl->live_data_ptrs() == 1) {
+        safe_donated_indices.push_back(idx);
+      }
+    }
+    donated_indices = std::move(safe_donated_indices);
+  }
 
   // Create the DeferredOp.
   auto op = std::make_unique<DeferredOp>(

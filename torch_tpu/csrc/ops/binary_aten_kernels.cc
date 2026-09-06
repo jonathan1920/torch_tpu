@@ -136,7 +136,8 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
        .out_dims = output_dims,
        .computation_dtype = computation_dtype,
        .op_param_cache_keys = std::move(opts.op_param_cache_keys),
-       .split_mode = opts.split_mode});
+       .split_mode = opts.split_mode,
+       .donated_indices = std::move(opts.donated_indices)});
 }
 
 absl::StatusOr<DeviceBufferRef> DispatchTernaryOp(
@@ -177,7 +178,8 @@ absl::StatusOr<DeviceBufferRef> DispatchTernaryOp(
        .out_dims = output_dims,
        .computation_dtype = computation_dtype,
        .op_param_cache_keys = std::move(opts.op_param_cache_keys),
-       .split_mode = opts.split_mode});
+       .split_mode = opts.split_mode,
+       .donated_indices = std::move(opts.donated_indices)});
 }
 
 }  // namespace internal
@@ -211,13 +213,49 @@ absl::Status TernaryOpOut(const at::Tensor& self, const at::Tensor& other,
                         ConvertTo<mlir::ElementType>(out.scalar_type()));
     opts.output_dtype_override = output_dtype;
   }
+
+  // An `out=` variant operation can have its output tensor alias any of the
+  // inputs depending on how the user invokes it in PyTorch:
+  //
+  // 1. `out` aliases `self` (input 0):
+  //      # Example: In-place method or explicitly passing `out=a`
+  //      a.add_(b)
+  //      torch.add(a, b, out=a)
+  //    Input 0's buffer can be donated to `out`.
+  //
+  // 2. `out` aliases `other` (input 1):
+  //      # Example: Passing `other` as the destination buffer
+  //      torch.add(a, b, out=b)
+  //      torch.sub(a, b, alpha=2.0, out=b)
+  //    Input 1's buffer can be donated to `out`. This is especially beneficial
+  //    when `a` broadcasts to `b`'s shape (where `a` cannot be donated).
+  //
+  // 3. `out` aliases `third` (input 2):
+  //      # Example: A general ternary operation specifying `out=c`
+  //      # (e.g., torch.addcmul(a, b, c, out=c))
+  //    Input 2's buffer can be donated to `out`. While current callers in this
+  //    file pass an internal scalar `alpha_tensor` for `third`, `TernaryOpOut`
+  //    is structured symmetrically to support general 3-operand ops.
+  bool is_inplace =
+      out.is_alias_of(self) || out.is_alias_of(other) || out.is_alias_of(third);
+
+  if (is_inplace) {
+    if (ShouldDonateInPlaceBuffer(out, self, *opts.output_dtype_override)) {
+      opts.donated_indices = {0};
+    } else if (ShouldDonateInPlaceBuffer(out, other,
+                                         *opts.output_dtype_override)) {
+      opts.donated_indices = {1};
+    } else if (ShouldDonateInPlaceBuffer(out, third,
+                                         *opts.output_dtype_override)) {
+      opts.donated_indices = {2};
+    }
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       internal::DispatchTernaryOp(self, other, third, std::move(op_builder),
                                   std::move(opts)));
 
-  bool is_inplace =
-      out.is_alias_of(self) || out.is_alias_of(other) || out.is_alias_of(third);
   OutputOpMode mode =
       is_inplace ? OutputOpMode::kInPlace : OutputOpMode::kOutOfPlace;
 

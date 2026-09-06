@@ -24,10 +24,10 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
+#include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
@@ -78,13 +78,26 @@ at::Tensor& AtenTanhBackwardGradInput(const at::Tensor& grad_output,
           return BuildTanhBackwardGradInputShlo(grad_output_op, output_op);
         };
 
+        // If `grad_input` aliases `grad_output` or `output`, donate that
+        // input's device buffer to the output in eligible eager modes
+        // (DeferNever) to avoid allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(grad_input, grad_output, out_dtype,
+                                      output_shape)) {
+          donated_indices = {0};
+        } else if (ShouldDonateInPlaceBuffer(grad_input, output, out_dtype,
+                                             output_shape)) {
+          donated_indices = {1};
+        }
+
         TT_ASSIGN_OR_THROW(
             auto result,
             DispatchOp<2>(std::move(op_builder), {grad_output, output},
                           /*options=*/
                           {.out_dtype = out_dtype,
                            .out_dims = output_shape,
-                           .op_param_cache_keys = std::move(param_keys)}));
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(result), grad_input));
         return grad_input;

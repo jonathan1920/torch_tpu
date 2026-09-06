@@ -16,6 +16,7 @@
 #include "torch_tpu/csrc/ops/glu/glu_aten_kernels.h"
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -37,10 +38,10 @@
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/common/utils.h"
+#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
-#include "torch_tpu/csrc/ops/nullary_aten_kernels.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/unary_aten_kernels.h"
@@ -164,7 +165,8 @@ absl::StatusOr<mlir::MlirOp> BuildGluBackwardShlo(int64_t dim,
 
 absl::StatusOr<DeviceBufferRef> BuildGluBackwardBuffer(
     const at::Tensor& grad_output, const at::Tensor& self, int64_t dim,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& grad_input = std::nullopt) {
   TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.sizes().size()));
 
   TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(self, /* name= */ "self"));
@@ -200,10 +202,20 @@ absl::StatusOr<DeviceBufferRef> BuildGluBackwardBuffer(
     return BuildGluBackwardShlo(dim, grad_output_op, self_op);
   };
 
+  // If `grad_input` aliases `self`, donate input 1's device buffer to the
+  // output in eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (grad_input.has_value() &&
+      ShouldDonateInPlaceBuffer(*grad_input, self, self_mlir_type,
+                                self_shape)) {
+    donated_indices = {1};
+  }
+
   return DispatchOp<2>(std::move(op_builder), {grad_output, self},
                        {.out_dtype = self_mlir_type,
                         .out_dims = self_shape,
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)});
 }
 }  // namespace
 
@@ -257,9 +269,10 @@ at::Tensor& AtenGluBackwardGradInput(const at::Tensor& grad_output,
               const auto& self_shape = self.sizes();
               at::native::resize_output(grad_input, self_shape);
 
-              TT_ASSIGN_OR_THROW(auto result_buf,
-                                 BuildGluBackwardBuffer(grad_output, self, dim,
-                                                        std::move(params_key)));
+              TT_ASSIGN_OR_THROW(
+                  auto result_buf,
+                  BuildGluBackwardBuffer(grad_output, self, dim,
+                                         std::move(params_key), grad_input));
               TT_THROW_IF_ERROR(
                   AssignBufferToAtTensor(std::move(result_buf), grad_input));
               return grad_input;

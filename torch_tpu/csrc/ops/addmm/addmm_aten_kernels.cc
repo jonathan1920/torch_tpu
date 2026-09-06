@@ -167,12 +167,29 @@ absl::StatusOr<mlir::ElementType> ValidateAddmmInputsAndGetOutputDtype(
 absl::StatusOr<DeviceBufferRef> AddMm(
     const at::Tensor& self, const at::Tensor& mat1, const at::Tensor& mat2,
     MaybePromotedScalar beta, PromotedScalar alpha,
-    at::ScalarType out_scalar_type, OpParamCacheKeys& param_keys) {
+    at::ScalarType out_scalar_type, OpParamCacheKeys& param_keys,
+    std::optional<at::Tensor> out = std::nullopt) {
   TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype_mlir,
                       ValidateAddmmInputsAndGetOutputDtype(
                           self, mat1, mat2, beta, alpha, out_scalar_type));
   Dimensions output_dims_vec = {mat1.size(0), mat2.size(1)};
   const auto current_precision = GetAndAddPrecisionTo(param_keys);
+
+  // If `out` aliases `self`, `mat1`, or `mat2`, donate that device buffer to
+  // the output in eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (out.has_value()) {
+    if (ShouldDonateInPlaceBuffer(*out, self, output_dtype_mlir,
+                                  output_dims_vec)) {
+      donated_indices = {0};
+    } else if (ShouldDonateInPlaceBuffer(*out, mat1, output_dtype_mlir,
+                                         output_dims_vec)) {
+      donated_indices = {1};
+    } else if (ShouldDonateInPlaceBuffer(*out, mat2, output_dtype_mlir,
+                                         output_dims_vec)) {
+      donated_indices = {2};
+    }
+  }
 
   if (beta.ValueMatchesExclude()) {
     // If beta is zero, we can skip promoting it and dispatch the optimized
@@ -190,7 +207,8 @@ absl::StatusOr<DeviceBufferRef> AddMm(
                          {self, mat1, mat2, alpha_tensor},
                          {.out_dtype = output_dtype_mlir,
                           .out_dims = output_dims_vec,
-                          .op_param_cache_keys = std::move(param_keys)});
+                          .op_param_cache_keys = std::move(param_keys),
+                          .donated_indices = std::move(donated_indices)});
   }
 
   // Complex path: beta is non-zero, so we promote it and dispatch the 5-input
@@ -210,18 +228,36 @@ absl::StatusOr<DeviceBufferRef> AddMm(
                        {self, mat1, mat2, beta_tensor, alpha_tensor},
                        {.out_dtype = output_dtype_mlir,
                         .out_dims = output_dims_vec,
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)});
 }
 
 absl::StatusOr<DeviceBufferRef> AddMmActivation(
     const at::Tensor& self, const at::Tensor& mat1, const at::Tensor& mat2,
     MaybePromotedScalar beta, PromotedScalar alpha, bool use_gelu,
-    at::ScalarType out_scalar_type, OpParamCacheKeys& param_keys) {
+    at::ScalarType out_scalar_type, OpParamCacheKeys& param_keys,
+    std::optional<at::Tensor> out = std::nullopt) {
   TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype_mlir,
                       ValidateAddmmInputsAndGetOutputDtype(
                           self, mat1, mat2, beta, alpha, out_scalar_type));
   Dimensions output_dims_vec = {mat1.size(0), mat2.size(1)};
   const auto current_precision = GetAndAddPrecisionTo(param_keys);
+
+  // If `out` aliases `self`, `mat1`, or `mat2`, donate that device buffer to
+  // the output in eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (out.has_value()) {
+    if (ShouldDonateInPlaceBuffer(*out, self, output_dtype_mlir,
+                                  output_dims_vec)) {
+      donated_indices = {0};
+    } else if (ShouldDonateInPlaceBuffer(*out, mat1, output_dtype_mlir,
+                                         output_dims_vec)) {
+      donated_indices = {1};
+    } else if (ShouldDonateInPlaceBuffer(*out, mat2, output_dtype_mlir,
+                                         output_dims_vec)) {
+      donated_indices = {2};
+    }
+  }
 
   if (beta.ValueMatchesExclude()) {
     // If beta is zero, we can skip promoting it and dispatch the optimized
@@ -245,7 +281,8 @@ absl::StatusOr<DeviceBufferRef> AddMmActivation(
                          {self, mat1, mat2, alpha_tensor},
                          {.out_dtype = output_dtype_mlir,
                           .out_dims = output_dims_vec,
-                          .op_param_cache_keys = std::move(param_keys)});
+                          .op_param_cache_keys = std::move(param_keys),
+                          .donated_indices = std::move(donated_indices)});
   }
 
   // Complex path: beta is non-zero, so we promote it and dispatch the 5-input
@@ -271,7 +308,8 @@ absl::StatusOr<DeviceBufferRef> AddMmActivation(
                        {self, mat1, mat2, beta_tensor, alpha_tensor},
                        {.out_dtype = output_dtype_mlir,
                         .out_dims = output_dims_vec,
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)});
 }
 
 }  // namespace
@@ -290,10 +328,10 @@ at::Tensor& AtenAddmmOut(const at::Tensor& self, const at::Tensor& mat1,
             << "expected input and out tensors to have the same dtype, got "
             << torch_tpu::ToString(self.scalar_type()) << " vs "
             << torch_tpu::ToString(out.scalar_type());
-        TT_ASSIGN_OR_THROW(
-            auto result_buffer,
-            AddMm(self, mat1, mat2, std::move(promoted_beta),
-                  std::move(promoted_alpha), out.scalar_type(), param_keys));
+        TT_ASSIGN_OR_THROW(auto result_buffer,
+                           AddMm(self, mat1, mat2, std::move(promoted_beta),
+                                 std::move(promoted_alpha), out.scalar_type(),
+                                 param_keys, out));
         ABSL_VLOG(3)
             << "calling ResizeTensorIfShapeDiffers for out tensor with "
                "target shape: ["
@@ -327,7 +365,7 @@ at::Tensor& AtenAddmmActivationOut(const at::Tensor& self,
             auto result_buffer,
             AddMmActivation(self, mat1, mat2, std::move(promoted_beta),
                             std::move(promoted_alpha), use_gelu,
-                            out.scalar_type(), param_keys));
+                            out.scalar_type(), param_keys, out));
         ABSL_VLOG(3)
             << "calling ResizeTensorIfShapeDiffers for out tensor with "
                "target shape: ["

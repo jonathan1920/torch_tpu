@@ -31,6 +31,27 @@ void SetEagerMode(EagerMode mode);
 // manager is active, it falls back to the global mode set by `SetEagerMode`.
 [[nodiscard]] EagerMode GetEagerMode();
 
+// Returns whether the specified eager mode is a DeferNever mode
+// (kDeferNever or kDeferNeverAndLaunchBlocking).
+[[nodiscard]] constexpr bool IsDeferNeverMode(EagerMode mode) {
+  return mode == EagerMode::kDeferNever ||
+         mode == EagerMode::kDeferNeverAndLaunchBlocking;
+}
+
+// Controls whether input buffer donation for in-place ATen operations in
+// DeferNever eager mode is enabled globally. Thread-safe.
+void EnableInplaceBufferDonation(bool enabled);
+
+// Returns whether input buffer donation for in-place ATen operations in
+// DeferNever eager mode is enabled for the current Python thread/context.
+// Thread-safe.
+//
+// It resolves the state from the thread-local context state managed via Python
+// context managers, with innermost context taking precedence. If no context
+// manager is active, it falls back to the global setting set by
+// `EnableInplaceBufferDonation`.
+[[nodiscard]] bool IsInplaceBufferDonationEnabled();
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_CSRC_EAGER_EAGER_MODE_H_

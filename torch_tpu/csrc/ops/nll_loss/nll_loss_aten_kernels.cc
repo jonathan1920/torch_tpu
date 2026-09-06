@@ -312,10 +312,20 @@ at::Tensor& AtenNllLossBackwardGradInput(
           inputs.push_back(weight.value());
         }
 
+        // If `grad_input` aliases `self`, donate input 1's device buffer to
+        // the output in eligible eager modes (DeferNever) to avoid allocation
+        // churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(grad_input, self, output_dtype,
+                                      output_dims)) {
+          donated_indices = {1};
+        }
+
         DispatchOpOptions<1> options = {
             .out_dtype = output_dtype,
             .out_dims = output_dims,
-            .op_param_cache_keys = std::move(param_keys)};
+            .op_param_cache_keys = std::move(param_keys),
+            .donated_indices = std::move(donated_indices)};
 
         TT_ASSIGN_OR_THROW(
             auto grad_input_buf,

@@ -17,6 +17,7 @@
 #include "torch_tpu/csrc/ops/index_reduce/index_reduce_aten_kernels.h"
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -63,7 +64,8 @@ absl::StatusOr<ScatterOp> GetReduceOp(const std::string_view reduce) {
 absl::StatusOr<DeviceBufferRef> IndexReduce(
     const at::Tensor& self, int64_t dim, const at::Tensor& index,
     const at::Tensor& source, const std::string_view reduce, bool include_self,
-    const at::ScalarType& out_scalar_type, OpParamCacheKeys param_keys) {
+    const at::ScalarType& out_scalar_type, OpParamCacheKeys param_keys,
+    std::optional<at::Tensor> out = std::nullopt) {
   TT_ASSIGN_OR_RETURN(dim,
                       ValidateIndexInputsAndGetDim(self, dim, index, source));
   TT_ASSIGN_OR_RETURN(ScatterOp reduce_op, GetReduceOp(reduce));
@@ -85,11 +87,22 @@ absl::StatusOr<DeviceBufferRef> IndexReduce(
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(out_scalar_type));
+  Dimensions output_dims = CopyIntVector(self.sizes());
+
+  // If `out` aliases `self`, donate input 0's device buffer to the output in
+  // eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (out.has_value() &&
+      ShouldDonateInPlaceBuffer(*out, self, output_dtype, output_dims)) {
+    donated_indices = {0};
+  }
+
   return DispatchOp<3>(std::move(index_reduce_op_builder),
                        {self, index, source},
                        {.out_dtype = output_dtype,
-                        .out_dims = CopyIntVector(self.sizes()),
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .out_dims = output_dims,
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)});
 }
 
 }  // namespace
@@ -105,7 +118,7 @@ at::Tensor& TpuAtenIndexReduceOut(const at::Tensor& self, int64_t dim,
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
             IndexReduce(self, dim, index, source, reduce, include_self,
-                        out.scalar_type(), std::move(param_keys)));
+                        out.scalar_type(), std::move(param_keys), out));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });

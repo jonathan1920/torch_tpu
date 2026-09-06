@@ -23,19 +23,18 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "ATen/ops/full_like.h"
 #include "ATen/ops/result_type.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/util/string_view.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
+#include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
@@ -51,7 +50,8 @@ namespace {
 absl::StatusOr<DeviceBufferRef> Scatter(
     const at::Tensor& self, int64_t dim, const at::Tensor& index,
     const at::Tensor& src, ScatterOp reduction_op = ScatterOp::kReplace,
-    ScatterIncludeSelf include_self = ScatterIncludeSelf::kYes) {
+    ScatterIncludeSelf include_self = ScatterIncludeSelf::kYes,
+    std::optional<at::Tensor> out = std::nullopt) {
   TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.dim()));
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
@@ -66,6 +66,14 @@ absl::StatusOr<DeviceBufferRef> Scatter(
                             include_self);
   };
 
+  // If `out` aliases `self`, donate input 0's device buffer to the output in
+  // eligible eager modes (DeferNever) to avoid memory allocation churn.
+  Indices donated_indices;
+  if (out.has_value() &&
+      ShouldDonateInPlaceBuffer(*out, self, output_dtype, output_dims)) {
+    donated_indices = {0};
+  }
+
   TT_ASSIGN_OR_RETURN(auto param_keys, TT_MAKE_OP_PARAM_CACHE_KEYS(
                                            dim, reduction_op, include_self));
   TT_ASSIGN_OR_RETURN(
@@ -73,7 +81,8 @@ absl::StatusOr<DeviceBufferRef> Scatter(
       DispatchOp<3>(std::move(scatter_op_builder), {self, index, src},
                     {.out_dtype = output_dtype,
                      .out_dims = output_dims,
-                     .op_param_cache_keys = std::move(param_keys)}));
+                     .op_param_cache_keys = std::move(param_keys),
+                     .donated_indices = std::move(donated_indices)}));
   return result_buf;
 }
 
@@ -123,7 +132,8 @@ at::Tensor& AtenScatterSrcOut(const at::Tensor& self, int64_t dim,
       {
         TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
         TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                           Scatter(self, dim, index, src));
+                           Scatter(self, dim, index, src, ScatterOp::kReplace,
+                                   ScatterIncludeSelf::kYes, out));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
         return out;
       });
@@ -141,8 +151,10 @@ at::Tensor& AtenScatterValueOut(const at::Tensor& self, int64_t dim,
               auto promoted_type = out.scalar_type();
               TT_ASSIGN_OR_THROW(at::Tensor value_tensor,
                                  promoted_value.GetTensor(promoted_type));
-              TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                                 Scatter(self, dim, index, value_tensor));
+              TT_ASSIGN_OR_THROW(
+                  DeviceBufferRef result,
+                  Scatter(self, dim, index, value_tensor, ScatterOp::kReplace,
+                          ScatterIncludeSelf::kYes, out));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;
             });
@@ -160,7 +172,8 @@ at::Tensor& AtenScatterReduceOut(const at::Tensor& self, int64_t dim,
               TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
                                  ParseScatterOp(reduction_op));
               TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                                 Scatter(self, dim, index, src, scatter_op));
+                                 Scatter(self, dim, index, src, scatter_op,
+                                         ScatterIncludeSelf::kYes, out));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;
             });
@@ -171,22 +184,23 @@ at::Tensor& AtenScatterReduceTwoOut(const at::Tensor& self, int64_t dim,
                                     const at::Tensor& src,
                                     c10::string_view reduction,
                                     bool include_self, at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kScatterReduceTwoOut, _,
-      (self, IgnoreInCacheKey(dim, "delegates to Scatter()"), index, src,
-       IgnoreInCacheKey(reduction, "delegates to Scatter()"),
-       IgnoreInCacheKey(include_self, "delegates to Scatter()"), out),
-      {
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
-        TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
-                           ParseScatterOp(reduction, ScatterVersion::kV2));
-        TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                           Scatter(self, dim, index, src, scatter_op,
-                                   include_self ? ScatterIncludeSelf::kYes
-                                                : ScatterIncludeSelf::kNo));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
-        return out;
-      });
+  TT_KERNEL(OpName::kScatterReduceTwoOut, _,
+            (self, IgnoreInCacheKey(dim, "delegates to Scatter()"), index, src,
+             IgnoreInCacheKey(reduction, "delegates to Scatter()"),
+             IgnoreInCacheKey(include_self, "delegates to Scatter()"), out),
+            {
+              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
+              TT_ASSIGN_OR_THROW(
+                  ScatterOp scatter_op,
+                  ParseScatterOp(reduction, ScatterVersion::kV2));
+              TT_ASSIGN_OR_THROW(DeviceBufferRef result,
+                                 Scatter(self, dim, index, src, scatter_op,
+                                         include_self ? ScatterIncludeSelf::kYes
+                                                      : ScatterIncludeSelf::kNo,
+                                         out));
+              TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+              return out;
+            });
 }
 
 at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,
@@ -207,7 +221,8 @@ at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,
                            promoted_value.GetTensor(promoted_type));
         TT_ASSIGN_OR_THROW(ScatterOp scatter_op, ParseScatterOp(reduction_op));
         TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                           Scatter(self, dim, index, value_tensor, scatter_op));
+                           Scatter(self, dim, index, value_tensor, scatter_op,
+                                   ScatterIncludeSelf::kYes, out));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
         return out;
       });

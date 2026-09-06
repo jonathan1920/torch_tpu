@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -65,8 +66,9 @@ mlir::MlirOp MaybeCastToFloat(mlir::MlirOp self_op, bool input_is_integer) {
                           : self_op;
 }
 
-absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(const at::Tensor& self,
-                                              OpParamCacheKeys param_keys) {
+absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(
+    const at::Tensor& self, OpParamCacheKeys param_keys,
+    std::optional<at::Tensor> a_out = std::nullopt) {
   TT_ASSIGN_OR_RETURN(const mlir::ElementType out_dtype, GetOutDtype(self));
 
   // Capture metadata properties (like 'input_is_integer') by copy instead of
@@ -91,10 +93,19 @@ absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(const at::Tensor& self,
     return result_ops;
   };
 
+  // Donate input 0 (self)'s device buffer to output 0 in eligible eager modes
+  // (DeferNever) if output `a` aliases `self` to avoid allocation churn.
+  Indices donated_indices;
+  if (a_out.has_value() &&
+      ShouldDonateInPlaceBuffer(*a_out, self, out_dtype, self.sizes())) {
+    donated_indices = {0};
+  }
+
   return DispatchOp<1, 2>(std::move(op_builder), {self},
                           {.out_dtypes = {out_dtype, out_dtype},
                            .out_dims_list = {self.sizes(), tau_dims},
-                           .op_param_cache_keys = std::move(param_keys)});
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)});
 }
 
 struct QrDims {
@@ -137,9 +148,9 @@ absl::StatusOr<QrDims> ComputeQrDims(const at::Tensor& self,
   return QrDims{std::move(q_dims), std::move(r_dims)};
 }
 
-absl::StatusOr<DeviceBufferRefArray<2>> Qr(const at::Tensor& self,
-                                           c10::string_view mode,
-                                           OpParamCacheKeys param_keys) {
+absl::StatusOr<DeviceBufferRefArray<2>> Qr(
+    const at::Tensor& self, c10::string_view mode, OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& q = std::nullopt) {
   TT_ASSIGN_OR_RETURN(const mlir::ElementType out_dtype, GetOutDtype(self));
 
   auto op_builder =
@@ -151,10 +162,20 @@ absl::StatusOr<DeviceBufferRefArray<2>> Qr(const at::Tensor& self,
   };
 
   TT_ASSIGN_OR_RETURN(const QrDims qr_dims, ComputeQrDims(self, mode));
+
+  // Donate input 0 (self)'s device buffer to output 0 (q) in eligible eager
+  // modes (DeferNever) if output `q` aliases `self` to avoid allocation churn.
+  Indices donated_indices;
+  if (q.has_value() &&
+      ShouldDonateInPlaceBuffer(*q, self, out_dtype, qr_dims.q_dims)) {
+    donated_indices = {0};
+  }
+
   return DispatchOp<1, 2>(std::move(op_builder), {self},
                           {.out_dtypes = {out_dtype, out_dtype},
                            .out_dims_list = {qr_dims.q_dims, qr_dims.r_dims},
-                           .op_param_cache_keys = std::move(param_keys)});
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)});
 }
 
 }  // namespace
@@ -172,7 +193,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenGeqrfA(const at::Tensor& self,
                                                 at::Tensor& tau) {
   TT_KERNEL(OpName::kGeqrfA, param_keys, (self, a, tau), {
     TT_ASSIGN_OR_THROW(const DeviceBufferRefArray<2> result_buffers,
-                       Geqrf(self, std::move(param_keys)));
+                       Geqrf(self, std::move(param_keys), a));
     TT_THROW_IF_ERROR(
         ResizeTensorIfShapeDiffers(a, result_buffers[0].dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], a));
@@ -190,7 +211,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenLinalgQrOut(const at::Tensor& self,
                                                      at::Tensor& r) {
   TT_KERNEL(OpName::kLinalgQrOut, param_keys, (self, mode, q, r), {
     TT_ASSIGN_OR_THROW(const DeviceBufferRefArray<2> result_buffers,
-                       Qr(self, mode, std::move(param_keys)));
+                       Qr(self, mode, std::move(param_keys), q));
     TT_THROW_IF_ERROR(
         ResizeTensorIfShapeDiffers(q, result_buffers[0].dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], q));

@@ -728,12 +728,18 @@ absl::Status BuildMaxPoolOutNd(const at::Tensor& self,
                             stride_vec, padding_vec, dilation_vec, ceil_mode);
   };
 
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(out, self, element_type, output_size)) {
+    donated_indices = {0};
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       (DispatchOp<1>(std::move(op_builder), self,
                      {.out_dtype = element_type,
                       .out_dims = std::move(output_size),
-                      .op_param_cache_keys = std::move(param_keys)})));
+                      .op_param_cache_keys = std::move(param_keys),
+                      .donated_indices = std::move(donated_indices)})));
 
   return AssignBufferToAtTensor(std::move(result_buf), out);
 }
@@ -759,12 +765,21 @@ absl::Status BuildMaxPoolWithIndicesBackwardGradInputNd(
         stride_vec, padding_vec, dilation_vec, ceil_mode);
   };
 
+  // If `grad_input` aliases `self`, donate input 1's device buffer to the
+  // output in eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(grad_input, self, output_dtype,
+                                grad_input.sizes())) {
+    donated_indices = {1};
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto result,
       (DispatchOp<3>(std::move(op_builder), {grad_output, self, indices},
                      {.out_dtype = output_dtype,
                       .out_dims = CopyIntVector(grad_input.sizes()),
-                      .op_param_cache_keys = std::move(param_keys)})));
+                      .op_param_cache_keys = std::move(param_keys),
+                      .donated_indices = std::move(donated_indices)})));
 
   return AssignBufferToAtTensor(std::move(result), grad_input);
 }

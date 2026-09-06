@@ -23,6 +23,7 @@
 #include "ATen/core/Scalar.h"
 #include "ATen/core/TensorBody.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/Builders.h"
@@ -137,12 +138,20 @@ at::Tensor& AtenIndexFillIntScalar_(at::Tensor& self, int64_t dim,
         TT_ASSIGN_OR_THROW(const auto output_dtype,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
 
+        // Donate input 0's device buffer to the output in eligible eager modes
+        // (DeferNever) to avoid memory allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(self, self.sizes(), output_dtype)) {
+          donated_indices = {0};
+        }
+
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
             DispatchOp<3>(std::move(op_builder), {self, index, value_tensor},
                           {.out_dtype = output_dtype,
                            .out_dims = self.sizes(),
-                           .op_param_cache_keys = std::move(param_keys)}));
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
         return self;
       });
@@ -170,12 +179,20 @@ at::Tensor& AtenIndexFillIntTensor_(at::Tensor& self, int64_t dim,
         TT_ASSIGN_OR_THROW(const auto output_dtype,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
 
+        // Donate input 0's device buffer to the output in eligible eager modes
+        // (DeferNever) to avoid memory allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(self, self.sizes(), output_dtype)) {
+          donated_indices = {0};
+        }
+
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
             DispatchOp<3>(std::move(op_builder), {self, index, value},
                           {.out_dtype = output_dtype,
                            .out_dims = self.sizes(),
-                           .op_param_cache_keys = std::move(param_keys)}));
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
         return self;
       });

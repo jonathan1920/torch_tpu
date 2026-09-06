@@ -176,13 +176,21 @@ at::Tensor& AtenPut_(at::Tensor& self, const at::Tensor& index,
       return BuildPutShlo(self, self_shape, index, source, accumulate);
     };
 
+    // Donate self (input 0)'s device buffer to the output in eligible eager
+    // modes (DeferNever) to avoid allocation churn.
+    Indices donated_indices;
+    if (ShouldDonateInPlaceBuffer(self, self.sizes(), out_dtype)) {
+      donated_indices = {0};
+    }
+
     TT_ASSIGN_OR_THROW(
         DeviceBufferRef result_buf,
         DispatchOp<3>(std::move(op_builder),
                       /*inputs=*/{self, index, source},
                       {.out_dtype = out_dtype,
                        .out_dims = self.sizes(),
-                       .op_param_cache_keys = std::move(param_keys)}));
+                       .op_param_cache_keys = std::move(param_keys),
+                       .donated_indices = std::move(donated_indices)}));
 
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
     return self;

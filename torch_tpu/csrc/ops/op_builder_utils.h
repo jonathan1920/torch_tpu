@@ -56,7 +56,8 @@
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
-#include "torch_tpu/csrc/common/dimension_types.h"
+#include "torch_tpu/csrc/common/context_states.h"
+#include "torch_tpu/csrc/common/dimension_types.h"  // IWYU pragma: export
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/ops/python_context.h"
@@ -685,6 +686,32 @@ std::string BuildModuleNameFromPyContext(
 // adds buffer donation annotations to the main function.
 void AnnotateBufferDonations(mlir::ModuleOp module,
                              mlir::ArrayRef<int64_t> donated_inputs);
+
+// Determines whether an in-place donor tensor is eligible to donate its device
+// buffer for destination buffer reuse in eager mode. If `eager_mode` is
+// provided, it avoids querying `GetEagerMode()` on each call.
+bool ShouldDonateInPlaceBuffer(
+    const at::Tensor& donor, at::IntArrayRef destination_dims,
+    mlir::ElementType destination_dtype,
+    std::optional<EagerMode> eager_mode = std::nullopt);
+
+// Determines whether a destination tensor and donor tensor are eligible for
+// buffer donation (i.e. destination aliases donor, and donor satisfies all
+// eager in-place donation invariants). If `destination_dims` is omitted,
+// defaults to `destination.sizes()`. If `eager_mode` is provided, it avoids
+// querying `GetEagerMode()`.
+inline bool ShouldDonateInPlaceBuffer(
+    const at::Tensor& destination, const at::Tensor& donor,
+    mlir::ElementType destination_dtype,
+    std::optional<at::IntArrayRef> destination_dims = std::nullopt,
+    std::optional<EagerMode> eager_mode = std::nullopt) {
+  if (!destination.is_alias_of(donor)) {
+    return false;
+  }
+  return ShouldDonateInPlaceBuffer(
+      donor, destination_dims.value_or(destination.sizes()), destination_dtype,
+      eager_mode);
+}
 
 // Casts a given op to the expected type if necessary, preserving the values.
 // Returns an error if PyTorch doesn't support casting the PyTorch type

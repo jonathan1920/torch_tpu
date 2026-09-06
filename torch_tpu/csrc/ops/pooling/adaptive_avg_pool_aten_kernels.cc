@@ -535,7 +535,8 @@ absl::StatusOr<mlir::MlirOp> BuildAdaptiveAvgPool3dBackwardShlo(
 
 absl::StatusOr<DeviceBufferRef> AdaptiveAvgPool2dHelper(
     const at::Tensor& self, c10::SymIntArrayRef output_size,
-    at::ScalarType output_dtype, OpParamCacheKeys param_keys) {
+    at::ScalarType output_dtype, OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& out = std::nullopt) {
   TT_RET_CHECK(self.scalar_type() != at::ScalarType::Byte &&
                    self.scalar_type() != at::ScalarType::Char &&
                    self.scalar_type() != at::ScalarType::Short &&
@@ -594,7 +595,7 @@ absl::StatusOr<DeviceBufferRef> AdaptiveAvgPool2dHelper(
                           out_dims, spatial_dim_count, std::move(param_keys),
                           // Override the OpName to kAvgPool2dOut, since we are
                           // lowering into it, anyway.
-                          /*override_op_name=*/OpName::kAvgPool2dOut);
+                          /*override_op_name=*/OpName::kAvgPool2dOut, out);
   } else {
     auto op_builder = [in_h, in_w, out_h, out_w](
                           mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
@@ -602,12 +603,21 @@ absl::StatusOr<DeviceBufferRef> AdaptiveAvgPool2dHelper(
                                         spatial_dim_count);
     };
 
+    // If `out` aliases `self`, donate input 0's device buffer to the output in
+    // eligible eager modes (DeferNever) to avoid allocation churn.
+    Indices donated_indices;
+    if (out.has_value() &&
+        ShouldDonateInPlaceBuffer(*out, self, output_mlir_dtype, out_dims)) {
+      donated_indices = {0};
+    }
+
     TT_ASSIGN_OR_RETURN(
         auto result,
         DispatchOp<1>(std::move(op_builder), self,
                       {.out_dtype = output_mlir_dtype,
                        .out_dims = std::move(out_dims),
-                       .op_param_cache_keys = std::move(param_keys)}));
+                       .op_param_cache_keys = std::move(param_keys),
+                       .donated_indices = std::move(donated_indices)}));
     return result;
   }
 }
@@ -620,7 +630,7 @@ at::Tensor& AtenAdaptiveAvgPool2dOut(const at::Tensor& self,
               TT_ASSIGN_OR_THROW(
                   auto buffer,
                   AdaptiveAvgPool2dHelper(self, output_size, out.scalar_type(),
-                                          std::move(param_keys)));
+                                          std::move(param_keys), out));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(buffer), out));
               return out;
             });
@@ -720,12 +730,21 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
                                               out_h, out_w, spatial_dim_count);
           };
 
+          // If `out` aliases `self`, donate input 0's device buffer to the
+          // output in eligible eager modes (DeferNever) to avoid allocation
+          // churn.
+          Indices donated_indices;
+          if (ShouldDonateInPlaceBuffer(out, self, output_dtype, out.sizes())) {
+            donated_indices = {0};
+          }
+
           TT_ASSIGN_OR_THROW(
               auto result,
               DispatchOp<1>(std::move(op_builder), self,
                             {.out_dtype = output_dtype,
                              .out_dims = CopyIntVector(out.sizes()),
-                             .op_param_cache_keys = std::move(param_keys)}));
+                             .op_param_cache_keys = std::move(param_keys),
+                             .donated_indices = std::move(donated_indices)}));
 
           TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
           return out;
@@ -805,12 +824,25 @@ at::Tensor& AtenAdaptiveAvgPool3dBackwardGradInput(
           return BuildAdaptiveAvgPool3dBackwardShlo(inputs[0], inputs[1]);
         };
 
+        // If `grad_input` aliases `grad_output` or `self`, donate that input's
+        // device buffer to the output in eligible eager modes (DeferNever) to
+        // avoid allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(grad_input, grad_output, output_dtype,
+                                      grad_input.sizes())) {
+          donated_indices = {0};
+        } else if (ShouldDonateInPlaceBuffer(grad_input, self, output_dtype,
+                                             grad_input.sizes())) {
+          donated_indices = {1};
+        }
+
         TT_ASSIGN_OR_THROW(
             auto result,
             (DispatchOp<2>(std::move(op_builder), {grad_output, self},
                            {.out_dtype = output_dtype,
                             .out_dims = CopyIntVector(self.sizes()),
-                            .op_param_cache_keys = std::move(param_keys)})));
+                            .op_param_cache_keys = std::move(param_keys),
+                            .donated_indices = std::move(donated_indices)})));
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(result), grad_input));
         return grad_input;

@@ -578,12 +578,38 @@ absl::Status ValidateScaledMmInputs(
   return absl::OkStatus();
 }
 
+Indices GetScaledMmDonatedIndices(const std::optional<at::Tensor>& out,
+                                  const at::Tensor& self,
+                                  const at::Tensor& mat2,
+                                  const std::optional<at::Tensor>& bias,
+                                  bool has_bias, mlir::ElementType elem_dtype,
+                                  absl::Span<const int64_t> output_dims) {
+  // If `out` aliases one of the inputs (e.g. self, mat2, or bias), donate that
+  // input's device buffer in eligible eager modes (DeferNever) to avoid
+  // allocation churn.
+  if (!out.has_value()) {
+    return {};
+  }
+  if (ShouldDonateInPlaceBuffer(*out, self, elem_dtype, output_dims)) {
+    return {0};
+  }
+  if (ShouldDonateInPlaceBuffer(*out, mat2, elem_dtype, output_dims)) {
+    return {1};
+  }
+  if (has_bias &&
+      ShouldDonateInPlaceBuffer(*out, *bias, elem_dtype, output_dims)) {
+    return {4};
+  }
+  return {};
+}
+
 absl::StatusOr<DeviceBufferRef> ScaledMm(
     const at::Tensor& self, const at::Tensor& mat2, const at::Tensor& scale_a,
     const at::Tensor& scale_b, std::optional<at::Tensor> bias,
     std::optional<at::Tensor> scale_result,
     std::optional<at::ScalarType> out_dtype, bool use_fast_accum,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& out = std::nullopt) {
   TT_RETURN_IF_ERROR(ValidateScaledMmInputs(self, mat2, scale_a, scale_b, bias,
                                             scale_result, use_fast_accum));
 
@@ -642,13 +668,17 @@ absl::StatusOr<DeviceBufferRef> ScaledMm(
     return result;
   };
 
-  TT_ASSIGN_OR_RETURN(
-      DeviceBufferRef result_buf,
-      DispatchOp<kDynamicSize>(std::move(op_builder), inputs,
-                               {.out_dtype = target_elem_dtype,
-                                .out_dims = output_dims,
-                                .computation_dtype = comp_dtype,
-                                .op_param_cache_keys = std::move(param_keys)}));
+  Indices donated_indices = GetScaledMmDonatedIndices(
+      out, self, mat2, bias, has_bias, target_elem_dtype, output_dims);
+
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef result_buf,
+                      DispatchOp<kDynamicSize>(
+                          std::move(op_builder), inputs,
+                          {.out_dtype = target_elem_dtype,
+                           .out_dims = output_dims,
+                           .computation_dtype = comp_dtype,
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
 
   return result_buf;
 }
@@ -696,7 +726,7 @@ at::Tensor& AtenScaledMmOut(const at::Tensor& self, const at::Tensor& mat2,
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
             ScaledMm(self, mat2, scale_a, scale_b, bias, scale_result,
-                     out_dtype, use_fast_accum, std::move(param_keys)));
+                     out_dtype, use_fast_accum, std::move(param_keys), out));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });
@@ -710,7 +740,8 @@ absl::StatusOr<DeviceBufferRef> ScaledMmV2(
     at::IntArrayRef recipe_b, at::IntArrayRef swizzle_b,
     std::optional<at::Tensor> bias, std::optional<at::ScalarType> out_dtype,
     at::IntArrayRef contraction_dim, bool use_fast_accum,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& out = std::nullopt) {
 #else
 absl::StatusOr<DeviceBufferRef> ScaledMmV2(
     const at::Tensor& self, const at::Tensor& mat2, at::TensorList scale_a,
@@ -718,7 +749,8 @@ absl::StatusOr<DeviceBufferRef> ScaledMmV2(
     at::IntArrayRef recipe_b, at::IntArrayRef swizzle_b,
     std::optional<at::Tensor> bias, std::optional<at::ScalarType> out_dtype,
     at::IntArrayRef contraction_dim, bool use_fast_accum,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& out = std::nullopt) {
 #endif
   TT_RETURN_IF_ERROR(ValidateScaledMmV2Inputs(
       self, mat2, scale_a, recipe_a, swizzle_a, scale_b, recipe_b, swizzle_b,
@@ -785,13 +817,17 @@ absl::StatusOr<DeviceBufferRef> ScaledMmV2(
     return result;
   };
 
-  TT_ASSIGN_OR_RETURN(
-      DeviceBufferRef result_buf,
-      DispatchOp<kDynamicSize>(std::move(op_builder), inputs,
-                               {.out_dtype = target_elem_dtype,
-                                .out_dims = output_dims,
-                                .computation_dtype = comp_dtype,
-                                .op_param_cache_keys = std::move(param_keys)}));
+  Indices donated_indices = GetScaledMmDonatedIndices(
+      out, self, mat2, bias, has_bias, target_elem_dtype, output_dims);
+
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef result_buf,
+                      DispatchOp<kDynamicSize>(
+                          std::move(op_builder), inputs,
+                          {.out_dtype = target_elem_dtype,
+                           .out_dims = output_dims,
+                           .computation_dtype = comp_dtype,
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
 
   return result_buf;
 }
@@ -867,7 +903,7 @@ at::Tensor& AtenScaledMmV2Out(const at::Tensor& self, const at::Tensor& mat2,
             DeviceBufferRef result_buf,
             ScaledMmV2(self, mat2, scale_a, recipe_a, swizzle_a, scale_b,
                        recipe_b, swizzle_b, bias, out_dtype, contraction_dim,
-                       use_fast_accum, std::move(param_keys)));
+                       use_fast_accum, std::move(param_keys), out));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });

@@ -145,7 +145,8 @@ absl::StatusOr<mlir::MlirOp> BuildBucketizeShlo(mlir::MlirOp self_op,
 absl::StatusOr<DeviceBufferRef> Bucketize(const at::Tensor& self,
                                           const at::Tensor& boundaries,
                                           bool out_int32, bool right,
-                                          OpParamCacheKeys param_keys) {
+                                          OpParamCacheKeys param_keys,
+                                          Indices donated_indices = {}) {
   TT_RETURN_IF_ERROR(ValidateInputAndBoundaries(self, boundaries));
 
   TT_ASSIGN_OR_RETURN(
@@ -174,7 +175,8 @@ absl::StatusOr<DeviceBufferRef> Bucketize(const at::Tensor& self,
   return DispatchOp<2>(std::move(op_builder), {self, boundaries},
                        {.out_dtype = out_dtype,
                         .out_dims = CopyIntVector(self.sizes()),
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = donated_indices});
 }
 
 }  // namespace
@@ -209,16 +211,23 @@ at::Tensor AtenBucketizeTensor(const at::Tensor& self,
 at::Tensor& AtenBucketizeTensorOut(const at::Tensor& self,
                                    const at::Tensor& boundaries, bool out_int32,
                                    bool right, at::Tensor& out) {
-  TT_KERNEL(OpName::kBucketizeTensorOut, param_keys,
-            (self, boundaries, out_int32, right, out), {
-              TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
-              TT_ASSIGN_OR_THROW(DeviceBufferRef result_buffer,
-                                 Bucketize(self, boundaries, out_int32, right,
-                                           std::move(param_keys)));
-              TT_THROW_IF_ERROR(
-                  AssignBufferToAtTensor(std::move(result_buffer), out));
-              return out;
-            });
+  TT_KERNEL(
+      OpName::kBucketizeTensorOut, param_keys,
+      (self, boundaries, out_int32, right, out), {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
+        Indices donated_indices = {};
+        const auto out_dtype =
+            out_int32 ? mlir::ElementType::I32 : mlir::ElementType::I64;
+        if (ShouldDonateInPlaceBuffer(out, self, out_dtype, self.sizes())) {
+          donated_indices = {0};
+        }
+        TT_ASSIGN_OR_THROW(DeviceBufferRef result_buffer,
+                           Bucketize(self, boundaries, out_int32, right,
+                                     std::move(param_keys), donated_indices));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(result_buffer), out));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

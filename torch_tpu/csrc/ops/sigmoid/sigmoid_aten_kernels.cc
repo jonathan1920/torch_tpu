@@ -38,7 +38,6 @@
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
-#include "torch_tpu/csrc/ops/nullary_aten_kernels.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
@@ -112,12 +111,20 @@ absl::Status LogSigmoidForward(const at::Tensor& self, at::Tensor& out,
   TT_ASSIGN_OR_RETURN(mlir::ElementType dtype,
                       ConvertTo<mlir::ElementType>(out_scalar_type));
 
+  // If `out` aliases `self`, donate input 0's device buffer to the output in
+  // eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(out, self, dtype, self.sizes())) {
+    donated_indices = {0};
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto results,
       (DispatchOp<1, 2>(std::move(op_builder), {self},
                         {.out_dtypes = {dtype, dtype},
                          .out_dims_list = {self.sizes(), self.sizes()},
-                         .op_param_cache_keys = OpParamCacheKeys::Empty()})));
+                         .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                         .donated_indices = std::move(donated_indices)})));
 
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(results[0]), out));
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(results[1]), buffer));
@@ -165,12 +172,25 @@ absl::Status LogSigmoidBackward(const at::Tensor& grad_output,
   TT_ASSIGN_OR_RETURN(mlir::ElementType dtype,
                       ConvertTo<mlir::ElementType>(out_scalar_type));
 
+  // If `grad_input` aliases `grad_output`, `self`, or `buffer`, donate that
+  // input's device buffer to the output in eligible eager modes (DeferNever)
+  // to avoid allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(grad_input, grad_output, dtype)) {
+    donated_indices = {0};
+  } else if (ShouldDonateInPlaceBuffer(grad_input, self, dtype)) {
+    donated_indices = {1};
+  } else if (ShouldDonateInPlaceBuffer(grad_input, buffer, dtype)) {
+    donated_indices = {2};
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto result,
       (DispatchOp<3>(std::move(op_builder), {grad_output, self, buffer},
                      {.out_dtype = dtype,
                       .out_dims = grad_output.sizes(),
-                      .op_param_cache_keys = OpParamCacheKeys::Empty()})));
+                      .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                      .donated_indices = std::move(donated_indices)})));
 
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(result), grad_input));
 
@@ -220,20 +240,33 @@ at::Tensor& AtenSigmoidBackwardGradInput(const at::Tensor& grad_output,
         const auto comp_type = ToAccumulateType(output.scalar_type());
         TT_ASSIGN_OR_THROW(const auto computation_dtype,
                            ConvertTo<mlir::ElementType>(comp_type));
+        // If `grad_input` aliases `grad_output` or `output`, donate that
+        // input's device buffer to the output in eligible eager modes
+        // (DeferNever) to avoid allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(grad_input, grad_output,
+                                      output_mlir_type)) {
+          donated_indices = {0};
+        } else if (ShouldDonateInPlaceBuffer(grad_input, output,
+                                             output_mlir_type)) {
+          donated_indices = {1};
+        }
+
         TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=errors should be covered
                              // inside.
-            auto result,
-            (DispatchOp<2>(
-                [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
-                    -> absl::StatusOr<mlir::MlirOp> {
-                  auto& [grad_output_op, output_op] = inputs;
-                  return BuildSigmoidBackwardShlo(grad_output_op, output_op);
-                },
-                {grad_output, output},
-                {.out_dtype = output_mlir_type,
-                 .out_dims = grad_input.sizes(),
-                 .computation_dtype = computation_dtype,
-                 .op_param_cache_keys = OpParamCacheKeys::Empty()})));
+            auto result, (DispatchOp<2>(
+                             [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+                                 -> absl::StatusOr<mlir::MlirOp> {
+                               auto& [grad_output_op, output_op] = inputs;
+                               return BuildSigmoidBackwardShlo(grad_output_op,
+                                                               output_op);
+                             },
+                             {grad_output, output},
+                             {.out_dtype = output_mlir_type,
+                              .out_dims = grad_input.sizes(),
+                              .computation_dtype = computation_dtype,
+                              .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                              .donated_indices = std::move(donated_indices)})));
         TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be covered
                             // inside.
             AssignBufferToAtTensor(std::move(result), grad_input));

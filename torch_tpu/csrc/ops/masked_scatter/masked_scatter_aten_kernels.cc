@@ -23,7 +23,7 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/broadcast_tensors.h"
 #include "absl/status/statusor.h"
-#include "mlir/IR/Types.h"
+#include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
@@ -33,9 +33,9 @@
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
-#include "torch_tpu/csrc/ops/copy_from/copy_from_aten_kernels.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/masked_scatter/masked_scatter.h"
+#include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 
 namespace torch_tpu {
@@ -78,15 +78,24 @@ at::Tensor& AtenMaskedScatter_(at::Tensor& self, const at::Tensor& mask,
       return BuildMaskedScatterShlo(inputs[0], inputs[1], inputs[2]);
     };
 
+    // Donate self (input 0)'s device buffer to the output in eligible eager
+    // modes (DeferNever) to avoid allocation churn.
+    Indices donated_indices;
+    if (ShouldDonateInPlaceBuffer(self, self_broadcasted, self_dtype,
+                                  out_dims)) {
+      donated_indices = {0};
+    }
+
     TT_ASSIGN_OR_THROW(
         auto result,
         (DispatchOp<3>(std::move(shlo_builder),
                        {self_broadcasted, mask_broadcasted, source},
                        {.out_dtype = self_dtype,
                         .out_dims = out_dims,
-                        .op_param_cache_keys = std::move(param_keys)})));
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)})));
 
-    AtenCopyFrom(MakeTensor(result), self, /*non_blocking=*/true);
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), self));
     return self;
   });
 }

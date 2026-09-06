@@ -316,11 +316,14 @@ absl::StatusOr<DeviceBufferRef> DispatchNormal1(
 absl::StatusOr<DeviceBufferRef> DispatchNormal2(
     c10::optional<at::Generator> generator, NAryMlirOpBuilder<2, 1> builder,
     const at::Tensor& input_tensor, mlir::ElementType mlir_type,
-    llvm::ArrayRef<int64_t> out_dims, OpParamCacheKeys param_keys) {
+    llvm::ArrayRef<int64_t> out_dims, OpParamCacheKeys param_keys,
+    Indices donated_indices = {}) {
   return DispatchRngOpAndReturnBuffer(
       generator,
       [builder = std::move(builder), input_tensor, mlir_type, out_dims,
-       param_keys = std::move(param_keys)](at::Tensor rng_input_state) mutable
+       param_keys = std::move(param_keys),
+       donated_indices =
+           std::move(donated_indices)](at::Tensor rng_input_state) mutable
           -> absl::StatusOr<std::vector<DeviceBufferRef>> {
         TT_ASSIGN_OR_RETURN(
             auto buf, (DispatchOp<2, 1>(
@@ -328,7 +331,8 @@ absl::StatusOr<DeviceBufferRef> DispatchNormal2(
                           {.out_dtype = mlir_type,
                            .out_dims = out_dims,
                            .op_param_cache_keys = std::move(param_keys),
-                           .split_mode = OpSplitMode::kSplitAfter})));
+                           .split_mode = OpSplitMode::kSplitAfter,
+                           .donated_indices = std::move(donated_indices)})));
         return std::vector<DeviceBufferRef>{std::move(buf)};
       });
 }
@@ -369,21 +373,23 @@ absl::StatusOr<DeviceBufferRef> DispatchNormal3(
     c10::optional<at::Generator> generator, NAryMlirOpBuilder<3, 1> builder,
     const at::Tensor& input_tensor1, const at::Tensor& input_tensor2,
     mlir::ElementType mlir_type, llvm::ArrayRef<int64_t> out_dims,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys, Indices donated_indices = {}) {
   return DispatchRngOpAndReturnBuffer(
       generator,
       [builder = std::move(builder), input_tensor1, input_tensor2, mlir_type,
-       out_dims,
-       param_keys = std::move(param_keys)](at::Tensor rng_input_state) mutable
+       out_dims, param_keys = std::move(param_keys),
+       donated_indices =
+           std::move(donated_indices)](at::Tensor rng_input_state) mutable
           -> absl::StatusOr<std::vector<DeviceBufferRef>> {
         TT_ASSIGN_OR_RETURN(
-            auto buf,
-            (DispatchOp<3, 1>(std::move(builder),
-                              {input_tensor1, input_tensor2, rng_input_state},
-                              {.out_dtype = mlir_type,
-                               .out_dims = out_dims,
-                               .op_param_cache_keys = std::move(param_keys),
-                               .split_mode = OpSplitMode::kSplitAfter})));
+            auto buf, (DispatchOp<3, 1>(
+                          std::move(builder),
+                          {input_tensor1, input_tensor2, rng_input_state},
+                          {.out_dtype = mlir_type,
+                           .out_dims = out_dims,
+                           .op_param_cache_keys = std::move(param_keys),
+                           .split_mode = OpSplitMode::kSplitAfter,
+                           .donated_indices = std::move(donated_indices)})));
         return std::vector<DeviceBufferRef>{std::move(buf)};
       });
 }
@@ -488,10 +494,15 @@ at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
         TT_ASSIGN_OR_THROW(auto mlir_type,
                            ConvertTo<mlir::ElementType>(out_dtype));
 
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(out, std, mlir_type, out_dims)) {
+          donated_indices = {0};
+        }
+
         TT_ASSIGN_OR_THROW(
             auto output_buf,
             DispatchNormal2(gen, std::move(builder), std, mlir_type, out_dims,
-                            std::move(param_keys)));
+                            std::move(param_keys), std::move(donated_indices)));
 
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
         return out;
@@ -550,10 +561,15 @@ at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
         TT_ASSIGN_OR_THROW(auto mlir_type,
                            ConvertTo<mlir::ElementType>(out_dtype));
 
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(out, mean, mlir_type, out_dims)) {
+          donated_indices = {0};
+        }
+
         TT_ASSIGN_OR_THROW(
             auto output_buf,
             DispatchNormal2(gen, std::move(builder), mean, mlir_type, out_dims,
-                            std::move(param_keys)));
+                            std::move(param_keys), std::move(donated_indices)));
 
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
         return out;
@@ -611,10 +627,18 @@ at::Tensor& AtenNormalTensorTensorOut(const at::Tensor& mean,
         TT_ASSIGN_OR_THROW(auto mlir_type,
                            ConvertTo<mlir::ElementType>(out_dtype));
 
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(out, mean, mlir_type, out_dims)) {
+          donated_indices = {0};
+        } else if (ShouldDonateInPlaceBuffer(out, std, mlir_type, out_dims)) {
+          donated_indices = {1};
+        }
+
         TT_ASSIGN_OR_THROW(
             auto output_buf,
             DispatchNormal3(gen, std::move(builder), mean, std, mlir_type,
-                            out_dims, OpParamCacheKeys::Empty()));
+                            out_dims, OpParamCacheKeys::Empty(),
+                            std::move(donated_indices)));
 
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
         return out;

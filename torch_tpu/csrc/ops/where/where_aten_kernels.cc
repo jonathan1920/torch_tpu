@@ -20,7 +20,6 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "ATen/native/Resize.h"
 #include "absl/types/span.h"
 #include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -116,13 +115,23 @@ at::Tensor& AtenWhereSelfOut(const at::Tensor& condition,
         };
 
     const auto elem_type = output_element_type;
+    // If `out` aliases `self` or `other`, donate that device buffer to the
+    // output in eligible eager modes (DeferNever) to avoid allocation churn.
+    Indices donated_indices;
+    if (ShouldDonateInPlaceBuffer(out, self, elem_type, output_dims)) {
+      donated_indices = {1};
+    } else if (ShouldDonateInPlaceBuffer(out, other, elem_type, output_dims)) {
+      donated_indices = {2};
+    }
+
     // Dispatch the op.
     TT_ASSIGN_OR_THROW(
         DeviceBufferRef result_buf,
         DispatchOp<3>(std::move(op_builder), {condition, self, other},
                       {.out_dtype = elem_type,
                        .out_dims = output_dims,
-                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                       .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                       .donated_indices = std::move(donated_indices)}));
 
     // Assign the result.
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));

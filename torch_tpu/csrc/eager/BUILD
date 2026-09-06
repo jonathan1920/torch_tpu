@@ -169,6 +169,7 @@ torch_tpu_cc_library(
     ],
     deps = [
         ":current_stream",
+        ":eager_mode",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/csrc/common:cache_key",

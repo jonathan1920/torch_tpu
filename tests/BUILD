@@ -562,7 +562,7 @@ torch_tpu_py_test(
         "requires-tpu-v6e",
         "requires-tpu-v5lite",
     ],
-    shard_count = 10,
+    shard_count = 50,
     tags = [
         "noasan",  # This test times out in asan mode.
         "nomsan",  # This test times out in msan mode.
@@ -1640,6 +1640,25 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/execution_mode",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "inplace_buffer_donation_test",
+    size = "medium",
+    srcs = ["inplace_buffer_donation_test.py"],
+    main = "inplace_buffer_donation_test.py",
+    shard_count = 4,
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        ":oss_utils",
+        ":seed_test_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu:_loader",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/utils:test_utils",
     ],
 )
 

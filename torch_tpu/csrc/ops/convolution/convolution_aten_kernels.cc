@@ -202,8 +202,8 @@ absl::StatusOr<at::ScalarType> GetPromotedType(
 absl::StatusOr<DeviceBufferRef> ConvolutionBinary(
     const at::Tensor& input, const at::Tensor& weight, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool transposed,
-    at::IntArrayRef output_padding, int64_t groups,
-    OpParamCacheKeys param_keys) {
+    at::IntArrayRef output_padding, int64_t groups, OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& out = std::nullopt) {
   const int num_spatial_dims = input.dim() - 2;
   Dimensions expanded_stride = ExpandIfNecessary(stride, num_spatial_dims);
   Dimensions expanded_padding = ExpandIfNecessary(padding, num_spatial_dims);
@@ -240,18 +240,27 @@ absl::StatusOr<DeviceBufferRef> ConvolutionBinary(
                                 dilation, transposed, output_padding, groups,
                                 output_dims, mlir_dtype, current_precision);
       };
+
+  Indices donated_indices;
+  if (out.has_value() &&
+      ShouldDonateInPlaceBuffer(*out, input, mlir_dtype, output_dims)) {
+    donated_indices = {0};
+  }
+
   const auto elem_type = mlir_dtype;
   return DispatchOp<2>(std::move(op_builder), {input, weight},
                        {.out_dtype = elem_type,
                         .out_dims = output_dims,
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)});
 }
 
 absl::StatusOr<DeviceBufferRef> ConvolutionTernary(
     const at::Tensor& input, const at::Tensor& weight, const at::Tensor& bias,
     at::IntArrayRef stride, at::IntArrayRef padding, at::IntArrayRef dilation,
     bool transposed, at::IntArrayRef output_padding, int64_t groups,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& out = std::nullopt) {
   const int num_spatial_dims = input.dim() - 2;
   Dimensions expanded_stride = ExpandIfNecessary(stride, num_spatial_dims);
   Dimensions expanded_padding = ExpandIfNecessary(padding, num_spatial_dims);
@@ -289,33 +298,35 @@ absl::StatusOr<DeviceBufferRef> ConvolutionTernary(
                                 transposed, output_padding, groups, output_dims,
                                 mlir_dtype, current_precision);
       };
+
+  Indices donated_indices;
+  if (out.has_value() &&
+      ShouldDonateInPlaceBuffer(*out, input, mlir_dtype, output_dims)) {
+    donated_indices = {0};
+  }
+
   const auto elem_type = mlir_dtype;
   return DispatchOp<3>(std::move(op_builder), {input, weight, bias},
                        {.out_dtype = elem_type,
                         .out_dims = output_dims,
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)});
 }
 
 absl::StatusOr<DeviceBufferRef> Convolution(
     const at::Tensor& input, const at::Tensor& weight,
     const std::optional<at::Tensor>& bias_opt, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool transposed,
-    at::IntArrayRef output_padding, int64_t groups,
-    OpParamCacheKeys param_keys) {
-  // For some reason, we sometimes get a dispatch with a bias tensor that is
-  // non-null, but undefined.
+    at::IntArrayRef output_padding, int64_t groups, OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& out = std::nullopt) {
   if (bias_opt.has_value() && bias_opt->defined()) {
-    // Add a parameter to distinguish between binary and ternary convolution.
-    // This is not strictly necessary as both `.has_value()` and `->defined()`
-    // are already encoded in the parameter key for `bias_opt`. However, this
-    // explicit parameter makes the intent clearer.
     TT_RETURN_IF_ERROR(param_keys.SetParam("ternary", true));
     return ConvolutionTernary(input, weight, bias_opt.value(), stride, padding,
                               dilation, transposed, output_padding, groups,
-                              std::move(param_keys));
+                              std::move(param_keys), out);
   }
   return ConvolutionBinary(input, weight, stride, padding, dilation, transposed,
-                           output_padding, groups, std::move(param_keys));
+                           output_padding, groups, std::move(param_keys), out);
 }
 
 absl::StatusOr<at::ScalarType> GetPromotedTypeBackward(
@@ -470,7 +481,7 @@ at::Tensor& AtenConvolutionOut(const at::Tensor& input,
                   DeviceBufferRef result,
                   Convolution(input, weight, bias_opt, stride, padding,
                               dilation, transposed, output_padding, groups,
-                              std::move(param_keys)));
+                              std::move(param_keys), out));
               at::native::resize_output(out, result.dimensions());
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;

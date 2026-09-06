@@ -55,4 +55,28 @@ void SetEagerMode(const EagerMode mode) {
   GetMutableGlobalEagerMode() = mode;
 }
 
+[[nodiscard]] static bool GetDefaultInplaceBufferDonation() {
+  const auto& env_var =
+      GetEnvOnce<kTorchTpuInternalDisableInplaceBufferDonationEnvVar>();
+  if (env_var.has_value() && (*env_var == "1" || *env_var == "true")) {
+    return false;
+  }
+  return true;
+}
+
+// Returns the global base in-place buffer donation setting.
+static std::atomic<bool>& GetMutableGlobalInplaceBufferDonation() {
+  static std::atomic<bool> donation_enabled = GetDefaultInplaceBufferDonation();
+  return donation_enabled;
+}
+
+bool IsInplaceBufferDonationEnabled() {
+  return GetMutableGlobalInplaceBufferDonation().load();
+}
+
+void EnableInplaceBufferDonation(const bool enabled) {
+  ABSL_VLOG(1) << "EnableInplaceBufferDonation " << enabled;
+  GetMutableGlobalInplaceBufferDonation().store(enabled);
+}
+
 }  // namespace torch_tpu

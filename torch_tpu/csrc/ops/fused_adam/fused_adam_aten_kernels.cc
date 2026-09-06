@@ -522,6 +522,58 @@ void ValidateAdamTensorListSizes(at::TensorList self, at::TensorList grads,
   }
 }
 
+Indices BuildAdamDonatedIndices(size_t num_tensors, bool amsgrad,
+                                bool has_grad_scale) {
+  // We configure buffer donation for in-place mutated tensors:
+  //   - [0 * N + i]: self (model parameters)
+  //   - [2 * N + i]: exp_avgs (first-moment states)
+  //   - [5 * N + i]: max_exp_avg_sqs (max second-moment states, if amsgrad)
+  // Note: state_steps [4 * N + i] are not donated because step counters are
+  // scalars. Grads [1 * N + i] are donated when unscaled in-place via
+  // grad_scale.
+  Indices donated_indices;
+  donated_indices.reserve(((amsgrad ? 4 : 3) + (has_grad_scale ? 1 : 0)) *
+                          num_tensors);
+  for (size_t i = 0; i < num_tensors; ++i) {
+    donated_indices.push_back(i);  // self
+    if (has_grad_scale) {
+      donated_indices.push_back(1 * num_tensors + i);  // grads
+    }
+    donated_indices.push_back(2 * num_tensors + i);  // exp_avgs
+    donated_indices.push_back(3 * num_tensors + i);  // exp_avg_sqs
+    if (amsgrad) {
+      donated_indices.push_back(5 * num_tensors + i);  // max_exp_avg_sqs
+    }
+  }
+  return donated_indices;
+}
+
+void PopulateAdamOutputs(
+    at::TensorList self, at::TensorList grads, at::TensorList exp_avgs,
+    at::TensorList exp_avg_sqs, at::TensorList max_exp_avg_sqs, bool amsgrad,
+    bool has_grad_scale, size_t num_tensors,
+    std::vector<mlir::ElementType>& out_dtypes,
+    std::vector<absl::Span<const int64_t>>& out_dims_list) {
+  const size_t out_count = (amsgrad ? 4 : 3) + (has_grad_scale ? 1 : 0);
+  out_dtypes.reserve(out_count * num_tensors);
+  out_dims_list.reserve(out_count * num_tensors);
+
+  auto append = [&](at::TensorList tensors) {
+    AppendDtypes(tensors, out_dtypes);
+    AppendDims(tensors, out_dims_list);
+  };
+
+  append(self);
+  if (has_grad_scale) {
+    append(grads);
+  }
+  append(exp_avgs);
+  append(exp_avg_sqs);
+  if (amsgrad) {
+    append(max_exp_avg_sqs);
+  }
+}
+
 // Orchestrates eager execution: validates multi-tensor list sizes and
 // properties, flattens input tensor lists, builds cache keys, configures
 // expected output shapes/dtypes, dispatches to StableHLO compilation/cache, and
@@ -582,30 +634,11 @@ void DispatchAdam(
   TT_THROW_IF_ERROR(param_keys.SetParam("has_grad_scale", has_grad_scale));
   TT_THROW_IF_ERROR(param_keys.SetParam("has_found_inf", has_found_inf));
 
-  const size_t out_count = (amsgrad ? 4 : 3) + (has_grad_scale ? 1 : 0);
   std::vector<mlir::ElementType> out_dtypes;
-  out_dtypes.reserve(out_count * num_tensors);
-  AppendDtypes(self, out_dtypes);
-  if (has_grad_scale) {
-    AppendDtypes(grads, out_dtypes);
-  }
-  AppendDtypes(exp_avgs, out_dtypes);
-  AppendDtypes(exp_avg_sqs, out_dtypes);
-  if (amsgrad) {
-    AppendDtypes(max_exp_avg_sqs, out_dtypes);
-  }
-
   std::vector<absl::Span<const int64_t>> out_dims_list;
-  out_dims_list.reserve(out_count * num_tensors);
-  AppendDims(self, out_dims_list);
-  if (has_grad_scale) {
-    AppendDims(grads, out_dims_list);
-  }
-  AppendDims(exp_avgs, out_dims_list);
-  AppendDims(exp_avg_sqs, out_dims_list);
-  if (amsgrad) {
-    AppendDims(max_exp_avg_sqs, out_dims_list);
-  }
+  PopulateAdamOutputs(self, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs,
+                      amsgrad, has_grad_scale, num_tensors, out_dtypes,
+                      out_dims_list);
 
   auto op_builder = [num_tensors, config, out_dtypes](
                         absl::Span<mlir::MlirOp> mlir_inputs,
@@ -614,10 +647,14 @@ void DispatchAdam(
     return BuildAdamShlo(mlir_inputs, num_tensors, config, out_dtypes);
   };
 
+  Indices donated_indices =
+      BuildAdamDonatedIndices(num_tensors, amsgrad, has_grad_scale);
+
   DispatchOpOptions<kDynamicSize> options = {
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = std::move(param_keys),
+      .donated_indices = std::move(donated_indices),
   };
 
   // Compile and execute the multi-tensor StableHLO graph, retrieving output

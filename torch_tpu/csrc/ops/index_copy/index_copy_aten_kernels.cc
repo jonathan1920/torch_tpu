@@ -17,6 +17,7 @@
 #include "torch_tpu/csrc/ops/index_copy/index_copy_aten_kernels.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
@@ -48,10 +49,10 @@ namespace torch_tpu {
 
 namespace {
 
-absl::StatusOr<DeviceBufferRef> IndexCopy(const at::Tensor& self, int64_t dim,
-                                          const at::Tensor& index,
-                                          const at::Tensor& source,
-                                          OpParamCacheKeys param_keys) {
+absl::StatusOr<DeviceBufferRef> IndexCopy(
+    const at::Tensor& self, int64_t dim, const at::Tensor& index,
+    const at::Tensor& source, OpParamCacheKeys param_keys,
+    std::optional<at::Tensor> out = std::nullopt) {
   TT_ASSIGN_OR_RETURN(dim,
                       ValidateIndexInputsAndGetDim(self, dim, index, source));
 
@@ -70,10 +71,19 @@ absl::StatusOr<DeviceBufferRef> IndexCopy(const at::Tensor& self, int64_t dim,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   Dimensions output_dims = CopyIntVector(self.sizes());
 
+  // If `out` aliases `self`, donate input 0's device buffer to the output in
+  // eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (out.has_value() &&
+      ShouldDonateInPlaceBuffer(*out, self, output_dtype, output_dims)) {
+    donated_indices = {0};
+  }
+
   return DispatchOp<3>(std::move(index_copy_op_builder), {self, index, source},
                        {.out_dtype = output_dtype,
                         .out_dims = output_dims,
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)});
 }
 
 }  // namespace
@@ -86,7 +96,7 @@ at::Tensor& AtenIndexCopyOut(const at::Tensor& self, int64_t dim,
         TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
-            IndexCopy(self, dim, index, source, std::move(param_keys)));
+            IndexCopy(self, dim, index, source, std::move(param_keys), out));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });

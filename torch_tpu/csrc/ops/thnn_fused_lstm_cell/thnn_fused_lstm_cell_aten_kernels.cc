@@ -193,7 +193,9 @@ absl::StatusOr<std::array<mlir::MlirOp, 2>> BuildLstmCellBackwardShlo(
 absl::StatusOr<DeviceBufferRefArray<3>> ThnnFusedLstmCellImpl(
     const at::Tensor& input_gates, const at::Tensor& hidden_gates,
     const at::Tensor& cx, const std::optional<at::Tensor>& input_bias,
-    const std::optional<at::Tensor>& hidden_bias, OpParamCacheKeys param_keys) {
+    const std::optional<at::Tensor>& hidden_bias, OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& out0 = std::nullopt,
+    const std::optional<at::Tensor>& out1 = std::nullopt) {
   TT_RET_CHECK(input_gates.sizes() == hidden_gates.sizes(),
                error::kInvalidArgument)
       << "expected size of argument #1 'input_gates' to match size of "
@@ -229,6 +231,16 @@ absl::StatusOr<DeviceBufferRefArray<3>> ThnnFusedLstmCellImpl(
   const std::array<absl::Span<const int64_t>, 3> out_dims_list = {
       hc_dims, hc_dims, ws_dims};
 
+  // If `out1` (cy) or `out0` (hy) aliases `cx`, donate input 2 (cx)'s device
+  // buffer in eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if ((out1.has_value() &&
+       ShouldDonateInPlaceBuffer(*out1, cx, out_dtype, cx.sizes())) ||
+      (out0.has_value() &&
+       ShouldDonateInPlaceBuffer(*out0, cx, out_dtype, cx.sizes()))) {
+    donated_indices = {2};
+  }
+
   if (has_bias) {
     auto op_builder = [batch, hidden, acc_dtype,
                        out_dtype](FixedSizeSpan<mlir::MlirOp, 5> inputs)
@@ -255,7 +267,8 @@ absl::StatusOr<DeviceBufferRefArray<3>> ThnnFusedLstmCellImpl(
         {input_gates, hidden_gates, cx, *s_input_bias, *s_hidden_bias},
         {.out_dtypes = out_dtypes,
          .out_dims_list = out_dims_list,
-         .op_param_cache_keys = std::move(param_keys)});
+         .op_param_cache_keys = std::move(param_keys),
+         .donated_indices = std::move(donated_indices)});
   } else {
     auto op_builder = [batch, hidden, acc_dtype,
                        out_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs)
@@ -273,7 +286,8 @@ absl::StatusOr<DeviceBufferRefArray<3>> ThnnFusedLstmCellImpl(
                             {input_gates, hidden_gates, cx},
                             {.out_dtypes = out_dtypes,
                              .out_dims_list = out_dims_list,
-                             .op_param_cache_keys = std::move(param_keys)});
+                             .op_param_cache_keys = std::move(param_keys),
+                             .donated_indices = std::move(donated_indices)});
   }
 }
 
@@ -305,10 +319,10 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenThnnFusedLstmCellOut(
       (input_gates, hidden_gates, cx, input_bias, hidden_bias, out0, out1,
        out2),
       {
-        TT_ASSIGN_OR_THROW(
-            const DeviceBufferRefArray<3> result_buffers,
-            ThnnFusedLstmCellImpl(input_gates, hidden_gates, cx, input_bias,
-                                  hidden_bias, std::move(param_keys)));
+        TT_ASSIGN_OR_THROW(const DeviceBufferRefArray<3> result_buffers,
+                           ThnnFusedLstmCellImpl(
+                               input_gates, hidden_gates, cx, input_bias,
+                               hidden_bias, std::move(param_keys), out0, out1));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], out0));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[1], out1));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[2], out2));

@@ -97,12 +97,20 @@ absl::StatusOr<DeviceBufferRef> Dispatch(const at::Tensor& self,
     return BuildWhereShlo(mask, value, input, self_mlir_type);
   };
 
+  // Donate input 0's device buffer to the output in eligible eager modes
+  // (DeferNever) to avoid memory allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(self, self.sizes(), self_mlir_type)) {
+    donated_indices = {0};
+  }
+
   TT_ASSIGN_OR_RETURN(
       DeviceBufferRef out,
       DispatchOp<3>(std::move(op_builder), {self, mask, value},
                     {.out_dtype = self_mlir_type,
                      .out_dims = self.sizes(),
-                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                     .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .donated_indices = std::move(donated_indices)}));
   return out;
 }
 

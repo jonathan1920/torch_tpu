@@ -143,6 +143,10 @@ absl::Status UnaryOpInPlace(at::Tensor& self, MlirUnaryOpBuilder op_builder,
                             UnaryOpOptions options) {
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(self, self.sizes(), output_dtype)) {
+    donated_indices = {0};
+  }
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<1>(
@@ -151,7 +155,8 @@ absl::Status UnaryOpInPlace(at::Tensor& self, MlirUnaryOpBuilder op_builder,
            .out_dtype = output_dtype,
            .out_dims = self.sizes(),
            .computation_dtype = options.computation_dtype,
-           .op_param_cache_keys = std::move(options.op_param_cache_keys)}));
+           .op_param_cache_keys = std::move(options.op_param_cache_keys),
+           .donated_indices = std::move(donated_indices)}));
   return AssignBufferToAtTensor(std::move(result_buf), self);
 }
 
@@ -185,6 +190,11 @@ absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
 
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(out, self, output_dtype, shape)) {
+    donated_indices = {0};
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<1>(
@@ -193,7 +203,8 @@ absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
            .out_dtype = output_dtype,
            .out_dims = shape,
            .computation_dtype = options.computation_dtype,
-           .op_param_cache_keys = std::move(options.op_param_cache_keys)}));
+           .op_param_cache_keys = std::move(options.op_param_cache_keys),
+           .donated_indices = std::move(donated_indices)}));
   TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, shape));
   return AssignBufferToAtTensor(std::move(result_buf), out);
 }

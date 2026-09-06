@@ -343,12 +343,16 @@ absl::StatusOr<mlir::MlirOp> BuildAvgPoolBackwardShlo(
   // 2. Expand attributes to match the spatial_dim_count.
   TT_ASSIGN_OR_RETURN(Dimensions kernel_size_attr,
                       ExpandAttribute(kernel_size, spatial_dim_count));
-  const Dimensions stride_attr =
-      stride.empty() ? kernel_size_attr
-                     : ExpandAttribute(stride, spatial_dim_count).value();
-  Dimensions padding_attr =
-      padding.empty() ? Dimensions(spatial_dim_count, 0)
-                      : ExpandAttribute(padding, spatial_dim_count).value();
+  Dimensions stride_attr = kernel_size_attr;
+  if (!stride.empty()) {
+    TT_ASSIGN_OR_RETURN(stride_attr,
+                        ExpandAttribute(stride, spatial_dim_count));
+  }
+  Dimensions padding_attr(spatial_dim_count, 0);
+  if (!padding.empty()) {
+    TT_ASSIGN_OR_RETURN(padding_attr,
+                        ExpandAttribute(padding, spatial_dim_count));
+  }
   Dimensions dilation_attr(spatial_dim_count, 1);
 
   // 3. Compute the padding pairs given the padding and ceil mode.
@@ -472,7 +476,8 @@ absl::StatusOr<DeviceBufferRef> BuildAvgPoolNd(
     at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,
     std::optional<int64_t> divisor_override, mlir::ElementType out_dtype,
     at::IntArrayRef out_sizes, int64_t spatial_dim_count,
-    OpParamCacheKeys param_keys, std::optional<OpName> override_op_name) {
+    OpParamCacheKeys param_keys, std::optional<OpName> override_op_name,
+    const std::optional<at::Tensor>& out) {
   auto op_builder = [kernel_size_vec = CopyIntVector(kernel_size),
                      stride_vec = CopyIntVector(stride),
                      padding_vec = CopyIntVector(padding), ceil_mode,
@@ -483,13 +488,22 @@ absl::StatusOr<DeviceBufferRef> BuildAvgPoolNd(
                             count_include_pad, divisor_override);
   };
 
+  // If `out` aliases `self`, donate input 0's device buffer to the output in
+  // eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (out.has_value() &&
+      ShouldDonateInPlaceBuffer(*out, self, out_dtype, out_sizes)) {
+    donated_indices = {0};
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<1>(std::move(op_builder), self,
                     {.op_name = override_op_name,
                      .out_dtype = out_dtype,
                      .out_dims = CopyIntVector(out_sizes),
-                     .op_param_cache_keys = std::move(param_keys)}));
+                     .op_param_cache_keys = std::move(param_keys),
+                     .donated_indices = std::move(donated_indices)}));
   return result_buf;
 }
 
@@ -509,7 +523,8 @@ absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
       auto result_buf,
       BuildAvgPoolNd(self, kernel_size, stride, padding, ceil_mode,
                      count_include_pad, divisor_override, out_type, output_size,
-                     spatial_dim_count, std::move(param_keys)));
+                     spatial_dim_count, std::move(param_keys),
+                     /*override_op_name=*/std::nullopt, out));
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
   return out;
 }
@@ -536,12 +551,25 @@ absl::StatusOr<at::Tensor> BuildAvgPoolBackwardGradInputNd(
         padding_vec, ceil_mode, count_include_pad, divisor_override);
   };
 
+  // If `grad_input` aliases `grad_output` or `self`, donate that input's device
+  // buffer to the output in eligible eager modes (DeferNever) to avoid
+  // allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(grad_input, grad_output, output_dtype,
+                                grad_input.sizes())) {
+    donated_indices = {0};
+  } else if (ShouldDonateInPlaceBuffer(grad_input, self, output_dtype,
+                                       grad_input.sizes())) {
+    donated_indices = {1};
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto result,
       (DispatchOp<2>(std::move(op_builder), {grad_output, self},
                      {.out_dtype = output_dtype,
                       .out_dims = CopyIntVector(grad_input.sizes()),
-                      .op_param_cache_keys = std::move(param_keys)})));
+                      .op_param_cache_keys = std::move(param_keys),
+                      .donated_indices = std::move(donated_indices)})));
 
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(result), grad_input));
   return grad_input;

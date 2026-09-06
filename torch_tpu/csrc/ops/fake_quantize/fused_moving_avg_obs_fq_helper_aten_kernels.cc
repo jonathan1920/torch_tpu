@@ -498,6 +498,24 @@ FusedMovingAvgObsFqHelperImpl(const at::Tensor& self,
   TT_ASSIGN_OR_RETURN(const auto zp_dtype,
                       ConvertTo<mlir::ElementType>(zero_point.scalar_type()));
 
+  Indices donated_indices;
+  if (!is_uninitialized) {
+    if (ShouldDonateInPlaceBuffer(running_min, rmin_in, rmin_dtype,
+                                  qparam_shape)) {
+      donated_indices.push_back(3);
+    }
+    if (ShouldDonateInPlaceBuffer(running_max, rmax_in, rmax_dtype,
+                                  qparam_shape)) {
+      donated_indices.push_back(4);
+    }
+    if (ShouldDonateInPlaceBuffer(scale, scale_in, scale_dtype, qparam_shape)) {
+      donated_indices.push_back(5);
+    }
+    if (ShouldDonateInPlaceBuffer(zero_point, zp_in, zp_dtype, qparam_shape)) {
+      donated_indices.push_back(6);
+    }
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto result_buffers,
       (DispatchOp<7, 6>(
@@ -507,7 +525,8 @@ FusedMovingAvgObsFqHelperImpl(const at::Tensor& self,
                           rmax_dtype, scale_dtype, zp_dtype},
            .out_dims_list = {self.sizes(), self.sizes(), qparam_shape,
                              qparam_shape, qparam_shape, qparam_shape},
-           .op_param_cache_keys = std::move(param_keys)})));
+           .op_param_cache_keys = std::move(param_keys),
+           .donated_indices = std::move(donated_indices)})));
 
   TT_ASSIGN_OR_RETURN(
       at::Tensor output,

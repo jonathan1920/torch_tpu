@@ -85,5 +85,18 @@ TEST(EnvVarsTest, Tier2CompilationCacheWarnsOnce) {
   EXPECT_EQ(warnings.messages().size(), 1);
 }
 
+TEST(EnvVarsTest, InternalDisableInplaceBufferDonationNoWarning) {
+  setenv(kTorchTpuInternalDisableInplaceBufferDonationEnvVar, "1", 1);
+
+  WarningCapture warnings;
+  EXPECT_TRUE(warnings.messages().empty());
+
+  const auto& val =
+      GetEnvOnce<kTorchTpuInternalDisableInplaceBufferDonationEnvVar>();
+  EXPECT_TRUE(val.has_value());
+  EXPECT_EQ(*val, "1");
+  EXPECT_TRUE(warnings.messages().empty());
+}
+
 }  // namespace
 }  // namespace torch_tpu

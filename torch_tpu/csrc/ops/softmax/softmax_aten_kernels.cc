@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <utility>
 
 #include "ATen/core/TensorBody.h"
@@ -100,7 +101,8 @@ absl::Status SoftmaxInternalOut(const at::Tensor& self, int64_t dim,
 absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
     const at::Tensor& grad_output, const at::Tensor& output, int64_t dim,
     at::ScalarType input_dtype, SoftmaxMode softmax_mode,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys,
+    std::optional<at::Tensor> grad_input = std::nullopt) {
   const auto precision = GetAndAddPrecisionTo(param_keys);
 
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=input checked during forward
@@ -111,6 +113,20 @@ absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
       const auto input_mlir_type, ConvertTo<mlir::ElementType>(input_dtype));
 
+  // If `grad_input` aliases `grad_output` or `output`, donate that input's
+  // device buffer to the output in eligible eager modes (DeferNever) to avoid
+  // allocation churn.
+  Indices donated_indices;
+  if (grad_input.has_value()) {
+    if (ShouldDonateInPlaceBuffer(*grad_input, grad_output, input_mlir_type,
+                                  output.sizes())) {
+      donated_indices = {0};
+    } else if (ShouldDonateInPlaceBuffer(*grad_input, output, input_mlir_type,
+                                         output.sizes())) {
+      donated_indices = {1};
+    }
+  }
+
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=errors should be covered
                         // inside.
       auto result,
@@ -119,7 +135,8 @@ absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
           {grad_output, output},
           {.out_dtype = input_mlir_type,
            .out_dims = output.sizes(),
-           .op_param_cache_keys = std::move(param_keys)})));
+           .op_param_cache_keys = std::move(param_keys),
+           .donated_indices = std::move(donated_indices)})));
   return result;
 }
 
@@ -154,11 +171,11 @@ at::Tensor& AtenSoftmaxBackwardDataOut(const at::Tensor& grad_output,
             (grad_output, output, dim, input_dtype, grad_input), {
               TT_THROW_IF_ERROR(
                   ResizeTensorIfShapeDiffers(grad_input, output.sizes()));
-              TT_ASSIGN_OR_THROW(
-                  DeviceBufferRef result,
-                  SoftmaxBackwardDataInternalOut(
-                      grad_output, output, dim, input_dtype,
-                      SoftmaxMode::kSoftmax, std::move(param_keys)));
+              TT_ASSIGN_OR_THROW(DeviceBufferRef result,
+                                 SoftmaxBackwardDataInternalOut(
+                                     grad_output, output, dim, input_dtype,
+                                     SoftmaxMode::kSoftmax,
+                                     std::move(param_keys), grad_input));
               TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be
                                   // covered inside.
                   AssignBufferToAtTensor(std::move(result), grad_input));
@@ -174,11 +191,11 @@ at::Tensor& AtenLogSoftmaxBackwardDataOut(const at::Tensor& grad_output,
             (grad_output, output, dim, input_dtype, grad_input), {
               TT_THROW_IF_ERROR(
                   ResizeTensorIfShapeDiffers(grad_input, output.sizes()));
-              TT_ASSIGN_OR_THROW(
-                  DeviceBufferRef result,
-                  SoftmaxBackwardDataInternalOut(
-                      grad_output, output, dim, input_dtype,
-                      SoftmaxMode::kLogSoftmax, std::move(param_keys)));
+              TT_ASSIGN_OR_THROW(DeviceBufferRef result,
+                                 SoftmaxBackwardDataInternalOut(
+                                     grad_output, output, dim, input_dtype,
+                                     SoftmaxMode::kLogSoftmax,
+                                     std::move(param_keys), grad_input));
               TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be
                                   // covered inside.
                   AssignBufferToAtTensor(std::move(result), grad_input));

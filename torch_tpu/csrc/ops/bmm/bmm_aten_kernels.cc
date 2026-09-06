@@ -16,6 +16,7 @@
 
 #include "torch_tpu/csrc/ops/bmm/bmm_aten_kernels.h"
 
+#include <optional>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
@@ -94,10 +95,9 @@ absl::Status ValidateBmmInputs(const at::Tensor& self, const at::Tensor& mat2) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<DeviceBufferRef> Bmm(const at::Tensor& self,
-                                    const at::Tensor& mat2,
-                                    at::ScalarType out_dtype,
-                                    OpParamCacheKeys param_keys) {
+absl::StatusOr<DeviceBufferRef> Bmm(
+    const at::Tensor& self, const at::Tensor& mat2, at::ScalarType out_dtype,
+    OpParamCacheKeys param_keys, std::optional<at::Tensor> out = std::nullopt) {
   TT_RETURN_IF_ERROR(ValidateBmmInputs(self, mat2));
   TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype_mlir,
                       ConvertTo<mlir::ElementType>(out_dtype));
@@ -113,12 +113,27 @@ absl::StatusOr<DeviceBufferRef> Bmm(const at::Tensor& self,
         BuildBmmShlo(self_op, mat2_op, output_dtype_mlir, current_precision));
     return result;
   };
+
+  // If `out` aliases `self` or `mat2`, donate that device buffer to the output
+  // in eligible eager modes (DeferNever) to avoid memory allocation churn.
+  Indices donated_indices;
+  if (out.has_value()) {
+    if (ShouldDonateInPlaceBuffer(*out, self, output_dtype_mlir,
+                                  output_dims_vec)) {
+      donated_indices = {0};
+    } else if (ShouldDonateInPlaceBuffer(*out, mat2, output_dtype_mlir,
+                                         output_dims_vec)) {
+      donated_indices = {1};
+    }
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto result_buffer,
       DispatchOp<2>(std::move(op_builder), {self, mat2},
                     {.out_dtype = output_dtype_mlir,
                      .out_dims = output_dims_vec,
-                     .op_param_cache_keys = std::move(param_keys)}));
+                     .op_param_cache_keys = std::move(param_keys),
+                     .donated_indices = std::move(donated_indices)}));
   return result_buffer;
 }
 
@@ -128,7 +143,7 @@ absl::Status BmmOut(const at::Tensor& self, const at::Tensor& mat2,
   TT_RETURN_IF_ERROR(ValidateBmmInputs(self, mat2));
   TT_RETURN_IF_ERROR(ValidateBmmOut(out, out_dtype));
   TT_ASSIGN_OR_RETURN(auto result_buffer,
-                      Bmm(self, mat2, out_dtype, std::move(param_keys)));
+                      Bmm(self, mat2, out_dtype, std::move(param_keys), out));
   TT_RETURN_IF_ERROR(
       ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
   return AssignBufferToAtTensor(std::move(result_buffer), out);

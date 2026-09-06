@@ -42,10 +42,8 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/resize:resize_aten_kernels",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
-        "@stablehlo//:stablehlo_builder",
     ],
 )
 

@@ -28,6 +28,7 @@
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
+#include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
@@ -79,13 +80,22 @@ std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(
                                                     : TopKMode::kSmallest));
           return {{topk_outputs.values, topk_outputs.indices}};
         };
+        // If `values` aliases `self` and k == self.size(dim), donate input 0
+        // (self)'s device buffer to output 0 (values) in eligible eager modes
+        // (DeferNever) to avoid allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(values, self, elem_type, output_dims)) {
+          donated_indices = {0};
+        }
+
         TT_ASSIGN_OR_THROW(
             (auto [values_buf, indices_buf]),
             (DispatchOp<1, 2>(
                 std::move(op_builder), self,
                 {.out_dtypes = {elem_type, mlir::ElementType::I64},
                  .out_dims_list = {output_dims, output_dims},
-                 .op_param_cache_keys = std::move(param_keys)})));
+                 .op_param_cache_keys = std::move(param_keys),
+                 .donated_indices = std::move(donated_indices)})));
         TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(values, output_dims));
         TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(indices, output_dims));
         TT_THROW_IF_ERROR(

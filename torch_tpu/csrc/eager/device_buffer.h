@@ -662,6 +662,7 @@ class DeviceBufferList {
   // DeferredOps appended to it. This allows for more optimal materialization
   // patterns in some cases.
   [[nodiscard]] bool is_stale() const { return live_data_ptrs_ == 0; }
+  [[nodiscard]] int64_t live_data_ptrs() const { return live_data_ptrs_; }
 
   // Returns the global index of the creation of this DeviceBufferList.  Lower
   // means earlier.

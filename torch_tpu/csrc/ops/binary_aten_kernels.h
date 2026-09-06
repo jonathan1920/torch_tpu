@@ -48,6 +48,7 @@ struct BinaryOpOptions {
   std::optional<mlir::ElementType> output_dtype_override = std::nullopt;
   OpParamCacheKeys op_param_cache_keys;
   OpSplitMode split_mode = OpSplitMode::kNone;
+  Indices donated_indices = {};
 };
 
 struct TernaryOpOptions {
@@ -59,6 +60,7 @@ struct TernaryOpOptions {
   std::optional<mlir::ElementType> output_dtype_override = std::nullopt;
   OpParamCacheKeys op_param_cache_keys;
   OpSplitMode split_mode = OpSplitMode::kNone;
+  Indices donated_indices = {};
 };
 
 enum class OutputOpMode {
@@ -112,14 +114,40 @@ absl::Status BinaryOpOut(const at::Tensor& tensor, const OtherType& other,
                         ConvertTo<mlir::ElementType>(out.scalar_type()));
     opts.output_dtype_override = output_dtype;
   }
-  TT_ASSIGN_OR_RETURN(auto result_buf, internal::DispatchBinaryOp(
-                                           tensor, other, std::move(op_builder),
-                                           std::move(opts)));
 
+  // An `out=` variant binary operation can have its output tensor alias either
+  // input operand:
+  //
+  // 1. `out` aliases `tensor` (input 0):
+  //      # Example: In-place method or passing `out=a`
+  //      a.add_(b)
+  //      torch.add(a, b, out=a)
+  //    Input 0's buffer can be donated to `out`.
+  //
+  // 2. `out` aliases `other` (input 1):
+  //      # Example: Passing `other` as destination buffer
+  //      torch.add(a, b, out=b)
+  //    Input 1's buffer can be donated to `out`. This is especially beneficial
+  //    when `a` broadcasts to `b`'s shape (where `a`'s shape does not match
+  //    `out` and cannot be donated, but `b` matches `out` and can be donated).
   bool is_inplace = out.is_alias_of(tensor);
   if constexpr (std::is_same_v<OtherType, at::Tensor>) {
     is_inplace = is_inplace || out.is_alias_of(other);
   }
+
+  if (is_inplace) {
+    if (ShouldDonateInPlaceBuffer(out, tensor, *opts.output_dtype_override)) {
+      opts.donated_indices = {0};
+    } else if constexpr (std::is_same_v<OtherType, at::Tensor>) {
+      if (ShouldDonateInPlaceBuffer(out, other, *opts.output_dtype_override)) {
+        opts.donated_indices = {1};
+      }
+    }
+  }
+
+  TT_ASSIGN_OR_RETURN(auto result_buf, internal::DispatchBinaryOp(
+                                           tensor, other, std::move(op_builder),
+                                           std::move(opts)));
 
   OutputOpMode mode =
       is_inplace ? OutputOpMode::kInPlace : OutputOpMode::kOutOfPlace;

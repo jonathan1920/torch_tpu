@@ -510,6 +510,57 @@ void ValidateAdamwTensorListSizes(at::TensorList self, at::TensorList grads,
   }
 }
 
+// Selects 0-based argument indices of input tensors to donate to XLA for HBM
+// buffer reuse. We donate buffers for all tensors mutated in-place:
+//   - [0 * N + i]: self (model parameters)
+//   - [2 * N + i]: exp_avgs (first-moment optimizer states)
+//   - [3 * N + i]: exp_avg_sqs (second-moment optimizer states)
+//   - [5 * N + i]: max_exp_avg_sqs (max second-moment states, if amsgrad)
+// Note: state_steps [4 * N + i] are not donated because step counters are
+// scalars. Grads [1 * N + i] are donated when unscaled in-place via grad_scale.
+Indices ComputeAdamwDonatedIndices(const size_t num_tensors, const bool amsgrad,
+                                   const bool has_grad_scale) {
+  Indices donated_indices;
+  donated_indices.reserve(((amsgrad ? 4 : 3) + (has_grad_scale ? 1 : 0)) *
+                          num_tensors);
+  for (size_t i = 0; i < num_tensors; ++i) {
+    donated_indices.push_back(i);  // self
+    if (has_grad_scale) {
+      donated_indices.push_back(1 * num_tensors + i);  // grads
+    }
+    donated_indices.push_back(2 * num_tensors + i);  // exp_avgs
+    donated_indices.push_back(3 * num_tensors + i);  // exp_avg_sqs
+    if (amsgrad) {
+      donated_indices.push_back(5 * num_tensors + i);  // max_exp_avg_sqs
+    }
+  }
+  return donated_indices;
+}
+
+// Assigns computed output device buffers back in-place to mutated eager
+// parameter and state tensors.
+void AssignAdamwBuffers(std::vector<DeviceBufferRef>& result_buffers,
+                        const size_t num_tensors, const bool amsgrad,
+                        const bool has_grad_scale, at::TensorList self,
+                        at::TensorList grads, at::TensorList exp_avgs,
+                        at::TensorList exp_avg_sqs,
+                        at::TensorList max_exp_avg_sqs) {
+  size_t buf_offset = 0;
+  AssignBuffers(result_buffers, buf_offset, self);
+  buf_offset += num_tensors;
+  if (has_grad_scale) {
+    AssignBuffers(result_buffers, buf_offset, grads);
+    buf_offset += num_tensors;
+  }
+  AssignBuffers(result_buffers, buf_offset, exp_avgs);
+  buf_offset += num_tensors;
+  AssignBuffers(result_buffers, buf_offset, exp_avg_sqs);
+  buf_offset += num_tensors;
+  if (amsgrad) {
+    AssignBuffers(result_buffers, buf_offset, max_exp_avg_sqs);
+  }
+}
+
 // Orchestrates eager execution: flattens input tensor lists, configures
 // expected output shapes/dtypes, dispatches to compilation/cache, and assigns
 // result buffers back to the mutated inplace input tensors.
@@ -597,25 +648,8 @@ void DispatchAdamw(at::TensorList self, at::TensorList grads,
                           has_grad_scale, has_found_inf, out_dtypes);
   };
 
-  // Select 0-based argument indices of input tensors to donate to XLA for HBM
-  // buffer reuse. We donate buffers for all tensors mutated in-place:
-  //   - [0 * N + i]: self (model parameters)
-  //   - [2 * N + i]: exp_avgs (first-moment optimizer states)
-  //   - [3 * N + i]: exp_avg_sqs (second-moment optimizer states)
-  //   - [5 * N + i]: max_exp_avg_sqs (max second-moment states, if amsgrad)
-  // Note: grads [1 * N + i] and state_steps [4 * N + i] are not donated because
-  // gradients are read-only inputs and step counters are scalars.
-  // TODO(@lukeboyer): Consider donation grads when they are being scaled.
-  Indices donated_indices;
-  donated_indices.reserve((amsgrad ? 4 : 3) * num_tensors);
-  for (size_t i = 0; i < num_tensors; ++i) {
-    donated_indices.push_back(i);                    // self
-    donated_indices.push_back(2 * num_tensors + i);  // exp_avgs
-    donated_indices.push_back(3 * num_tensors + i);  // exp_avg_sqs
-    if (amsgrad) {
-      donated_indices.push_back(5 * num_tensors + i);  // max_exp_avg_sqs
-    }
-  }
+  Indices donated_indices =
+      ComputeAdamwDonatedIndices(num_tensors, amsgrad, has_grad_scale);
 
   DispatchOpOptions<kDynamicSize> options = {
       .out_dtypes = out_dtypes,
@@ -630,22 +664,8 @@ void DispatchAdamw(at::TensorList self, at::TensorList grads,
                      (DispatchOp<kDynamicSize, kDynamicSize>(
                          std::move(op_builder), inputs, std::move(options))));
 
-  // Assign computed output device buffers back in-place to mutated eager
-  // parameter and state tensors.
-  size_t buf_offset = 0;
-  AssignBuffers(result_buffers, buf_offset, self);
-  buf_offset += num_tensors;
-  if (has_grad_scale) {
-    AssignBuffers(result_buffers, buf_offset, grads);
-    buf_offset += num_tensors;
-  }
-  AssignBuffers(result_buffers, buf_offset, exp_avgs);
-  buf_offset += num_tensors;
-  AssignBuffers(result_buffers, buf_offset, exp_avg_sqs);
-  buf_offset += num_tensors;
-  if (amsgrad) {
-    AssignBuffers(result_buffers, buf_offset, max_exp_avg_sqs);
-  }
+  AssignAdamwBuffers(result_buffers, num_tensors, amsgrad, has_grad_scale, self,
+                     grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs);
 }
 
 }  // namespace

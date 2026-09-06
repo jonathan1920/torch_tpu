@@ -29,7 +29,6 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
@@ -132,6 +131,11 @@ absl::StatusOr<DeviceBufferRef> Addmv(
   // reading from uninitialized tensors (at::empty) at the moment, so instead of
   // dispatching to ternary op, we dispatch to binary op without self.
   if (beta.IsZero()) {
+    Indices zero_donated_indices;
+    if (ShouldDonateInPlaceBuffer(out, vec, out_dtype, result_shape)) {
+      zero_donated_indices = {1};
+    }
+    options.donated_indices = std::move(zero_donated_indices);
     auto op_builder = [out_dtype,
                        precision](FixedSizeSpan<mlir::MlirOp, 3> inputs)
         -> absl::StatusOr<mlir::MlirOp> {
@@ -145,6 +149,15 @@ absl::StatusOr<DeviceBufferRef> Addmv(
     return result_buf;
   }
 
+  // If `out` aliases `self` or `vec`, donate that device buffer to the output
+  // in eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(out, self, out_dtype, result_shape)) {
+    donated_indices = {0};
+  } else if (ShouldDonateInPlaceBuffer(out, vec, out_dtype, result_shape)) {
+    donated_indices = {2};
+  }
+
   auto op_builder = [out_dtype,
                      precision](FixedSizeSpan<mlir::MlirOp, 5> inputs)
       -> absl::StatusOr<mlir::MlirOp> {
@@ -153,6 +166,7 @@ absl::StatusOr<DeviceBufferRef> Addmv(
                           precision);
   };
   TT_ASSIGN_OR_RETURN(auto beta_tensor, beta.GetTensor(out.scalar_type()));
+  options.donated_indices = std::move(donated_indices);
   TT_ASSIGN_OR_RETURN(auto result_buf,
                       DispatchOp<5>(std::move(op_builder),
                                     {self, mat, vec, beta_tensor, alpha_tensor},

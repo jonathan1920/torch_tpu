@@ -268,7 +268,8 @@ absl::StatusOr<mlir::MlirOp> BuildSearchsortedLoopShlo(
 absl::StatusOr<DeviceBufferRef> SearchsortedTensorInternal(
     const at::Tensor& sorted_sequence, const at::Tensor& values, bool out_int32,
     bool right, c10::optional<c10::string_view> side,
-    const c10::optional<at::Tensor>& sorter, OpParamCacheKeys&& param_keys) {
+    const c10::optional<at::Tensor>& sorter, OpParamCacheKeys&& param_keys,
+    Indices donated_indices = {}) {
   TT_ASSIGN_OR_RETURN(at::Tensor resolved_sorted,
                       ResolveAuxiliaryTensorDevice(sorted_sequence));
   TT_ASSIGN_OR_RETURN(at::Tensor resolved_values,
@@ -342,11 +343,11 @@ absl::StatusOr<DeviceBufferRef> SearchsortedTensorInternal(
                                      builder);
   };
 
-  return DispatchOp<kDynamicSize>(
-      std::move(build_shlo), input_vec,
-      {.out_dtype = out_mlir_type,
-       .out_dims = out_dims,
-       .op_param_cache_keys = std::move(param_keys)});
+  return DispatchOp<kDynamicSize>(std::move(build_shlo), input_vec,
+                                  {.out_dtype = out_mlir_type,
+                                   .out_dims = out_dims,
+                                   .op_param_cache_keys = std::move(param_keys),
+                                   .donated_indices = donated_indices});
 }
 
 }  // namespace
@@ -375,11 +376,20 @@ at::Tensor& AtenSearchsortedTensorOut(const at::Tensor& sorted_sequence,
   TT_KERNEL(
       OpName::kSearchsortedTensorOut, param_keys,
       (sorted_sequence, values, out_int32, right, side, sorter, out), {
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, values.sizes()));
+        Indices donated_indices = {};
+        at::ScalarType out_dtype =
+            out_int32 ? at::ScalarType::Int : at::ScalarType::Long;
+        TT_ASSIGN_OR_THROW(mlir::ElementType out_mlir_type,
+                           internal::ToElementType(out_dtype));
+        if (ShouldDonateInPlaceBuffer(out, values, out_mlir_type,
+                                      values.sizes())) {
+          donated_indices = {1};
+        }
         TT_ASSIGN_OR_THROW(auto result,
                            SearchsortedTensorInternal(
                                sorted_sequence, values, out_int32, right, side,
-                               sorter, std::move(param_keys)));
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, values.sizes()));
+                               sorter, std::move(param_keys), donated_indices));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
         return out;
       });

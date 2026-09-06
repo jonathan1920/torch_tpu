@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -149,10 +150,10 @@ absl::StatusOr<HardtanhBounds> ClampHardtanhBounds(at::ScalarType scalar_type,
 }
 
 // Helper to dispatch the hardtanh computation on the device.
-absl::StatusOr<DeviceBufferRef> AtenHardtanhImpl(const at::Tensor& self,
-                                                 PromotedScalar& promoted_min,
-                                                 PromotedScalar& promoted_max,
-                                                 OpParamCacheKeys param_keys) {
+absl::StatusOr<DeviceBufferRef> AtenHardtanhImpl(
+    const at::Tensor& self, PromotedScalar& promoted_min,
+    PromotedScalar& promoted_max, OpParamCacheKeys param_keys,
+    std::optional<at::Tensor> out = std::nullopt) {
   const auto scalar_type = self.scalar_type();
   TT_RETURN_IF_ERROR(ValidateHardtanhInputs(self));
 
@@ -182,17 +183,26 @@ absl::StatusOr<DeviceBufferRef> AtenHardtanhImpl(const at::Tensor& self,
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(scalar_type));
 
+  // If `out` aliases `self`, donate input 0's device buffer to the output in
+  // eligible eager modes (DeferNever) to avoid memory allocation churn.
+  Indices donated_indices;
+  if (out.has_value() && ShouldDonateInPlaceBuffer(*out, self, output_dtype)) {
+    donated_indices = {0};
+  }
+
   return DispatchOp<3>(op_builder, {self, min_tensor, max_tensor},
                        {.out_dtype = output_dtype,
                         .out_dims = CopyIntVector(self.sizes()),
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)});
 }
 
 // Helper to dispatch the hardtanh_backward computation on the device.
 absl::StatusOr<DeviceBufferRef> AtenHardtanhBackwardImpl(
     const at::Tensor& grad_output, const at::Tensor& self,
     PromotedScalar& promoted_min, PromotedScalar& promoted_max,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys,
+    std::optional<at::Tensor> grad_input = std::nullopt) {
   auto scalar_type = self.scalar_type();
   TT_RET_CHECK(c10::isFloatingType(scalar_type), error::kInvalidArgument)
       << "expected the input dtype to be floating point, got "
@@ -211,11 +221,27 @@ absl::StatusOr<DeviceBufferRef> AtenHardtanhBackwardImpl(
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(scalar_type));
+  Dimensions out_dims = CopyIntVector(self.sizes());
+
+  // If `grad_input` aliases `grad_output` or `self`, donate that input's
+  // device buffer to the output in eligible eager modes (DeferNever) to avoid
+  // allocation churn.
+  Indices donated_indices;
+  if (grad_input.has_value()) {
+    if (ShouldDonateInPlaceBuffer(*grad_input, grad_output, output_dtype,
+                                  out_dims)) {
+      donated_indices = {0};
+    } else if (ShouldDonateInPlaceBuffer(*grad_input, self, output_dtype,
+                                         out_dims)) {
+      donated_indices = {1};
+    }
+  }
 
   return DispatchOp<4>(op_builder, {grad_output, self, min_tensor, max_tensor},
                        {.out_dtype = output_dtype,
-                        .out_dims = CopyIntVector(self.sizes()),
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .out_dims = out_dims,
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)});
 }
 }  // namespace
 
@@ -239,7 +265,7 @@ at::Tensor& AtenHardtanh_(at::Tensor& self, const at::Scalar& min_val,
       OpName::kHardtanh_, param_keys, (self, promoted_min, promoted_max), {
         TT_ASSIGN_OR_THROW(auto result_buf,
                            AtenHardtanhImpl(self, promoted_min, promoted_max,
-                                            std::move(param_keys)));
+                                            std::move(param_keys), self));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
         return self;
       });
@@ -254,7 +280,7 @@ at::Tensor& AtenHardtanhOut(const at::Tensor& self, const at::Scalar& min_val,
       {
         TT_ASSIGN_OR_THROW(auto result_buf,
                            AtenHardtanhImpl(self, promoted_min, promoted_max,
-                                            std::move(param_keys)));
+                                            std::move(param_keys), out));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });
@@ -285,10 +311,11 @@ at::Tensor& AtenHardtanhBackwardGradInput(const at::Tensor& grad_output,
   PromotedScalar promoted_max = PromoteScalar(max_val);
   TT_KERNEL(OpName::kHardtanhBackwardGradInput, param_keys,
             (grad_output, self, promoted_min, promoted_max, grad_input), {
-              TT_ASSIGN_OR_THROW(auto result_buf,
-                                 AtenHardtanhBackwardImpl(
-                                     grad_output, self, promoted_min,
-                                     promoted_max, std::move(param_keys)));
+              TT_ASSIGN_OR_THROW(
+                  auto result_buf,
+                  AtenHardtanhBackwardImpl(grad_output, self, promoted_min,
+                                           promoted_max, std::move(param_keys),
+                                           grad_input));
               TT_THROW_IF_ERROR(
                   AssignBufferToAtTensor(std::move(result_buf), grad_input));
               return grad_input;

@@ -511,13 +511,25 @@ void DispatchAdagrad(
                             grad_scale_mode, found_inf_mode, out_dtypes);
   };
 
+  const bool has_grad_scale = (grad_scale_mode == GradScaleMode::kEnabled);
+  Indices donated_indices;
+  donated_indices.reserve((has_grad_scale ? 3 : 2) * num_tensors);
+  for (size_t i = 0; i < num_tensors; ++i) {
+    donated_indices.push_back(i);  // self
+    if (has_grad_scale) {
+      donated_indices.push_back(1 * num_tensors + i);  // grads
+    }
+    donated_indices.push_back(2 * num_tensors + i);  // state_sums
+  }
+
   // Dispatch op builder and input tensors to TPU device and get buffers.
   TT_ASSIGN_OR_THROW(auto result_buffers,
                      (DispatchOp<kDynamicSize, kDynamicSize>(
                          std::move(op_builder), inputs,
                          {.out_dtypes = out_dtypes,
                           .out_dims_list = out_dims_list,
-                          .op_param_cache_keys = std::move(param_keys)})));
+                          .op_param_cache_keys = std::move(param_keys),
+                          .donated_indices = std::move(donated_indices)})));
 
   // Assign computed output device buffers back to the input ATen tensors.
   AssignAdagradResultBuffers(result_buffers, self, grads, state_sums,

@@ -103,12 +103,22 @@ at::Tensor& AtenXlogyOutTensor(const at::Tensor& self, const at::Tensor& other,
     TT_ASSIGN_OR_THROW(auto out_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
 
+    // If `out` aliases `self` or `other`, donate that device buffer to the
+    // output in eligible eager modes (DeferNever) to avoid allocation churn.
+    Indices donated_indices;
+    if (ShouldDonateInPlaceBuffer(out, self, out_dtype, out_dims)) {
+      donated_indices = {0};
+    } else if (ShouldDonateInPlaceBuffer(out, other, out_dtype, out_dims)) {
+      donated_indices = {1};
+    }
+
     TT_ASSIGN_OR_THROW(
         auto result_buffer,
         DispatchOp<2>(std::move(op_builder), {self, other},
                       {.out_dtype = out_dtype,
                        .out_dims = out_dims,
-                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                       .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                       .donated_indices = std::move(donated_indices)}));
 
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buffer), out));
     return out;

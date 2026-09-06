@@ -34,13 +34,13 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
+#include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
@@ -378,12 +378,19 @@ absl::StatusOr<DeviceBufferRef> IndexPutWithBooleanMask(
 
   TT_ASSIGN_OR_RETURN(const auto elem_type,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
+  // Donate self (input 0)'s device buffer to the output in eligible eager
+  // modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(self, self.sizes(), elem_type)) {
+    donated_indices = {0};
+  }
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<3>(std::move(index_op_builder), {self, mask, values},
                     {.out_dtype = elem_type,
                      .out_dims = at::IntArrayRef(self.sizes()),
-                     .op_param_cache_keys = std::move(param_keys)}));
+                     .op_param_cache_keys = std::move(param_keys),
+                     .donated_indices = std::move(donated_indices)}));
 
   return std::move(result_buf);
 }
@@ -465,12 +472,19 @@ absl::StatusOr<DeviceBufferRef> IndexPut(
 
   TT_ASSIGN_OR_RETURN(const auto elem_type,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
-  TT_ASSIGN_OR_RETURN(
-      auto result_buf,
-      DispatchOp<kDynamicSize>(std::move(index_op_builder), all_tensors,
-                               {.out_dtype = elem_type,
-                                .out_dims = at::IntArrayRef(self.sizes()),
-                                .op_param_cache_keys = std::move(param_keys)}));
+  // Donate self (input 0)'s device buffer to the output in eligible eager
+  // modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(self, self.sizes(), elem_type)) {
+    donated_indices = {0};
+  }
+  TT_ASSIGN_OR_RETURN(auto result_buf,
+                      DispatchOp<kDynamicSize>(
+                          std::move(index_op_builder), all_tensors,
+                          {.out_dtype = elem_type,
+                           .out_dims = at::IntArrayRef(self.sizes()),
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
   return std::move(result_buf);
 }
 

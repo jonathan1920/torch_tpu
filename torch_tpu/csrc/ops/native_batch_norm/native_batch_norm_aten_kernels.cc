@@ -25,7 +25,6 @@
 #include <vector>
 
 #include "ATen/core/TensorBody.h"
-#include "ATen/native/Resize.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -47,6 +46,7 @@
 #include "torch_tpu/csrc/ops/native_batch_norm/native_batch_norm.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
+#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -73,7 +73,8 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     const at::Tensor& input, std::optional<at::Tensor> weight,
     std::optional<at::Tensor> bias, std::optional<at::Tensor> running_mean,
     std::optional<at::Tensor> running_variance, bool training, double momentum,
-    double eps, OpParamCacheKeys param_keys) {
+    double eps, OpParamCacheKeys param_keys,
+    const std::optional<at::Tensor>& out = std::nullopt) {
   TT_RETURN_IF_ERROR(ValidateIsFloating(input, /*arg_name=*/"input"));
   ABSL_VLOG(1) << "TpuBatchNorm weight: " << !!weight << ", bias: " << !!bias
                << ", running_mean: " << !!running_mean
@@ -143,13 +144,22 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
                           running_var_op, training, momentum, eps, acc_dtype);
   };
 
+  // If `out` aliases `input`, donate input 0's device buffer to the output in
+  // eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (out.has_value() &&
+      ShouldDonateInPlaceBuffer(*out, input, input_dtype, input_dims)) {
+    donated_indices = {0};
+  }
+
   std::optional<DeviceBufferRefArray<3>> results;
   TT_ASSIGN_OR_RETURN(results,
                       (DispatchOp<kDynamicSize, 3>(
                           std::move(op_builder), inputs,
                           {.out_dtypes = output_dtypes,
                            .out_dims_list = output_dims,
-                           .op_param_cache_keys = std::move(param_keys)})));
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)})));
 
   return std::move(*results);
 }
@@ -299,19 +309,19 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenNativeBatchNormOut(
                          SanitizeOptionalTensor(bias),
                          SanitizeOptionalTensor(running_mean),
                          SanitizeOptionalTensor(running_variance), training,
-                         momentum, eps, std::move(param_keys)));
-        auto output_tensor = MakeTensor(std::move(output));
-        auto mean_tensor = MakeTensor(std::move(mean));
-        auto variance_inverse_tensor = MakeTensor(std::move(variance_inverse));
+                         momentum, eps, std::move(param_keys), out));
 
-        at::native::resize_output(out, output_tensor.sizes());
-        out.copy_(output_tensor);
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output.dimensions()));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output), out));
 
-        at::native::resize_output(save_mean, mean_tensor.sizes());
-        save_mean.copy_(mean_tensor);
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(save_mean, mean.dimensions()));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(mean), save_mean));
 
-        at::native::resize_output(save_invstd, variance_inverse_tensor.sizes());
-        save_invstd.copy_(variance_inverse_tensor);
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(
+            save_invstd, variance_inverse.dimensions()));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(variance_inverse), save_invstd));
 
         return {out, save_mean, save_invstd};
       });
@@ -369,19 +379,20 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenNativeBatchNormLegitOut(
                          SanitizeOptionalTensor(bias),
                          SanitizeOptionalTensor(running_mean),
                          SanitizeOptionalTensor(running_variance), training,
-                         momentum, eps, std::move(param_keys)));
-        auto output_tensor = MakeTensor(std::move(output));
-        auto mean_tensor = MakeTensor(std::move(mean));
-        auto variance_inverse_tensor = MakeTensor(std::move(variance_inverse));
+                         momentum, eps, std::move(param_keys), out));
 
-        at::native::resize_output(out, output_tensor.sizes());
-        out.copy_(output_tensor);
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output.dimensions()));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output), out));
 
-        at::native::resize_output(save_mean, mean_tensor.sizes());
-        save_mean.copy_(mean_tensor);
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(save_mean, mean.dimensions()));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(mean), save_mean));
 
-        at::native::resize_output(save_invstd, variance_inverse_tensor.sizes());
-        save_invstd.copy_(variance_inverse_tensor);
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(
+            save_invstd, variance_inverse.dimensions()));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(variance_inverse), save_invstd));
+
         return {out, save_mean, save_invstd};
       });
 }
@@ -404,19 +415,20 @@ AtenNativeBatchNormLegitNoStatsOut(const at::Tensor& input,
                          SanitizeOptionalTensor(bias),
                          /*running_mean=*/std::nullopt,
                          /*running_variance=*/std::nullopt, training, momentum,
-                         eps, std::move(param_keys)));
-        auto output_tensor = MakeTensor(std::move(output));
-        auto mean_tensor = MakeTensor(std::move(mean));
-        auto variance_inverse_tensor = MakeTensor(std::move(variance_inverse));
+                         eps, std::move(param_keys), out));
 
-        at::native::resize_output(out, output_tensor.sizes());
-        out.copy_(output_tensor);
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output.dimensions()));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output), out));
 
-        at::native::resize_output(save_mean, mean_tensor.sizes());
-        save_mean.copy_(mean_tensor);
+        TT_THROW_IF_ERROR(
+            ResizeTensorIfShapeDiffers(save_mean, mean.dimensions()));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(mean), save_mean));
 
-        at::native::resize_output(save_invstd, variance_inverse_tensor.sizes());
-        save_invstd.copy_(variance_inverse_tensor);
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(
+            save_invstd, variance_inverse.dimensions()));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(variance_inverse), save_invstd));
+
         return {out, save_mean, save_invstd};
       });
 }

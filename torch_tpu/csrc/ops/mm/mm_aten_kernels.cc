@@ -123,12 +123,23 @@ absl::StatusOr<DeviceBufferRef> Mm(
     return BuildMmShlo(lhs_op, rhs_op, current_precision);
   };
 
+  // If `out` aliases `lhs` or `rhs`, donate that device buffer to the output in
+  // eligible eager modes (DeferNever) to avoid memory allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(out, lhs, target_elem_dtype, output_dims)) {
+    donated_indices = {0};
+  } else if (ShouldDonateInPlaceBuffer(out, rhs, target_elem_dtype,
+                                       output_dims)) {
+    donated_indices = {1};
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<2>(std::move(op_builder), {lhs, rhs},
                     {.out_dtype = target_elem_dtype,
                      .out_dims = output_dims,
-                     .op_param_cache_keys = std::move(param_keys)}));
+                     .op_param_cache_keys = std::move(param_keys),
+                     .donated_indices = std::move(donated_indices)}));
   return result_buf;
 }
 

@@ -107,18 +107,28 @@ at::Tensor& AtenHardsigmoidBackwardGradInput(const at::Tensor& grad_output,
             << ToString(self.scalar_type());
         TT_ASSIGN_OR_THROW(const auto output_mlir_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(grad_input, grad_output, output_mlir_type,
+                                      self.sizes())) {
+          donated_indices = {0};
+        } else if (ShouldDonateInPlaceBuffer(grad_input, self, output_mlir_type,
+                                             self.sizes())) {
+          donated_indices = {1};
+        }
+
         TT_ASSIGN_OR_THROW(
-            auto result,
-            (DispatchOp<2>(
-                [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
-                    -> absl::StatusOr<mlir::MlirOp> {
-                  auto& [grad_output_op, self_op] = inputs;
-                  return BuildHardsigmoidBackwardShlo(grad_output_op, self_op);
-                },
-                {grad_output, self},
-                {.out_dtype = output_mlir_type,
-                 .out_dims = self.sizes(),
-                 .op_param_cache_keys = OpParamCacheKeys::Empty()})));
+            auto result, (DispatchOp<2>(
+                             [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+                                 -> absl::StatusOr<mlir::MlirOp> {
+                               auto& [grad_output_op, self_op] = inputs;
+                               return BuildHardsigmoidBackwardShlo(
+                                   grad_output_op, self_op);
+                             },
+                             {grad_output, self},
+                             {.out_dtype = output_mlir_type,
+                              .out_dims = self.sizes(),
+                              .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                              .donated_indices = std::move(donated_indices)})));
 
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(result), grad_input));

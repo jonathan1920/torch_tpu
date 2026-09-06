@@ -109,6 +109,11 @@ at::Tensor& AtenBernoulliOut(const at::Tensor& self,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
     const auto dims = CopyIntVector(self.sizes());
 
+    Indices donated_indices;
+    if (ShouldDonateInPlaceBuffer(out, self, output_dtype, dims)) {
+      donated_indices = {1};
+    }
+
     TT_THROW_IF_ERROR(DispatchRngOp(
         out, generator,
         [&](at::Tensor rng_input_state)
@@ -119,7 +124,8 @@ at::Tensor& AtenBernoulliOut(const at::Tensor& self,
                             {rng_input_state, self},
                             {.out_dtype = output_dtype,
                              .out_dims = dims,
-                             .op_param_cache_keys = std::move(param_keys)})));
+                             .op_param_cache_keys = std::move(param_keys),
+                             .donated_indices = std::move(donated_indices)})));
           return std::vector<DeviceBufferRef>{std::move(buf)};
         }));
     return out;
@@ -169,6 +175,11 @@ at::Tensor& AtenBernoulli_Tensor(at::Tensor& self, const at::Tensor& p,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
     const auto dims = CopyIntVector(self.sizes());
 
+    Indices donated_indices;
+    if (ShouldDonateInPlaceBuffer(self, p, output_dtype, dims)) {
+      donated_indices = {1};
+    }
+
     TT_THROW_IF_ERROR(DispatchRngOp(
         self, generator,
         [&](at::Tensor rng_input_state)
@@ -179,7 +190,8 @@ at::Tensor& AtenBernoulli_Tensor(at::Tensor& self, const at::Tensor& p,
                             {rng_input_state, p},
                             {.out_dtype = output_dtype,
                              .out_dims = dims,
-                             .op_param_cache_keys = std::move(param_keys)})));
+                             .op_param_cache_keys = std::move(param_keys),
+                             .donated_indices = std::move(donated_indices)})));
           return std::vector<DeviceBufferRef>{std::move(buf)};
         }));
     return self;

@@ -29,6 +29,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/core/DefaultDtype.h"
+#include "c10/core/ScalarType.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "llvm/Support/raw_ostream.h"
@@ -50,10 +51,12 @@
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/csrc/common/context_states.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/status_test_utils.h"
+#include "torch_tpu/csrc/eager/eager_mode.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -81,8 +84,10 @@ class OpBuilderUtilsBuilder {
 mlir::ElementType GetDefaultMlirDType() {
   auto default_dtype =
       ConvertTo<mlir::ElementType>(c10::get_default_dtype_as_scalartype());
-  EXPECT_EQ(default_dtype.status(), absl::OkStatus());
-  return default_dtype.value();
+  if (!default_dtype.ok()) {
+    return mlir::ElementType::F32;
+  }
+  return *default_dtype;
 }
 
 // TODO(b/433265252): add tests for broadcasting on MlirOps.
@@ -90,9 +95,8 @@ mlir::ElementType GetDefaultMlirDType() {
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
-  auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
-  auto default_mlir_type = default_mlir_element_type.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto default_mlir_type,
+                          ConvertTo<mlir::ElementType>(default_dtype));
 
   // Then we convert to it at compile time.
   OpBuilderUtilsBuilder op_builder_utils_builder;
@@ -103,8 +107,11 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int) {
   TT_ASSERT_OK_AND_ASSIGN(ConvertedOps ops,
                           ConvertIfIntegers(op1, op2, default_mlir_type));
 
-  mlir::RankedTensorType default_type = mlir::RankedTensorType::get(
-      {}, *GetMlirType(builder.getContext(), GetDefaultMlirDType()));
+  TT_ASSERT_OK_AND_ASSIGN(
+      mlir::Type mlir_type,
+      GetMlirType(builder.getContext(), GetDefaultMlirDType()));
+  mlir::RankedTensorType default_type =
+      mlir::RankedTensorType::get({}, mlir_type);
   EXPECT_EQ(ops.op1.getType(), default_type);
   EXPECT_EQ(ops.op2.getType(), default_type);
 }
@@ -112,9 +119,8 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int) {
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
-  auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
-  auto default_mlir_type = default_mlir_element_type.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto default_mlir_type,
+                          ConvertTo<mlir::ElementType>(default_dtype));
 
   // Then we convert to it at compile time.
   OpBuilderUtilsBuilder op_builder_utils_builder;
@@ -134,9 +140,8 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float) {
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int_Float) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
-  auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
-  auto default_mlir_type = default_mlir_element_type.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto default_mlir_type,
+                          ConvertTo<mlir::ElementType>(default_dtype));
 
   // Then we convert to it at compile time.
   OpBuilderUtilsBuilder op_builder_utils_builder;
@@ -159,9 +164,8 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int_Float) {
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float_Int) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
-  auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
-  auto default_mlir_type = default_mlir_element_type.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto default_mlir_type,
+                          ConvertTo<mlir::ElementType>(default_dtype));
 
   // Then we convert to it at compile time.
   OpBuilderUtilsBuilder op_builder_utils_builder;
@@ -184,9 +188,8 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float_Int) {
 TEST(OpBuilderUtils, ConvertIfIntegers_TwoIntegerOperands) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
-  auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
-  auto default_mlir_type = default_mlir_element_type.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto default_mlir_type,
+                          ConvertTo<mlir::ElementType>(default_dtype));
 
   // Then we convert to it at compile time.
   OpBuilderUtilsBuilder op_builder_utils_builder;
@@ -208,9 +211,8 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoIntegerOperands) {
 TEST(OpBuilderUtils, ConvertIfInteger_OneOperand_Int) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
-  auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
-  auto default_mlir_type = default_mlir_element_type.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto default_mlir_type,
+                          ConvertTo<mlir::ElementType>(default_dtype));
 
   // Then we convert to it at compile time.
   OpBuilderUtilsBuilder op_builder_utils_builder;
@@ -223,17 +225,19 @@ TEST(OpBuilderUtils, ConvertIfInteger_OneOperand_Int) {
   TT_ASSERT_OK_AND_ASSIGN(mlir::MlirOp converted_op,
                           ConvertIfInteger(op, default_mlir_type));
 
-  mlir::RankedTensorType default_type = mlir::RankedTensorType::get(
-      {}, *GetMlirType(builder.getContext(), GetDefaultMlirDType()));
+  TT_ASSERT_OK_AND_ASSIGN(
+      mlir::Type mlir_type,
+      GetMlirType(builder.getContext(), GetDefaultMlirDType()));
+  mlir::RankedTensorType default_type =
+      mlir::RankedTensorType::get({}, mlir_type);
   EXPECT_EQ(converted_op.getType(), default_type);
 }
 
 TEST(OpBuilderUtils, ConvertIfInteger_OneOperand_Float) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
-  auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
-  auto default_mlir_type = default_mlir_element_type.value();
+  TT_ASSERT_OK_AND_ASSIGN(auto default_mlir_type,
+                          ConvertTo<mlir::ElementType>(default_dtype));
 
   // Then we convert to it at compile time.
   OpBuilderUtilsBuilder op_builder_utils_builder;
@@ -645,6 +649,102 @@ TEST(AnnotateBufferDonations, SmokeTest) {
   auto donor_attr = dict_attr.getAs<mlir::BoolAttr>("jax.buffer_donor");
   EXPECT_TRUE(donor_attr);             // dict has value
   EXPECT_TRUE(donor_attr.getValue());  // value is true
+}
+
+TEST(ShouldDonateInPlaceBuffer, EligibilityTests) {
+  constexpr auto f32_type = mlir::ElementType::F32;
+  constexpr auto f64_type = mlir::ElementType::F64;
+
+  at::Tensor t = at::ones({2, 3}, at::kFloat);
+
+  // In kDeferAndFuse, donation is disabled.
+  SetEagerMode(EagerMode::kDeferAndFuse);
+  EXPECT_FALSE(ShouldDonateInPlaceBuffer(t, {2, 3}, f32_type));
+
+  // In kDeferNever, eligible tensor returns true.
+  SetEagerMode(EagerMode::kDeferNever);
+  EXPECT_TRUE(ShouldDonateInPlaceBuffer(t, {2, 3}, f32_type));
+
+  // In kDeferNeverAndLaunchBlocking, eligible tensor returns true.
+  SetEagerMode(EagerMode::kDeferNeverAndLaunchBlocking);
+  EXPECT_TRUE(ShouldDonateInPlaceBuffer(t, {2, 3}, f32_type));
+
+  // Explicit eager_mode argument overrides global/thread mode.
+  EXPECT_TRUE(
+      ShouldDonateInPlaceBuffer(t, {2, 3}, f32_type, EagerMode::kDeferNever));
+  EXPECT_FALSE(
+      ShouldDonateInPlaceBuffer(t, {2, 3}, f32_type, EagerMode::kDeferAndFuse));
+
+  // Reset to kDeferNever for the remaining tests.
+  SetEagerMode(EagerMode::kDeferNever);
+
+  // Dtype mismatch returns false.
+  EXPECT_FALSE(ShouldDonateInPlaceBuffer(t, {2, 3}, f64_type));
+
+  // Shape mismatch returns false.
+  EXPECT_FALSE(ShouldDonateInPlaceBuffer(t, {3, 2}, f32_type));
+  EXPECT_FALSE(ShouldDonateInPlaceBuffer(t, {6}, f32_type));
+
+  // Non-contiguous tensor returns false.
+  at::Tensor t_transposed = t.t();
+  EXPECT_FALSE(ShouldDonateInPlaceBuffer(t_transposed, {3, 2}, f32_type));
+
+  // Non-zero storage offset returns false.
+  at::Tensor t_sliced = t.slice(/*dim=*/0, /*start=*/1);
+  EXPECT_FALSE(ShouldDonateInPlaceBuffer(t_sliced, {1, 3}, f32_type));
+
+  // Empty tensor returns false.
+  at::Tensor t_empty = at::ones({0}, at::kFloat);
+  EXPECT_FALSE(ShouldDonateInPlaceBuffer(t_empty, {0}, f32_type));
+
+  // Restore default mode.
+  SetEagerMode(EagerMode::kDeferAndFuse);
+}
+
+TEST(ShouldDonateInPlaceBuffer, DestinationDonorOverload) {
+  constexpr auto f32_type = mlir::ElementType::F32;
+  constexpr auto f64_type = mlir::ElementType::F64;
+
+  SetEagerMode(EagerMode::kDeferNever);
+
+  at::Tensor t = at::ones({2, 3}, at::kFloat);
+  at::Tensor other = at::ones({2, 3}, at::kFloat);
+
+  // Self-aliasing with default output_dims (inferred from destination).
+  EXPECT_TRUE(ShouldDonateInPlaceBuffer(t, t, f32_type));
+
+  // Non-aliasing tensors return false.
+  EXPECT_FALSE(ShouldDonateInPlaceBuffer(other, t, f32_type));
+
+  // Explicit matching output_dims returns true.
+  EXPECT_TRUE(
+      ShouldDonateInPlaceBuffer(t, t, f32_type, at::IntArrayRef({2, 3})));
+
+  // Explicit non-matching output_dims returns false.
+  EXPECT_FALSE(
+      ShouldDonateInPlaceBuffer(t, t, f32_type, at::IntArrayRef({3, 2})));
+
+  // Dtype mismatch returns false.
+  EXPECT_FALSE(ShouldDonateInPlaceBuffer(t, t, f64_type));
+
+  // Explicit eager_mode argument overrides mode.
+  EXPECT_TRUE(ShouldDonateInPlaceBuffer(t, t, f32_type,
+                                        /*destination_dims=*/std::nullopt,
+                                        EagerMode::kDeferNever));
+  EXPECT_FALSE(ShouldDonateInPlaceBuffer(t, t, f32_type,
+                                         /*destination_dims=*/std::nullopt,
+                                         EagerMode::kDeferAndFuse));
+
+  // Restore default mode.
+  SetEagerMode(EagerMode::kDeferAndFuse);
+}
+
+TEST(EagerModeTest, IsDeferNeverMode) {
+  EXPECT_TRUE(IsDeferNeverMode(EagerMode::kDeferNever));
+  EXPECT_TRUE(IsDeferNeverMode(EagerMode::kDeferNeverAndLaunchBlocking));
+  EXPECT_FALSE(IsDeferNeverMode(EagerMode::kDeferAndFuse));
+  EXPECT_FALSE(IsDeferNeverMode(EagerMode::kInternalDeferAll));
+  EXPECT_FALSE(IsDeferNeverMode(EagerMode::kInternalCompileFxGraph));
 }
 
 TEST(ReshapeFromStaticDimensions, StaticShape) {

@@ -43,6 +43,10 @@ PYBIND11_MODULE(execution_mode_impl, m) {
 
   m.def("_enable_cpu_fallback", EnableCpuFallback, py::arg("enabled"));
   m.def("_is_cpu_fallback_enabled", IsCpuFallbackEnabled);
+
+  m.def("_enable_inplace_buffer_donation", EnableInplaceBufferDonation,
+        py::arg("enabled"));
+  m.def("_is_inplace_buffer_donation_enabled", IsInplaceBufferDonationEnabled);
 }
 
 }  // namespace torch_tpu

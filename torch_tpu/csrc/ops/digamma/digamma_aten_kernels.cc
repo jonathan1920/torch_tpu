@@ -69,12 +69,20 @@ at::Tensor& AtenDigammaOut(const at::Tensor& self, at::Tensor& out) {
       return BuildDigammaShlo(input, out_dtype);
     };
     TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
+    // If `out` aliases `self`, donate input 0's device buffer to the output in
+    // eligible eager modes (DeferNever) to avoid allocation churn.
+    Indices donated_indices;
+    if (ShouldDonateInPlaceBuffer(out, self, out_dtype, out.sizes())) {
+      donated_indices = {0};
+    }
+
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         DispatchOp<1>(std::move(op_builder), self,
                       {.out_dtype = out_dtype,
                        .out_dims = out.sizes(),
-                       .op_param_cache_keys = std::move(param_keys)}));
+                       .op_param_cache_keys = std::move(param_keys),
+                       .donated_indices = std::move(donated_indices)}));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });

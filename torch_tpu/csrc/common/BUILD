@@ -241,8 +241,10 @@ torch_tpu_cc_test(
     srcs = ["error_utils_test.cc"],
     deps = [
         ":cache_key",
+        ":context_states",
         ":env_vars",
         ":error_utils",
+        ":status_builder",
         ":status_test_utils",
         ":utils",
         "//shims/torch/c10/util:base_headers",

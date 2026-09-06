@@ -77,6 +77,11 @@ inline constexpr char kTorchTpuHandshakePortEnvVar[] =
 // Other values are no-ops.
 inline constexpr char kTorchTpuInternalDetectRepeatedOpsEnvVar[] =
     "TORCH_TPU_INTERNAL_DETECT_REPEATED_OPS";
+// If set to "1" or "true", disables input buffer donation for in-place ATen
+// operations in DeferNever eager mode. Default is false (buffer donation is
+// enabled).
+inline constexpr char kTorchTpuInternalDisableInplaceBufferDonationEnvVar[] =
+    "TORCH_TPU_INTERNAL_DISABLE_INPLACE_BUFFER_DONATION";
 // If set to "1", enable expensive debug checks in TorchTPU. This catches
 // more bugs in user code, but comes at a significant performance cost for
 // some ops. The debug eager mode enables these checks by default, but can
@@ -193,6 +198,7 @@ inline constexpr auto kEnvVarToStage =
         {kTorchTpuDeferAndFuseEnvVar, SymbolStage::Experimental()},
         {kTorchTpuHandshakePortEnvVar, SymbolStage::InternalApi()},
         {kTorchTpuInternalDetectRepeatedOpsEnvVar, std::nullopt},
+        {kTorchTpuInternalDisableInplaceBufferDonationEnvVar, std::nullopt},
         {kTorchTpuInternalEnableDebugChecksEnvVar, std::nullopt},
         {kTorchTpuInternalHandshakeStageEnvVar, SymbolStage::InternalApi()},
         {kTorchTpuInternalMaterializeCollectiveTensorsEnvVar, std::nullopt},

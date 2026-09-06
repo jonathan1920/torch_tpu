@@ -110,10 +110,10 @@ absl::StatusOr<mlir::MlirOp> BuildLogitShlo(mlir::MlirOp input_op,
   return mlir::stablehlo::ConvertElementType(log_out, output_dtype);
 }
 
-absl::StatusOr<DeviceBufferRef> BuildLogitBuffer(const at::Tensor& self,
-                                                 PromotedScalar& promoted_eps,
-                                                 c10::ScalarType out_type,
-                                                 OpParamCacheKeys param_keys) {
+absl::StatusOr<DeviceBufferRef> BuildLogitBuffer(
+    const at::Tensor& self, PromotedScalar& promoted_eps,
+    c10::ScalarType out_type, OpParamCacheKeys param_keys,
+    std::optional<at::Tensor> out = std::nullopt) {
   const c10::ScalarType self_dtype = self.scalar_type();
   TT_RET_CHECK(!c10::isComplexType(self_dtype),
                error::kPythonNotImplementedError)
@@ -130,10 +130,18 @@ absl::StatusOr<DeviceBufferRef> BuildLogitBuffer(const at::Tensor& self,
     return BuildLogitShlo(self_op, eps_op, out_dtype);
   };
 
+  // If `out` aliases `self`, donate input 0's device buffer to the output in
+  // eligible eager modes (DeferNever) to avoid memory allocation churn.
+  Indices donated_indices;
+  if (out.has_value() && ShouldDonateInPlaceBuffer(*out, self, out_dtype)) {
+    donated_indices = {0};
+  }
+
   return DispatchOp<2>(std::move(op_builder), {self, eps_tensor},
                        {.out_dtype = out_dtype,
                         .out_dims = CopyIntVector(self.sizes()),
-                        .op_param_cache_keys = std::move(param_keys)});
+                        .op_param_cache_keys = std::move(param_keys),
+                        .donated_indices = std::move(donated_indices)});
 }
 
 absl::StatusOr<mlir::MlirOp> BuildLogitBackwardShlo(
@@ -228,9 +236,9 @@ at::Tensor& AtenLogitOut(const at::Tensor& self, std::optional<double> eps,
   PromotedScalar promoted_eps = PromoteScalar(at::Scalar(eps.value_or(-1.0)));
   TT_KERNEL(OpName::kLogitOut, param_keys, (self, promoted_eps, out), {
     const c10::ScalarType out_type = out.scalar_type();
-    TT_ASSIGN_OR_THROW(
-        DeviceBufferRef result_buf,
-        BuildLogitBuffer(self, promoted_eps, out_type, std::move(param_keys)));
+    TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
+                       BuildLogitBuffer(self, promoted_eps, out_type,
+                                        std::move(param_keys), out));
 
     TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
@@ -241,9 +249,9 @@ at::Tensor& AtenLogit_(at::Tensor& self, std::optional<double> eps) {
   PromotedScalar promoted_eps = PromoteScalar(at::Scalar(eps.value_or(-1.0)));
   TT_KERNEL(OpName::kLogit_, param_keys, (self, promoted_eps), {
     const c10::ScalarType out_type = self.scalar_type();
-    TT_ASSIGN_OR_THROW(
-        DeviceBufferRef result_buf,
-        BuildLogitBuffer(self, promoted_eps, out_type, std::move(param_keys)));
+    TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
+                       BuildLogitBuffer(self, promoted_eps, out_type,
+                                        std::move(param_keys), self));
 
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
     return self;
@@ -277,13 +285,26 @@ at::Tensor& AtenLogitBackwardGradInput(const at::Tensor& grad_output,
                                         out_dtype);
         };
 
+        // If `grad_input` aliases `grad_output` or `self`, donate that input's
+        // device buffer to the output in eligible eager modes (DeferNever) to
+        // avoid allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(grad_input, grad_output, out_dtype,
+                                      self.sizes())) {
+          donated_indices = {0};
+        } else if (ShouldDonateInPlaceBuffer(grad_input, self, out_dtype,
+                                             self.sizes())) {
+          donated_indices = {1};
+        }
+
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
             DispatchOp<3>(std::move(op_builder),
                           {grad_output, self, eps_tensor},
                           {.out_dtype = out_dtype,
                            .out_dims = CopyIntVector(self.sizes()),
-                           .op_param_cache_keys = std::move(param_keys)}));
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
 
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(result_buf), grad_input));

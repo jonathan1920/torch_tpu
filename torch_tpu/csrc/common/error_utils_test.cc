@@ -36,7 +36,9 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "torch_tpu/csrc/common/cache_key.h"
+#include "torch_tpu/csrc/common/context_states.h"
 #include "torch_tpu/csrc/common/env_vars.h"
+#include "torch_tpu/csrc/common/status_builder.h"
 #include "torch_tpu/csrc/common/status_test_utils.h"
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/eager_mode.h"
@@ -60,8 +62,13 @@ using testing::Throws;
 // https://docs.pytorch.org/docs/stable/debugging_environment_variables.html,
 // this disables C++ context in pytorch errors. This can be done only once per
 // process as pytorch caches the value of this variable.
-static const auto kInitShowCppContext =
-    setenv("TORCH_SHOW_CPP_STACKTRACES", "0", /*overwrite=*/1);
+static const auto kInitShowCppContext = []() {
+  setenv("TORCH_SHOW_CPP_STACKTRACES", "0", /*overwrite=*/1);
+  // Trigger TorchTPU's one-time warning for TORCH_SHOW_CPP_STACKTRACES during
+  // static initialization before any test or ScopedLogSink starts.
+  static_cast<void>(TorchShowCppStacktraces());
+  return 0;
+}();
 
 // Matches a callback that throws a TtError whose .what)
 // matches the given message string matcher.
@@ -1454,7 +1461,6 @@ TEST(ErrorMessageGuidelinesWarningTest, NoWarningAfterXlaErrorSentinel) {
                    /* context= */ "the task has failed",
                    /* xla_error_message= */ "the dtype cannot be f32"),
                c10::Error);
-
   EXPECT_TRUE(sink.warnings.empty());
 }
 

@@ -601,10 +601,26 @@ void DispatchSgd(at::TensorList self, at::TensorList grads,
                         found_inf_mode, out_dtypes);
   };
 
+  const bool has_momentum = (momentum_mode == MomentumMode::kEnabled);
+  const bool has_grad_scale = (grad_scale_mode == GradScaleMode::kEnabled);
+  Indices donated_indices;
+  donated_indices.reserve(
+      (1 + (has_grad_scale ? 1 : 0) + (has_momentum ? 1 : 0)) * num_tensors);
+  for (size_t i = 0; i < num_tensors; ++i) {
+    donated_indices.push_back(i);  // self
+    if (has_grad_scale) {
+      donated_indices.push_back(1 * num_tensors + i);  // grads
+    }
+    if (has_momentum) {
+      donated_indices.push_back(2 * num_tensors + i);  // momentum_buffer_list
+    }
+  }
+
   DispatchOpOptions<kDynamicSize> options = {
       .out_dtypes = out_dtypes,
       .out_dims_list = std::move(out_dims_list),
       .op_param_cache_keys = std::move(param_keys),
+      .donated_indices = std::move(donated_indices),
   };
 
   TT_ASSIGN_OR_THROW(auto result_buffers,

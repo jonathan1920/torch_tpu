@@ -136,7 +136,7 @@ absl::StatusOr<Dimensions> ComputeOutputShape(
 absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
     const at::Tensor& self, const c10::optional<at::Tensor>& min_,
     const c10::optional<at::Tensor>& max_, at::ScalarType output_scalar_type,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys, std::optional<at::Tensor> out = std::nullopt) {
   auto min = SanitizeOptionalTensor(min_);
   auto max = SanitizeOptionalTensor(max_);
 
@@ -151,6 +151,22 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
   TT_RETURN_IF_ERROR(ValidateCanCastComputationToOutput(
       self, min, max, computation_scalar_type, output_scalar_type));
 
+  // If `out` aliases `self`, `min`, or `max`, donate that device buffer to the
+  // output in eligible eager modes (DeferNever) to avoid memory allocation
+  // churn.
+  Indices donated_indices;
+  if (out.has_value()) {
+    if (ShouldDonateInPlaceBuffer(*out, self, output_dtype, output_dims)) {
+      donated_indices = {0};
+    } else if (min && ShouldDonateInPlaceBuffer(*out, *min, output_dtype,
+                                                output_dims)) {
+      donated_indices = {1};
+    } else if (max && ShouldDonateInPlaceBuffer(*out, *max, output_dtype,
+                                                output_dims)) {
+      donated_indices = {min ? 2 : 1};
+    }
+  }
+
   if (min && max) {
     auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
       auto& [self, min, max] = inputs;
@@ -161,7 +177,8 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
-                          .op_param_cache_keys = std::move(param_keys)});
+                          .op_param_cache_keys = std::move(param_keys),
+                          .donated_indices = std::move(donated_indices)});
 
   } else if (min) {
     auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
@@ -172,7 +189,8 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
-                          .op_param_cache_keys = std::move(param_keys)});
+                          .op_param_cache_keys = std::move(param_keys),
+                          .donated_indices = std::move(donated_indices)});
 
   } else if (max) {
     auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
@@ -183,7 +201,8 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
-                          .op_param_cache_keys = std::move(param_keys)});
+                          .op_param_cache_keys = std::move(param_keys),
+                          .donated_indices = std::move(donated_indices)});
 
   } else {
     auto op_builder = [](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
@@ -194,7 +213,8 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
-                          .op_param_cache_keys = std::move(param_keys)});
+                          .op_param_cache_keys = std::move(param_keys),
+                          .donated_indices = std::move(donated_indices)});
   }
 }
 
@@ -202,7 +222,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
 absl::StatusOr<DeviceBufferRef> ClampScalarHelper(
     const at::Tensor& self, std::optional<PromotedScalar> min,
     std::optional<PromotedScalar> max, at::ScalarType output_scalar_type,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys, std::optional<at::Tensor> out = std::nullopt) {
   std::optional<at::Tensor> min_tensor;
   if (min.has_value()) {
     TT_ASSIGN_OR_RETURN(auto t, min->GetTensor());
@@ -214,7 +234,7 @@ absl::StatusOr<DeviceBufferRef> ClampScalarHelper(
     max_tensor = std::move(t);
   }
   return AtenClampTensorHelper(self, min_tensor, max_tensor, output_scalar_type,
-                               std::move(param_keys));
+                               std::move(param_keys), std::move(out));
 }
 
 absl::Status ValidateNotBool(const at::Tensor& tensor,
@@ -239,7 +259,7 @@ at::Tensor& AtenClampOut(const at::Tensor& self,
             auto result_buf,
             ClampScalarHelper(self, std::move(promoted_min),
                               std::move(promoted_max), out.scalar_type(),
-                              std::move(param_keys)));
+                              std::move(param_keys), out));
         TT_THROW_IF_ERROR(
             ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
@@ -255,7 +275,7 @@ at::Tensor& AtenClampMinOut(const at::Tensor& self, const at::Scalar& min,
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         ClampScalarHelper(self, std::move(promoted_min), std::nullopt,
-                          out.scalar_type(), std::move(param_keys)));
+                          out.scalar_type(), std::move(param_keys), out));
     TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
@@ -270,7 +290,7 @@ at::Tensor& AtenClampMaxOut(const at::Tensor& self, const at::Scalar& max,
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         ClampScalarHelper(self, std::nullopt, std::move(promoted_max),
-                          out.scalar_type(), std::move(param_keys)));
+                          out.scalar_type(), std::move(param_keys), out));
     TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
@@ -284,7 +304,7 @@ at::Tensor& AtenClampTensorOut(const at::Tensor& self,
   TT_KERNEL(OpName::kClampTensorOut, param_keys, (self, min, max, out), {
     TT_ASSIGN_OR_THROW(auto result_buf,
                        AtenClampTensorHelper(self, min, max, out.scalar_type(),
-                                             std::move(param_keys)));
+                                             std::move(param_keys), out));
     TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
@@ -297,7 +317,7 @@ at::Tensor& AtenClampMinTensorOut(const at::Tensor& self, const at::Tensor& min,
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         AtenClampTensorHelper(self, min, std::nullopt, out.scalar_type(),
-                              std::move(param_keys)));
+                              std::move(param_keys), out));
     TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
@@ -310,7 +330,7 @@ at::Tensor& AtenClampMaxTensorOut(const at::Tensor& self, const at::Tensor& max,
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         AtenClampTensorHelper(self, std::nullopt, max, out.scalar_type(),
-                              std::move(param_keys)));
+                              std::move(param_keys), out));
     TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;

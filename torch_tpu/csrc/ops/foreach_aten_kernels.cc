@@ -32,6 +32,7 @@
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "c10/core/DefaultDtype.h"
@@ -47,9 +48,11 @@
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
+#include "torch_tpu/csrc/common/op_name_stack.h"
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
+#include "torch_tpu/csrc/eager/eager_mode.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/binary.h"
@@ -86,24 +89,6 @@ c10::ScalarType GetOutputDtypeFromTensorAndScalar(const at::Tensor& tensor,
     // promote the types to the scalar's integer type.
     return c10::promoteTypes(tensor.scalar_type(), scalar.type());
   }
-}
-
-// If the input scalar is Boolean, converts it to int. Otherwise, returns it
-// unchanged.
-at::Scalar BoolScalarToInt(const at::Scalar& scalar) {
-  if (scalar.type() == at::ScalarType::Bool) {
-    return at::Scalar(scalar.to<bool>() ? 1 : 0);
-  }
-  return scalar;
-}
-
-// If the input tensor is Boolean, converts it to int. Otherwise, returns it
-// unchanged.
-at::Tensor BoolTensorToInt(const at::Tensor& tensor) {
-  if (tensor.scalar_type() == at::kBool) {
-    return tensor.to(at::kInt);
-  }
-  return tensor;
 }
 
 absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachShlo(
@@ -346,6 +331,44 @@ std::vector<absl::Span<const int64_t>> GetDimsList(at::TensorList tensor_list) {
     dims_list.push_back(tensor_list[i].sizes());
   }
   return dims_list;
+}
+
+// Returns true if the active TT_KERNEL() op name represents an in-place op.
+// In PyTorch/TorchTPU ATen op naming, in-place foreach ops end with '_' (e.g.
+// "_foreach_abs_") or contain "_." before an overload (e.g.
+// "_foreach_add_.List").
+bool IsCurrentOpInPlace() {
+  const std::optional<OpName> maybe_op = internal::OpNameStack::MaybeTop();
+  if (!maybe_op.has_value()) return false;
+  std::string_view name = ToBaseName(*maybe_op);
+  return name.ends_with('_') || absl::StrContains(name, "_.");
+}
+
+// Populates the list of input indices to donate for foreach ops when executed
+// in-place. Each input i (0 <= i < self.size()) corresponds 1-to-1 with output
+// i.
+Indices GetForeachDonatedIndices(at::TensorList self, DtypeSpan out_dtypes) {
+  Indices donated_indices;
+  if (!IsInplaceBufferDonationEnabled()) return donated_indices;
+
+  const auto eager_mode = GetEagerMode();
+  if (!IsDeferNeverMode(eager_mode)) return donated_indices;
+
+  if (!IsCurrentOpInPlace()) return donated_indices;
+
+  // For in-place foreach ops (e.g., `torch._foreach_add_`), there is no
+  // separate `out` argument. By PyTorch in-place semantics, `self[i]` is both
+  // the input operand and the destination tensor that receives output `i`.
+  // Because input `self[i]` and output `i` represent the exact same tensor,
+  // they alias by definition. Therefore, input index `i` is donated to output
+  // `i`.
+  for (size_t i = 0; i < self.size(); ++i) {
+    if (ShouldDonateInPlaceBuffer(self[i], self[i].sizes(), out_dtypes[i],
+                                  eager_mode)) {
+      donated_indices.push_back(i);
+    }
+  }
+  return donated_indices;
 }
 
 absl::StatusOr<DtypeVec> GetOutputDtypes(at::TensorList self,
@@ -641,7 +664,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachUnaryOp(
       .op_name = op_name,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
-      .op_param_cache_keys = OpParamCacheKeys::Empty()};
+      .op_param_cache_keys = OpParamCacheKeys::Empty(),
+      .donated_indices = GetForeachDonatedIndices(self, out_dtypes)};
 
   TT_ASSIGN_OR_RETURN(std::vector<DeviceBufferRef> result_buffers,
                       (DispatchOp<kDynamicSize, kDynamicSize>(
@@ -724,6 +748,7 @@ std::vector<DeviceBufferRef> ForeachAddList(
       .out_dtypes = out_dtypes,
       .out_dims_list = absl::MakeConstSpan(out_dims_list),
       .op_param_cache_keys = std::move(param_keys),
+      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
   TT_ASSIGN_OR_THROW(auto result_buffers,
                      (DispatchOp<kDynamicSize, kDynamicSize>(
@@ -770,6 +795,7 @@ std::vector<DeviceBufferRef> ForeachAddcdiv(at::TensorList self,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
+      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
 
   TT_ASSIGN_OR_THROW(auto result_buffers,
@@ -817,6 +843,7 @@ std::vector<DeviceBufferRef> ForeachAddcmul(at::TensorList self,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
+      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
 
   TT_ASSIGN_OR_THROW(auto result_buffers,
@@ -914,6 +941,7 @@ std::vector<DeviceBufferRef> ForeachDiv(at::TensorList self,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
+      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
 
   TT_ASSIGN_OR_THROW(auto result_buffers,
@@ -957,6 +985,7 @@ std::vector<DeviceBufferRef> ForeachLerp(at::TensorList self,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
+      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
 
   TT_ASSIGN_OR_THROW(auto result_buffers,
@@ -993,6 +1022,7 @@ std::vector<DeviceBufferRef> ForeachMulList(at::TensorList self,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
+      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
 
   // Dispatch the op and prepare results.

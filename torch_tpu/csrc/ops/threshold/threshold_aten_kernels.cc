@@ -91,13 +91,22 @@ at::Tensor& AtenThresholdOut(const at::Tensor& self,
           return BuildThresholdShlo(inputs[0], inputs[1], inputs[2]);
         };
 
+        // If `out` aliases `self`, donate input 0's device buffer to the output
+        // in eligible eager modes (DeferNever) to avoid memory allocation
+        // churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(out, self, output_dtype)) {
+          donated_indices = {0};
+        }
+
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
             DispatchOp<3>(std::move(op_builder),
                           {self, threshold_tensor, value_tensor},
                           {.out_dtype = output_dtype,
                            .out_dims = self.sizes(),
-                           .op_param_cache_keys = std::move(param_keys)}));
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });
@@ -124,13 +133,26 @@ at::Tensor& AtenThresholdBackwardGradInput(const at::Tensor& grad_output,
           return BuildThresholdBackwardShlo(inputs[0], inputs[1], inputs[2]);
         };
 
+        // If `grad_input` aliases `grad_output` or `self`, donate that input's
+        // device buffer to the output in eligible eager modes (DeferNever) to
+        // avoid allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(grad_input, grad_output, output_dtype,
+                                      self.sizes())) {
+          donated_indices = {0};
+        } else if (ShouldDonateInPlaceBuffer(grad_input, self, output_dtype,
+                                             self.sizes())) {
+          donated_indices = {1};
+        }
+
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
             DispatchOp<3>(std::move(op_builder),
                           {grad_output, self, threshold_tensor},
                           {.out_dtype = output_dtype,
                            .out_dims = self.sizes(),
-                           .op_param_cache_keys = std::move(param_keys)}));
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(result_buf), grad_input));
         return grad_input;

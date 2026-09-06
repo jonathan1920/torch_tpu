@@ -47,7 +47,6 @@
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
-#include "torch_tpu/csrc/ops/nullary_aten_kernels.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
@@ -560,12 +559,21 @@ at::Tensor& AtenFftC2cOut(const at::Tensor& self, at::IntArrayRef dim,
           return BuildFftC2cShlo(input, normalized_dims, norm_enum, forward);
         };
 
+        // If `out` aliases `self`, donate input 0's device buffer to the
+        // output in eligible eager modes (DeferNever) to avoid allocation
+        // churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(out, self, output_dtype, out.sizes())) {
+          donated_indices = {0};
+        }
+
         TT_ASSIGN_OR_THROW(
             auto result,
             DispatchOp<1>(std::move(op_builder), self,
                           {.out_dtype = output_dtype,
                            .out_dims = CopyIntVector(out.sizes()),
-                           .op_param_cache_keys = std::move(param_keys)}));
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
 
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
         return out;

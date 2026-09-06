@@ -180,12 +180,20 @@ absl::Status MaskedSoftmaxInternalOut(const at::Tensor& self,
                                   resolved_mask_type);
   };
 
+  // If `out` aliases `self`, donate input 0's device buffer to the output in
+  // eligible eager modes (DeferNever) to avoid allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(out, self, computation_dtype, self.sizes())) {
+    donated_indices = {0};
+  }
+
   TT_ASSIGN_OR_RETURN(
       DeviceBufferRef result,
       (DispatchOp<2>(functional_builder, {self, mask},
                      {.out_dtype = computation_dtype,
                       .out_dims = self.sizes(),
-                      .op_param_cache_keys = std::move(param_keys)})));
+                      .op_param_cache_keys = std::move(param_keys),
+                      .donated_indices = std::move(donated_indices)})));
 
   return AssignBufferToAtTensor(std::move(result), out);
 }
@@ -223,12 +231,25 @@ absl::Status MaskedSoftmaxBackwardInternalOut(const at::Tensor& grad_output,
                                               mask_op, wrapped_dim, precision);
   };
 
+  // If `grad_input` aliases `grad_output` or `output`, donate that input's
+  // device buffer to the output in eligible eager modes (DeferNever) to avoid
+  // allocation churn.
+  Indices donated_indices;
+  if (ShouldDonateInPlaceBuffer(grad_input, grad_output, computation_dtype,
+                                output.sizes())) {
+    donated_indices = {0};
+  } else if (ShouldDonateInPlaceBuffer(grad_input, output, computation_dtype,
+                                       output.sizes())) {
+    donated_indices = {1};
+  }
+
   TT_ASSIGN_OR_RETURN(
       DeviceBufferRef result,
       (DispatchOp<3>(functional_builder, {grad_output, output, mask},
                      {.out_dtype = computation_dtype,
                       .out_dims = output.sizes(),
-                      .op_param_cache_keys = std::move(param_keys)})));
+                      .op_param_cache_keys = std::move(param_keys),
+                      .donated_indices = std::move(donated_indices)})));
 
   return AssignBufferToAtTensor(std::move(result), grad_input);
 }

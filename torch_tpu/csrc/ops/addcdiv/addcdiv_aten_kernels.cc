@@ -21,10 +21,8 @@
 #include "ATen/core/ATen_fwd.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/dtype.h"
@@ -87,13 +85,29 @@ at::Tensor& AtenAddcdivOut(const at::Tensor& self, const at::Tensor& tensor1,
 
         TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
                            ConvertTo<mlir::ElementType>(out.scalar_type()));
+
+        // If `out` aliases one of the input tensors, donate that input's device
+        // buffer in eligible eager modes (DeferNever) to avoid allocation
+        // churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(out, self, out_dtype, expected_size)) {
+          donated_indices = {0};
+        } else if (ShouldDonateInPlaceBuffer(out, tensor1, out_dtype,
+                                             expected_size)) {
+          donated_indices = {1};
+        } else if (ShouldDonateInPlaceBuffer(out, tensor2, out_dtype,
+                                             expected_size)) {
+          donated_indices = {2};
+        }
+
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
             DispatchOp<4>(std::move(op_builder),
                           {self, tensor1, tensor2, value_tensor},
                           {.out_dtype = out_dtype,
                            .out_dims = CopyIntVector(out.sizes()),
-                           .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                           .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                           .donated_indices = std::move(donated_indices)}));
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(result_buffer), out));
         return out;

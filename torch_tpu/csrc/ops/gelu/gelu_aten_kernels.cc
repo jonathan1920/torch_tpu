@@ -16,7 +16,6 @@
 
 #include "torch_tpu/csrc/ops/gelu/gelu_aten_kernels.h"
 
-#include <functional>
 #include <string>
 #include <utility>
 
@@ -32,6 +31,7 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
+#include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
@@ -133,13 +133,26 @@ at::Tensor& AtenGeluBackwardGradInput(const at::Tensor& grad_output,
         };
         auto output_shape = CopyIntVector(self.sizes());
 
+        // If `grad_input` aliases `grad_output` or `self`, donate that input's
+        // device buffer to the output in eligible eager modes (DeferNever) to
+        // avoid allocation churn.
+        Indices donated_indices;
+        if (ShouldDonateInPlaceBuffer(grad_input, grad_output, out_dtype,
+                                      output_shape)) {
+          donated_indices = {0};
+        } else if (ShouldDonateInPlaceBuffer(grad_input, self, out_dtype,
+                                             output_shape)) {
+          donated_indices = {1};
+        }
+
         TT_ASSIGN_OR_THROW(
             auto result,
             DispatchOp<2>(std::move(op_builder), {grad_output, self},
                           /*options=*/
                           {.out_dtype = out_dtype,
                            .out_dims = output_shape,
-                           .op_param_cache_keys = std::move(param_keys)}));
+                           .op_param_cache_keys = std::move(param_keys),
+                           .donated_indices = std::move(donated_indices)}));
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(result), grad_input));
         return grad_input;

@@ -30,6 +30,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/common:dtype",
         "//torch_tpu/csrc/common:error_utils",
         "//torch_tpu/csrc/common:fixed_size_span",
+        "//torch_tpu/csrc/common:utils",
         "//torch_tpu/csrc/eager:device_buffer",
         "//torch_tpu/csrc/eager:op_dispatcher",
         "//torch_tpu/csrc/eager:tensor_to_buffer",
