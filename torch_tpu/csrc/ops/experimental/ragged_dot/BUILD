@@ -39,6 +39,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops:op_names",
         "//torch_tpu/csrc/ops:precision_context",
         "//torch_tpu/csrc/ops/macros:kernel",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",

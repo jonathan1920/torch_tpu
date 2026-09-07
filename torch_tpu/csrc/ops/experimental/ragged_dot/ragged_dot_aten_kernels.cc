@@ -23,6 +23,7 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/core/dispatch/Dispatcher.h"
 #include "ATen/ops/result_type.h"
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -218,12 +219,16 @@ at::Tensor AtenRaggedDotAutograd::forward(torch::autograd::AutogradContext* ctx,
                                           const at::Tensor& rhs,
                                           const at::Tensor& group_sizes) {
   ctx->save_for_backward({lhs, rhs, group_sizes});
+
+  // Cache the operator handle to avoid string schema lookup on every call.
+  static const absl::NoDestructor op(
+      at::Dispatcher::singleton()
+          .findSchemaOrThrow("tpu::ragged_dot", "")
+          .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
+                            const at::Tensor&)>());
+
   at::AutoDispatchBelowADInplaceOrView guard;
-  return at::Dispatcher::singleton()
-      .findSchemaOrThrow("tpu::ragged_dot", "")
-      .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
-                        const at::Tensor&)>()
-      .call(lhs, rhs, group_sizes);
+  return op->call(lhs, rhs, group_sizes);
 }
 
 torch::autograd::variable_list AtenRaggedDotAutograd::backward(
@@ -240,23 +245,30 @@ torch::autograd::variable_list AtenRaggedDotAutograd::backward(
     // rhs: [g, k, n] -> rhs_t: [g, n, k]
     // grad_out: [m, n], rhs_t: [g, n, k], group_sizes: [g] -> grad_lhs: [m, k]
     at::Tensor rhs_t = rhs.transpose(1, 2).contiguous();
+
+    // Cache the operator handle to avoid string schema lookup on every call.
+    static const absl::NoDestructor op(
+        at::Dispatcher::singleton()
+            .findSchemaOrThrow("tpu::ragged_dot", "")
+            .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
+                              const at::Tensor&)>());
+
     at::AutoDispatchBelowADInplaceOrView guard;
-    grad_lhs = at::Dispatcher::singleton()
-                   .findSchemaOrThrow("tpu::ragged_dot", "")
-                   .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
-                                     const at::Tensor&)>()
-                   .call(grad_out, rhs_t, group_sizes);
+    grad_lhs = op->call(grad_out, rhs_t, group_sizes);
   }
 
   at::Tensor grad_rhs;  // UNINITIALIZED_TENSOR_OK
   if (ctx->needs_input_grad(1)) {
     // lhs: [m, k], grad_out: [m, n], group_sizes: [g] -> grad_rhs: [g, k, n]
+    // Cache the operator handle to avoid string schema lookup on every call.
+    static const absl::NoDestructor op(
+        at::Dispatcher::singleton()
+            .findSchemaOrThrow("tpu::ragged_dot_weight_grad", "")
+            .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
+                              const at::Tensor&)>());
+
     at::AutoDispatchBelowADInplaceOrView guard;
-    grad_rhs = at::Dispatcher::singleton()
-                   .findSchemaOrThrow("tpu::ragged_dot_weight_grad", "")
-                   .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
-                                     const at::Tensor&)>()
-                   .call(lhs, grad_out, group_sizes);
+    grad_rhs = op->call(lhs, grad_out, group_sizes);
   }
 
   return {grad_lhs, grad_rhs, at::Tensor()};

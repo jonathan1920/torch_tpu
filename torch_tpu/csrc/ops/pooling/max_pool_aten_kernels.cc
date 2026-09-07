@@ -32,6 +32,7 @@
 #include "ATen/core/dispatch/Dispatcher.h"
 #include "ATen/ops/empty.h"
 #include "ATen/ops/max_pool2d_with_indices.h"
+#include "absl/base/no_destructor.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -998,12 +999,15 @@ at::Tensor TpuMaxPool2dAutograd::forward(
   ctx->saved_data["dilation"] = dilation.vec();        // VEC_OK
   ctx->saved_data["ceil_mode"] = ceil_mode;
 
+  // Cache the operator handle to avoid string schema lookup on every call.
+  static const absl::NoDestructor op(
+      at::Dispatcher::singleton()
+          .findSchemaOrThrow("tpu::max_pool2d", "")
+          .typed<at::Tensor(const at::Tensor&, at::IntArrayRef, at::IntArrayRef,
+                            at::IntArrayRef, at::IntArrayRef, bool)>());
+
   at::AutoDispatchBelowADInplaceOrView guard;
-  return at::Dispatcher::singleton()
-      .findSchemaOrThrow("tpu::max_pool2d", "")
-      .typed<at::Tensor(const at::Tensor&, at::IntArrayRef, at::IntArrayRef,
-                        at::IntArrayRef, at::IntArrayRef, bool)>()
-      .call(self, kernel_size, stride, padding, dilation, ceil_mode);
+  return op->call(self, kernel_size, stride, padding, dilation, ceil_mode);
 }
 
 torch::autograd::variable_list TpuMaxPool2dAutograd::backward(
@@ -1019,15 +1023,17 @@ torch::autograd::variable_list TpuMaxPool2dAutograd::backward(
 
   auto grad_output = grad_outputs[0];
 
-  at::AutoDispatchBelowADInplaceOrView guard;
-  auto grad_input =
+  // Cache the operator handle to avoid string schema lookup on every call.
+  static const absl::NoDestructor op(
       at::Dispatcher::singleton()
           .findSchemaOrThrow("tpu::max_pool2d_backward", "")
           .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
                             at::IntArrayRef, at::IntArrayRef, at::IntArrayRef,
-                            at::IntArrayRef, bool)>()
-          .call(grad_output, self, kernel_size, stride, padding, dilation,
-                ceil_mode);
+                            at::IntArrayRef, bool)>());
+
+  at::AutoDispatchBelowADInplaceOrView guard;
+  auto grad_input = op->call(grad_output, self, kernel_size, stride, padding,
+                             dilation, ceil_mode);
   return {grad_input,   at::Tensor(), at::Tensor(),
           at::Tensor(), at::Tensor(), at::Tensor()};
 }
