@@ -131,7 +131,6 @@
 #include "torch_tpu/csrc/ops/leaky_relu/leaky_relu_aten_kernels.h"
 #include "torch_tpu/csrc/ops/lerp/lerp_aten_kernels.h"
 #include "torch_tpu/csrc/ops/linalg/linalg_kernels.h"
-#include "torch_tpu/csrc/ops/linalg/linalg_svd_kernels.h"
 #include "torch_tpu/csrc/ops/linalg/lu/linalg_lu_kernels.h"
 #include "torch_tpu/csrc/ops/linalg/qr/linalg_qr_kernels.h"
 #include "torch_tpu/csrc/ops/linalg/solve_triangular/linalg_solve_triangular_kernels.h"
@@ -739,7 +738,6 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kLinalgSolveTriangular>(m, AtenLinalgSolveTriangular);
   ImplStable<OpName::kLinalgSolveTriangularOut>(m,
                                                 AtenLinalgSolveTriangularOut);
-  ImplStable<OpName::kLinalgSvdU>(m, AtenLinalgSvdU);
   ImplStable<OpName::kLinalgVectorNormOut>(m, AtenLinalgVectorNormOut);
   ImplStable<OpName::kLinspaceOut>(m, AtenLinspaceOut);
   ImplStable<OpName::kLocalScalarDense>(m, AtenLocalScalarDense);
