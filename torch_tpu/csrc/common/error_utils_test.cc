@@ -18,7 +18,13 @@
 
 #include "torch_tpu/csrc/common/error_utils.h"
 
+#include <ftw.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <cstdlib>
+#include <fstream>
+#include <ios>
 #include <map>
 #include <memory>
 #include <string>
@@ -27,11 +33,14 @@
 #include <vector>
 
 #include "absl/base/log_severity.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/log_entry.h"
 #include "absl/log/log_sink.h"
 #include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "c10/util/Exception.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -53,6 +62,7 @@ using testing::DescribeMatcher;
 using testing::ElementsAre;
 using testing::HasSubstr;
 using testing::Matcher;
+using testing::Not;
 using testing::Pair;
 using testing::Pointee;
 using testing::Property;
@@ -1296,8 +1306,8 @@ TEST(SafeWrapDim, ReturnsZeroOnValidDimForZeroDimBound) {
 
 // Tests for AdaptVfioDeviceCollisionError.
 
-TEST(VfioDeviceCollisionTest, AdaptDetectsAllCollisionPatterns) {
-  // "iommu group" substring with INTERNAL code.
+TEST(VfioDeviceCollisionTest, AdaptDetectsBothCollisionPatterns) {
+  // "iommu group" substring.
   {
     const absl::Status s(
         error::kInternal,
@@ -1305,15 +1315,15 @@ TEST(VfioDeviceCollisionTest, AdaptDetectsAllCollisionPatterns) {
         "(os error 16)");
     const absl::Status adapted = AdaptVfioDeviceCollisionError(s);
     EXPECT_EQ(adapted.code(), error::kInternal);
-    EXPECT_THAT(std::string(adapted.message()),
-                HasSubstr("TPU_VISIBLE_DEVICES"));
+    EXPECT_THAT(
+        std::string(adapted.message()),
+        AllOf(HasSubstr("/dev/vfio/0"), HasSubstr("TPU_VISIBLE_DEVICES")));
   }
-  // "vfio container" substring with INTERNAL code.
+  // "vfio container" substring.
   {
     const absl::Status s(
         error::kInternal,
-        "Couldn't open vfio container /dev/vfio/vfio: Device or resource "
-        "busy");
+        "Couldn't open vfio container /dev/vfio/vfio: Device or resource busy");
     const absl::Status adapted = AdaptVfioDeviceCollisionError(s);
     EXPECT_EQ(adapted.code(), error::kInternal);
     EXPECT_THAT(std::string(adapted.message()),
@@ -1321,35 +1331,145 @@ TEST(VfioDeviceCollisionTest, AdaptDetectsAllCollisionPatterns) {
   }
 }
 
-TEST(VfioDeviceCollisionTest, AdaptRewritesMessagePreservesCode) {
-  // EACCES + FAILED_PRECONDITION (real-hardware shape).
+TEST(VfioDeviceCollisionTest, AdaptPreservesStatusCode) {
   const absl::Status s(
       error::kFailedPrecondition,
       "Couldn't open iommu group /dev/vfio/0: Device or resource busy");
   const absl::Status adapted = AdaptVfioDeviceCollisionError(s);
-  // Status code preserved.
   EXPECT_EQ(adapted.code(), error::kFailedPrecondition);
   EXPECT_THAT(std::string(adapted.message()), HasSubstr("TPU_VISIBLE_DEVICES"));
 }
 
-TEST(VfioDeviceCollisionTest, AdaptIgnoresNonCollisionErrors) {
-  // Unrelated INTERNAL error.
+TEST(VfioDeviceCollisionTest, AdaptPassesThroughNonCollisionAndOk) {
+  EXPECT_TRUE(AdaptVfioDeviceCollisionError(absl::OkStatus()).ok());
   {
     const absl::Status s(error::kInternal, "some other failure");
     EXPECT_EQ(AdaptVfioDeviceCollisionError(s), s);
   }
-  // PERMISSION_DENIED on a non-VFIO path.
   {
     const absl::Status s(error::kPermissionDenied,
                          "open(/some/other/file): Permission denied");
     EXPECT_EQ(AdaptVfioDeviceCollisionError(s), s);
   }
+  // Non-collision errors mentioning a device node must not be adapted.
+  {
+    const absl::Status s(error::kInternal,
+                         "failed to frob /dev/vfio/0 for reasons");
+    EXPECT_EQ(AdaptVfioDeviceCollisionError(s), s);
+  }
 }
 
-TEST(VfioDeviceCollisionTest, AdaptLeavesOkAndUnrelatedErrorsUnchanged) {
-  EXPECT_TRUE(AdaptVfioDeviceCollisionError(absl::OkStatus()).ok());
-  const absl::Status s(error::kInternal, "unrelated");
-  EXPECT_EQ(AdaptVfioDeviceCollisionError(s), s);
+// Scoped temporary directory mimicking a /proc tree for testing.
+class ScopedFakeProcDir {
+ public:
+  ScopedFakeProcDir() {
+    std::string tmpl = absl::StrCat(testing::TempDir(), "/fake_proc_XXXXXX");
+    std::vector<char> buf(tmpl.begin(), tmpl.end());
+    buf.push_back('\0');
+    const char* dir = mkdtemp(buf.data());
+    ABSL_CHECK_NE(dir, nullptr);
+    root_ = dir;
+  }
+
+  ~ScopedFakeProcDir() { RemoveTree(root_); }
+
+  ScopedFakeProcDir(const ScopedFakeProcDir&) = delete;
+  ScopedFakeProcDir& operator=(const ScopedFakeProcDir&) = delete;
+
+  const std::string& root() const { return root_; }
+
+  // Adds a process entry holding `device_path` open with `cmdline_argv`.
+  void AddHolder(int pid, std::string_view device_path,
+                 absl::Span<const std::string> cmdline_argv) {
+    const std::string pid_dir = absl::StrCat(root_, "/", pid);
+    const std::string fd_dir = absl::StrCat(pid_dir, "/fd");
+    ABSL_CHECK_EQ(mkdir(pid_dir.c_str(), 0700), 0);
+    ABSL_CHECK_EQ(mkdir(fd_dir.c_str(), 0700), 0);
+    ABSL_CHECK_EQ(symlink(std::string(device_path).c_str(),
+                          absl::StrCat(fd_dir, "/3").c_str()),
+                  0);
+    std::string cmdline;
+    for (const std::string& arg : cmdline_argv) {
+      cmdline.append(arg);
+      cmdline.push_back('\0');  // Kernel terminates each argv entry with NUL.
+    }
+    std::ofstream(absl::StrCat(pid_dir, "/cmdline"), std::ios::binary)
+        .write(cmdline.data(), cmdline.size());
+  }
+
+ private:
+  static int RemoveEntry(const char* path, const struct stat* /*sb*/,
+                         int /*typeflag*/, struct FTW* /*ftwbuf*/) {
+    return remove(path);
+  }
+
+  static void RemoveTree(const std::string& root) {
+    // FTW_DEPTH visits children first; FTW_PHYS avoids following symlinks.
+    nftw(root.c_str(), &RemoveEntry, /*nopenfd=*/16, FTW_DEPTH | FTW_PHYS);
+  }
+
+  std::string root_;
+};
+
+TEST(VfioDeviceCollisionTest, AdaptReportsHolderCmdline) {
+  ScopedFakeProcDir proc;
+  proc.AddHolder(12345, "/dev/vfio/0", {"python", "serve.py"});
+  const absl::Status s(
+      error::kInternal,
+      "Couldn't open iommu group /dev/vfio/0: Device or resource busy");
+  const absl::Status adapted =
+      internal::AdaptVfioDeviceCollisionError(s, proc.root());
+  EXPECT_THAT(std::string(adapted.message()),
+              AllOf(HasSubstr("PID 12345"), HasSubstr("python serve.py")));
+}
+
+TEST(VfioDeviceCollisionTest, AdaptIgnoresNonHolders) {
+  ScopedFakeProcDir proc;
+  proc.AddHolder(12345, "/dev/vfio/9", {"other"});
+  const absl::Status s(
+      error::kInternal,
+      "Couldn't open iommu group /dev/vfio/0: Device or resource busy");
+  const absl::Status adapted =
+      internal::AdaptVfioDeviceCollisionError(s, proc.root());
+  EXPECT_THAT(std::string(adapted.message()),
+              AllOf(Not(HasSubstr("PID ")), Not(HasSubstr("Colliding"))));
+}
+
+TEST(VfioDeviceCollisionTest, AdaptReportsHoldersEndToEnd) {
+  ScopedFakeProcDir proc;
+  proc.AddHolder(45912, "/dev/vfio/0", {"python", "serve.py"});
+  const absl::Status s(
+      error::kFailedPrecondition,
+      "Couldn't open iommu group /dev/vfio/0: Device or resource busy");
+  const absl::Status adapted =
+      internal::AdaptVfioDeviceCollisionError(s, proc.root());
+  EXPECT_EQ(adapted.code(), error::kFailedPrecondition);
+  EXPECT_THAT(
+      std::string(adapted.message()),
+      AllOf(HasSubstr("/dev/vfio/0"), HasSubstr("PID 45912"),
+            HasSubstr("python serve.py"), HasSubstr("TPU_VISIBLE_DEVICES")));
+}
+
+TEST(VfioDeviceCollisionTest, AdaptOmitsPidWhenNoHolder) {
+  ScopedFakeProcDir proc;
+  const absl::Status s(
+      error::kInternal,
+      "Couldn't open iommu group /dev/vfio/0: Device or resource busy");
+  const absl::Status adapted =
+      internal::AdaptVfioDeviceCollisionError(s, proc.root());
+  EXPECT_THAT(std::string(adapted.message()),
+              AllOf(HasSubstr("/dev/vfio/0"), Not(HasSubstr("PID ")),
+                    Not(HasSubstr("Colliding"))));
+}
+
+TEST(VfioDeviceCollisionTest, AdaptOmitsDevicePathWhenUnparseable) {
+  // Collision message without a device path is still adapted.
+  const absl::Status s(error::kInternal,
+                       "Couldn't open iommu group: Device or resource busy");
+  const absl::Status adapted = AdaptVfioDeviceCollisionError(s);
+  EXPECT_THAT(std::string(adapted.message()),
+              AllOf(HasSubstr("Failed to acquire"),
+                    HasSubstr("TPU_VISIBLE_DEVICES"), Not(HasSubstr("/dev/"))));
 }
 
 #if TT_CHECKS_ERROR_FORMAT

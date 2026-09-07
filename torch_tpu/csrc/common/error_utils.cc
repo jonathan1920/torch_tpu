@@ -16,12 +16,19 @@
 
 #include "torch_tpu/csrc/common/error_utils.h"
 
+#include <dirent.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <fstream>
+#include <ios>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -39,8 +46,10 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "c10/core/Device.h"
 #include "c10/core/WrapDimMinimal.h"
@@ -49,6 +58,7 @@
 #include "c10/util/Optional.h"
 #include "c10/util/StringUtil.h"
 #include "re2/re2.h"
+#include "torch_tpu/csrc/common/context_states.h"
 #include "torch_tpu/csrc/common/device_type.h"
 #include "torch_tpu/csrc/common/env_vars.h"
 #include "torch_tpu/csrc/common/status_builder.h"
@@ -688,37 +698,164 @@ absl::Status AdaptXlaError(const absl::Status& status,
 
 namespace {
 
+// Returns true if `message` indicates a VFIO collision. If a device node is
+// present, writes it to `*device_path`, otherwise clears it. `device_path`
+// must not be null.
+bool MatchVfioCollisionMessage(std::string_view message,
+                               std::string* device_path) {
+  // Matches libtpu error messages and extracts the optional device path.
+  // /dev/accel* is supported for future TPU generations.
+  static const LazyRE2 kVfioCollisionRe = {
+      R"(Couldn't open (?:iommu group|vfio container))"
+      R"((?: (/dev/(?:vfio|accel)[^\s:]+))?)"};
+  return RE2::PartialMatch(message, *kVfioCollisionRe, device_path);
+}
+
 // Returns true if `status` is a VFIO device-collision error, i.e. libtpu
 // couldn't open a device node because another process holds it.
 bool IsVfioDeviceCollisionError(const absl::Status& status) {
-  if (status.ok()) {
-    return false;
+  std::string unused_device_path;  // Match requires a non-null destination.
+  return !status.ok() &&
+         MatchVfioCollisionMessage(status.message(), &unused_device_path);
+}
+
+// Upper bound on the process cmdline included in error messages.
+constexpr size_t kMaxProcessNameLen = 128;
+
+// Returns the command line for `pid` read from <proc_root>/<pid>/cmdline, or
+// an empty string if unreadable.
+std::string ReadProcessName(std::string_view proc_root, int pid) {
+  std::ifstream cmdline_file(absl::StrCat(proc_root, "/", pid, "/cmdline"),
+                             std::ios::binary);
+  std::string cmdline((std::istreambuf_iterator<char>(cmdline_file)),
+                      std::istreambuf_iterator<char>());
+  // cmdline arguments are separated by null bytes ('\0').
+  std::replace(cmdline.begin(), cmdline.end(), '\0', ' ');
+  return std::string(
+      absl::StripAsciiWhitespace(cmdline).substr(0, kMaxProcessNameLen));
+}
+
+// Resolves symlinks in `path`, returning `path` unchanged on failure.
+// /proc/<pid>/fd symlinks point to canonical paths, so `path` must be
+// resolved before comparison.
+std::string CanonicalizeDevicePath(std::string_view path) {
+  const std::string path_str(path);
+  char resolved[PATH_MAX];
+  if (realpath(path_str.c_str(), resolved) != nullptr) {
+    return std::string(resolved);
   }
-  // The status code varies (INTERNAL / FAILED_PRECONDITION), so match on the
-  // message text emitted by VfioDeviceAccess::Open().
-  const std::string_view message = status.message();
-  return absl::StrContains(message, "Couldn't open iommu group") ||
-         absl::StrContains(message, "Couldn't open vfio container");
+  return path_str;
+}
+
+// Extracts the device node path (e.g. "/dev/vfio/0") from `message`, or
+// std::nullopt if none is found.
+std::optional<std::string> ExtractVfioDevicePath(std::string_view message) {
+  std::string device_path;
+  if (MatchVfioCollisionMessage(message, &device_path) &&
+      !device_path.empty()) {
+    return device_path;
+  }
+  return std::nullopt;
+}
+
+// Information about a process holding a device node open.
+struct DeviceHolder {
+  int pid = 0;
+  std::string name;
+};
+
+// Returns processes under `proc_root` holding `device_path` open.
+std::vector<DeviceHolder> FindProcessesHoldingDevice(
+    std::string_view device_path, std::string_view proc_root) {
+  std::vector<DeviceHolder> holders;
+  const std::string compare_path = CanonicalizeDevicePath(device_path);
+  const int self_pid = getpid();
+
+  std::unique_ptr<DIR, decltype(&closedir)> proc_dir(
+      opendir(std::string(proc_root).c_str()), &closedir);
+  if (proc_dir == nullptr) {
+    return holders;
+  }
+
+  while (const dirent* proc_entry = readdir(proc_dir.get())) {
+    int pid = 0;
+    if (!absl::SimpleAtoi(proc_entry->d_name, &pid) || pid == self_pid) {
+      continue;
+    }
+    const std::string fd_dir = absl::StrCat(proc_root, "/", pid, "/fd");
+    std::unique_ptr<DIR, decltype(&closedir)> fds(opendir(fd_dir.c_str()),
+                                                  &closedir);
+    if (fds == nullptr) {
+      continue;  // Skip processes we lack permission to inspect.
+    }
+    while (const dirent* fd_entry = readdir(fds.get())) {
+      const std::string fd_path = absl::StrCat(fd_dir, "/", fd_entry->d_name);
+      char link_target[PATH_MAX];
+      const ssize_t len =
+          readlink(fd_path.c_str(), link_target, sizeof(link_target) - 1);
+      if (len <= 0) {
+        continue;
+      }
+      if (std::string_view(link_target, len) == compare_path) {
+        holders.push_back({pid, ReadProcessName(proc_root, pid)});
+        break;
+      }
+    }
+  }
+  return holders;
+}
+
+// Formats the user-facing device-collision error message with colliding
+// processes and remediation steps.
+std::string FormatVfioCollisionMessage(
+    std::optional<std::string_view> device_path,
+    absl::Span<const DeviceHolder> holders) {
+  std::string msg = "[TorchTPU] Failed to acquire a TPU device node";
+  if (device_path.has_value()) {
+    absl::StrAppend(&msg, " '", *device_path, "'");
+  }
+  absl::StrAppend(&msg,
+                  " because it is already opened by another process on this "
+                  "host.");
+  if (!holders.empty()) {
+    absl::StrAppend(&msg, "\n\nColliding process(es):\n");
+    for (const DeviceHolder& holder : holders) {
+      absl::StrAppend(&msg, "  - PID ", holder.pid);
+      if (!holder.name.empty()) {
+        absl::StrAppend(&msg, " (", holder.name, ")");
+      }
+      absl::StrAppend(&msg, "\n");
+    }
+  }
+  absl::SubstituteAndAppend(
+      &msg,
+      "\n\nRemediation:\nWhen running multiple processes on a single TPU host, "
+      "each process must be allocated a distinct device. Please set the $0 "
+      "environment variable for each process, e.g.:\n  Process 0: export "
+      "$0=0\n  Process 1: export $0=1",
+      kTpuVisibleDevicesEnvVar);
+  return msg;
 }
 
 }  // namespace
 
-absl::Status AdaptVfioDeviceCollisionError(absl::Status status) {
+absl::Status internal::AdaptVfioDeviceCollisionError(
+    absl::Status status, std::string_view proc_root) {
   if (!IsVfioDeviceCollisionError(status)) {
     return status;
   }
-  // TODO(b/544962846): Add PID reporting for improved debuggability.
+  const std::optional<std::string> device_path =
+      ExtractVfioDevicePath(status.message());
+  std::vector<DeviceHolder> holders;
+  if (device_path.has_value()) {
+    holders = FindProcessesHoldingDevice(*device_path, proc_root);
+  }
   return StatusBuilder(std::move(status)).SetOverride()
-         << "[TorchTPU] Failed to acquire a TPU device node because it is "
-            "already opened by another process on this host.\n\n"
-            "Remediation:\n"
-            "When running multiple processes on a single TPU host, each "
-            "process must be allocated a distinct device. Please set the "
-         << kTpuVisibleDevicesEnvVar
-         << " environment variable for each process, e.g.:\n"
-            "  Process 0: export "
-         << kTpuVisibleDevicesEnvVar << "=0\n  Process 1: export "
-         << kTpuVisibleDevicesEnvVar << "=1";
+         << FormatVfioCollisionMessage(device_path, holders);
+}
+
+absl::Status AdaptVfioDeviceCollisionError(absl::Status status) {
+  return internal::AdaptVfioDeviceCollisionError(std::move(status), "/proc");
 }
 
 enum class ExceptionType {

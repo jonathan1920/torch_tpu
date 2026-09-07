@@ -729,6 +729,11 @@ class TtError : public std::runtime_error {
 
 namespace internal {
 
+// Like AdaptVfioDeviceCollisionError, but scans `proc_root` instead of
+// "/proc" for testing.
+absl::Status AdaptVfioDeviceCollisionError(absl::Status status,
+                                           std::string_view proc_root);
+
 // Special adaptor for use by TT_THROW_IF_ERROR for absl::Status
 // arguments. It converts a StatusBuilder to a std::runtime_error.
 //

@@ -177,6 +177,7 @@ torch_tpu_cc_library(
     srcs = ["error_utils.cc"],
     hdrs = ["error_utils.h"],
     deps = [
+        ":context_states",
         ":device_type",
         ":env_vars",
         ":macro_utils",
@@ -253,11 +254,14 @@ torch_tpu_cc_test(
         "//torch_tpu/csrc/ops:op_names",
         "//torch_tpu/csrc/ops/macros:kernel",
         "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:log_entry",
         "@com_google_absl//absl/log:log_sink",
         "@com_google_absl//absl/log:log_sink_registry",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
