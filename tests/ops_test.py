@@ -808,6 +808,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float32: {"rtol": 1.1e-4, "atol": 8.1e-5},
     },
     "_foreach_pow": {
+        torch.complex64: {"rtol": 8.8e-4, "atol": 3.4e-4},
         torch.float32: {"rtol": 5.5e-6},
         torch.int16: {"atol": 1.3},
         torch.int32: {"atol": 1.3},
@@ -1200,6 +1201,9 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     },
     "_foreach_log2": {
         torch.complex64: {"rtol": 1.1e-4},
+    },
+    "_foreach_pow": {
+        torch.complex64: {"rtol": 8.8e-4, "atol": 3.4e-4},
     },
     "_foreach_sigmoid": {
         torch.complex64: {"rtol": 1.4e-5},
@@ -2734,12 +2738,7 @@ class TestOps(op_testing.OpInfoTestBase):
 
   @category("foreach")
   def test_foreach_pow(self):
-    self.do_test_op(
-        "_foreach_pow",
-        # TODO: fix TPU failure for these dtypes.
-        exclude_dtypes=(torch.complex64,),
-        exclude_inplace_dtypes=(torch.complex64,),
-    )
+    self.do_test_op("_foreach_pow")
 
   @category("foreach")
   def test_foreach_reciprocal(self):
