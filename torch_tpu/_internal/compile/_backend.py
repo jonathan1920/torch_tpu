@@ -36,6 +36,7 @@ import contextlib
 import dataclasses
 import functools
 import hashlib
+import re
 import threading
 from typing import Any, TypeAlias
 
@@ -485,6 +486,27 @@ def _guard_input_storage_offsets(graph_module: torch.fx.GraphModule) -> None:
     dynamo_guards.install_guard(guard)
 
 
+_VALID_SYMBOL_REGEX = re.compile(r"[^a-zA-Z0-9_]")
+
+
+def _sanitize_module_name(name: str) -> str:
+  """Ensures name is a valid MLIR symbol (alphanumeric + underscores)."""
+  return _VALID_SYMBOL_REGEX.sub("_", name)
+
+
+def _get_module_name(
+    custom_module_name: str | None,
+    is_fwd: bool,
+    split_idx: int,
+) -> str | None:
+  """Extracts a human-readable module name for the compiled MLIR graph."""
+  if not custom_module_name:
+    return None
+  clean_name = _sanitize_module_name(custom_module_name)
+  phase = "fwd" if is_fwd else "bwd"
+  return f"{clean_name}_split{split_idx}_{phase}"
+
+
 class TpuBackend:
   """TPU backend for torch.compile() integration."""
 
@@ -537,6 +559,11 @@ class TpuBackend:
 
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
     _guard_input_storage_offsets(graph_module)
+    custom_module_name = (
+        options.get("custom_module_name") or options.get("name")
+        if options
+        else None
+    )
 
     compiler_instance = make_backend_compiler(
         example_inputs, async_compile=async_compile, debug=self._debug
@@ -554,16 +581,25 @@ class TpuBackend:
       fw_compiler = SerializableAOTDispatchCompiler(
           output_code_ty=compiler.CompiledArtifact,
           compiler_fn=functools.partial(  # pyrefly: ignore[bad-specialization]
-              self._compile_graph_module, compiler_instance, True
+              self._compile_graph_module,
+              compiler_instance,
+              True,
+              custom_module_name,
           ),
       )
     else:
       fw_compiler = functools.partial(
-          self._compile_graph_module, compiler_instance, True
+          self._compile_graph_module,
+          compiler_instance,
+          True,
+          custom_module_name,
       )
 
     bw_compiler = functools.partial(
-        self._compile_graph_module, compiler_instance, False
+        self._compile_graph_module,
+        compiler_instance,
+        False,
+        custom_module_name,
     )
 
     save_context = (
@@ -613,6 +649,7 @@ class TpuBackend:
       self,
       compiler_instance: compiler.Compiler,
       is_fwd: bool,
+      custom_module_name: str | None,
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[torch.Tensor],
   ) -> Callable[..., Any]:
@@ -624,6 +661,8 @@ class TpuBackend:
     Args:
       compiler_instance: Responsible for compiling the graph module.
       is_fwd: Indicates whether the forward or backward pass is being compiled.
+      custom_module_name: The base custom module name provided in backend
+        options, if any.
       graph_module: The FX graph module to compile.
       example_inputs: Example inputs to the FX graph for tracing (not the actual
         inputs).
@@ -631,7 +670,6 @@ class TpuBackend:
     Returns:
       A function that executes the compiled graph on the TPU.
     """
-
     fwd_or_bwd_str = "FORWARD" if is_fwd else "BACKWARD"
 
     _log_gm_and_inputs(
@@ -641,7 +679,12 @@ class TpuBackend:
         example_inputs,
     )
 
-    executable = compiler_instance(graph_module, example_inputs, is_fwd)
+    split_idx = len(self._compiled_executables)
+    module_name = _get_module_name(custom_module_name, is_fwd, split_idx)
+
+    executable = compiler_instance(
+        graph_module, example_inputs, is_fwd, module_name=module_name
+    )
 
     self._compiled_executables.append(executable)
 

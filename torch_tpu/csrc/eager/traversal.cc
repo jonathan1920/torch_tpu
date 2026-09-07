@@ -24,6 +24,7 @@
 #include <sstream>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -500,7 +501,8 @@ const PythonContext* absl_nullable Traversal::GetPythonContext() const {
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
     mlir::MLIRContext& mlir_context, bool use_stablehlo_bounds,
-    absl::Span<const int64_t> donated_inputs) const {
+    absl::Span<const int64_t> donated_inputs,
+    std::optional<std::string_view> module_name) const {
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=temporary
       core_pinning_mode_ == CorePinningMode::kUnpinned,
       error::kPythonNotImplementedError)
@@ -512,10 +514,15 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   absl::Span<const DeviceBufferRef> outputs = this->outputs();
 
   // Initialize the module builder and main function builder.
-  const PythonContext* absl_nullable python_context = GetPythonContext();
-  std::string module_name =
-      BuildModuleNameFromPyContext(mlir_context, python_context);
-  mlir::ModuleBuilder mb(mlir_context, module_name);
+  std::string module_name_str;
+  if (module_name.has_value() && !module_name->empty()) {
+    module_name_str = std::string(*module_name);
+  } else {
+    const PythonContext* absl_nullable python_context = GetPythonContext();
+    module_name_str =
+        BuildModuleNameFromPyContext(mlir_context, python_context);
+  }
+  mlir::ModuleBuilder mb(mlir_context, module_name_str);
   mlir::func::FunctionBuilder fb(mb, "main");
 
   // Add a function parameter for each argument DeviceBufferRef.
@@ -709,7 +716,8 @@ bool Traversal::HasSparseCoreOp() const {
 absl::StatusOr<CompiledKernel> Traversal::Compile(
     CompilationSpec spec, std::string* absl_nullable out_mlir_text,
     bool use_stablehlo_bounds, absl::Span<const CustomLayout> argument_layouts,
-    absl::Span<const int64_t> donated_inputs) const {
+    absl::Span<const int64_t> donated_inputs,
+    std::optional<std::string_view> module_name) const {
   tsl::profiler::TraceMe trace_await("Traversal::Compile");
   if (HasSparseCoreOp()) {
     absl::StatusOr<int> status =
@@ -744,11 +752,11 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   // builder before the function returns and in the same thread it is invoked.
   MlirComputationBuilder final_op_builder =
       [this, use_stablehlo_bounds, donated_inputs, argument_layouts,
-       out_mlir_text](mlir::MLIRContext& mlir_context)
+       module_name, out_mlir_text](mlir::MLIRContext& mlir_context)
       -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
-    TT_ASSIGN_OR_RETURN(
-        auto module,
-        BuildMlirModule(mlir_context, use_stablehlo_bounds, donated_inputs));
+    TT_ASSIGN_OR_RETURN(auto module,
+                        BuildMlirModule(mlir_context, use_stablehlo_bounds,
+                                        donated_inputs, module_name));
     AnnotateArgumentLayouts(*module, arguments_, argument_layouts);
     if (out_mlir_text != nullptr) {
       *out_mlir_text = MlirModuleToString(*module);

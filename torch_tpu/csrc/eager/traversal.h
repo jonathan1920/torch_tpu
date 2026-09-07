@@ -21,6 +21,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -191,7 +192,8 @@ class Traversal {
   // Builds the MLIR module for the Traversal.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> BuildMlirModule(
       mlir::MLIRContext& mlir_context, bool use_stablehlo_bounds = false,
-      absl::Span<const int64_t> donated_inputs = {}) const;
+      absl::Span<const int64_t> donated_inputs = {},
+      std::optional<std::string_view> module_name = std::nullopt) const;
 
   // Compiles the Traversal into a CompiledKernel. For static graphs, this will
   // be a single executable future. For bounded dynamic graphs, this will
@@ -205,7 +207,8 @@ class Traversal {
       CompilationSpec spec, std::string* absl_nullable out_mlir_text = nullptr,
       bool use_stablehlo_bounds = false,
       absl::Span<const CustomLayout> argument_layouts = {},
-      absl::Span<const int64_t> donated_inputs = {}) const;
+      absl::Span<const int64_t> donated_inputs = {},
+      std::optional<std::string_view> module_name = std::nullopt) const;
 
   // Returns true if any argument to the traversal has bounded dynamic
   // dimensions marked.

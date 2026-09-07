@@ -101,6 +101,8 @@ struct TraverseAndCompileOptions {
   std::vector<CustomLayout> argument_layouts;
   // Indices of arguments to donate.
   Indices donated_inputs;
+  // Optional custom module name.
+  std::optional<std::string> module_name = std::nullopt;
 };
 
 // Traverses the graph from outputs to arguments and compiles it.

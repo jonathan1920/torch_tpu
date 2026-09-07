@@ -525,7 +525,8 @@ CompileResult PyTraverseAndCompile(
     bool build_mlir_module, bool use_stablehlo_bounds,
     std::optional<std::vector<std::vector<int64_t>>>  // INT_VEC_OK
         argument_layouts_opt = std::nullopt,
-    const std::vector<int64_t>& donated_inputs = {}) {        // INT_VEC_OK
+    const std::vector<int64_t>& donated_inputs = {},  // INT_VEC_OK
+    const std::optional<std::string>& module_name = std::nullopt) {
   const std::vector<std::vector<int64_t>> argument_layouts =  // INT_VEC_OK
       std::move(argument_layouts_opt)
           .value_or(std::vector<std::vector<int64_t>>{});  // INT_VEC_OK
@@ -567,6 +568,7 @@ CompileResult PyTraverseAndCompile(
               .argument_layouts = std::move(converted_layouts),
               .donated_inputs =
                   Indices(donated_inputs.begin(), donated_inputs.end()),
+              .module_name = module_name,
           }));
   return result;
 }
@@ -1303,6 +1305,7 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       py::arg("use_stablehlo_bounds") = false,
       py::arg("argument_layouts") = py::none(),
       py::arg("donated_inputs") = std::vector<int64_t>{},  // INT_VEC_OK
+      py::arg("module_name") = py::none(),
       "Traverses the graph from outputs to arguments and compiles it. \n\n"
       "Args:\n"
       "  result_tensors: The output tensors to compile.\n"
@@ -1314,6 +1317,7 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       "  argument_layouts: Optional layout of the input arguments. If not"
       "    empty, the size must match the number of arguments.\n"
       "  donated_inputs: Optional list of argument indices to donate.\n"
+      "  module_name: Optional name for the compiled MLIR module.\n"
       "Returns:\n"
       "  CompileResult: The compiled module and executable.");
 

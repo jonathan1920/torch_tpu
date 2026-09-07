@@ -565,6 +565,7 @@ class DynamicCompiler(compiler.Compiler):
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[InputType],
       is_fwd: bool = True,
+      module_name: str | None = None,
   ) -> _DynamicTpuCompiledExecutable:
     """Called by AOT Autograd to compile the graph.
 
@@ -572,6 +573,7 @@ class DynamicCompiler(compiler.Compiler):
       graph_module: The FX graph module to be compiled.
       example_inputs: A list of example inputs for the graph module.
       is_fwd: Indicates whether the forward or backward pass is being compiled.
+      module_name: The name for the compiled MLIR module.
 
     Returns:
       A callable `_DynamicTpuCompiledExecutable` that wraps the compiled model
@@ -628,6 +630,7 @@ class DynamicCompiler(compiler.Compiler):
           is_fwd=is_fwd,
           bounds=aligned_bounds,
           dynamic_outputs=dynamic_outputs,
+          module_name=module_name,
       )
     except (RuntimeError, ValueError) as e:
       raise NotImplementedError(

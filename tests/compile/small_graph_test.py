@@ -17,6 +17,7 @@
 import dataclasses
 import os
 import pickle
+import re
 from typing import List
 from unittest import mock
 
@@ -421,6 +422,124 @@ class FunctionTest(seed_test_utils.RepeatableTest):
         v[0].graph_module_debug_strs[0], v[1].graph_module_debug_strs[0]
     )
     self.assertNotEqual(v[0].mlir_texts[0], v[1].mlir_texts[0])
+
+  def test_hlo_naming_with_custom_name_options(self):
+    def func(a, b):
+      return (a * b).sum()
+
+    a = torch.tensor([1.0, 2.0, 3.0], device="tpu", requires_grad=True)
+    b = torch.tensor([4.0, 5.0, 6.0], device="tpu", requires_grad=True)
+    tpu_backend = compile_lib.TpuBackend(debug=True)
+    compiled = torch.compile(
+        func, backend=tpu_backend, options={"name": "custom_opt"}
+    )
+    out = compiled(a, b)
+    out.backward()
+    execs = tpu_backend._compiled_executables
+    self.assertGreaterEqual(len(execs), 2)
+    self.assertRegex(execs[0].mlir_texts[0], r"module\s+@custom_opt_split0_fwd")
+    self.assertRegex(execs[1].mlir_texts[0], r"module\s+@custom_opt_split1_bwd")
+
+  def test_hlo_naming_with_graph_break_custom_name(self):
+    def func(a, b):
+      x = a / (torch.abs(a) + 1)
+      if b.sum() < 0:
+        b = b * -1
+      return x * b
+
+    inputs_val = [
+        torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5], device="tpu"),
+        torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6], device="tpu"),
+    ]
+
+    tpu_backend = compile_lib.TpuBackend(debug=True)
+    compiled = torch.compile(
+        func, backend=tpu_backend, options={"name": "gb_test"}
+    )
+    _ = compiled(*inputs_val)
+    execs = tpu_backend._compiled_executables
+    self.assertLen(execs, 2)
+    self.assertRegex(execs[0].mlir_texts[0], r"module\s+@gb_test_split0_fwd")
+    self.assertRegex(execs[1].mlir_texts[0], r"module\s+@gb_test_split1_fwd")
+
+  def test_default_behavior_without_name(self):
+    def func(a, b):
+      return (a * b).sum()
+
+    inputs_val = [
+        torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5], device="tpu"),
+        torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6], device="tpu"),
+    ]
+    # Without name in options, standard compilation runs normally
+    v = self._run_and_compare(func, inputs_val)
+    self.assertLen(v, 1)
+
+  def test_hlo_naming_sanitization_pressure_test(self):
+    """Tests that invalid characters in custom names do not cause crashes."""
+    test_cases = [
+        # Special symbols, punctuation, brackets, operators, spaces
+        (
+            "my-model.name/layer:0[linear] (v1) + #tag",
+            "my_model_name_layer_0_linear___v1_____tag",
+        ),
+        # Quotes and slashes
+        (
+            r"model\"name'with\slashes",
+            "model__name_with_slashes",
+        ),
+        # Only invalid/special characters
+        ("!@#$%^&*()-+=~`{}[]|:;'<>,.?/ ", "_" * 30),
+        # Unicode, non-ASCII and emojis
+        ("модель_🚀_test_123", "_________test_123"),
+        # Whitespace including tabs and newlines
+        ("  model\twith\nspaces  ", "__model_with_spaces__"),
+        # Purely numeric with symbols (MLIR quotes identifiers starting with digits)
+        ("123.456-789", "123_456_789"),
+    ]
+
+    def func(a, b):
+      return (a * b).sum()
+
+    for raw_name, expected_clean in test_cases:
+      with self.subTest(raw_name=raw_name):
+        sanitized = _backend._sanitize_module_name(raw_name)
+        self.assertEqual(sanitized, expected_clean)
+
+        a = torch.tensor([1.0, 2.0, 3.0], device="tpu", requires_grad=True)
+        b = torch.tensor([4.0, 5.0, 6.0], device="tpu", requires_grad=True)
+        tpu_backend = compile_lib.TpuBackend(debug=True)
+        compiled = torch.compile(
+            func, backend=tpu_backend, options={"name": raw_name}
+        )
+        out = compiled(a, b)
+        out.backward()
+        self.assertEqual(out.item(), 32.0)
+        execs = tpu_backend._compiled_executables
+        self.assertGreaterEqual(len(execs), 2)
+        self.assertRegex(
+            execs[0].mlir_texts[0],
+            rf'module\s+@"?{re.escape(expected_clean)}_split0_fwd',
+        )
+        self.assertRegex(
+            execs[1].mlir_texts[0],
+            rf'module\s+@"?{re.escape(expected_clean)}_split1_bwd',
+        )
+
+  def test_hlo_naming_with_empty_name(self):
+    """Tests that an empty name falls back to default module naming."""
+
+    def func(a, b):
+      return (a * b).sum()
+
+    a = torch.tensor([1.0, 2.0, 3.0], device="tpu")
+    b = torch.tensor([4.0, 5.0, 6.0], device="tpu")
+    tpu_backend = compile_lib.TpuBackend(debug=True)
+    compiled = torch.compile(func, backend=tpu_backend, options={"name": ""})
+    out = compiled(a, b)
+    self.assertEqual(out.item(), 32.0)
+    execs = tpu_backend._compiled_executables
+    self.assertNotEmpty(execs)
+    self.assertRegex(execs[0].mlir_texts[0], r"module\s+@tt_jit")
 
   def test_data_dependent_dynamic_op(self):
     """Test that a dynamo will break on data dependent ops.

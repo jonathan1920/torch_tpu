@@ -344,7 +344,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
       auto compiled_kernel,
       traversal->Compile(std::move(compilation_spec), nullptr,
                          options.use_stablehlo_bounds, options.argument_layouts,
-                         unique_donated_inputs),
+                         unique_donated_inputs, options.module_name),
       _ << "failed to compile traversal");
 
   TT_ASSIGN_OR_RETURN(auto executable, compiled_kernel.fixed_shape_kernel.get(),
@@ -364,9 +364,9 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
         ContextedModule::Make(
             [&](mlir::MLIRContext& mlir_context)
                 -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
-              return traversal->BuildMlirModule(mlir_context,
-                                                options.use_stablehlo_bounds,
-                                                unique_donated_inputs);
+              return traversal->BuildMlirModule(
+                  mlir_context, options.use_stablehlo_bounds,
+                  unique_donated_inputs, options.module_name);
             }),
         _ << "failed to build MLIR module");
     module = std::make_shared<ContextedModule>(std::move(contexted_module));

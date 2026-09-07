@@ -119,6 +119,7 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[InputType],
       is_fwd: bool = True,
+      module_name: str | None = None,
   ) -> CompiledArtifact:
     """Compiles the FX graph module into a callable artifact.
 
@@ -131,6 +132,10 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
       example_inputs: A sequence of example input tensors that can be used to
         guide the compilation process (e.g., for shape inference).
       is_fwd: Indicates whether the forward or backward pass is being compiled.
+      module_name: Optional custom identifier for the compiled region. When
+        provided, this is used as the MLIR/HLO module name and surfaces in
+        profiling tools like Xprof (identifying the compiled TPU program
+        execution in traces and viewers), compiler IR dumps, and debug logs.
 
     Returns:
       A CompiledArtifact object, which is a callable representation of the
@@ -293,6 +298,7 @@ class StaticCompiler(Compiler):
       argument_layouts: Sequence[Sequence[int]] | None = None,
       dynamic_outputs: Sequence[bool] | None = None,
       donated_inputs: Sequence[int] | None = None,
+      module_name: str | None = None,
   ) -> CompiledArtifact:
     with xprof_adapter.TraceMe("StaticCompiler._compile"):
       tracing_enabled = _is_tracing_enabled()
@@ -344,6 +350,7 @@ class StaticCompiler(Compiler):
               argument_layouts=argument_layouts,  # pyrefly: ignore[bad-argument-type]
               dynamic_outputs=dynamic_outputs,
               donated_inputs=donated_inputs,
+              module_name=module_name,
           )
 
       if exported_mlir.is_noop:
@@ -397,6 +404,7 @@ class StaticCompiler(Compiler):
       argument_layouts: Sequence[Sequence[int]] | None = None,
       dynamic_outputs: Sequence[bool] | None = None,
       donated_inputs: Sequence[int] | None = None,
+      module_name: str | None = None,
   ) -> CompiledArtifact:
     """Compiles the FX graph module for static shapes.
 
@@ -429,6 +437,9 @@ class StaticCompiler(Compiler):
         is an "internal" feature only available to StaticCompiler intended to be
         used directly after tracing with make_fx. TODO(b/545738245): Investigate
         doing this automatically.
+      module_name: Optional custom name for the compiled MLIR module. When
+        provided, this surfaces in profiling tools (e.g., Xprof) and compiler IR
+        dumps.
 
     Returns:
       A `CompiledArtifact` object (`TorchTpuCompiledExecutable` if
@@ -481,6 +492,7 @@ class StaticCompiler(Compiler):
           argument_layouts,
           dynamic_outputs,
           donated_inputs,
+          module_name,
       )
       return AsyncCompiledArtifact(future)
     else:
@@ -492,4 +504,5 @@ class StaticCompiler(Compiler):
           argument_layouts,
           dynamic_outputs,
           donated_inputs,
+          module_name,
       )

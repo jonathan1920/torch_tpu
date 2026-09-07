@@ -248,10 +248,12 @@ class _SubmodCompiler(torch.fx.interpreter.Interpreter):
       module: torch.fx.GraphModule,
       compiler_fn: Callable[..., CompiledArtifact],
       fake_mode: torch._subclasses.fake_tensor.FakeTensorMode,
+      base_module_name: str | None = None,
   ):
     super().__init__(module)
     self.compiler_fn = compiler_fn
     self.fake_mode = fake_mode
+    self.base_module_name = base_module_name
 
   # This logic is copied from torch/_functorch/_aot_autograd/frontend_utils.py
   def _convert_to_fake_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
@@ -279,6 +281,7 @@ class _SubmodCompiler(torch.fx.interpreter.Interpreter):
       input_mod: torch.fx.GraphModule,
       args: list[torch.Tensor],
       kwargs: Any,
+      submod_name: str | None = None,
   ) -> Any:
     """Compiles a single submodule into a PJRT executable wrapper."""
     if len(kwargs) != 0:
@@ -295,7 +298,13 @@ class _SubmodCompiler(torch.fx.interpreter.Interpreter):
           sn.args = (sn.args,)
 
     input_mod.recompile()
-    compiled_submod_real = self.compiler_fn(input_mod, args)
+    full_submod_name = self.base_module_name
+    if self.base_module_name and submod_name:
+      full_submod_name = f"{self.base_module_name}_{submod_name}"
+
+    compiled_submod_real = self.compiler_fn(
+        input_mod, args, module_name=full_submod_name
+    )
     wrapper = _WrapperModule(
         compiled_submod_real,
         unwrap_singleton_tuple,
@@ -325,7 +334,9 @@ class _SubmodCompiler(torch.fx.interpreter.Interpreter):
       # metadata mutation and structural corruption of nodes/inputs.
       with unset_fake_temporarily():
         comp_mod = copy.deepcopy(real_mod)
-      compiled_submod_real = self.compile_submod(comp_mod, new_args, kwargs)
+      compiled_submod_real = self.compile_submod(
+          comp_mod, new_args, kwargs, submod_name=str(n.target)
+      )
 
       # Propagate fake output shapes to downstream submodules
       with self.fake_mode:
@@ -530,6 +541,7 @@ class SplitCompiler(compiler.Compiler):
       example_inputs: Sequence[InputType],
       is_fwd: bool = True,
       materialize_collectives: bool = True,
+      module_name: str | None = None,
       **kwargs,
   ) -> _SplitCompiledExecutable:
     """Splits the graph on collectives and compiles the submodules."""
@@ -632,7 +644,9 @@ class SplitCompiler(compiler.Compiler):
     compiler_fn = functools.partial(
         self.base_compiler.__call__, is_fwd=is_fwd, **kwargs
     )
-    submod_compiler = _SubmodCompiler(split_gm, compiler_fn, fake_mode)
+    submod_compiler = _SubmodCompiler(
+        split_gm, compiler_fn, fake_mode, base_module_name=module_name
+    )
 
     # See NOTE: [Deferring tensor pack/unpack hooks until runtime]
     with torch._dynamo.utils._disable_saved_tensors_hooks_during_tracing():  # pylint: disable=protected-access
@@ -645,6 +659,7 @@ class SplitCompiler(compiler.Compiler):
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[InputType],
       is_fwd: bool = True,
+      module_name: str | None = None,
   ) -> _SplitCompiledExecutable:
     """Splits the graph on collectives and compiles the submodules."""
 
@@ -692,6 +707,7 @@ class SplitCompiler(compiler.Compiler):
           is_fwd,
           # Split the graph if a recompilation occurs.
           materialize_collectives=True,
+          module_name=module_name,
       )
 
     executable = self._compile_graph(
@@ -699,6 +715,7 @@ class SplitCompiler(compiler.Compiler):
         example_inputs,
         is_fwd,
         materialize_collectives=materialize_collectives,
+        module_name=module_name,
     )
 
     executable.recompile_fn = recompile_fn

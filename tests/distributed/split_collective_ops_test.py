@@ -561,7 +561,7 @@ class DummyBaseCompiler(compiler.Compiler):
     super().__init__(debug=True)
     self.compiler_fn = lambda gm, args: gm
 
-  def __call__(self, gm, args, is_fwd=True):
+  def __call__(self, gm, args, is_fwd=True, module_name=None):
     return _DummyCompiledExecutable(gm)
 
 
