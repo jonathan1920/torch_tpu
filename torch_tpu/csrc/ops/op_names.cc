@@ -897,6 +897,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "linalg_solve_triangular";
     case OpName::kLinalgSolveTriangularOut:
       return "linalg_solve_triangular.out";
+    case OpName::kLinalgSvdU:
+      return "_linalg_svd.U";
     case OpName::kLinalgVectorNormOut:
       return "linalg_vector_norm.out";
     case OpName::kLinspaceOut:

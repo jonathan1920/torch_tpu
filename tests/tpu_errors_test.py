@@ -3253,6 +3253,15 @@ module {
     ):
       torch.tpu.window_stripe_chunk_mb = -1
 
+  @et.why_tpu_only("Only default driver ('gesvd') is supported on TPU")
+  def test_linalg_svd_unsupported_driver(self):
+    t = torch.randn(5, 3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""linalg_svd(): expected default driver ('gesvd'), got 'gesvdj'""",
+    ):
+      torch.linalg.svd(t, driver="gesvdj")
+
   @parameterized.named_parameters(
       # Tests that non-2D lhs tensors are rejected.
       dict(
