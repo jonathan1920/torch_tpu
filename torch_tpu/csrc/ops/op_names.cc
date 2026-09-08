@@ -949,6 +949,12 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "__lshift__.Scalar";
     case OpName::kLshiftTensor:
       return "__lshift__.Tensor";
+    case OpName::kLstmInput:
+      return "lstm.input";
+    case OpName::kLstmInputBackward:
+      return "lstm.input_backward";
+    case OpName::kLstmInputForwardCached:
+      return "lstm.input_forward_cached";
     case OpName::kLt:
       return "lt";
     case OpName::kLtOut:

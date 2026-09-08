@@ -677,6 +677,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/logcumsumexp:logcumsumexp_aten_kernels",
         "//torch_tpu/csrc/ops/logical:logical_aten_kernels",
         "//torch_tpu/csrc/ops/logit:logit_aten_kernels",
+        "//torch_tpu/csrc/ops/lstm:lstm_aten_kernels",
         "//torch_tpu/csrc/ops/masked_fill:masked_fill_aten_kernels",
         "//torch_tpu/csrc/ops/masked_scatter:masked_scatter_aten_kernels",
         "//torch_tpu/csrc/ops/masked_select:masked_select_aten_kernels",

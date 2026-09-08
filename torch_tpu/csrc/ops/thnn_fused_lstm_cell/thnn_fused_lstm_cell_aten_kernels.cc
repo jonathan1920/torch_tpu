@@ -36,6 +36,7 @@
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
+#include "torch_tpu/csrc/ops/lstm/lstm_common.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
@@ -150,43 +151,16 @@ absl::StatusOr<std::array<mlir::MlirOp, 2>> BuildLstmCellBackwardShlo(
   mlir::MlirOp one = MakeConstantLike(cy_acc, 1.0);
   mlir::MlirOp tanh_cy = mlir::stablehlo::Tanh(cy_acc);
 
-  // d(cy) from the hy path: grad_hy * outgate * (1 - tanh(cy)^2), plus grad_cy.
-  mlir::MlirOp tanh_cy_sq = mlir::stablehlo::Mul(tanh_cy, tanh_cy);
-  mlir::MlirOp one_minus_tanh_cy_sq =
-      mlir::stablehlo::Subtract(one, tanh_cy_sq);
-  mlir::MlirOp grad_hy_out = mlir::stablehlo::Mul(grad_hy_acc, outgate);
-  mlir::MlirOp d_cy_from_hy =
-      mlir::stablehlo::Mul(grad_hy_out, one_minus_tanh_cy_sq);
-  mlir::MlirOp d_cy = mlir::stablehlo::Add(grad_cy_acc, d_cy_from_hy);
-  mlir::MlirOp d_outgate = mlir::stablehlo::Mul(grad_hy_acc, tanh_cy);
-
-  // Gradients into the activated gates.
-  mlir::MlirOp d_forgetgate = mlir::stablehlo::Mul(d_cy, cx_acc);
-  mlir::MlirOp grad_cx_acc = mlir::stablehlo::Mul(d_cy, forgetgate);
-  mlir::MlirOp d_ingate = mlir::stablehlo::Mul(d_cy, cellgate);
-  mlir::MlirOp d_cellgate = mlir::stablehlo::Mul(d_cy, ingate);
-
-  // Back through the gate activations to the pre-activation gates.
-  mlir::MlirOp one_minus_i = mlir::stablehlo::Subtract(one, ingate);
-  mlir::MlirOp i_deriv = mlir::stablehlo::Mul(ingate, one_minus_i);
-  mlir::MlirOp gi = mlir::stablehlo::Mul(d_ingate, i_deriv);
-
-  mlir::MlirOp one_minus_f = mlir::stablehlo::Subtract(one, forgetgate);
-  mlir::MlirOp f_deriv = mlir::stablehlo::Mul(forgetgate, one_minus_f);
-  mlir::MlirOp gf = mlir::stablehlo::Mul(d_forgetgate, f_deriv);
-
-  mlir::MlirOp cellgate_sq = mlir::stablehlo::Mul(cellgate, cellgate);
-  mlir::MlirOp one_minus_g_sq = mlir::stablehlo::Subtract(one, cellgate_sq);
-  mlir::MlirOp gg = mlir::stablehlo::Mul(d_cellgate, one_minus_g_sq);
-
-  mlir::MlirOp one_minus_o = mlir::stablehlo::Subtract(one, outgate);
-  mlir::MlirOp o_deriv = mlir::stablehlo::Mul(outgate, one_minus_o);
-  mlir::MlirOp go = mlir::stablehlo::Mul(d_outgate, o_deriv);
+  LstmGateAdjoints adjoints =
+      ComputeLstmGateAdjoints(grad_hy_acc, grad_cy_acc, tanh_cy, cx_acc, ingate,
+                              forgetgate, cellgate, outgate, one);
 
   mlir::MlirOp grad_gates = mlir::stablehlo::Concatenate(
-      cy.getBuilder(), {to_out(gi), to_out(gf), to_out(gg), to_out(go)},
+      cy.getBuilder(),
+      {to_out(adjoints.delta_pre_i), to_out(adjoints.delta_pre_f),
+       to_out(adjoints.delta_pre_g), to_out(adjoints.delta_pre_o)},
       /*dim=*/1);
-  mlir::MlirOp grad_cx = to_out(grad_cx_acc);
+  mlir::MlirOp grad_cx = to_out(adjoints.delta_c_prev);
   return std::array<mlir::MlirOp, 2>{grad_gates, grad_cx};
 }
 
