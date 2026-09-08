@@ -76,7 +76,7 @@ jobs:
           echo "Commit messages look good."
 
   run_code_linters:
-    name: "Run code linters (C++ and Python)"
+    name: "Run code linters"
     runs-on: ubuntu-latest
     steps:
       - name: "Check out PR HEAD"
