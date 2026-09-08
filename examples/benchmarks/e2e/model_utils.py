@@ -2223,6 +2223,55 @@ def ml_layer_model_builder(
         ),
     )
 
+  elif model_name == "torch.sort":
+    dim = kwargs.get("dim", None)
+    descending = kwargs.get("descending", False)
+    stable = kwargs.get("stable", False)
+    num_features = kwargs["num_features"]
+
+    class SortModel(torch.nn.Module):
+      """Sort op benchmark model wrapper.
+
+      Wraps torch.sort behind a trainable nn.Linear so that in training mode the
+      backward pass propagates a real gradient to a parameter (proj.weight).
+      The benchmark harness only synchronizes model.parameters() gradients, so
+      without a parameter on the differentiable path the backward would never be
+      forced.
+      """
+
+      def __init__(self, num_features, dim, descending, stable, dtype):
+        super().__init__()
+        self.proj = torch.nn.Linear(num_features, num_features, dtype=dtype)
+        self.dim = dim
+        self.descending = descending
+        self.stable = stable
+
+      def forward(self, x):
+        x = self.proj(x)
+        # torch.sort requires an int dim; default to the last dimension (-1)
+        # when dim is unset.
+        dim = self.dim if self.dim is not None else -1
+        values, indices = torch.sort(
+            x,
+            dim=dim,
+            descending=self.descending,
+            stable=self.stable,
+        )
+        return values, indices
+
+    model = SortModel(
+        num_features, dim, descending, stable, dtype=weights_dtype
+    )
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            (bs, seq, num_features),
+            dtype=weights_dtype,
+            device=device,
+        ),
+    )
+
   else:
     raise ValueError(f"Unknown ML layer model: {model_name}")
 

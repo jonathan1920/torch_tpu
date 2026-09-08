@@ -958,6 +958,64 @@ TOPK_CONFIGS = (
 
 
 @dataclasses.dataclass
+class SortConfig:
+  """Configuration parameters for sort benchmarks."""
+
+  batch_size: int
+  seq_len: int
+  num_features: int
+  dim: int | None = None
+  descending: bool = False
+  stable: bool = False
+
+
+SORT_CONFIGS = (
+    # Default config for smoke test.
+    SortConfig(
+        batch_size=1,
+        seq_len=128,
+        num_features=128,
+    ),
+    SortConfig(
+        batch_size=32,
+        seq_len=2048,
+        num_features=2048,
+        dim=-1,
+    ),
+    SortConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+    ),
+    SortConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+        dim=1,
+    ),
+    SortConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+        descending=True,
+    ),
+    SortConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+        stable=True,
+    ),
+    SortConfig(
+        batch_size=32,
+        seq_len=1024,
+        num_features=4096,
+        descending=True,
+        stable=True,
+    ),
+)
+
+
+@dataclasses.dataclass
 class NonZeroConfig:
   batch_size: int
   seq_len: int
