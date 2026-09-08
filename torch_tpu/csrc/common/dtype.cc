@@ -748,13 +748,55 @@ mlir::ElementType RealComponentOf(const mlir::ElementType element_type) {
 
 // PyTorch uses `at::toAccumulateType` AT_TO_ACCUMULATE_TYPE_OK=doc
 // to determine this. We call it with `is_cuda=true` to ensure we get the
-// CUDA-aligned accumulation type. For full details on PyTorch's accumulation
-// type mapping, see: third_party/py/torch/aten/src/ATen/AccumulateType.h
+// CUDA-aligned accumulation type.
+//
+// Note: PyTorch's at::toAccumulateType AT_TO_ACCUMULATE_TYPE_OK=doc only
+// supports standard legacy scalar types
+// (AT_FORALL_SCALAR_TYPES_WITH_COMPLEX_EXCEPT_ COMPLEX_HALF_F8NZ). Upstream
+// added newer types ("barebones unsigned types" like UInt16/UInt32/UInt64,
+// Float8 variants, ComplexHalf) primarily for storage and quantization without
+// defining runtime accumulation mappings in `AccumulateType.h` (see the TODO in
+// `c10/core/ScalarType.h`). Calling `toAccumulateType` on them throws an
+// internal assertion error.
+//
+// We handle these extended types according to PyTorch CUDA accumulation rules:
+// - Sub-64-bit integers (UInt16, UInt32): Accumulate in `Long` (int64_t),
+//   matching CUDA's universal rule (AccumulateType.h, ReduceOpsUtils.h) that
+//   all sub-64-bit integral types (uint8, int8, int16, int32) accumulate in
+//   int64_t to prevent intermediate arithmetic/reduction overflow.
+// - 64-bit unsigned integer (UInt64): Retain identity (`UInt64`). In CUDA,
+//   terminal integer types accumulate in place (int64_t -> int64_t); mapping
+//   UInt64 to signed Long would cause catastrophic negative sign overflow.
+// - Reduced-precision floats (Float8, Float4): Accumulate in `Float` (FP32),
+//   matching CUDA OpMathType.h and AccumulateType.h.
+// - Reduced-precision complex (BComplex32, ComplexHalf): Accumulate in
+//   `ComplexFloat`, matching CUDA OpMathType.h and AccumulateType.h.
+// - Other types: Delegated to at::toAccumulateType AT_TO_ACCUMULATE_TYPE_OK=doc
+// For full details on PyTorch's accumulation type mapping, see:
+// third_party/py/torch/aten/src/ATen/AccumulateType.h
 at::ScalarType ToAccumulateType(at::ScalarType type) {
-  return at::toAccumulateType(  // AT_TO_ACCUMULATE_TYPE_OK=root usage for the
-                                // API.
-      type,
-      /*is_cuda=*/true);
+  switch (type) {
+    case at::ScalarType::UInt16:
+    case at::ScalarType::UInt32:
+      return at::ScalarType::Long;
+    case at::ScalarType::UInt64:
+      return type;
+    case at::ScalarType::Float8_e5m2fnuz:
+    case at::ScalarType::Float8_e4m3fnuz:
+    case at::ScalarType::Float8_e8m0fnu:
+    case at::ScalarType::Float4_e2m1fn_x2:
+      return at::ScalarType::Float;
+#if TT_TORCH_VERSION_GE(2, 14)
+    case at::ScalarType::BComplex32:
+#endif
+    case at::ScalarType::ComplexHalf:
+      return at::ScalarType::ComplexFloat;
+    default:
+      return at::toAccumulateType(  // AT_TO_ACCUMULATE_TYPE_OK=root usage
+                                    // for the API.
+          type,
+          /*is_cuda=*/true);
+  }
 }
 
 }  // namespace torch_tpu
