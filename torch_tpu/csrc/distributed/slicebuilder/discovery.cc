@@ -64,8 +64,8 @@ static absl::Status ValidateRequiredDistributedEnvVars() {
   if (!GetEnvOnce<kTorchTpuSlicebuilderAddressesEnvVar>().has_value()) {
     missing_vars.push_back(kTorchTpuSlicebuilderAddressesEnvVar);
   }
-  if (!GetEnvOnce<kTpuTopologyEnvVar>().has_value()) {
-    missing_vars.push_back(kTpuTopologyEnvVar);
+  if (!GetEnvOnce<kTorchTpuTopologyEnvVar>().has_value()) {
+    missing_vars.push_back(kTorchTpuTopologyEnvVar);
   }
 
   TT_RET_CHECK(missing_vars.empty(), error::kFailedPrecondition)
@@ -138,7 +138,7 @@ GetDistributedWorkerConfiguration() {
 
   // Get the topology from the environment variables.
   TT_ASSIGN_OR_RETURN(std::string topology,
-                      GetRequiredEnvOnce<kTpuTopologyEnvVar>());
+                      GetRequiredEnvOnce<kTorchTpuTopologyEnvVar>());
 
   auto distributed_worker_config = DistributedWorkerConfiguration{
       .rank = rank,

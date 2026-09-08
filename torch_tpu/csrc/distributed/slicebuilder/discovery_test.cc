@@ -44,7 +44,7 @@ TEST(DiscoveryDeathTest, GetDistributedWorkerConfigurationMissingVars) {
         unsetenv(kMasterAddrEnvVar);
         unsetenv(kMasterPortEnvVar);
         unsetenv(kTorchTpuSlicebuilderAddressesEnvVar);
-        unsetenv(kTpuTopologyEnvVar);
+        unsetenv(kTorchTpuTopologyEnvVar);
 
         const absl::StatusOr<DistributedWorkerConfiguration> config_or =
             GetDistributedWorkerConfiguration();
@@ -80,7 +80,7 @@ TEST(DiscoveryDeathTest, GetDistributedWorkerConfiguration) {
         setenv(kMasterPortEnvVar, "12345", 1);
         setenv(kTorchTpuSlicebuilderAddressesEnvVar, "host0:54321,host1:54322",
                1);
-        setenv(kTpuTopologyEnvVar, "1x1x1", 1);
+        setenv(kTorchTpuTopologyEnvVar, "1x1x1", 1);
 
         const absl::StatusOr<DistributedWorkerConfiguration> config_or =
             GetDistributedWorkerConfiguration();
@@ -110,7 +110,7 @@ TEST(DiscoveryDeathTest, GetDistributedWorkerConfigurationMultislice) {
         setenv(kMasterPortEnvVar, "12345", 1);
         setenv(kTorchTpuSlicebuilderAddressesEnvVar, "host0:54321,host1:54322",
                1);
-        setenv(kTpuTopologyEnvVar, "1x1x1", 1);
+        setenv(kTorchTpuTopologyEnvVar, "1x1x1", 1);
 
         const absl::StatusOr<DistributedWorkerConfiguration> config_or =
             GetDistributedWorkerConfiguration();

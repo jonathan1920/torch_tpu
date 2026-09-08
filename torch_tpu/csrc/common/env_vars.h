@@ -138,6 +138,8 @@ inline constexpr char kTorchTpuTier2CompilationCacheEnvVar[] =
 // compilation cache is disabled.
 inline constexpr char kTorchTpuTier3CompilationCacheRootEnvVar[] =
     "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT";
+inline constexpr char kTorchTpuTopologyEnvVar[] =
+    "TORCH_TPU_TOPOLOGY";  // Set by Torch TPU specific launchers.
 // If set, enables structured logging for tlparse.
 inline constexpr char kTorchTraceEnvVar[] = "TORCH_TRACE";
 inline constexpr char kTpuChipsPerHostBoundsEnvVar[] =
@@ -163,8 +165,7 @@ inline constexpr char kTpuProcessPortEnvVar[] =
     "TPU_PROCESS_PORT";  // Read by Google Cloud.
 // The output directory for TPU profiler XPlane files.
 inline constexpr char kTpuProfilerOutputDirEnvVar[] = "TPU_PROFILER_OUTPUT_DIR";
-inline constexpr char kTpuTopologyEnvVar[] =
-    "TORCH_TPU_TOPOLOGY";  // Set by Torch TPU specific launchers.
+
 // Specifies which TPU chips are visible to this process. Read by libtpu.
 // Note: TPU_VISIBLE_DEVICES is the source of truth for device visibility in
 // TorchTPU. TPU_VISIBLE_CHIPS is overwritten to match TPU_VISIBLE_DEVICES
@@ -210,6 +211,7 @@ inline constexpr auto kEnvVarToStage =
         {kTorchTpuSlicebuilderAddressesEnvVar, SymbolStage::Experimental()},
         {kTorchTpuTier2CompilationCacheEnvVar, SymbolStage::Experimental()},
         {kTorchTpuTier3CompilationCacheRootEnvVar, SymbolStage::Experimental()},
+        {kTorchTpuTopologyEnvVar, SymbolStage::Experimental()},
         {kTorchTraceEnvVar, SymbolStage::Experimental()},
         {kTpuChipsPerHostBoundsEnvVar, SymbolStage::InternalImplementation()},
         {kTpuChipsPerProcessBoundsEnvVar,
@@ -222,7 +224,7 @@ inline constexpr auto kEnvVarToStage =
         {kTpuProcessBoundsEnvVar, SymbolStage::InternalImplementation()},
         {kTpuProcessPortEnvVar, SymbolStage::InternalImplementation()},
         {kTpuProfilerOutputDirEnvVar, std::nullopt},
-        {kTpuTopologyEnvVar, std::nullopt},
+
         {kTpuVisibleChipsEnvVar, SymbolStage::InternalImplementation()},
         {kTpuVisibleDevicesEnvVar, std::nullopt},
         {kWorldSizeEnvVar, SymbolStage::Stable()},
