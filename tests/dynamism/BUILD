@@ -165,4 +165,18 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "view_decomposition_test",
+    srcs = ["view_decomposition_test.py"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile/dynamic:view_decomposition",
+        "//torch_tpu/_internal/utils:test_utils",
+        "@pypi//sympy",
+    ],
+)
+
 torch_tpu_package_end()
