@@ -15,24 +15,24 @@
 """Simple trainer library for compiling and running PyTorch training steps on TPU."""
 
 import functools
+import inspect
 import typing
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 import torch
 import torch.func as func
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils import _pytree
-from torch_tpu._internal.compile import compiler
-from examples.benchmarks import optimizers
+from examples.tracing import optimizers
 
 # Re-export optimizer classes for simple_trainer
 Optimizer = optimizers.Optimizer
 AdamW = optimizers.AdamW
 SGD = optimizers.SGD
 ReferenceAdamw = optimizers.ReferenceAdamw
-FusedAdamw = optimizers.FusedAdamw
+TorchAdamw = optimizers.TorchAdamw
 ReferenceSgd = optimizers.ReferenceSgd
-FusedSgd = optimizers.FusedSgd
+TorchSgd = optimizers.TorchSgd
 
 
 def _compute_loss(
@@ -80,6 +80,37 @@ def _compute_loss(
   return loss, buffers
 
 
+def _invoke_compile_fn(
+    compile_fn: Callable[..., Any],
+    graph_module: torch.fx.GraphModule,
+    flat_inputs: Sequence[Any],
+) -> Callable[..., Any]:
+  """Invokes compile_fn with either (graph_module, flat_inputs) or (graph_module)."""
+  try:
+    sig = inspect.signature(compile_fn)
+    params = list(sig.parameters.values())
+    pos_params = [
+        p
+        for p in params
+        if p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ]
+    has_var_args = any(
+        p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
+    )
+    if len(pos_params) == 1 and not has_var_args:
+      return compile_fn(graph_module)
+    return compile_fn(graph_module, flat_inputs)
+  except (ValueError, TypeError):
+    try:
+      return compile_fn(graph_module, flat_inputs)
+    except TypeError:
+      return compile_fn(graph_module)
+
+
 class SingleTraceTrainer:
   """Facilitates compiled train steps with a single offload containing the optimizer step.
 
@@ -96,10 +127,12 @@ class SingleTraceTrainer:
       self,
       model: torch.nn.Module,
       optimizer: Any,
+      compile_fn: Callable[..., Any] | None = None,
   ):
     """Initializes the SingleTraceTrainer."""
     self.model = model
     self.optimizer = optimizer
+    self.compile_fn = compile_fn
 
     tie_weights = getattr(model, "tie_weights", None)
     if callable(tie_weights):
@@ -148,8 +181,17 @@ class SingleTraceTrainer:
       self,
       example_inputs: Any,
       example_targets: Any = None,
+      compile_fn: Callable[..., Any] | None = None,
   ) -> Callable[..., torch.Tensor]:
     """Returns a callable for the training step with the model compiled."""
+    if compile_fn is None:
+      compile_fn = self.compile_fn
+    if compile_fn is None:
+      raise ValueError(
+          "A compilation callback (compile_fn) must be provided either to"
+          " SingleTraceTrainer or to make_compiled_train_step."
+      )
+
     # We don't actually want to trace through example_targets if it is None.
     # Static compiler doesn't support optional input args.
     flat_inputs, in_spec = _pytree.tree_flatten(
@@ -183,17 +225,10 @@ class SingleTraceTrainer:
         flattened_stateless_train_step, tracing_mode="fake"
     )(*flat_inputs)
 
-    flat_param_group, _ = _pytree.tree_flatten(self.param_group)
-    donated_inputs = [
-        i for i, x in enumerate(flat_param_group) if isinstance(x, torch.Tensor)
-    ]
-
-    backend_compiler = compiler.StaticCompiler()
-
-    compiled_step = backend_compiler(
+    compiled_step = _invoke_compile_fn(
+        compile_fn,
         typing.cast(torch.fx.GraphModule, unified_graph),
         flat_inputs,
-        donated_inputs=donated_inputs,
     )
 
     # Build a template to capture output structure (`TreeSpec`) for

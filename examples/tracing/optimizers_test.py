@@ -21,8 +21,9 @@ from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils import _pytree
 from torch_tpu._internal.compile.compiler import StaticCompiler
 from torch_tpu._internal.utils import test_utils
-from examples.benchmarks import optimizers
+from examples.tracing import optimizers
 from torch_tpu._internal.profiler import xprof_adapter
+from tests import seed_test_utils
 
 
 def _make_dummy_params(device: torch.device):
@@ -107,7 +108,7 @@ def _validate_compiled_linear_train_step(test_case, custom_opt, device):
     )
 
 
-class AdamWOptimizersTest(parameterized.TestCase):
+class AdamWOptimizersTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -178,20 +179,32 @@ class AdamWOptimizersTest(parameterized.TestCase):
     )
     self._validate_opt_step(opt, lr=1e-3, weight_decay=1e-2)
 
-  def test_fused_adamw_step(self):
-    opt = optimizers.FusedAdamw(
+  def test_torch_adamw_step(self):
+    opt = optimizers.TorchAdamw(
         lr=1e-3, weight_decay=1e-2, use_bfloat16_moments=False
     )
     self._validate_opt_step(opt, lr=1e-3, weight_decay=1e-2)
 
-  def test_fused_adamw_compiled_linear_train_step(self):
-    opt = optimizers.FusedAdamw(
+  def test_torch_adamw_custom_kwargs(self):
+    opt = optimizers.TorchAdamw(
+        lr=1e-3,
+        weight_decay=1e-2,
+        use_bfloat16_moments=False,
+        fused=False,
+        foreach=False,
+        maximize=False,
+        differentiable=False,
+    )
+    self._validate_opt_step(opt, lr=1e-3, weight_decay=1e-2)
+
+  def test_torch_adamw_compiled_linear_train_step(self):
+    opt = optimizers.TorchAdamw(
         lr=1e-3, weight_decay=1e-2, use_bfloat16_moments=False
     )
     _validate_compiled_linear_train_step(self, opt, self.device)
 
 
-class SGDOptimizersTest(parameterized.TestCase):
+class SGDOptimizersTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -263,16 +276,26 @@ class SGDOptimizersTest(parameterized.TestCase):
     opt = optimizers.ReferenceSgd(lr=1e-2, momentum=0.9)
     _validate_compiled_linear_train_step(self, opt, self.device)
 
-  def test_fused_sgd_step(self):
-    opt = optimizers.FusedSgd(lr=1e-2, momentum=0.9)
+  def test_torch_sgd_step(self):
+    opt = optimizers.TorchSgd(lr=1e-2, momentum=0.9)
     self._validate_opt_step(opt, lr=1e-2, momentum=0.9)
 
-  def test_fused_sgd_no_momentum_step(self):
-    opt = optimizers.FusedSgd(lr=1e-2, momentum=0.0)
+  def test_torch_sgd_no_momentum_step(self):
+    opt = optimizers.TorchSgd(lr=1e-2, momentum=0.0)
     self._validate_opt_step(opt, lr=1e-2, momentum=0.0)
 
-  def test_fused_sgd_compiled_linear_train_step(self):
-    opt = optimizers.FusedSgd(lr=1e-2, momentum=0.9)
+  def test_torch_sgd_custom_kwargs(self):
+    opt = optimizers.TorchSgd(
+        lr=1e-2,
+        momentum=0.9,
+        fused=False,
+        foreach=False,
+        maximize=False,
+    )
+    self._validate_opt_step(opt, lr=1e-2, momentum=0.9)
+
+  def test_torch_sgd_compiled_linear_train_step(self):
+    opt = optimizers.TorchSgd(lr=1e-2, momentum=0.9)
     _validate_compiled_linear_train_step(self, opt, self.device)
 
 

@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Simple toy torch.nn.Module test running a single Linear layer training step on TPU with xprof tracing."""
+"""Tests for SingleTraceTrainerAdapter using StaticCompiler on TPU."""
 
 import copy
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.utils import test_utils
-from examples.benchmarks import single_trace_trainer
+from examples.benchmarks.e2e import single_trace_trainer_adapter
 from tests import seed_test_utils
 
 
@@ -33,7 +33,7 @@ class ToyLinearModule(torch.nn.Module):
     return self.linear(x)
 
 
-class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
+class SingleTraceTrainerAdapterEagerCompareTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -140,9 +140,9 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
   def test_linear_layer_training_compiled_reference_adamw(self):
     model, model_eager = self._get_test_models()
 
-    trainer = single_trace_trainer.SingleTraceTrainer(
+    trainer = single_trace_trainer_adapter.SingleTraceTrainerAdapter(
         model,
-        single_trace_trainer.ReferenceAdamw(use_bfloat16_moments=False),
+        single_trace_trainer_adapter.ReferenceAdamw(use_bfloat16_moments=False),
     )
 
     x = torch.randn((32, 128), device=self.device)
@@ -156,15 +156,15 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
         torch.optim.AdamW,
     )
 
-  def test_linear_layer_training_compiled_fused_adamw(self):
+  def test_linear_layer_training_compiled_torch_adamw(self):
     model, model_eager = self._get_test_models()
 
     x = torch.randn((32, 128), device=self.device)
     target = torch.randn((32, 64), device=self.device)
 
-    trainer = single_trace_trainer.SingleTraceTrainer(
+    trainer = single_trace_trainer_adapter.SingleTraceTrainerAdapter(
         model,
-        single_trace_trainer.FusedAdamw(use_bfloat16_moments=False),
+        single_trace_trainer_adapter.TorchAdamw(use_bfloat16_moments=False),
     )
 
     self._verify_train_step_vs_eager(
@@ -177,8 +177,9 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
 
   def test_linear_layer_training_compiled_reference_sgd(self):
     model, model_eager = self._get_test_models()
-    trainer = single_trace_trainer.SingleTraceTrainer(
-        model, single_trace_trainer.ReferenceSgd(lr=1e-2, momentum=0.9)
+    trainer = single_trace_trainer_adapter.SingleTraceTrainerAdapter(
+        model,
+        single_trace_trainer_adapter.ReferenceSgd(lr=1e-2, momentum=0.9),
     )
     x = torch.randn((32, 128), device=self.device)
     target = torch.randn((32, 64), device=self.device)
@@ -193,10 +194,10 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
         momentum=0.9,
     )
 
-  def test_linear_layer_training_compiled_fused_sgd(self):
+  def test_linear_layer_training_compiled_torch_sgd(self):
     model, model_eager = self._get_test_models()
-    trainer = single_trace_trainer.SingleTraceTrainer(
-        model, single_trace_trainer.FusedSgd(lr=1e-2, momentum=0.9)
+    trainer = single_trace_trainer_adapter.SingleTraceTrainerAdapter(
+        model, single_trace_trainer_adapter.TorchSgd(lr=1e-2, momentum=0.9)
     )
     x = torch.randn((32, 128), device=self.device)
     target = torch.randn((32, 64), device=self.device)
@@ -212,7 +213,7 @@ class SingleTraceTrainerEagerCompareTest(seed_test_utils.RepeatableTest):
     )
 
 
-class SingleTraceTrainerSignatureTest(seed_test_utils.RepeatableTest):
+class SingleTraceTrainerAdapterSignatureTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -224,8 +225,8 @@ class SingleTraceTrainerSignatureTest(seed_test_utils.RepeatableTest):
     x = torch.randn((32, 128), device=self.device)
     target = torch.randn((32, 64), device=self.device)
 
-    trainer = single_trace_trainer.SingleTraceTrainer(
-        model, single_trace_trainer.ReferenceAdamw()
+    trainer = single_trace_trainer_adapter.SingleTraceTrainerAdapter(
+        model, single_trace_trainer_adapter.ReferenceAdamw()
     )
 
     train_step = trainer.make_compiled_train_step(x, target)
@@ -236,8 +237,8 @@ class SingleTraceTrainerSignatureTest(seed_test_utils.RepeatableTest):
 
     x = torch.randn((32, 128), device=self.device)
 
-    trainer = single_trace_trainer.SingleTraceTrainer(
-        model, single_trace_trainer.ReferenceAdamw()
+    trainer = single_trace_trainer_adapter.SingleTraceTrainerAdapter(
+        model, single_trace_trainer_adapter.ReferenceAdamw()
     )
 
     train_step = trainer.make_compiled_train_step(x)
@@ -249,13 +250,15 @@ class SingleTraceTrainerSignatureTest(seed_test_utils.RepeatableTest):
     x = torch.randn((32, 128), device=self.device)
     target = torch.randn((32, 64), device=self.device)
 
-    trainer = single_trace_trainer.SingleTraceTrainer(
-        model, single_trace_trainer.ReferenceAdamw()
+    trainer = single_trace_trainer_adapter.SingleTraceTrainerAdapter(
+        model, single_trace_trainer_adapter.ReferenceAdamw()
     )
 
     train_step = trainer.make_compiled_train_step(x, target)
 
-    with self.assertRaises(AssertionError):
+    with self.assertRaises(  # ASSERT_RAISES_OK=Testing mismatched signature error in example test
+        AssertionError
+    ):
       train_step(x)
 
   def test_traced_without_targets_provided_for_step(self):
@@ -264,17 +267,21 @@ class SingleTraceTrainerSignatureTest(seed_test_utils.RepeatableTest):
     x = torch.randn((32, 128), device=self.device)
     target = torch.randn((32, 64), device=self.device)
 
-    trainer = single_trace_trainer.SingleTraceTrainer(
-        model, single_trace_trainer.ReferenceAdamw()
+    trainer = single_trace_trainer_adapter.SingleTraceTrainerAdapter(
+        model, single_trace_trainer_adapter.ReferenceAdamw()
     )
 
     train_step = trainer.make_compiled_train_step(x)
 
-    with self.assertRaises(AssertionError):
+    with self.assertRaises(  # ASSERT_RAISES_OK=Testing mismatched signature error in example test
+        AssertionError
+    ):
       train_step(x, target)
 
 
-class SingleTraceTrainerBufferMutationTest(seed_test_utils.RepeatableTest):
+class SingleTraceTrainerAdapterBufferMutationTest(
+    seed_test_utils.RepeatableTest
+):
 
   def setUp(self):
     super().setUp()
@@ -297,8 +304,8 @@ class SingleTraceTrainerBufferMutationTest(seed_test_utils.RepeatableTest):
     self.assertEqual(model.add_count, 0)
     x = torch.randn((32, 128), device=self.device)
 
-    trainer = single_trace_trainer.SingleTraceTrainer(
-        model, single_trace_trainer.ReferenceAdamw()
+    trainer = single_trace_trainer_adapter.SingleTraceTrainerAdapter(
+        model, single_trace_trainer_adapter.ReferenceAdamw()
     )
 
     train_step = trainer.make_compiled_train_step(x)
@@ -306,7 +313,7 @@ class SingleTraceTrainerBufferMutationTest(seed_test_utils.RepeatableTest):
     self.assertEqual(model.add_count, 1)
 
 
-class SingleTraceTrainerTiedWeightsTest(seed_test_utils.RepeatableTest):
+class SingleTraceTrainerAdapterTiedWeightsTest(seed_test_utils.RepeatableTest):
 
   def setUp(self):
     super().setUp()
@@ -329,8 +336,8 @@ class SingleTraceTrainerTiedWeightsTest(seed_test_utils.RepeatableTest):
         return self.lm_head(h)
 
     model = TiedModel().to(self.device)
-    trainer = single_trace_trainer.SingleTraceTrainer(
-        model, single_trace_trainer.ReferenceAdamw()
+    trainer = single_trace_trainer_adapter.SingleTraceTrainerAdapter(
+        model, single_trace_trainer_adapter.ReferenceAdamw()
     )
     # Verify that tied weights resulted in only one unique parameter entry
     self.assertEqual(len(trainer.param_group.params), 1)

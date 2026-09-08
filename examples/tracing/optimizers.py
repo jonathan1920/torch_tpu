@@ -255,13 +255,47 @@ class ReferenceAdamw(AdamW):
     return param_group
 
 
-class FusedAdamw(AdamW):
-  """Fused AdamW implementation calling torch.optim.adamw.adamw directly with fused=True."""
+class TorchAdamw(AdamW):
+  """Torch AdamW implementation calling torch.optim.adamw.adamw directly."""
+
+  def __init__(
+      self,
+      lr: float = 1e-3,
+      weight_decay: float = 1e-2,
+      beta1: float = 0.9,
+      beta2: float = 0.999,
+      eps: float = 1e-8,
+      use_bfloat16_moments: bool = True,
+      amsgrad: bool = False,
+      maximize: bool = False,
+      foreach: bool | None = False,
+      capturable: bool = True,
+      differentiable: bool = False,
+      fused: bool | None = True,
+      grad_scale: torch.Tensor | None = None,
+      found_inf: torch.Tensor | None = None,
+  ):
+    super().__init__(
+        lr=lr,
+        weight_decay=weight_decay,
+        beta1=beta1,
+        beta2=beta2,
+        eps=eps,
+        use_bfloat16_moments=use_bfloat16_moments,
+    )
+    self.amsgrad = amsgrad
+    self.maximize = maximize
+    self.foreach = foreach
+    self.capturable = capturable
+    self.differentiable = differentiable
+    self.fused = fused
+    self.grad_scale = grad_scale
+    self.found_inf = found_inf
 
   def step(
       self, param_group: AdamW.ParamGroup, grads: dict[str, torch.Tensor]
   ) -> AdamW.ParamGroup:
-    """Fused AdamW step calling torch.optim.adamw.adamw directly."""
+    """Torch AdamW step calling torch.optim.adamw.adamw directly."""
     param_keys = list(param_group.params.keys())
     param_list = [param_group.params[k] for k in param_keys]
     grad_list = [grads[k] for k in param_keys]
@@ -276,16 +310,19 @@ class FusedAdamw(AdamW):
         exp_avg_sqs=v_list,
         max_exp_avg_sqs=[],
         state_steps=step_list,
-        foreach=False,
-        capturable=True,
-        fused=True,
-        amsgrad=False,
+        foreach=self.foreach,
+        capturable=self.capturable,
+        differentiable=self.differentiable,
+        fused=self.fused,
+        grad_scale=self.grad_scale,
+        found_inf=self.found_inf,
+        amsgrad=self.amsgrad,
         beta1=self.beta1,
         beta2=self.beta2,
         lr=self.lr,
         weight_decay=self.weight_decay,
         eps=self.eps,
-        maximize=False,
+        maximize=self.maximize,
     )
     return param_group
 
@@ -336,13 +373,41 @@ class ReferenceSgd(SGD):
     return param_group
 
 
-class FusedSgd(SGD):
-  """Fused SGD implementation calling torch.optim.sgd.sgd directly with fused=True."""
+class TorchSgd(SGD):
+  """Torch SGD implementation calling torch.optim.sgd.sgd directly."""
+
+  def __init__(
+      self,
+      lr: float = 1e-3,
+      momentum: float = 0.0,
+      dampening: float = 0.0,
+      weight_decay: float = 0.0,
+      nesterov: bool = False,
+      maximize: bool = False,
+      foreach: bool | None = False,
+      fused: bool | None = True,
+      grad_scale: torch.Tensor | None = None,
+      found_inf: torch.Tensor | None = None,
+      has_sparse_grad: bool = False,
+  ):
+    super().__init__(
+        lr=lr,
+        momentum=momentum,
+        dampening=dampening,
+        weight_decay=weight_decay,
+        nesterov=nesterov,
+    )
+    self.maximize = maximize
+    self.foreach = foreach
+    self.fused = fused
+    self.grad_scale = grad_scale
+    self.found_inf = found_inf
+    self.has_sparse_grad = has_sparse_grad
 
   def step(
       self, param_group: SGD.ParamGroup, grads: dict[str, torch.Tensor]
   ) -> SGD.ParamGroup:
-    """Fused SGD step calling torch.optim.sgd.sgd directly."""
+    """Torch SGD step calling torch.optim.sgd.sgd directly."""
     param_keys = list(param_group.params.keys())
     param_list = [param_group.params[k] for k in param_keys]
     grad_list = [grads[k] for k in param_keys]
@@ -357,14 +422,17 @@ class FusedSgd(SGD):
         params=param_list,
         d_p_list=grad_list,
         momentum_buffer_list=m_list,
+        has_sparse_grad=self.has_sparse_grad,
+        foreach=self.foreach,
+        fused=self.fused,
+        grad_scale=self.grad_scale,
+        found_inf=self.found_inf,
         weight_decay=self.weight_decay,
         momentum=self.momentum,
         lr=self.lr,
         dampening=self.dampening,
         nesterov=self.nesterov,
-        maximize=False,
-        foreach=False,
-        fused=True,
+        maximize=self.maximize,
     )
     torch.ops.aten._foreach_add_(step_list, 1.0)
 
