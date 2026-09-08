@@ -91,6 +91,10 @@ Value ConvertElementType(ImplicitLocOpBuilder& b, Type target_element_type,
 Value NormalizeLaneDim(ImplicitLocOpBuilder& builder, Value input,
                        int64_t target_lane_size);
 
+// Returns the usable scoped VMEM capacity in bytes per TensorCore for the
+// active TPU device (capped at 50% to avoid spilling surrounding operations).
+int64_t GetDeviceVmemLimitBytes();
+
 // Helper to create a stablehlo::CustomCallOp with mosaic kernel.
 absl::StatusOr<stablehlo::CustomCallOp> CreateCustomCallOp(
     OpBuilder& builder, Location loc, mlir::OwningOpRef<mlir::ModuleOp> module,

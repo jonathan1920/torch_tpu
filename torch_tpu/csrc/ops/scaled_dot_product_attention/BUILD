@@ -133,6 +133,7 @@ torch_tpu_cc_library(
     deps = [
         "//torch_tpu/csrc/common:error_utils",
         "//torch_tpu/csrc/internal/mosaic:op_builders",
+        "//torch_tpu/csrc/pjrt:pjrt_state",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status:statusor",

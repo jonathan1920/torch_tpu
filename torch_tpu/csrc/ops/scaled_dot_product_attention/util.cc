@@ -44,6 +44,7 @@
 #include "stablehlo/dialect/StablehloOps.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/internal/mosaic/op_builders.h"
+#include "torch_tpu/csrc/pjrt/pjrt_state.h"
 
 namespace mlir::torch_tpu {
 
@@ -326,6 +327,29 @@ Value NormalizeLaneDim(ImplicitLocOpBuilder& builder, Value input,
   return CreateRepeatOp(builder, input, rank - 1, target_lane_size);
 }
 
+int64_t GetDeviceVmemLimitBytes() {
+  // Default fallback: 16 MB
+  int64_t capacity = 16777216;
+  auto attrs_or = ::torch_tpu::PjrtBackend::GetInstance().GetDeviceAttributes();
+  if (attrs_or.ok()) {
+    const std::string& device_kind = attrs_or->device_kind;
+    if (device_kind == "TPU v5e" || device_kind == "TPU v5 lite") {
+      capacity = 134217728;
+    } else if (device_kind == "TPU v6e" || device_kind == "TPU v6 lite") {
+      capacity = 134152192;
+    } else if (device_kind == "TPU v5" || device_kind == "TPU v5p") {
+      capacity = 67043328;
+    } else if (device_kind == "TPU7" || device_kind == "TPU7x" ||
+               device_kind == "TPU 7" || device_kind == "TPU 7x" ||
+               device_kind == "TPU8i" || device_kind == "TPU8t" ||
+               device_kind == "TPU 8i" || device_kind == "TPU 8t") {
+      capacity = 67043328;
+    }
+  }
+  // Limit to 50% of capacity to avoid spilling.
+  return capacity / 2;
+}
+
 absl::StatusOr<stablehlo::CustomCallOp> CreateCustomCallOp(
     OpBuilder& builder, Location loc, mlir::OwningOpRef<mlir::ModuleOp> module,
     ValueRange inputs, TypeRange output_types) {
@@ -342,8 +366,15 @@ absl::StatusOr<stablehlo::CustomCallOp> CreateCustomCallOp(
           "serialization_format": 1,
         },
         "device_type": "DEVICE_TYPE_TENSORCORE",
+        "scoped_memory_configs": [
+          {
+            "memory_space": 1,
+            "offset": 0,
+            "size": %d
+          }
+        ]
       })",
-      absl::Base64Escape(GetOpString(module.get())));
+      absl::Base64Escape(GetOpString(module.get())), GetDeviceVmemLimitBytes());
 
   auto get_default_layout = [&builder](Type type) {
     int64_t rank = cast<RankedTensorType>(type).getRank();
