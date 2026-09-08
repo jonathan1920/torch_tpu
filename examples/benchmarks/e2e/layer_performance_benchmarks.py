@@ -332,6 +332,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
                 "kernel_size": layer_config.kernel_size,
                 "stride": layer_config.stride,
                 "padding": layer_config.padding,
+                "dilation": layer_config.dilation,
+                "groups": layer_config.groups,
+                "bias": layer_config.bias,
+                "channels_last": layer_config.channels_last,
                 "height": layer_config.height,
                 "width": layer_config.width,
             },
@@ -1323,7 +1327,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
           (common.RunMode.COMPILED,),
-          (False,),
+          (True, False),
           layer_configs.CONV1D_CONFIGS,
       )
   )

@@ -575,12 +575,22 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
   mlir::MLIRContext& ctx = builder.getContext();
   const int num_spatial_dims = stride.size();
 
-  int input_batch_dimension = 1;
-  int input_feature_dimension = 0;
-  int kernel_input_feature_dimension = 0;
-  int kernel_output_feature_dimension = 1;
-
-  // 3. Convolution
+  // Weight gradient computation: grad_weight = input * grad_output.
+  //
+  // Forward convolution computes: Y = X * W
+  // where X has shape [N, C_in, ...], W has shape [C_out, C_in/G, ...],
+  // and Y has shape [N, C_out, ...].
+  //
+  // The gradient with respect to weight contracts X against grad_output
+  // over the batch dimension N. We treat X as LHS and grad_output as RHS:
+  // - LHS (input): batch dimension is C_in (dim 1), contracting feature
+  //   dimension is N (dim 0).
+  // - RHS (grad_output): contracting feature dimension is N (dim 0),
+  //   output feature dimension is C_out (dim 1).
+  const int input_batch_dimension = 1;
+  const int input_feature_dimension = 0;
+  const int kernel_input_feature_dimension = 0;
+  const int kernel_output_feature_dimension = 1;
 
   Dimensions input_spatial_dims(num_spatial_dims);
   absl::c_iota(input_spatial_dims, 2);
@@ -589,13 +599,27 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
   Dimensions output_spatial_dims(num_spatial_dims);
   absl::c_iota(output_spatial_dims, 2);
 
+  // Dimension numbers configuration:
+  // PyTorch weight tensors are laid out as [C_out, C_in/G, spatial...].
+  // By mapping outputBatchDimension=1 (mapping LHS batch dim C_in to dim 1)
+  // and outputFeatureDimension=0 (mapping RHS feature dim C_out to dim 0),
+  // the convolution output directly produces [C_out, C_in/G, spatial...].
+  // This matches PyTorch's native weight layout without requiring a post-hoc
+  // transpose permuting [1, 0, 2, ...], eliminating an unnecessary buffer copy
+  // and improving memory bandwidth efficiency on TPU hardware.
   const auto dimension_numbers = stablehlo::ConvDimensionNumbersAttr::get(
       &ctx, input_batch_dimension, input_feature_dimension, input_spatial_dims,
       kernel_input_feature_dimension, kernel_output_feature_dimension,
       kernel_spatial_dims,
-      /*outputBatchDimension*/ 0,
-      /*outputFeatureDimension*/ 1, output_spatial_dims);
+      /*outputBatchDimension=*/1,
+      /*outputFeatureDimension=*/0, output_spatial_dims);
 
+  // In the adjoint convolution for weight gradient:
+  // - window_strides equals forward dilation: spatial steps over input match
+  //   forward kernel dilation.
+  // - rhs_dilation equals forward stride: grad_output is dilated by the
+  //   forward stride to reconstruct the sub-sampled spatial positions.
+  // - lhs_dilation is 1 (no dilation on input).
   const auto window_strides = mlir::DenseI64ArrayAttr::get(&ctx, dilation);
   const auto lhs_dilation =
       mlir::DenseI64ArrayAttr::get(&ctx, Dimensions(num_spatial_dims, 1));
@@ -638,33 +662,19 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
   const auto precision_config =
       stablehlo::PrecisionConfigAttr::get(&ctx, precisions);
 
-  Dimensions intermediate_dims;
-  intermediate_dims.push_back(
-      weight_dims[1]);  // C_in / groups (or C_out / groups)
-  intermediate_dims.push_back(weight_dims[0]);  // C_out (or C_in)
-  for (size_t i = 0; i < num_spatial_dims; ++i) {
-    intermediate_dims.push_back(weight_dims[2 + i]);
-  }
-
-  const mlir::RankedTensorType intermediate_type = mlir::RankedTensorType::get(
-      intermediate_dims, mlir::getElementType(ctx, output_dtype));
+  const mlir::RankedTensorType result_type = mlir::RankedTensorType::get(
+      weight_dims, mlir::getElementType(ctx, output_dtype));
   input = stablehlo::ConvertElementType(input, output_dtype);
   grad_output = stablehlo::ConvertElementType(grad_output, output_dtype);
 
-  auto conv = stablehlo::Convolution(
-      intermediate_type, input, grad_output, dimension_numbers,
+  // Directly instantiate the convolution with result_type matching weight_dims
+  // [C_out, C_in/groups, spatial...]. batch_group_count=groups contracts the
+  // batch dimension within each group slice.
+  return stablehlo::Convolution(
+      result_type, input, grad_output, dimension_numbers,
       /*feature_group_count=*/1,
       /*batch_group_count=*/groups, window_strides, dims_padding, lhs_dilation,
       rhs_dilation, window_reversal, precision_config);
-
-  Dimensions transpose_perm;
-  transpose_perm.push_back(1);
-  transpose_perm.push_back(0);
-  for (size_t i = 0; i < num_spatial_dims; ++i) {
-    transpose_perm.push_back(2 + i);
-  }
-
-  return stablehlo::Transpose(conv, transpose_perm);
 }
 
 absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardBias(

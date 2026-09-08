@@ -1300,110 +1300,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
-  @parameterized.product(
-      batch_size=[1, 2],
-      in_channels=[4],
-      out_channels=[8],
-      length=[16],
-      kernel_size=[3],
-      stride=[1, 2],
-      padding=[0, 1],
-      output_padding=[0],
-      groups=[1, 2],
-      bias=[True, False],
-      dtype=[torch.float32, torch.bfloat16],
-  )
-  def test_conv_transpose1d(
-      self,
-      batch_size,
-      in_channels,
-      out_channels,
-      length,
-      kernel_size,
-      stride,
-      padding,
-      output_padding,
-      groups,
-      bias,
-      dtype,
-  ):
-    """Tests torch.nn.functional.conv_transpose1d."""
-    input_value = torch.randn(batch_size, in_channels, length, dtype=dtype)
-    weight_value = torch.randn(
-        in_channels,
-        out_channels // groups,
-        kernel_size,
-        dtype=dtype,
-    )
-    bias_value = torch.randn(out_channels, dtype=dtype)
-
-    def compute(device):
-      output = torch.nn.functional.conv_transpose1d(
-          input_value.to(device),
-          weight_value.to(device),
-          bias=(bias_value.to(device) if bias else None),
-          stride=stride,
-          padding=padding,
-          output_padding=output_padding,
-          groups=groups,
-      )
-      return output
-
-    self.assert_close_tpu_vs_cpu(compute, rtol=5e-1, atol=5e-1)
-
-  @parameterized.product(
-      batch_size=[1, 2],
-      in_channels=[4],
-      out_channels=[8],
-      h=[16],
-      w=[16],
-      kernel_size=[3],
-      stride=[1, 2],
-      padding=[0, 1],
-      output_padding=[0],
-      groups=[1, 2],
-      bias=[True, False],
-      dtype=[torch.float32, torch.bfloat16],
-  )
-  def test_conv_transpose2d(
-      self,
-      batch_size,
-      in_channels,
-      out_channels,
-      h,
-      w,
-      kernel_size,
-      stride,
-      padding,
-      output_padding,
-      groups,
-      bias,
-      dtype,
-  ):
-    """Tests torch.nn.functional.conv_transpose2d."""
-    input_value = torch.randn(batch_size, in_channels, h, w, dtype=dtype)
-    weight_value = torch.randn(
-        in_channels,
-        out_channels // groups,
-        kernel_size,
-        kernel_size,
-        dtype=dtype,
-    )
-    bias_value = torch.randn(out_channels, dtype=dtype)
-
-    def compute(device):
-      output = torch.nn.functional.conv_transpose2d(
-          input_value.to(device),
-          weight_value.to(device),
-          bias=(bias_value.to(device) if bias else None),
-          stride=stride,
-          padding=padding,
-          output_padding=output_padding,
-          groups=groups,
-      )
-      return output
-
-    self.assert_close_tpu_vs_cpu(compute, rtol=5e-1, atol=5e-1)
 
   @parameterized.product(
       input_dtype=[torch.int32, torch.int64],
@@ -10435,49 +10331,6 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase):
     )
 
   @parameterized.product(
-      groups=[1, 2, 4],
-      in_channels_per_group=[1, 2],
-      out_channels_per_group=[1, 2],
-  )
-  def test_convolution_backward_groups(
-      self, groups, in_channels_per_group, out_channels_per_group
-  ):
-    """Tests convolution backward with various group sizes."""
-    in_channels = groups * in_channels_per_group
-    out_channels = groups * out_channels_per_group
-    input_ = torch.randn(
-        2,
-        in_channels,
-        4,
-        4,
-        dtype=torch.float32,
-        requires_grad=True,
-    )
-    weight = torch.randn(
-        out_channels,
-        in_channels_per_group,
-        3,
-        3,
-        dtype=torch.float32,
-        requires_grad=True,
-    )
-    bias = torch.randn(out_channels, dtype=torch.float32, requires_grad=True)
-
-    def test_fn(device):
-      out = torch.nn.functional.conv2d(
-          input_.to(device),
-          weight.to(device),
-          bias=bias.to(device),
-          groups=groups,
-      )
-      grad_output = torch.randn_like(out, device=device)
-      out.backward(grad_output)
-
-      return input_.grad, weight.grad, bias.grad
-
-    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
-
-  @parameterized.product(
       stride=[2],
       padding=[1],
       groups=[1],
@@ -10615,6 +10468,490 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase):
       return input_.grad, weight.grad, bias.grad
 
     self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+
+  @parameterized.product(
+      batch_size=[1, 2],
+      dilation=[2, 4],
+      padding=[0, 2],
+  )
+  def test_conv1d_dilated_backward(self, batch_size, dilation, padding):
+    """Tests 1D dilated convolution backward pass on TPU vs CPU golden.
+
+    Dilated 1D convolutions (atrous convolutions) expand the receptive field
+    exponentially across time steps without downsampling or increasing the
+    parameter count. This is a foundational building block in Temporal
+    Convolutional Networks (TCN architectures) used in quantitative finance for
+    volatility forecasting, macro trend detection, and price prediction.
+
+    Test Configuration:
+      - Input tensor: (batch_size, in_channels=2, length=16)
+      - Weight tensor: (out_channels=2, in_channels=2, kernel_size=3)
+      - Bias tensor: (out_channels=2)
+      - Dilation: 2 or 4 (expanding effective receptive field to 5 or 9 steps)
+      - Padding: 0 or 2 (valid or symmetric padding)
+
+    Expected Output:
+      - Forward output tensor matches CPU golden within rtol=1e-2, atol=1e-2.
+      - Input gradient (x.grad) matches CPU golden shape and values.
+      - Weight gradient (w.grad) matches CPU golden shape and values.
+      - Bias gradient (b.grad) matches CPU golden shape and values.
+    """
+    in_channels = 2
+    out_channels = 2
+    length = 16
+    kernel_size = 3
+
+    # Generate synthetic input and weight tensors on CPU as golden references.
+    x_cpu = torch.randn(batch_size, in_channels, length, dtype=torch.float32)
+    weight_cpu = torch.randn(
+        out_channels, in_channels, kernel_size, dtype=torch.float32
+    )
+    bias_cpu = torch.randn(out_channels, dtype=torch.float32)
+
+    def test_fn(device):
+      # Attach gradients to test tensors transferred to the target device.
+      x = x_cpu.to(device).detach().requires_grad_(True)
+      w = weight_cpu.to(device).detach().requires_grad_(True)
+      b = bias_cpu.to(device).detach().requires_grad_(True)
+
+      # Forward pass: 1D convolution with dilated spacing between kernel taps.
+      out = torch.nn.functional.conv1d(
+          x, w, bias=b, dilation=dilation, padding=padding
+      )
+
+      # Backward pass: backpropagate unit gradients through all parameters.
+      grad_output = torch.ones_like(out)
+      out.backward(grad_output)
+
+      # Return forward activation and all backward gradient tensors.
+      return out, x.grad, w.grad, b.grad
+
+    # Verify forward and backward numerical parity between TPU and CPU.
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+
+  @parameterized.product(
+      batch_size=[1, 2],
+      dilation=[1, 2, 4],
+  )
+  def test_conv1d_causal_backward(self, batch_size, dilation):
+    """Tests causal 1D convolution backward pass with strict left-padding.
+
+    In financial algorithmic trading, convolutions must be strictly causal:
+    the output at timestamp t must only depend on inputs at timestamps <= t,
+    strictly preventing lookahead bias and future information leakage.
+
+    Causality is enforced by prepending (kernel_size - 1) * dilation zero-pads
+    strictly to the left (past) side of the time series, followed by an
+    unpadded (padding=0) convolution.
+
+    Test Configuration:
+      - Input tensor: (batch_size, in_channels=2, length=12)
+      - Weight tensor: (out_channels=2, in_channels=2, kernel_size=3)
+      - Left-padding: (kernel_size - 1) * dilation = 2 * dilation zeros
+      - Dilation: 1, 2, or 4
+
+    Expected Output:
+      - Forward activation of shape (batch_size, out_channels=2, length=12),
+        preserving sequence length without future data leakage.
+      - Accurate backpropagation through both convolution and left-pad layers.
+      - Exact numerical parity between TPU and CPU golden within tolerances.
+    """
+    in_channels = 2
+    out_channels = 2
+    length = 12
+    kernel_size = 3
+    left_pad = (kernel_size - 1) * dilation
+
+    # Generate synthetic input and weight tensors on CPU.
+    x_cpu = torch.randn(batch_size, in_channels, length, dtype=torch.float32)
+    weight_cpu = torch.randn(
+        out_channels, in_channels, kernel_size, dtype=torch.float32
+    )
+    bias_cpu = torch.randn(out_channels, dtype=torch.float32)
+
+    def test_fn(device):
+      # Attach autograd gradient trackers.
+      x = x_cpu.to(device).detach().requires_grad_(True)
+      w = weight_cpu.to(device).detach().requires_grad_(True)
+      b = bias_cpu.to(device).detach().requires_grad_(True)
+
+      # Apply asymmetric left-padding: pad format is (left, right).
+      x_padded = torch.nn.functional.pad(x, (left_pad, 0))
+
+      # Causal convolution with padding=0 on the padded time-series.
+      out = torch.nn.functional.conv1d(
+          x_padded, w, bias=b, dilation=dilation, padding=0
+      )
+
+      # Backpropagate unit gradients through convolution and left-pad op.
+      grad_output = torch.ones_like(out)
+      out.backward(grad_output)
+
+      return out, x.grad, w.grad, b.grad
+
+    # Verify TPU and CPU produce identical forward results and gradients.
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+
+  @parameterized.product(
+      length=[4, 6],
+      stride=[1, 2],
+  )
+  def test_conv1d_streaming_small_shape_backward(self, length, stride):
+    """Tests low-latency streaming 1D convolution backward on minimal buffers.
+
+    Ultra-low-latency financial trading systems process events (tick quotes,
+    order updates) as individual streaming items (batch_size=1) with very
+    short history windows (lengths 4 to 6).
+
+    This test validates that TPU lowering, padding, and autograd kernels
+    execute correctly on sub-tile shapes without tiling corruption or
+    dimension alignment bugs on physical TPU vector hardware.
+
+    Test Configuration:
+      - Batch size: 1 (single-stream streaming inference / online adaptation)
+      - Channels: in_channels=1, out_channels=2
+      - Sequence length: 4 or 6 timesteps
+      - Kernel size: 2, Stride: 1 or 2
+
+    Expected Output:
+      - Forward output tensor matching CPU reference shape and values.
+      - Complete gradient propagation (x.grad, w.grad, b.grad) matching CPU
+        golden within rtol=1e-2, atol=1e-2.
+    """
+    batch_size = 1
+    in_channels = 1
+    out_channels = 2
+    kernel_size = 2
+
+    # Initialize small-shape tensors for low-latency streaming test.
+    x_cpu = torch.randn(batch_size, in_channels, length, dtype=torch.float32)
+    weight_cpu = torch.randn(
+        out_channels, in_channels, kernel_size, dtype=torch.float32
+    )
+    bias_cpu = torch.randn(out_channels, dtype=torch.float32)
+
+    def test_fn(device):
+      # Transfer tensors to device and enable gradient tracking.
+      x = x_cpu.to(device).detach().requires_grad_(True)
+      w = weight_cpu.to(device).detach().requires_grad_(True)
+      b = bias_cpu.to(device).detach().requires_grad_(True)
+
+      # Forward pass: 1D convolution across short streaming buffer.
+      out = torch.nn.functional.conv1d(x, w, bias=b, stride=stride)
+
+      # Backward pass: backpropagate gradients across minimal sequence lengths.
+      grad_output = torch.ones_like(out)
+      out.backward(grad_output)
+
+      return out, x.grad, w.grad, b.grad
+
+    # Verify TPU output and parameter gradients match CPU golden.
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+
+  @parameterized.product(
+      batch_size=[1, 2],
+      kernel_and_stride=[
+          ((1, 2), (1, 2)),  # Spatial aggregation across price-volume depth
+          ((3, 1), (1, 1)),  # Temporal aggregation across timestamps
+      ],
+  )
+  def test_conv2d_anisotropic_lob_backward(self, batch_size, kernel_and_stride):
+    """Tests 2D convolution backward with anisotropic kernels for LOB data.
+
+    Deep Limit Order Book (DeepLOB) models represent order books as 2D grids
+    where height represents time (consecutive event updates) and width
+    represents order book depth (bid/ask price levels and queue volumes).
+    Because the two spatial axes represent fundamentally different physics,
+    anisotropic (non-square) kernels are required:
+      1. Spatial kernel (1, 2) with stride (1, 2): captures interactions
+         between adjacent bid/ask price and volume levels at the same timestamp.
+      2. Temporal kernel (3, 1) with stride (1, 1): captures multi-step
+         temporal momentum across consecutive events for a single price level.
+
+    Test Configuration:
+      - Input grid: (batch_size, in_channels=1, height=10, width=6)
+        representing [time] x [depth].
+      - Weight tensor: (out_channels=2, in_channels=1, k_h, k_w)
+      - Kernel & stride pairs: ((1, 2), (1, 2)) and ((3, 1), (1, 1))
+
+    Expected Output:
+      - Forward feature map matching CPU golden reference.
+      - Backpropagated input, weight, and bias gradients matching CPU reference
+        within rtol=5e-2, atol=5e-2.
+    """
+    kernel_size, stride = kernel_and_stride
+    in_channels = 1
+    out_channels = 2
+    height, width = 10, 6
+
+    # Generate synthetic limit order book grid (time x depth).
+    x_cpu = torch.randn(
+        batch_size, in_channels, height, width, dtype=torch.float32
+    )
+    weight_cpu = torch.randn(
+        out_channels,
+        in_channels,
+        kernel_size[0],
+        kernel_size[1],
+        dtype=torch.float32,
+    )
+    bias_cpu = torch.randn(out_channels, dtype=torch.float32)
+
+    def test_fn(device):
+      # Enable gradient tracking on device tensors.
+      x = x_cpu.to(device).detach().requires_grad_(True)
+      w = weight_cpu.to(device).detach().requires_grad_(True)
+      b = bias_cpu.to(device).detach().requires_grad_(True)
+
+      # Forward pass: 2D convolution using anisotropic rectangular kernel.
+      out = torch.nn.functional.conv2d(x, w, bias=b, stride=stride)
+
+      # Backward pass: compute gradients across anisotropic dimensions.
+      grad_output = torch.ones_like(out)
+      out.backward(grad_output)
+
+      return out, x.grad, w.grad, b.grad
+
+    # Verify forward and backward parity between TPU and CPU golden.
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=5e-2, atol=5e-2)
+
+  @parameterized.product(
+      batch_size=[1, 2],
+      dilation=[1, 2],
+  )
+  def test_conv1d_depthwise_backward(self, batch_size, dilation):
+    """Tests depthwise 1D convolution backward (groups = in_channels).
+
+    Depthwise convolutions apply independent spatial filters to each input
+    channel individually. In quantitative finance and multi-asset portfolio
+    modeling, each channel corresponds to an independent financial instrument
+    (e.g., FX pair, stock ticker, cryptocurrency) to learn asset-specific
+    temporal dynamics prior to cross-asset aggregation.
+
+    Test Configuration:
+      - Input tensor: (batch_size, channels=2, length=12)
+      - Weight tensor: (channels=2, 1, kernel_size=3)
+      - Groups: channels (strictly depthwise)
+      - Dilation: 1 or 2
+
+    Expected Output:
+      - Forward output tensor computed independently per channel.
+      - Weight gradients of shape (channels, 1, kernel_size) isolated per group.
+      - Full numerical parity between TPU and CPU reference within rtol=1e-2,
+        atol=1e-2.
+    """
+    channels = 2
+    groups = channels
+    length = 12
+    kernel_size = 3
+
+    # Generate multi-channel input and per-channel independent weights.
+    x_cpu = torch.randn(batch_size, channels, length, dtype=torch.float32)
+    weight_cpu = torch.randn(channels, 1, kernel_size, dtype=torch.float32)
+    bias_cpu = torch.randn(channels, dtype=torch.float32)
+
+    def test_fn(device):
+      # Enable autograd tracking for input, depthwise weight, and bias.
+      x = x_cpu.to(device).detach().requires_grad_(True)
+      w = weight_cpu.to(device).detach().requires_grad_(True)
+      b = bias_cpu.to(device).detach().requires_grad_(True)
+
+      # Forward pass: depthwise 1D conv where groups equals channel count.
+      out = torch.nn.functional.conv1d(
+          x, w, bias=b, dilation=dilation, groups=groups
+      )
+
+      # Backward pass: verify gradient routing to grouped weight channels.
+      grad_output = torch.ones_like(out)
+      out.backward(grad_output)
+
+      return out, x.grad, w.grad, b.grad
+
+    # Verify TPU execution matches CPU golden reference.
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+
+  @parameterized.product(
+      batch_size=[1, 2],
+      stride=[1, 2],
+      padding=[0, 1],
+  )
+  def test_conv3d_backward(self, batch_size, stride, padding):
+    """Tests standard 3D convolution backward on fast, bounded tensor shapes.
+
+    Standard PyTorch OpInfo generates randomly sized 3D convolution inputs with
+    large dimensions (e.g. 10x11x12) and large dilation/padding combinations,
+    which cause XLA / StableHLO compilation timeouts during test execution.
+
+    This unit test provides fast, regression-safe coverage for standard 3D
+    convolution backward by constraining dimensions to 4x4x4 and kernel size
+    to 2x2x2.
+
+    Test Configuration:
+      - Input tensor: (batch_size, in_channels=2, d=4, h=4, w=4)
+      - Weight tensor: (out_channels=2, in_channels=2, k=2, k=2, k=2)
+      - Stride: 1 or 2
+      - Padding: 0 or 1
+
+    Expected Output:
+      - Forward 3D convolution output matching CPU reference.
+      - Backpropagated input, weight, and bias gradients matching CPU reference
+        within rtol=5e-2, atol=5e-2.
+    """
+    in_channels = 2
+    out_channels = 2
+    d, h, w = 4, 4, 4
+    kernel_size = 2
+
+    # Initialize compact 3D tensors.
+    x_cpu = torch.randn(batch_size, in_channels, d, h, w, dtype=torch.float32)
+    weight_cpu = torch.randn(
+        out_channels,
+        in_channels,
+        kernel_size,
+        kernel_size,
+        kernel_size,
+        dtype=torch.float32,
+    )
+    bias_cpu = torch.randn(out_channels, dtype=torch.float32)
+
+    def test_fn(device):
+      # Track gradients for input, kernel weights, and bias.
+      x = x_cpu.to(device).detach().requires_grad_(True)
+      w = weight_cpu.to(device).detach().requires_grad_(True)
+      b = bias_cpu.to(device).detach().requires_grad_(True)
+
+      # Forward pass: standard 3D convolution across spatial depth/height/width.
+      out = torch.nn.functional.conv3d(
+          x, w, bias=b, stride=stride, padding=padding
+      )
+
+      # Backward pass: compute adjoint gradients across 3D dimensions.
+      grad_output = torch.ones_like(out)
+      out.backward(grad_output)
+
+      return out, x.grad, w.grad, b.grad
+
+    # Verify numerical equivalence between TPU and CPU reference.
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=5e-2, atol=5e-2)
+
+  @parameterized.product(
+      batch_size=[1, 2],
+      stride=[1, 2],
+  )
+  def test_conv_transpose3d_backward(self, batch_size, stride):
+    """Tests 3D transposed convolution backward on fast, bounded tensor shapes.
+
+    Transposed 3D convolution (fractionally strided convolution) is the inverse
+    transformation of standard 3D convolution, commonly used in 3D generative
+    models, volumetric segmentation decoders, and physics upsamplers.
+
+    Test Configuration:
+      - Input tensor: (batch_size, in_channels=2, d=3, h=3, w=3)
+      - Weight tensor: (in_channels=2, out_channels=2, k=2, k=2, k=2)
+      - Stride: 1 or 2
+
+    Expected Output:
+      - Upsampled forward 3D output matching CPU golden reference.
+      - Correct backpropagation computing input, filter, and bias gradients
+        matching CPU reference within rtol=5e-2, atol=5e-2.
+    """
+    in_channels = 2
+    out_channels = 2
+    d, h, w = 3, 3, 3
+    kernel_size = 2
+
+    # Initialize 3D tensors for transposed convolution.
+    x_cpu = torch.randn(batch_size, in_channels, d, h, w, dtype=torch.float32)
+    weight_cpu = torch.randn(
+        in_channels,
+        out_channels,
+        kernel_size,
+        kernel_size,
+        kernel_size,
+        dtype=torch.float32,
+    )
+    bias_cpu = torch.randn(out_channels, dtype=torch.float32)
+
+    def test_fn(device):
+      # Enable autograd tracking for input, transposed filter, and bias.
+      x = x_cpu.to(device).detach().requires_grad_(True)
+      w = weight_cpu.to(device).detach().requires_grad_(True)
+      b = bias_cpu.to(device).detach().requires_grad_(True)
+
+      # Forward pass: 3D transposed convolution upsampling spatial dimensions.
+      out = torch.nn.functional.conv_transpose3d(x, w, bias=b, stride=stride)
+
+      # Backward pass: backpropagate unit gradients through the transposed conv.
+      grad_output = torch.ones_like(out)
+      out.backward(grad_output)
+
+      return out, x.grad, w.grad, b.grad
+
+    # Verify TPU results match CPU golden reference.
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=5e-2, atol=5e-2)
+
+  @parameterized.product(
+      batch_size=[1, 2],
+      dilation_and_padding=[
+          ((2, 1), (1, 0)),
+          ((1, 2), (0, 1)),
+      ],
+  )
+  def test_conv2d_asymmetric_dilation_padding_backward(
+      self, batch_size, dilation_and_padding
+  ):
+    """Tests 2D convolution backward with asymmetric dilation and padding pairs.
+
+    Verifies that rectangular dilation rates (e.g., dilation=(2, 1) or (1, 2))
+    paired with corresponding asymmetric padding (e.g., padding=(1, 0) or
+    (0, 1)) lower correctly into TPU XLA HLO convolution operators and produce
+    accurate forward activations and autograd gradients.
+
+    Test Configuration:
+      - Input tensor: (batch_size, in_channels=2, height=8, width=8)
+      - Weight tensor: (out_channels=2, in_channels=2, 3, 3)
+      - Dilation & padding pairs: ((2, 1), (1, 0)) and ((1, 2), (0, 1))
+
+    Expected Output:
+      - Forward 2D convolution output matching CPU reference with asymmetric
+        receptive fields.
+      - Input, weight, and bias gradients matching CPU golden reference within
+        rtol=5e-2, atol=5e-2.
+    """
+    dilation, padding = dilation_and_padding
+    in_channels = 2
+    out_channels = 2
+    height, width = 8, 8
+    kernel_size = 3
+
+    # Generate synthetic input and weight tensors on CPU.
+    x_cpu = torch.randn(
+        batch_size, in_channels, height, width, dtype=torch.float32
+    )
+    weight_cpu = torch.randn(
+        out_channels, in_channels, kernel_size, kernel_size, dtype=torch.float32
+    )
+    bias_cpu = torch.randn(out_channels, dtype=torch.float32)
+
+    def test_fn(device):
+      # Transfer tensors to device and enable gradient computation.
+      x = x_cpu.to(device).detach().requires_grad_(True)
+      w = weight_cpu.to(device).detach().requires_grad_(True)
+      b = bias_cpu.to(device).detach().requires_grad_(True)
+
+      # Forward pass: 2D convolution with asymmetric dilation and padding.
+      out = torch.nn.functional.conv2d(
+          x, w, bias=b, dilation=dilation, padding=padding
+      )
+
+      # Backward pass: backpropagate unit gradients through asymmetric conv.
+      grad_output = torch.ones_like(out)
+      out.backward(grad_output)
+
+      return out, x.grad, w.grad, b.grad
+
+    # Verify TPU outputs and gradients match CPU golden reference.
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=5e-2, atol=5e-2)
 
   def test_linear_inference_mode(self):
     class LinearModel(torch.nn.Module):

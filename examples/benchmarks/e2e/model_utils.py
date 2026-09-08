@@ -961,8 +961,11 @@ def ml_layer_model_builder(
     in_channels = kwargs["in_channels"]
     out_channels = kwargs["out_channels"]
     kernel_size = kwargs["kernel_size"]
-    stride = kwargs["stride"]
-    padding = kwargs["padding"]
+    stride = kwargs.get("stride", 1)
+    padding = kwargs.get("padding", 0)
+    dilation = kwargs.get("dilation", 1)
+    groups = kwargs.get("groups", 1)
+    bias = kwargs.get("bias", True)
     height = kwargs["height"]
     width = kwargs["width"]
 
@@ -975,6 +978,9 @@ def ml_layer_model_builder(
           kernel_size,
           stride,
           padding,
+          dilation,
+          groups,
+          bias,
           dtype,
       ):
         super().__init__()
@@ -984,6 +990,9 @@ def ml_layer_model_builder(
             kernel_size,
             stride=stride,
             padding=padding,
+            dilation=dilation,
+            groups=groups,
+            bias=bias,
             dtype=dtype,
         )
 
@@ -996,6 +1005,9 @@ def ml_layer_model_builder(
         kernel_size,
         stride,
         padding,
+        dilation,
+        groups,
+        bias,
         dtype=weights_dtype,
     )
     example_inputs = torch.randn(
@@ -1003,6 +1015,9 @@ def ml_layer_model_builder(
         dtype=weights_dtype,
         device=device,
     )
+    if kwargs.get("channels_last", False):
+      model = model.to(memory_format=torch.channels_last)
+      example_inputs = example_inputs.to(memory_format=torch.channels_last)
   elif model_name == "nn.RMSNorm":
     num_features = kwargs["num_features"]
 
