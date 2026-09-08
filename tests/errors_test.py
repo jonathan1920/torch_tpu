@@ -11329,6 +11329,30 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.unique_consecutive(scalar, dim=-2)
 
+  @parameterized.named_parameters(
+      ("u_mismatch", "u"),
+      ("s_mismatch", "s"),
+      ("vh_mismatch", "vh"),
+  )
+  def test_linalg_svd_out_dtype_mismatch(self, mismatch_arg):
+    u_dtype = torch.float32 if mismatch_arg == "u" else torch.float64
+    s_dtype = torch.float32 if mismatch_arg == "s" else torch.float64
+    vh_dtype = torch.float32 if mismatch_arg == "vh" else torch.float64
+
+    u = torch.empty(5, 3, device=et.device(), dtype=u_dtype)
+    s = torch.empty(3, device=et.device(), dtype=s_dtype)
+    vh = torch.empty(3, 3, device=et.device(), dtype=vh_dtype)
+
+    t = torch.randn(5, 3, device=et.device(), dtype=torch.float64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=re.compile(
+            r".*expected out tensor to have dtype.*", re.IGNORECASE | re.DOTALL
+        ),
+    ):
+      torch.linalg.svd(t, full_matrices=False, out=(u, s, vh))
+
 
 class InputPreprocessingErrorTest(et.ErrorTestBase):
 

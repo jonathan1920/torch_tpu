@@ -668,6 +668,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/leaky_relu:leaky_relu_aten_kernels",
         "//torch_tpu/csrc/ops/lerp:lerp_aten_kernels",
         "//torch_tpu/csrc/ops/linalg:linalg_kernels",
+        "//torch_tpu/csrc/ops/linalg:linalg_svd_kernels",
         "//torch_tpu/csrc/ops/linalg/lu:linalg_lu_kernels",
         "//torch_tpu/csrc/ops/linalg/qr:linalg_qr_kernels",
         "//torch_tpu/csrc/ops/linalg/solve_triangular:linalg_solve_triangular_kernels",
