@@ -62,7 +62,8 @@ mlir::MlirOp PrepareScalar(mlir::MlirOp scalar,
 
 mlir::Type GetComputeType(mlir::MlirBuilder& builder, mlir::Type mlir_type) {
   mlir::Type compute_type = builder.getOpBuilder().getF32Type();
-  if (mlir::isa<mlir::Float64Type>(mlir_type)) {
+  if (mlir::isa<mlir::Float64Type>(mlir_type) ||
+      mlir::isa<mlir::IntegerType>(mlir_type)) {
     compute_type = builder.getOpBuilder().getF64Type();
   } else if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(mlir_type)) {
     if (mlir::isa<mlir::Float64Type>(complex_type.getElementType())) {
@@ -129,14 +130,7 @@ absl::StatusOr<mlir::MlirOp> BuildLinspaceInterpolation(
   // Halfway is steps / 2.
   int64_t halfway = steps / 2;
 
-  mlir::MlirOp iota_for_mul = iota;
-  if (should_truncate && compute_type != mlir_type) {
-    iota_for_mul = mlir::stablehlo::ConvertElementType(iota_for_mul, mlir_type);
-    iota_for_mul =
-        mlir::stablehlo::ConvertElementType(iota_for_mul, compute_type);
-  }
-
-  auto offset = mlir::stablehlo::Mul(iota_for_mul, step_size);
+  auto offset = mlir::stablehlo::Mul(iota, step_size);
   if (should_truncate && compute_type != mlir_type) {
     offset = mlir::stablehlo::ConvertElementType(offset, mlir_type);
     offset = mlir::stablehlo::ConvertElementType(offset, compute_type);
@@ -147,16 +141,7 @@ absl::StatusOr<mlir::MlirOp> BuildLinspaceInterpolation(
   auto steps_minus_one_tensor =
       PrepareScalar(steps_minus_one_scalar, compute_tensor_type);
   auto reverse_iota = mlir::stablehlo::Subtract(steps_minus_one_tensor, iota);
-
-  mlir::MlirOp reverse_iota_for_mul = reverse_iota;
-  if (should_truncate && compute_type != mlir_type) {
-    reverse_iota_for_mul =
-        mlir::stablehlo::ConvertElementType(reverse_iota_for_mul, mlir_type);
-    reverse_iota_for_mul =
-        mlir::stablehlo::ConvertElementType(reverse_iota_for_mul, compute_type);
-  }
-
-  auto reverse_offset = mlir::stablehlo::Mul(reverse_iota_for_mul, step_size);
+  auto reverse_offset = mlir::stablehlo::Mul(reverse_iota, step_size);
   if (should_truncate && compute_type != mlir_type) {
     reverse_offset =
         mlir::stablehlo::ConvertElementType(reverse_offset, mlir_type);

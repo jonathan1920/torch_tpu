@@ -876,6 +876,10 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"rtol": 1.5e-2},
         torch.float32: {"rtol": 7.7e-3},
     },
+    "arange": {
+        torch.bfloat16: {"atol": 9.4e-3},
+        torch.float16: {"atol": 5.9e-4},
+    },
     "asin": {
         torch.complex64: {"rtol": 7.9e-5, "atol": 1e-4},
     },
@@ -996,6 +1000,13 @@ ACCURACY_OVERRIDES_VS_GPU = {
     "linalg.vector_norm": {
         torch.complex64: {"rtol": 4.8e-6},
         torch.float32: {"rtol": 4.8e-6},
+    },
+    "linspace": {
+        torch.int16: {"rtol": 4.1e-1, "atol": 1.3},
+        torch.int32: {"rtol": 4.1e-1, "atol": 1.3},
+        torch.int64: {"rtol": 4.1e-1, "atol": 1.3},
+        torch.int8: {"rtol": 4.1e-1, "atol": 1.3},
+        torch.uint8: {"rtol": 4.1e-1},
     },
     "log": {
         torch.complex64: {"rtol": 4.7e-5},
@@ -1311,8 +1322,13 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.float32: {"rtol": 4.8e-6},
     },
     "linspace": {
-        torch.bfloat16: {"rtol": 7.9e-3, "atol": 9.4e-3},
+        torch.bfloat16: {"atol": 9.4e-3},
         torch.float16: {"rtol": 1.2e-3, "atol": 1.2e-3},
+        torch.int16: {"rtol": 4.1e-1, "atol": 1.3},
+        torch.int32: {"rtol": 4.1e-1, "atol": 1.3},
+        torch.int64: {"rtol": 4.1e-1, "atol": 1.3},
+        torch.int8: {"rtol": 4.1e-1, "atol": 1.3},
+        torch.uint8: {"rtol": 4.1e-1},
     },
     "log": {
         torch.complex64: {"rtol": 4.7e-5},
