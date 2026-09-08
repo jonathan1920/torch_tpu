@@ -39,7 +39,7 @@ exports_files([
 _REQUIRES_GPU_SM90 = "requires-gpu-sm90"
 
 # TODO: change this back to 16 after the OSS v5 worker pool is back to normal.
-_OSS_SAMPLE_LIMIT = "--max_samples_per_op_dtype=10"
+_OSS_SAMPLE_LIMIT = "--max_samples_per_op_dtype=5"
 
 torch_tpu_py_library(
     name = "oss_utils",
@@ -474,6 +474,7 @@ torch_tpu_py_test(
         "ops_test_gpu_golden_compiled2.gz",
     ],
     main = "ops_test.py",
+    nopresubmit_oss = "This slow test is enabled in postsubmit and nightly.",
     run_on_accelerators = [
         "requires-tpu-v6e",
         "requires-tpu-v5lite",
