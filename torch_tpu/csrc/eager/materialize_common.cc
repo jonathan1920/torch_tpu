@@ -202,6 +202,24 @@ void FinalizePushTraceEvent(std::unique_ptr<StructuredLogEvent> event,
   StructuredLogBuffer::GetInstance().Push(std::move(event));
 }
 
+// Returns whether the specified layout tiles match the device default tiles.
+// If layout_tiles is empty, default device tiling is assumed.
+bool TilesMatchDefault(absl::Span<const Indices> layout_tiles,
+                       absl::Span<const xla::Tile> default_tiles) {
+  if (layout_tiles.empty()) {
+    return true;
+  }
+  if (layout_tiles.size() != default_tiles.size()) {
+    return false;
+  }
+  for (size_t t = 0; t < layout_tiles.size(); ++t) {
+    if (absl::MakeConstSpan(layout_tiles[t]) != default_tiles[t].dimensions()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 absl::StatusOr<std::vector<CustomLayout>>
 ExtractArgumentLayoutsIfDifferentFromDefault(const Traversal& traversal) {
   std::vector<CustomLayout> argument_layouts;
@@ -223,8 +241,29 @@ ExtractArgumentLayoutsIfDifferentFromDefault(const Traversal& traversal) {
     TT_ASSIGN_OR_RETURN(
         const auto default_layout,
         client->GetDefaultLayout(element_type, arg.dimensions()));
+
+    if (arg.on_device_shape_is_dynamic()) {
+      // Dynamic on-device buffers (e.g. outputs of compiled models with bounded
+      // dynamism) have physical tiling determined by their upper bounds rather
+      // than their runtime logical dimensions. If their dimension ordering
+      // matches the default layout, no layout annotation is needed. If their
+      // dimension ordering differs, propagate minor_to_major but omit tiling so
+      // downstream eager kernels do not force static tile padding onto the
+      // dynamic buffer.
+      if (minor_to_major == default_layout.minor_to_major()) {
+        continue;
+      }
+      if (argument_layouts.empty()) {
+        argument_layouts.resize(arguments.size());
+      }
+      CustomLayout dynamic_layout = *layout_opt;
+      dynamic_layout.tiles.clear();
+      argument_layouts[i] = std::move(dynamic_layout);
+      continue;
+    }
+
     if (minor_to_major == default_layout.minor_to_major() &&
-        layout_opt->tiles.empty()) {
+        TilesMatchDefault(layout_opt->tiles, default_layout.tiles())) {
       continue;
     }
     ABSL_VLOG(3)
@@ -303,17 +342,17 @@ absl::StatusOr<CompiledTraversal> VerifyAndCompileTraversal(
 
   // Start compiling the traversal.
   ABSL_VLOG(1) << "[ExecutionTask] Compiling traversal";
-  absl::StatusOr<CompiledKernel> compiled_kernel;
+  CompiledKernel compiled_kernel;
   {
     tsl::profiler::TraceMe t("CompileTraversal");
-    compiled_kernel =
+    TT_ASSIGN_OR_RETURN(
+        compiled_kernel,
         traversal.Compile(std::move(compilation_spec), out_mlir_text,
-                          /*use_stablehlo_bounds=*/false, argument_layouts);
-    TT_RETURN_IF_ERROR(compiled_kernel.status());
+                          /*use_stablehlo_bounds=*/false, argument_layouts));
   }
   return CompiledTraversal{
       .compilation_cache_key = std::move(compilation_cache_key),
-      .compiled_kernel = std::move(*compiled_kernel)};
+      .compiled_kernel = std::move(compiled_kernel)};
 }
 
 }  // namespace

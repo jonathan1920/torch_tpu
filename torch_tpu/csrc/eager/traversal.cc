@@ -16,6 +16,7 @@
 
 #include "torch_tpu/csrc/eager/traversal.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -675,16 +676,18 @@ void AnnotateArgumentLayouts(mlir::ModuleOp module,
       tiles.reserve(layout.tiles.size());
       for (const Indices& tile_indices : layout.tiles) {
         Indices tile_dims(tile_indices.begin(), tile_indices.end());
-        while (tile_dims.size() < dims.size()) {
-          int64_t dim_idx = layout.minor_to_major[tile_dims.size()];
+        // Hardware tiles on TPU are at most 2-dimensional. Pad tile dimensions
+        // up to at most rank 2 to avoid generating unsupported 3D+ tiles.
+        while (tile_dims.size() < std::min<size_t>(dims.size(), 2)) {
+          const int64_t dim_idx = layout.minor_to_major[tile_dims.size()];
           ABSL_CHECK_GE(dim_idx, 0);            // CRASH_OK
           ABSL_CHECK_LT(dim_idx, dims.size());  // CRASH_OK
           tile_dims.push_back(dims[dim_idx]);
         }
         tiles.push_back(xla::Tile(tile_dims));
       }
-      xla::Layout xla_layout(layout.minor_to_major, tiles,
-                             layout.element_size_in_bits);
+      const xla::Layout xla_layout(layout.minor_to_major, tiles,
+                                   layout.element_size_in_bits);
       main.setArgAttr(i, "mhlo.layout_mode",
                       builder.getStringAttr(xla_layout.ToString()));
     }

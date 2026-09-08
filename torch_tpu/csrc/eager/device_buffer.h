@@ -724,6 +724,11 @@ class DeviceBufferList {
       CustomLayout layout;
       layout.minor_to_major =
           CopyIntVector(on_device_shape.layout().minor_to_major());
+      // Preserve on-device tiling in Shape so eager cache keying and execution
+      // correctly distinguish custom-tiled buffers from default layouts.
+      for (const auto& tile : on_device_shape.layout().tiles()) {
+        layout.tiles.push_back(CopyIntVector(tile.dimensions()));
+      }
       layout.element_size_in_bits = XlaEquivalentBitwidth(element_type);
       shape.set_layout(std::move(layout));
     }

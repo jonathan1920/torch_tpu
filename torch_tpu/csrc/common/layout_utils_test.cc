@@ -26,6 +26,9 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/shape.h"
 #include "torch_tpu/csrc/common/status_test_utils.h"
+#include "xla/layout.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace torch_tpu {
 namespace {
@@ -51,6 +54,17 @@ TEST(LayoutUtilsTest, CustomLayoutTilingAndEquality) {
   ASSERT_TRUE(shape.layout().has_value());
   EXPECT_EQ(*shape.layout(), layout1);
   EXPECT_EQ(shape.layout()->tiles[0], Indices({8, 128}));
+}
+
+TEST(LayoutUtilsTest, MakeShapePreservesTiles) {
+  const xla::Shape xla_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
+      xla::PrimitiveType::F32, {16, 128}, {0, 1}, {xla::Tile({8})});
+
+  TT_ASSERT_OK_AND_ASSIGN(const Shape shape, MakeShape(xla_shape));
+  ASSERT_TRUE(shape.layout().has_value());
+  EXPECT_EQ(shape.layout()->minor_to_major, Indices({0, 1}));
+  ASSERT_EQ(shape.layout()->tiles.size(), 1);
+  EXPECT_EQ(shape.layout()->tiles[0], Indices({8}));
 }
 
 TEST(LayoutUtilsTest, ResolveTpuLayout_StandardTensor_Success) {

@@ -37,6 +37,11 @@ absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape) {
   if (xla_shape.has_layout()) {
     CustomLayout layout;
     layout.minor_to_major = CopyIntVector(xla_shape.layout().minor_to_major());
+    // Preserve layout tiles so downstream consumers have complete on-device
+    // layout information.
+    for (const auto& tile : xla_shape.layout().tiles()) {
+      layout.tiles.push_back(CopyIntVector(tile.dimensions()));
+    }
     layout.element_size_in_bits = XlaEquivalentBitwidth(result_dtype);
     shape.set_layout(std::move(layout));
   }

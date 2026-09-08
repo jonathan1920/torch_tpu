@@ -137,6 +137,7 @@ torch_tpu_cc_test(
         "//shims/torch/c10/core:base_headers",
         "//torch_tpu/csrc/common:oss_test_main",
         "@stablehlo//:attr_type_builder_util",
+        "@xla//xla:shape_util",
     ],
 )
 
