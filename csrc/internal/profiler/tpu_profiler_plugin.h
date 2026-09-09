@@ -34,6 +34,10 @@
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
+namespace libkineto {
+class GenericTraceActivity;
+}  // namespace libkineto
+
 namespace torch_tpu {
 
 // TPU implementation of libkineto::IActivityProfilerSession.
@@ -121,6 +125,25 @@ absl::Status UpdateProfileOptions(std::string_view custom_config,
 absl::Status UpdateProfileOptions(std::string_view custom_config,
                                   tensorflow::ProfileOptions& opts,
                                   std::string& out_run_dir);
+
+// Sanitizes a string stat value for Kineto activity metadata. Kineto's
+// ChromeTraceLogger runs sanitizeStrForJSON() which replaces all backslashes
+// with forward slashes, turning \" into /" and breaking JSON parsing if any
+// double quotes or escape sequences exist. Replacing double quotes with single
+// quotes and stripping newlines ensures the metadata string value is safely
+// emitted inside JSON double quotes without syntax corruption.
+[[nodiscard]] std::string SanitizeStatString(std::string_view s);
+
+// Adds a string metadata entry to a Kineto trace activity, ensuring that the
+// value is properly sanitized to prevent JSON syntax corruption in Kineto's
+// ChromeTraceLogger.
+//
+// Arguments:
+//   activity: The Kineto GenericTraceActivity to attach the metadata to.
+//   key: The metadata key name.
+//   value: The raw string metadata value to sanitize and add.
+void AddActivityStringMetadata(libkineto::GenericTraceActivity& activity,
+                               const std::string& key, std::string_view value);
 
 }  // namespace torch_tpu
 

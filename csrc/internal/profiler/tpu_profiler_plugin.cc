@@ -582,6 +582,19 @@ std::optional<uint64_t> GetXProfSessionStartTimeNs(
 }
 }  // namespace
 
+std::string SanitizeStatString(std::string_view s) {
+  std::string result(s);
+  std::replace(result.begin(), result.end(), '"', '\'');
+  std::erase(result, '\n');
+  std::erase(result, '\r');
+  return result;
+}
+
+void AddActivityStringMetadata(libkineto::GenericTraceActivity& activity,
+                               const std::string& key, std::string_view value) {
+  activity.addMetadataQuoted(key, SanitizeStatString(value));
+}
+
 void TpuKinetoProfilerSession::processTrace(libkineto::ActivityLogger& logger) {
   auto start_time_ns = GetXProfSessionStartTimeNs(xspace_);
   for (auto& plane : *xspace_.mutable_planes()) {
@@ -733,7 +746,8 @@ void TpuKinetoProfilerSession::processTrace(libkineto::ActivityLogger& logger) {
 
           switch (stat->value_case()) {
             case tensorflow::profiler::XStat::kStrValue:
-              activity.addMetadataQuoted(stat_name_str, stat->str_value());
+              AddActivityStringMetadata(activity, stat_name_str,
+                                        stat->str_value());
               break;
             case tensorflow::profiler::XStat::kInt64Value:
               activity.addMetadataQuoted(stat_name_str,
@@ -756,8 +770,8 @@ void TpuKinetoProfilerSession::processTrace(libkineto::ActivityLogger& logger) {
             case tensorflow::profiler::XStat::kRefValue: {
               if (auto ref_it = stat_name_map.find(stat->ref_value());
                   ref_it != stat_name_map.end()) {
-                activity.addMetadataQuoted(stat_name_str,
-                                           std::string(ref_it->second));
+                AddActivityStringMetadata(activity, stat_name_str,
+                                          ref_it->second);
               }
               break;
             }
