@@ -486,8 +486,8 @@ torch_tpu_py_test(
         "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal:testing",
+        "//torch_tpu/_internal/benchmarks:xprof_adapter",
         "//torch_tpu/_internal/compile",
-        "//torch_tpu/_internal/profiler:xprof_adapter",
     ],
 )
 

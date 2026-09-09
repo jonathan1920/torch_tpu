@@ -57,7 +57,7 @@ from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import split_compiler
 from torch_tpu._internal.compile.dynamic import dynamic_compiler
 from torch_tpu._internal.utils import utils
-from torch_tpu._internal.profiler import xprof_adapter
+from torch_tpu._internal.benchmarks import xprof_adapter
 
 _TPU_DECOMPOSITIONS = get_decompositions([
     # We decompose masked_fill to align behavior with GPU (Inductor), where
