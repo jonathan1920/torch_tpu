@@ -52,6 +52,7 @@ py_library_providing_imports_info(
         "profiler.modspec.json",
     ],
     deps = [
+        ":_impl",
         ":profiler_config",
         ":profiler_lib",
     ],

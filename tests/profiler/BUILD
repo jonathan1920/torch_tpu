@@ -53,6 +53,8 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/profiler:profiler_config",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/csrc/eager:tpu_aten_kernels",
+        "@pypi//portpicker",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_py_proto",
     ],
 )
 
