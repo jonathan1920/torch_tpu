@@ -467,6 +467,64 @@ torch_tpu_cc_test(
     ],
 )
 
+# Tests that launch blocking can be enabled via legacy env var.
+torch_tpu_cc_test(
+    name = "launch_blocking_enablement_test_legacy",
+    srcs = ["launch_blocking_enablement_test.cc"],
+    args = [
+        "--expected_launch_blocking=true",
+    ],
+    env = {
+        "TPU_LAUNCH_BLOCKING": "1",
+    },
+    deps = [
+        ":eager_mode",
+        "//csrc/common:context_states",
+        "//csrc/common:flags",
+        "//csrc/common:oss_test_main",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+# Tests that launch blocking can be explicitly enabled via TORCH_TPU_LAUNCH_BLOCKING.
+torch_tpu_cc_test(
+    name = "launch_blocking_enablement_test_enabled_public",
+    srcs = ["launch_blocking_enablement_test.cc"],
+    args = [
+        "--expected_launch_blocking=true",
+    ],
+    env = {
+        "TORCH_TPU_LAUNCH_BLOCKING": "1",
+    },
+    deps = [
+        ":eager_mode",
+        "//csrc/common:context_states",
+        "//csrc/common:flags",
+        "//csrc/common:oss_test_main",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+# Tests that TORCH_TPU_LAUNCH_BLOCKING takes precedence over TPU_LAUNCH_BLOCKING.
+torch_tpu_cc_test(
+    name = "launch_blocking_enablement_test_precedence",
+    srcs = ["launch_blocking_enablement_test.cc"],
+    args = [
+        "--expected_launch_blocking=false",
+    ],
+    env = {
+        "TORCH_TPU_LAUNCH_BLOCKING": "0",
+        "TPU_LAUNCH_BLOCKING": "1",
+    },
+    deps = [
+        ":eager_mode",
+        "//csrc/common:context_states",
+        "//csrc/common:flags",
+        "//csrc/common:oss_test_main",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
 torch_tpu_cc_library(
     name = "structured_log_buffer",
     srcs = ["structured_log_buffer.cc"],

@@ -26,7 +26,12 @@
 namespace torch_tpu {
 
 [[nodiscard]] static EagerMode GetDefaultEagerMode() {
-  if (GetEnvOnce<kTpuLaunchBlocking>() == "1") {
+  const auto& launch_blocking_public =
+      GetEnvOnce<kTorchTpuLaunchBlockingEnvVar>();
+  const auto& launch_blocking = launch_blocking_public.has_value()
+                                    ? launch_blocking_public
+                                    : GetEnvOnce<kTpuLaunchBlocking>();
+  if (launch_blocking == "1") {
     return EagerMode::kDeferNeverAndLaunchBlocking;
   }
   const auto& defer_and_fuse_public = GetEnvOnce<kTorchTpuDeferAndFuseEnvVar>();

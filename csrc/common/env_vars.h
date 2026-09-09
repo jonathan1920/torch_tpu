@@ -120,6 +120,12 @@ inline constexpr char
 // via XLA_FLAGS.
 inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
     "TORCH_TPU_INTERNAL_XLA_OPTIONS";
+// Similar to CUDA_LAUNCH_BLOCKING, used to enable
+// EagerMode::kDeferNeverAndLaunchBlocking by default.
+// If both TORCH_TPU_LAUNCH_BLOCKING and TPU_LAUNCH_BLOCKING are set,
+// TORCH_TPU_LAUNCH_BLOCKING takes precedence.
+inline constexpr char kTorchTpuLaunchBlockingEnvVar[] =
+    "TORCH_TPU_LAUNCH_BLOCKING";
 // The output directory for TPU profiler XPlane files.
 // If both TORCH_TPU_PROFILER_OUTPUT_DIR and TPU_PROFILER_OUTPUT_DIR are set,
 // TORCH_TPU_PROFILER_OUTPUT_DIR takes precedence.
@@ -206,6 +212,7 @@ inline constexpr auto kEnvVarToStage =
         {kTorchTpuInternalTier3CompilationCacheLocalBackupTaskEnvVar,
          std::nullopt},
         {kTorchTpuInternalXlaOptionsEnvVar, std::nullopt},
+        {kTorchTpuLaunchBlockingEnvVar, SymbolStage::Experimental()},
         {kTorchTpuProfilerOutputDirEnvVar, SymbolStage::Experimental()},
         {kTorchTpuSlicebuilderAddressesEnvVar, SymbolStage::Experimental()},
         {kTorchTpuTier2CompilationCacheEnvVar, SymbolStage::Experimental()},
