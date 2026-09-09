@@ -1333,6 +1333,8 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "errors_test_gpu",
+    # CUDA_LAUNCH_BLOCKING=1 runs ops synchronously, requiring long timeout to complete.
+    timeout = "long",
     srcs = ["errors_test.py"],
     args = ["--test_mode=gpu"],
     env = {
@@ -1344,7 +1346,7 @@ torch_tpu_py_test(
     main = "errors_test.py",
     nolocal = "Skipping in local runs by default as it requires --config=cuda.",
     notest_oss = "Low value in maintaining for both internal and OSS and they run different versions of PyTorch.",
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "nosan",  # *san builds are low-value for error tests.
         _REQUIRES_GPU_SM90,
