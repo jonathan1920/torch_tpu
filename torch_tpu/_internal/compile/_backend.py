@@ -482,8 +482,12 @@ def _guard_input_storage_offsets(graph_module: torch.fx.GraphModule) -> None:
     if not isinstance(node.meta.get("example_value"), torch.Tensor):
       continue
 
+    source = getattr(node, "_dynamo_source", None)
+    if source is None:
+      continue
+
     offset_source = dynamo_source.TensorPropertySource(
-        node._dynamo_source, dynamo_source.TensorProperty.STORAGE_OFFSET
+        source, dynamo_source.TensorProperty.STORAGE_OFFSET
     )
     guard = offset_source.make_guard(dynamo_guards.GuardBuilder.EQUALS_MATCH)
     dynamo_guards.install_guard(guard)
