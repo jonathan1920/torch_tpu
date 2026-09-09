@@ -26,6 +26,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/ops/ones.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/core/ScalarType.h"
@@ -38,6 +39,7 @@
 #include "csrc/eager/device_buffer.h"
 #include "csrc/eager/device_buffer_utils.h"
 #include "csrc/eager/eager_mode.h"
+#include "csrc/eager/tensor_to_buffer.h"
 #include "csrc/ops/op_builder_utils.h"
 #include "csrc/ops/op_names.h"
 #include "csrc/ops/python_context.h"
@@ -296,6 +298,66 @@ TEST(AutoDonateInPlaceBuffers, CannotDonateBufferMultipleTimes) {
   internal::AutoDonateInPlaceBuffers({out0, out1}, out_dtypes, out_dims_list,
                                      {in, in_alias}, donated_aliased_inputs);
   EXPECT_EQ(donated_aliased_inputs, Indices{0});
+
+  SetEagerMode(EagerMode::kDeferAndFuse);
+}
+
+TEST(AutoDonateInPlaceBuffers,
+     DoesNotDonateSharedBufferWithMultipleLiveDataPtrs) {
+  constexpr auto f32_type = mlir::ElementType::F32;
+  SetEagerMode(EagerMode::kDeferNever);
+  ScopedPythonContextCapturer capturer(OpName::kAdd);
+
+  TT_ASSERT_OK_AND_ASSIGN(auto dummy_buffer,
+                          CreateEmptyDeviceBufferRef({2, 3}, f32_type));
+
+  const std::array<int64_t, 2> dims = {2, 3};
+  const std::array<absl::Span<const int64_t>, 1> out_dims_list = {dims};
+  const std::array<mlir::ElementType, 1> out_dtypes = {f32_type};
+
+  // Case 1: Single tensor created from dummy_buffer (live_data_ptrs == 1).
+  at::Tensor a = MakeTensor(dummy_buffer);
+  EXPECT_EQ(dummy_buffer.device_buffer_list()->live_data_ptrs(), 1);
+
+  Indices donated;
+  internal::AutoDonateInPlaceBuffers({a}, out_dtypes, out_dims_list, {a},
+                                     donated);
+  EXPECT_EQ(donated, Indices{0});
+
+  // Case 2: Second tensor shares the same DeviceBufferRef (live_data_ptrs ==
+  // 2), simulating shallow-copy clone semantics. Buffer donation must be
+  // blocked.
+  {
+    at::Tensor b = MakeTensor(dummy_buffer);
+    EXPECT_EQ(dummy_buffer.device_buffer_list()->live_data_ptrs(), 2);
+    // b and a share the buffer, but have separate storages (not is_alias_of).
+    EXPECT_FALSE(b.is_alias_of(a));
+
+    Indices donated_shared;
+    internal::AutoDonateInPlaceBuffers({b}, out_dtypes, out_dims_list, {b},
+                                       donated_shared);
+    EXPECT_TRUE(donated_shared.empty());
+
+    // In-place on 'a' must also not donate while 'b' is alive.
+    Indices donated_a_shared;
+    internal::AutoDonateInPlaceBuffers({a}, out_dtypes, out_dims_list, {a},
+                                       donated_a_shared);
+    EXPECT_TRUE(donated_a_shared.empty());
+
+    // In-place on 'b' with 'a' also passed as an input operand.
+    Indices donated_both_inputs;
+    internal::AutoDonateInPlaceBuffers({b}, out_dtypes, out_dims_list, {b, a},
+                                       donated_both_inputs);
+    EXPECT_TRUE(donated_both_inputs.empty());
+  }
+
+  // Case 3: Once 'b' is destroyed, live_data_ptrs returns to 1, and donation
+  // is eligible again.
+  EXPECT_EQ(dummy_buffer.device_buffer_list()->live_data_ptrs(), 1);
+  Indices donated_after_b_destroyed;
+  internal::AutoDonateInPlaceBuffers({a}, out_dtypes, out_dims_list, {a},
+                                     donated_after_b_destroyed);
+  EXPECT_EQ(donated_after_b_destroyed, Indices{0});
 
   SetEagerMode(EagerMode::kDeferAndFuse);
 }

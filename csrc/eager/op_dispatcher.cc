@@ -38,6 +38,7 @@
 #include "csrc/common/aten_utils.h"
 #include "csrc/common/cache_key.h"
 #include "csrc/common/context_states.h"
+#include "csrc/common/device_type.h"
 #include "csrc/common/dimension_types.h"
 #include "csrc/common/dtype.h"
 #include "csrc/common/error_utils.h"
@@ -158,7 +159,31 @@ bool IsEligibleDonor(const at::Tensor& in, const at::Tensor& out,
     return false;
   }
   const auto in_dtype = ConvertTo<mlir::ElementType>(in.scalar_type());
-  return in_dtype.ok() && *in_dtype == out_dtype;
+  if (!in_dtype.ok() || *in_dtype != out_dtype) {
+    return false;
+  }
+  // When running on TPU tensors, verify that the underlying DeviceBufferRef has
+  // exclusive ownership (`live_data_ptrs == 1`). In TorchTPU, `CopyTpuToTpu`
+  // performs shallow buffer sharing for `.clone()` when shapes and dtypes
+  // match, creating separate `c10::Storage` instances that share the same
+  // device buffer. Because `is_alias_of` only inspects storage pointers, it
+  // returns false between a tensor and its clone, but each tensor's storage
+  // aliases itself. Checking `live_data_ptrs() > 1` ensures in-place operations
+  // on a clone do not donate and invalidate the buffer shared by the original.
+  //
+  // Note: We explicitly guard this check with `GetPrivateUse1DeviceType()`
+  // because standalone C++ unit tests (e.g. in op_dispatcher_test) test ATen
+  // layout, contiguity, and offset properties using CPU tensors. In standalone
+  // C++ test binaries without Python runtime extensions, ATen view kernels like
+  // `aten::as_strided` are not registered for `PrivateUse1`. Guarding with
+  // `GetPrivateUse1DeviceType()` allows those C++ unit tests to run on CPU
+  // tensors without `GetBaseBuffer` failing, while strictly enforcing exclusive
+  // ownership for real TPU tensors in production.
+  if (in.device().type() == GetPrivateUse1DeviceType()) {
+    const auto in_buf = GetBaseBuffer(in);
+    return in_buf.ok() && in_buf->device_buffer_list()->live_data_ptrs() <= 1;
+  }
+  return true;
 }
 
 void MarkDonatedAndAliases(size_t donated_idx,
@@ -207,6 +232,9 @@ std::string EncodeParamCacheKey(const std::optional<PromotedScalar>& value) {
 //    donated to at most ONE output buffer. Once an input is donated, it and all
 //    its storage aliases (is_alias_of) are marked as donated to prevent any
 //    duplicate buffer donation across multiple outputs.
+// 6. Unique ownership constraint: donor must not share its DeviceBufferRef with
+//    other non-alias tensors (live_data_ptrs == 1), preventing donation from
+//    destroying buffers shared via shallow-copy clone semantics.
 void AutoDonateInPlaceBuffers(
     absl::Span<const at::Tensor> outputs,
     absl::Span<const mlir::ElementType> out_dtypes,

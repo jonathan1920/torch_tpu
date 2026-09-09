@@ -93,6 +93,73 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
   add it here.
   """
 
+  def test_clone_inplace_mutation_preserves_original(self):
+    """Verifies that an in-place mutation on a cloned tensor does not mutate or
+
+    invalidate the original tensor's shared device buffer.
+    """
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_NEVER):
+
+      def compute(device):
+        x = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32, device=device)
+        x_clone = x.clone()
+        x_clone.add_(1.0)
+        y = x * 2.0
+        return x, x_clone, y
+
+      self.assert_close_tpu_vs_cpu(compute)
+
+  def test_clone_original_inplace_mutation_preserves_clone(self):
+    """Verifies that an in-place mutation on the original tensor does not mutate
+
+    or invalidate a live clone that shares the same underlying buffer.
+    """
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_NEVER):
+
+      def compute(device):
+        x = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32, device=device)
+        x_clone = x.clone()
+        x.add_(1.0)
+        y = x_clone * 2.0
+        return x, x_clone, y
+
+      self.assert_close_tpu_vs_cpu(compute)
+
+  def test_clone_inplace_mutation_with_original_as_operand(self):
+    """Verifies that an in-place op taking both the clone and original tensor as
+
+    operands (e.g. x_clone.add_(x)) does not donate the shared buffer and
+    corrupt
+    either operand during execution.
+    """
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_NEVER):
+
+      def compute(device):
+        x = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32, device=device)
+        x_clone = x.clone()
+        x_clone.add_(x)
+        y = x * 2.0
+        return x, x_clone, y
+
+      self.assert_close_tpu_vs_cpu(compute)
+
+  def test_clone_deletion_allows_inplace_donation_on_original(self):
+    """Verifies that deleting a clone drops live_data_ptrs back to 1, safely
+
+    re-enabling in-place buffer donation for subsequent operations on the
+    original.
+    """
+    with execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_NEVER):
+
+      def compute(device):
+        x = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32, device=device)
+        x_clone = x.clone()
+        del x_clone
+        x.add_(1.0)
+        return x
+
+      self.assert_close_tpu_vs_cpu(compute)
+
   def test_prelu_kernel_direct(self):
     for dtype in (torch.float32, torch.bfloat16, torch.float16):
       # 0D scalar self, 0D scalar weight
