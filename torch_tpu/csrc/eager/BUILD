@@ -646,6 +646,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/gather:gather_aten_kernels",
         "//torch_tpu/csrc/ops/gelu:gelu_aten_kernels",
         "//torch_tpu/csrc/ops/glu:glu_aten_kernels",
+        "//torch_tpu/csrc/ops/gru:gru_aten_kernels",
         "//torch_tpu/csrc/ops/grid_sampler:grid_sampler_aten_kernels",
         "//torch_tpu/csrc/ops/group_norm:group_norm_aten_kernels",
         "//torch_tpu/csrc/ops/grouped_mm:grouped_mm_aten_kernels",

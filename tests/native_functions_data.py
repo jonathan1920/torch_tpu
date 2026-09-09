@@ -448,6 +448,9 @@ REGISTRATION_OVERRIDES = frozenset([
     # Gelu is registered to handle type promotion for integer and boolean
     # inputs to match PyTorch GPU behavior for functional calls.
     'gelu',
+    # gru.input is registered to provide an optimized fused StableHLO kernel
+    # on TPU, overriding the default PyTorch decomposition.
+    'gru.input',
     # TODO(b/525550199): Remove ldexp overrides once we upgrade to PyTorch
     # v2.13.
     'ldexp.Tensor',

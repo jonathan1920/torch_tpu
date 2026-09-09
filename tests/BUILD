@@ -2282,6 +2282,21 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "gru_test",
+    srcs = ["gru_test.py"],
+    shard_count = 4,
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        ":seed_test_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils:test_utils",
+    ],
+)
+
+torch_tpu_py_test(
     name = "fused_adagrad_test",
     srcs = ["fused_adagrad_test.py"],
     tags = ["requires-tpu-v5lite"],

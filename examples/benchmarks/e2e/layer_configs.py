@@ -1930,3 +1930,89 @@ LSTM_CONFIGS = (
         bidirectional=True,
     ),
 )
+
+
+@dataclasses.dataclass
+class GruConfig:
+  batch_size: int
+  seq_len: int
+  input_size: int
+  hidden_size: int
+  num_layers: int = 1
+  bias: bool = True
+  batch_first: bool = True
+  bidirectional: bool = False
+
+
+GRU_CONFIGS = (
+    # Small / smoke test config
+    GruConfig(
+        batch_size=32,
+        seq_len=32,
+        input_size=256,
+        hidden_size=256,
+        num_layers=1,
+    ),
+    # Standard recurrent workloads
+    GruConfig(
+        batch_size=32,
+        seq_len=64,
+        input_size=512,
+        hidden_size=512,
+        num_layers=1,
+    ),
+    GruConfig(
+        batch_size=32,
+        seq_len=128,
+        input_size=512,
+        hidden_size=512,
+        num_layers=1,
+    ),
+    GruConfig(
+        batch_size=32,
+        seq_len=256,
+        input_size=512,
+        hidden_size=512,
+        num_layers=1,
+    ),
+    GruConfig(
+        batch_size=16,
+        seq_len=512,
+        input_size=512,
+        hidden_size=512,
+        num_layers=1,
+    ),
+    # Multi-layer stacked GRU
+    GruConfig(
+        batch_size=32,
+        seq_len=64,
+        input_size=512,
+        hidden_size=512,
+        num_layers=2,
+    ),
+    # Bidirectional GRU workloads
+    GruConfig(
+        batch_size=32,
+        seq_len=64,
+        input_size=512,
+        hidden_size=512,
+        num_layers=1,
+        bidirectional=True,
+    ),
+    GruConfig(
+        batch_size=32,
+        seq_len=128,
+        input_size=512,
+        hidden_size=512,
+        num_layers=1,
+        bidirectional=True,
+    ),
+    GruConfig(
+        batch_size=32,
+        seq_len=256,
+        input_size=512,
+        hidden_size=512,
+        num_layers=1,
+        bidirectional=True,
+    ),
+)

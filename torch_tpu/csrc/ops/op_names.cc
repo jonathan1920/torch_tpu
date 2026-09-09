@@ -775,6 +775,12 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "grid_sampler_3d_backward";
     case OpName::kGroupedMm:
       return "_grouped_mm";
+    case OpName::kGruInput:
+      return "gru.input";
+    case OpName::kGruInputBackward:
+      return "gru_input_backward";
+    case OpName::kGruInputForwardCached:
+      return "gru_input_forward_cached";
     case OpName::kGt:
       return "gt";
     case OpName::kGtOut:

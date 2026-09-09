@@ -3587,6 +3587,282 @@ module {
           x, [h0, c0], params, False, 1, 0.0, False, False, False
       )
 
+  def _default_gru_input_args(self):
+    device = et.device()
+    x = torch.randn(10, 3, 16, device=device)
+    h0 = torch.randn(1, 3, 32, device=device)
+    w_ih = torch.randn(96, 16, device=device)
+    w_hh = torch.randn(96, 32, device=device)
+    b_ih = torch.randn(96, device=device)
+    b_hh = torch.randn(96, device=device)
+    params = [w_ih, w_hh, b_ih, b_hh]
+    return x, h0, params
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_invalid_input_dim(self):
+    """Verifies that non-3D input tensor raises RuntimeError.
+
+    What is being tested:
+      - Passing a 2D tensor of shape [10, 3] as input x instead of expected 3D
+      tensor.
+
+    Expected result:
+      - RuntimeError: 'gru(): expected input to be a 3D tensor, got 2D'
+    """
+    _, hx, params = self._default_gru_input_args()
+    x_2d = torch.randn(10, 3, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): expected input to be a 3D tensor, got 2D""",
+    ):
+      torch.ops.aten.gru.input(
+          x_2d, hx, params, True, 1, 0.0, False, False, False
+      )
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_zero_seq_len(self):
+    """Verifies that sequence length of zero raises RuntimeError.
+
+    What is being tested:
+      - Passing an input tensor with seq_len=0 (shape [0, 3, 16]).
+
+    Expected result:
+      - RuntimeError: 'gru(): expected sequence length to be larger than 0 in
+      RNN, got 0'
+    """
+    _, hx, params = self._default_gru_input_args()
+    x_zero_seq = torch.randn(0, 3, 16, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): expected sequence length to be larger than 0 in RNN, got 0""",
+    ):
+      torch.ops.aten.gru.input(
+          x_zero_seq, hx, params, True, 1, 0.0, False, False, False
+      )
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_zero_batch_size(self):
+    """Verifies that batch size of zero raises RuntimeError.
+
+    What is being tested:
+      - Passing an input tensor with batch_size=0 (shape [10, 0, 16]).
+
+    Expected result:
+      - RuntimeError: 'gru(): expected batch size > 0 in RNN, got 0'
+    """
+    _, hx, params = self._default_gru_input_args()
+    x_zero_batch = torch.randn(10, 0, 16, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): expected batch size > 0 in RNN, got 0""",
+    ):
+      torch.ops.aten.gru.input(
+          x_zero_batch, hx, params, True, 1, 0.0, False, False, False
+      )
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_zero_num_layers(self):
+    """Verifies that num_layers=0 raises RuntimeError.
+
+    What is being tested:
+      - Passing num_layers=0 to aten.gru.input.
+
+    Expected result:
+      - RuntimeError: 'gru(): expected num_layers > 0 in RNN, got 0'
+    """
+    x, hx, params = self._default_gru_input_args()
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): expected num_layers > 0 in RNN, got 0""",
+    ):
+      torch.ops.aten.gru.input(x, hx, params, True, 0, 0.0, False, False, False)
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_invalid_dropout(self):
+    """Verifies that dropout probability out of range [0, 1] raises RuntimeError.
+
+    What is being tested:
+      - Passing dropout=2.0 (outside [0, 1]).
+
+    Expected result:
+      - RuntimeError: 'gru(): expected dropout to be in range [0, 1], got 2'
+    """
+    x, hx, params = self._default_gru_input_args()
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): expected dropout to be in range [0, 1], got 2""",
+    ):
+      torch.ops.aten.gru.input(x, hx, params, True, 1, 2.0, False, False, False)
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_hx_not_3d(self):
+    """Verifies that non-3D initial hidden state hx raises RuntimeError.
+
+    What is being tested:
+      - Passing a 2D tensor of shape [1, 3] as hx.
+
+    Expected result:
+      - RuntimeError: 'gru(): expected hx to be a 3D tensor [num_layers *
+      num_directions, batch, hidden_size], got 2D'
+    """
+    x, _, params = self._default_gru_input_args()
+    hx_2d = torch.randn(1, 3, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): expected hx to be a 3D tensor [num_layers * num_directions, batch, hidden_size], got 2D""",
+    ):
+      torch.ops.aten.gru.input(
+          x, hx_2d, params, True, 1, 0.0, False, False, False
+      )
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_hx_layer_mismatch(self):
+    """Verifies that layer count mismatch between hx and num_layers raises RuntimeError.
+
+    What is being tested:
+      - Passing hx with size(0)=2 when num_layers * num_directions = 1.
+
+    Expected result:
+      - RuntimeError: 'gru(): expected hx size(0) to match num_layers *
+      num_directions (1), got 2'
+    """
+    x, _, params = self._default_gru_input_args()
+    hx_bad_layers = torch.randn(2, 3, 32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): expected hx size(0) to match num_layers * num_directions (1), got 2""",
+    ):
+      torch.ops.aten.gru.input(
+          x, hx_bad_layers, params, True, 1, 0.0, False, False, False
+      )
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_hx_batch_mismatch(self):
+    """Verifies that batch mismatch between hx and input x raises RuntimeError.
+
+    What is being tested:
+      - Passing hx with batch=4 when input x has batch=3.
+
+    Expected result:
+      - RuntimeError: 'gru(): expected hx size(1) to match batch (3), got 4'
+    """
+    x, _, params = self._default_gru_input_args()
+    hx_bad_batch = torch.randn(1, 4, 32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): expected hx size(1) to match batch (3), got 4""",
+    ):
+      torch.ops.aten.gru.input(
+          x, hx_bad_batch, params, True, 1, 0.0, False, False, False
+      )
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_params_count_mismatch(self):
+    """Verifies that parameter count mismatch raises RuntimeError.
+
+    What is being tested:
+      - Providing 3 parameter tensors instead of 4 for a single-layer biased
+      GRU.
+
+    Expected result:
+      - RuntimeError: 'gru(): expected 4 parameters, got 3'
+    """
+    x, hx, params = self._default_gru_input_args()
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): expected 4 parameters, got 3""",
+    ):
+      torch.ops.aten.gru.input(
+          x, hx, params[:3], True, 1, 0.0, False, False, False
+      )
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_w_ih_shape_mismatch(self):
+    """Verifies that mismatched w_ih shape raises RuntimeError.
+
+    What is being tested:
+      - Providing w_ih with shape [95, 16] instead of expected [96, 16] (3 *
+      hidden).
+
+    Expected result:
+      - RuntimeError: 'gru(): w_ih layer 0 dir 0 expected shape [96, 16], got
+      [95, 16]'
+    """
+    x, hx, params = self._default_gru_input_args()
+    w_ih_bad = torch.randn(95, 16, device=et.device())
+    bad_params = [w_ih_bad, params[1], params[2], params[3]]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): w_ih layer 0 dir 0 expected shape [96, 16], got [95, 16]""",
+    ):
+      torch.ops.aten.gru.input(
+          x, hx, bad_params, True, 1, 0.0, False, False, False
+      )
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_w_hh_shape_mismatch(self):
+    """Verifies that mismatched w_hh shape raises RuntimeError.
+
+    What is being tested:
+      - Providing w_hh with shape [96, 31] instead of expected [96, 32].
+
+    Expected result:
+      - RuntimeError: 'gru(): w_hh layer 0 dir 0 expected shape [96, 32], got
+      [96, 31]'
+    """
+    x, hx, params = self._default_gru_input_args()
+    w_hh_bad = torch.randn(96, 31, device=et.device())
+    bad_params = [params[0], w_hh_bad, params[2], params[3]]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): w_hh layer 0 dir 0 expected shape [96, 32], got [96, 31]""",
+    ):
+      torch.ops.aten.gru.input(
+          x, hx, bad_params, True, 1, 0.0, False, False, False
+      )
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_b_ih_shape_mismatch(self):
+    """Verifies that mismatched b_ih shape raises RuntimeError.
+
+    What is being tested:
+      - Providing b_ih with shape [95] instead of expected [96].
+
+    Expected result:
+      - RuntimeError: 'gru(): b_ih layer 0 dir 0 expected shape [96], got [95]'
+    """
+    x, hx, params = self._default_gru_input_args()
+    b_ih_bad = torch.randn(95, device=et.device())
+    bad_params = [params[0], params[1], b_ih_bad, params[3]]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): b_ih layer 0 dir 0 expected shape [96], got [95]""",
+    ):
+      torch.ops.aten.gru.input(
+          x, hx, bad_params, True, 1, 0.0, False, False, False
+      )
+
+  @et.why_tpu_only("torch.ops.aten.gru.input error validations on TPU")
+  def test_gru_input_b_hh_shape_mismatch(self):
+    """Verifies that mismatched b_hh shape raises RuntimeError.
+
+    What is being tested:
+      - Providing b_hh with shape [95] instead of expected [96].
+
+    Expected result:
+      - RuntimeError: 'gru(): b_hh layer 0 dir 0 expected shape [96], got [95]'
+    """
+    x, hx, params = self._default_gru_input_args()
+    b_hh_bad = torch.randn(95, device=et.device())
+    bad_params = [params[0], params[1], params[2], b_hh_bad]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""gru(): b_hh layer 0 dir 0 expected shape [96], got [95]""",
+    ):
+      torch.ops.aten.gru.input(
+          x, hx, bad_params, True, 1, 0.0, False, False, False
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

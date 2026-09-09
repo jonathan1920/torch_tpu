@@ -36,6 +36,7 @@
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
+#include "torch_tpu/csrc/ops/gru/gru_common.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
@@ -149,38 +150,20 @@ absl::StatusOr<std::array<mlir::MlirOp, 3>> BuildGruCellBackwardShlo(
 
   mlir::MlirOp one = MakeConstantLike(updategate, 1.0);
 
-  // gz = grad_hy * (hx - n);  gn = grad_hy * (1 - z);  ghx = grad_hy * z
-  mlir::MlirOp hx_minus_n = mlir::stablehlo::Subtract(hx, newgate);
-  mlir::MlirOp d_updategate = mlir::stablehlo::Mul(grad_hy_acc, hx_minus_n);
-  mlir::MlirOp one_minus_z = mlir::stablehlo::Subtract(one, updategate);
-  mlir::MlirOp d_newgate = mlir::stablehlo::Mul(grad_hy_acc, one_minus_z);
-  mlir::MlirOp grad_hx_acc = mlir::stablehlo::Mul(grad_hy_acc, updategate);
-
-  // through the new-gate tanh: gpre_n = gn * (1 - n^2)
-  mlir::MlirOp newgate_sq = mlir::stablehlo::Mul(newgate, newgate);
-  mlir::MlirOp one_minus_n_sq = mlir::stablehlo::Subtract(one, newgate_sq);
-  mlir::MlirOp d_pre_n = mlir::stablehlo::Mul(d_newgate, one_minus_n_sq);
-
-  // reset gate: grad flows through r * h_n
-  mlir::MlirOp d_reset = mlir::stablehlo::Mul(d_pre_n, h_n);
-  mlir::MlirOp one_minus_r = mlir::stablehlo::Subtract(one, resetgate);
-  mlir::MlirOp r_deriv = mlir::stablehlo::Mul(resetgate, one_minus_r);
-  mlir::MlirOp d_pre_r = mlir::stablehlo::Mul(d_reset, r_deriv);
-
-  // update gate: gpre_z = gz * z * (1 - z)
-  mlir::MlirOp z_deriv = mlir::stablehlo::Mul(updategate, one_minus_z);
-  mlir::MlirOp d_pre_z = mlir::stablehlo::Mul(d_updategate, z_deriv);
-
-  // hidden new-gate grad = gpre_n * r (the asymmetry vs. the input new-gate)
-  mlir::MlirOp d_h_n = mlir::stablehlo::Mul(d_pre_n, resetgate);
+  GruGateAdjoints adjoints = ComputeGruGateAdjoints(
+      grad_hy_acc, hx, resetgate, updategate, newgate, h_n, one);
 
   mlir::MlirOp grad_input_gates = mlir::stablehlo::Concatenate(
       updategate.getBuilder(),
-      {to_out(d_pre_r), to_out(d_pre_z), to_out(d_pre_n)}, /*dim=*/1);
+      {to_out(adjoints.delta_pre_r), to_out(adjoints.delta_pre_z),
+       to_out(adjoints.delta_pre_n)},
+      /*dim=*/1);
   mlir::MlirOp grad_hidden_gates = mlir::stablehlo::Concatenate(
       updategate.getBuilder(),
-      {to_out(d_pre_r), to_out(d_pre_z), to_out(d_h_n)}, /*dim=*/1);
-  mlir::MlirOp grad_hx = to_out(grad_hx_acc);
+      {to_out(adjoints.delta_pre_r), to_out(adjoints.delta_pre_z),
+       to_out(adjoints.delta_h_n)},
+      /*dim=*/1);
+  mlir::MlirOp grad_hx = to_out(adjoints.delta_hx_skip);
   return std::array<mlir::MlirOp, 3>{grad_input_gates, grad_hidden_gates,
                                      grad_hx};
 }
