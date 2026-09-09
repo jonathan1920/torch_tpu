@@ -66,7 +66,16 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
     // TPU does not support complex128. Use complex64 instead.
     scalar_type = at::ScalarType::ComplexFloat;
   }
-  if (GetEagerMode() != EagerMode::kInternalCompileFxGraph) {
+
+  // In DeferAll or compiled mode, scalars are assumed to be constants for
+  // optimal performance at the cost of increased specialization.
+  // In other eager modes (DeferNever or DeferAndFuse) scalars are treated as
+  // arguments to increase code reuse.
+  const bool constant_mode =
+      GetEagerMode() == EagerMode::kInternalCompileFxGraph ||
+      GetEagerMode() == EagerMode::kInternalDeferAll;
+
+  if (!constant_mode) {
     // Variable execution mode: materialize the scalar to a DeviceBufferRef.
     // This treats the scalar as an argument rather than a constant, which
     // decreases compiler specialization and improves code reuse.
