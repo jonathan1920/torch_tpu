@@ -244,6 +244,7 @@ torch_tpu_py_library(
     deps = [
         ":quantize_utils",
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/etils/epath",
         "//shims/safetensors",
@@ -253,7 +254,6 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/compiler_options",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
         "@pypi//pyyaml",
     ],
 )
@@ -328,12 +328,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -368,12 +368,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -408,12 +408,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -448,12 +448,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -490,12 +490,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -532,12 +532,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -574,12 +574,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -612,12 +612,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -654,12 +654,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -702,12 +702,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -737,12 +737,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -775,12 +775,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -805,12 +805,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -826,12 +826,12 @@ torch_tpu_py_test(
         ":dynamism_test_utils",
         ":op_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -871,6 +871,7 @@ torch_tpu_py_test(
         ":ops_test_data",
         ":quantize_utils",
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
         "//shims/absl_py/testing:parameterized",
@@ -881,7 +882,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
         "@pypi//scipy",
     ],
 )
@@ -957,6 +957,7 @@ torch_tpu_py_test(
         ":ops_test_data",
         ":quantize_utils",
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
         "//shims/absl_py/testing:parameterized",
@@ -967,7 +968,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
         "@pypi//scipy",
     ],
 )
@@ -994,6 +994,7 @@ torch_tpu_py_test(
         ":ops_test_data",
         ":quantize_utils",
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:flagsaver",
         "//shims/absl_py/testing:parameterized",
@@ -1004,7 +1005,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
         "@pypi//scipy",
     ],
 )
@@ -1022,11 +1022,11 @@ torch_tpu_py_test(
     ],
     deps = [
         ":op_testing",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/compiler_options",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1044,11 +1044,11 @@ torch_tpu_py_test(
     ],
     deps = [
         ":op_testing",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1090,12 +1090,12 @@ torch_tpu_py_test(
     ],
     deps = [
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
         "@pypi//numpy",
     ],
 )
@@ -1113,13 +1113,13 @@ torch_tpu_py_test(
     ],
     deps = [
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
         "//torch_tpu",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
         "@pypi//numpy",
     ],
 )
@@ -1137,12 +1137,12 @@ torch_tpu_py_test(
     ],
     deps = [
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:annotations",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
         "//torch_tpu/ops:jagged",
     ],
 )
@@ -1156,11 +1156,11 @@ torch_tpu_py_test(
     deps = [
         ":quantize_utils",
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1171,12 +1171,12 @@ torch_tpu_py_library(
     visibility = ["//:__subpackages__"],
     deps = [
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:testing",
         "//torch_tpu/_internal/distributed:multiprocessing",  # build_cleaner: keep
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1221,6 +1221,7 @@ torch_tpu_py_test(
     deps = [
         ":error_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1229,7 +1230,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/distributed:multiprocessing",
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1250,6 +1250,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":error_testing",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1259,7 +1260,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1285,6 +1285,7 @@ torch_tpu_py_test(
     deps = [
         ":error_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1293,7 +1294,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/distributed:multiprocessing",
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1318,6 +1318,7 @@ torch_tpu_py_test(
     visibility = ["//:__subpackages__"],
     deps = [
         ":error_testing",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1327,7 +1328,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1356,6 +1356,7 @@ torch_tpu_py_test(
     deps = [
         ":error_testing",
         ":oss_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -1364,7 +1365,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/distributed:multiprocessing",
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1374,10 +1374,10 @@ torch_tpu_py_test(
     tags = ["requires-tpu-v5lite"],
     deps = [
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1394,10 +1394,10 @@ torch_tpu_py_test(
     ],
     deps = [
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1410,13 +1410,13 @@ torch_tpu_py_test(
     ],
     deps = [
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1432,12 +1432,12 @@ torch_tpu_py_test(
     ],
     deps = [
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1447,12 +1447,12 @@ torch_tpu_py_test(
     tags = ["requires-tpu-v5lite"],
     deps = [
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/utils:test_utils",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -1468,10 +1468,10 @@ torch_tpu_py_test(
     ],
     deps = [
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
@@ -2082,12 +2082,12 @@ torch_tpu_py_test(
     deps = [
         ":native_functions_data",
         ":seed_test_utils",
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py:app",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
         "@rules_python//python/runfiles",  # build_cleaner: keep
     ],
 )
@@ -2412,7 +2412,7 @@ torch_tpu_py_test(
     srcs = ["cpp_style_test.py"],
     data = [
         ":all_cpp_files_recursive",
-        "//torch_tpu:all_cpp_files_recursive",
+        "//csrc:all_cpp_files_recursive",
     ],
     deps = [
         ":cpp_style_lib",
@@ -2426,7 +2426,7 @@ torch_tpu_py_test(
     srcs = ["unapproved_nested_namespace_lint_test.py"],
     data = [
         ":all_cpp_files_recursive",
-        "//torch_tpu:all_cpp_files_recursive",
+        "//csrc:all_cpp_files_recursive",
     ],
     deps = [
         ":cpp_style_lib",
@@ -2441,7 +2441,7 @@ torch_tpu_py_test(
     srcs = ["header_guard_lint_test.py"],
     data = [
         ":all_cpp_files_recursive",
-        "//torch_tpu:all_cpp_files_recursive",
+        "//csrc:all_cpp_files_recursive",
     ],
     deps = [
         ":cpp_style_lib",

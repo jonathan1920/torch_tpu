@@ -78,17 +78,17 @@ torch_tpu_py_library(
 
 pybind_extension(
     name = "_profiler_backend",
-    srcs = ["//torch_tpu/csrc/internal/profiler:profiler_api.cc"],
+    srcs = ["//csrc/internal/profiler:profiler_api.cc"],
     common_lib_packages = [
         "torch_tpu/csrc/common",
     ],
     wrap_py_init = True,
     deps = [
-        "//torch_tpu/csrc/common:context_manager",
-        "//torch_tpu/csrc/common:context_states",
-        "//torch_tpu/csrc/common:error_utils",
-        "//torch_tpu/csrc/internal/profiler:tpu_profiler_plugin_cc",
-        "//torch_tpu/csrc/internal/profiler:xprof_callback_handler",
+        "//csrc/common:context_manager",
+        "//csrc/common:context_states",
+        "//csrc/common:error_utils",
+        "//csrc/internal/profiler:tpu_profiler_plugin_cc",
+        "//csrc/internal/profiler:xprof_callback_handler",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",

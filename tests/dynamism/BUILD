@@ -137,6 +137,7 @@ torch_tpu_py_test(
     name = "graph_transformations_test",
     srcs = ["graph_transformations_test.py"],
     deps = [
+        "//csrc/eager:tpu_aten_kernels",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:seed_test_utils",
@@ -144,7 +145,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile/dynamic:graph_transformations",
         "//torch_tpu/_internal/compile/dynamic:sym_shape_manager",
         "//torch_tpu/_internal/compile/dynamic:view_ops_passes",
-        "//torch_tpu/csrc/eager:tpu_aten_kernels",
     ],
 )
 
