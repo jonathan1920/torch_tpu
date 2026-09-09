@@ -1127,6 +1127,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "nonzero.out";
     case OpName::kNonzeroSize:
       return "nonzero_size";
+    case OpName::kNormDtypeOut:
+      return "norm.dtype_out";
+    case OpName::kNormOut:
+      return "norm.out";
     case OpName::kNormalFloatTensor:
       return "normal.float_Tensor";
     case OpName::kNormalFloatTensorOut:

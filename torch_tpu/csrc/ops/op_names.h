@@ -577,6 +577,8 @@ enum class OpName {
   kNonzero,
   kNonzeroOut,
   kNonzeroSize,
+  kNormDtypeOut,
+  kNormOut,
   kNormalFloatTensor,
   kNormalFloatTensorOut,
   kNormalTensorFloat,

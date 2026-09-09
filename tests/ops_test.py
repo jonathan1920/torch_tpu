@@ -3068,8 +3068,6 @@ class TestOps(op_testing.OpInfoTestBase):
         ),
     )
 
-  # TODO(b/535650392): Re-enable this testin OS once the bug is fixed.
-  @oss_utils.skip_in_oss()
   def test_norm(self):
     self.do_test_op(
         "norm",

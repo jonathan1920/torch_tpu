@@ -691,6 +691,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/native_norm:native_norm_aten_kernels",
         "//torch_tpu/csrc/ops/nll_loss:nll_loss_aten_kernels",
         "//torch_tpu/csrc/ops/nonzero:nonzero_aten_kernels",
+        "//torch_tpu/csrc/ops/norm:norm_aten_kernels",
         "//torch_tpu/csrc/ops/normal:normal_aten_kernels",
         "//torch_tpu/csrc/ops/optimization_barrier:optimization_barrier_kernels",
         "//torch_tpu/csrc/ops/polygamma:polygamma_aten_kernels",

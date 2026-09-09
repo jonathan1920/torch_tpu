@@ -6401,6 +6401,30 @@ Supported combinations for non-constant padding:
     ):
       torch.linalg.vector_norm(x, dtype=torch.float32, out=out)
 
+  def test_norm_out_dtype_mismatch(self):
+    x = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.empty(5, dtype=torch.float64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""norm(): expected the output dtype to be float32, got float64""",
+        gpu="""Expected out tensor to have dtype float, but got double instead""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten.norm.out(x, 2.0, [0], False, out=out)
+
+  def test_norm_dtype_out_dtype_mismatch(self):
+    x = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.empty(5, dtype=torch.float32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""norm(): expected the output dtype to be float64, got float32""",
+        gpu="""Expected out tensor to have dtype double, but got float instead""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten.norm.dtype_out(
+          x, 2.0, [0], False, dtype=torch.float64, out=out
+      )
+
   def test_norm_dim_out_of_bounds(self):
     t = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     for dim in [-3, 3]:

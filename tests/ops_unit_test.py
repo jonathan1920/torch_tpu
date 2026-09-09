@@ -9943,6 +9943,115 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase):
     assert_with_tol(functools.partial(fn, norm=3.0, keepdim=True))
     assert_with_tol(functools.partial(fn, norm=2.0, dim=1, keepdim=True))
 
+  def test_norm_out(self):
+    def test_fn(
+        device, p=2.0, dim=None, keepdim=False, dtype=None, empty_out=False
+    ):
+      x = torch.tensor(
+          [[-4.0, -3.0, -2.0], [-1.0, 0.0, 1.0], [2.0, 3.0, 4.0]],
+          device=device,
+          dtype=torch.float32,
+      )
+      dim_list = (
+          [] if dim is None else ([dim] if isinstance(dim, int) else list(dim))
+      )
+      if empty_out:
+        out = torch.empty(0, device=device, dtype=dtype or torch.float32)
+      else:
+        out = torch.zeros(1, device=device, dtype=dtype or torch.float32)
+
+      if dtype is not None:
+        torch.ops.aten.norm.dtype_out(
+            x, p, dim_list, keepdim, dtype=dtype, out=out
+        )
+      else:
+        torch.ops.aten.norm.out(x, p, dim_list, keepdim, out=out)
+      return out
+
+    assert_with_tol = functools.partial(
+        self.assert_close_tpu_vs_cpu, rtol=1e-5, atol=1e-5
+    )
+    # Default p (None / 2.0)
+    assert_with_tol(functools.partial(test_fn, p=None))
+    assert_with_tol(functools.partial(test_fn, p=None, dim=0))
+    assert_with_tol(functools.partial(test_fn, p=None, dim=1, keepdim=True))
+    assert_with_tol(functools.partial(test_fn, p=None, dim=(0, 1)))
+    assert_with_tol(functools.partial(test_fn, p=None, empty_out=True))
+
+    # Various p orders
+    for p in [0, 1, 2, 3, 1.0, 2.0, 3.0, 1.5, float("inf"), float("-inf")]:
+      assert_with_tol(functools.partial(test_fn, p=p))
+      assert_with_tol(functools.partial(test_fn, p=p, dim=0))
+      assert_with_tol(functools.partial(test_fn, p=p, dim=1, keepdim=True))
+
+    # norm.dtype_out
+    assert_with_tol(functools.partial(test_fn, p=2.0, dtype=torch.float32))
+    assert_with_tol(
+        functools.partial(test_fn, p=2.0, dim=0, dtype=torch.float64)
+    )
+    assert_with_tol(
+        functools.partial(test_fn, p=2.0, dim=-1, dtype=torch.float32)
+    )
+
+    # Complex tensor norm
+    def test_complex_fn(device, p=2.0, dim=0):
+      x = torch.tensor(
+          [[1.0 + 2.0j, -3.0 + 4.0j], [5.0 - 6.0j, 7.0 + 8.0j]],
+          device=device,
+          dtype=torch.complex64,
+      )
+      out = torch.empty(0, device=device, dtype=torch.float32)
+      torch.ops.aten.norm.out(x, p, [dim], False, out=out)
+      return out
+
+    assert_with_tol(functools.partial(test_complex_fn, p=2.0, dim=0))
+    assert_with_tol(functools.partial(test_complex_fn, p=1.0, dim=1))
+
+    # 0-D scalar tensor
+    def test_0d_fn(device, p=2.0):
+      x = torch.tensor(3.5, device=device, dtype=torch.float32)
+      out = torch.empty(0, device=device, dtype=torch.float32)
+      torch.ops.aten.norm.out(x, p, [], False, out=out)
+      return out
+
+    assert_with_tol(functools.partial(test_0d_fn, p=2.0))
+    assert_with_tol(functools.partial(test_0d_fn, p=None))
+
+    # Zero-size empty tensor
+    def test_empty_tensor_fn(device, p=2.0, dim=0):
+      x = torch.empty((0, 4), device=device, dtype=torch.float32)
+      out = torch.empty(0, device=device, dtype=torch.float32)
+      torch.ops.aten.norm.out(x, p, [dim], False, out=out)
+      return out
+
+    assert_with_tol(functools.partial(test_empty_tensor_fn, p=2.0, dim=0))
+    assert_with_tol(functools.partial(test_empty_tensor_fn, p=2.0, dim=1))
+
+    # Non-contiguous tensor
+    def test_noncontiguous_fn(device, p=2.0):
+      x = torch.tensor(
+          [[-4.0, -3.0, -2.0], [-1.0, 0.0, 1.0], [2.0, 3.0, 4.0]],
+          device=device,
+          dtype=torch.float32,
+      ).t()
+      out = torch.empty(0, device=device, dtype=torch.float32)
+      torch.ops.aten.norm.out(x, p, [0], False, out=out)
+      return out
+
+    assert_with_tol(functools.partial(test_noncontiguous_fn, p=2.0))
+    assert_with_tol(functools.partial(test_noncontiguous_fn, p=1.0))
+
+    # Float dtypes: float16, bfloat16, float64
+    def test_dtypes_fn(device, in_dtype, p=2.0):
+      x = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=in_dtype)
+      out = torch.empty(0, device=device, dtype=in_dtype)
+      torch.ops.aten.norm.out(x, p, [0], False, out=out)
+      return out
+
+    assert_with_tol(functools.partial(test_dtypes_fn, in_dtype=torch.float16))
+    assert_with_tol(functools.partial(test_dtypes_fn, in_dtype=torch.bfloat16))
+    assert_with_tol(functools.partial(test_dtypes_fn, in_dtype=torch.float64))
+
   def test_layer_norm_backward(self):
     def fn(device):
       c, h, w = 2, 2, 4

@@ -155,6 +155,7 @@
 #include "torch_tpu/csrc/ops/native_norm/native_norm_aten_kernels.h"
 #include "torch_tpu/csrc/ops/nll_loss/nll_loss_aten_kernels.h"
 #include "torch_tpu/csrc/ops/nonzero/nonzero_aten_kernels.h"
+#include "torch_tpu/csrc/ops/norm/norm_aten_kernels.h"
 #include "torch_tpu/csrc/ops/normal/normal_aten_kernels.h"
 #include "torch_tpu/csrc/ops/nullary_aten_kernels.h"
 #include "torch_tpu/csrc/ops/op_names.h"
@@ -854,6 +855,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kNllLossForwardOut>(m, AtenNllLossForwardOut);
   ImplStable<OpName::kNonzero>(m, AtenNonzero);
   ImplStable<OpName::kNonzeroOut>(m, AtenNonzeroOut);
+  ImplStable<OpName::kNormDtypeOut>(m, AtenNormDtypeOut);
+  ImplStable<OpName::kNormOut>(m, AtenNormOut);
   ImplStable<OpName::kNormalFloatTensor>(m, AtenNormalFloatTensor);
   ImplStable<OpName::kNormalFloatTensorOut>(m, AtenNormalFloatTensorOut);
   ImplStable<OpName::kNormalTensorFloat>(m, AtenNormalTensorFloat);
