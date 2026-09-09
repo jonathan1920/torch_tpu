@@ -841,9 +841,26 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "handshake_errors_test",
+    srcs = ["handshake_errors_test.py"],
+    tags = [
+        "nosan",  # *san builds are low-value for error tests.
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:tpu_torch_compile",  # buildcleaner: keep
+        "//torch_tpu/_internal/distributed:handshake",
+        "@pypi//portpicker",
+        "@pypi//pyzmq",
+    ],
+)
+
+torch_tpu_py_test(
     name = "handshake_test",
     srcs = ["handshake_test.py"],
-    notest_oss = "TODO(b/555376758): fix handshake port race in OSS",
     shard_count = 8,
     tags = [
         "noasan",  # TODO(b/497035517)
