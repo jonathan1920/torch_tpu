@@ -701,6 +701,7 @@ enum class OpName {
   kSparseDenseMatmulGradWithAdam,
   kSparseDenseMatmulGradWithSgd,
   kSparseGather,
+  kSparseGatherBackward,
   kSplitWithSizesCopyOut,
   kSqrtOut,
   kStdCorrection,

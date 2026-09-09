@@ -22,6 +22,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "absl/status/status.h"
+#include "torch/csrc/autograd/custom_function.h"
 
 namespace torch_tpu {
 
@@ -63,6 +64,39 @@ at::Tensor AtenSparseGather(const at::Tensor& row_pointers,
                             const at::Tensor& indices,
                             const at::Tensor& operand,
                             int64_t max_non_zeroes_per_row);
+
+/**
+ * @brief Performs sparse gather backward (scatter-add) accumulating gradients
+ * into an embedding table gradient buffer on TPU.
+ *
+ * @param grad_output 2D tensor containing gradients of gathered embeddings of
+ * shape [N, D].
+ * @param indices Integer 1D tensor of column/embedding indices in CSR format
+ * (padded with INT_MAX to multiples of PAD_WIDTH = 8).
+ * @param grad_operand 2D tensor containing the initial operand gradient buffer
+ * of shape [V, D].
+ *
+ * @return A dense tensor of embedding gradients with shape [V, D].
+ */
+at::Tensor AtenSparseGatherBackward(const at::Tensor& grad_output,
+                                    const at::Tensor& indices,
+                                    const at::Tensor& grad_operand);
+
+/**
+ * @brief Autograd function for sparse gather.
+ */
+struct AtenSparseGatherAutograd
+    : public torch::autograd::Function<AtenSparseGatherAutograd> {
+  static at::Tensor forward(torch::autograd::AutogradContext* ctx,
+                            const at::Tensor& row_pointers,
+                            const at::Tensor& indices,
+                            const at::Tensor& operand,
+                            int64_t max_non_zeroes_per_row);
+
+  static torch::autograd::variable_list backward(
+      torch::autograd::AutogradContext* ctx,
+      torch::autograd::variable_list grad_outputs);
+};
 
 }  // namespace torch_tpu
 

@@ -911,15 +911,21 @@ torch_tpu_py_test(
     srcs = ["sparse_gather_test.py"],
     main = "sparse_gather_test.py",
     notap = "Requires SparseCore accelerator",
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Requires SparseCore accelerator",
+    ),
     tags = [
         "requires-tpu-v7x",
     ],
     deps = [
         ":op_testing",
+        ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu",
+        "//torch_tpu/_internal/device:_device_ops_backend",
         "@pypi//numpy",
     ],
 )

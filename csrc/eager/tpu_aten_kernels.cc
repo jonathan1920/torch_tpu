@@ -1287,6 +1287,9 @@ TORCH_LIBRARY(tpu, m) {
   m.def(
       "sparse_gather(Tensor row_pointers, Tensor indices, Tensor operand, int "
       "max_non_zeroes_per_row) -> Tensor");
+  m.def(
+      "sparse_gather_backward(Tensor grad_output, Tensor indices, Tensor "
+      "grad_operand) -> Tensor");
 }
 
 // Registers meta implementations for torch.ops.tpu ops.
@@ -1333,6 +1336,12 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
         TT_THROW_IF_ERROR(ValidateSparseGatherInputs(
             row_pointers, indices, operand, max_non_zeroes_per_row));
         return at::empty({indices.size(0), operand.size(1)}, operand.options());
+      });
+  ImplExperimental<OpName::kSparseGatherBackward>(
+      m,
+      +[](const at::Tensor& /*grad_output*/, const at::Tensor& /*indices*/,
+          const at::Tensor& grad_operand) -> at::Tensor {
+        return at::empty_like(grad_operand);
       });
   ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
       m,
@@ -1449,6 +1458,7 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
   ImplExperimental<OpName::kSparseDenseMatmulGradWithAdam>(
       m, AtenSparseDenseMatmulGradWithAdam);
   ImplExperimental<OpName::kSparseGather>(m, AtenSparseGather);
+  ImplExperimental<OpName::kSparseGatherBackward>(m, AtenSparseGatherBackward);
 }
 
 // Registers custom autograd for torch.ops.tpu ops.
@@ -1467,6 +1477,20 @@ TORCH_LIBRARY_IMPL(tpu, AutogradPrivateUse1, m) {
             operand, output, input_offsets, send_sizes, output_offsets,
             recv_sizes, process_group_name);
       });
+  ImplExperimental<OpName::kSparseGather>(
+      m, +[](const at::Tensor& row_pointers, const at::Tensor& indices,
+             const at::Tensor& operand, int64_t max_non_zeroes_per_row) {
+        return AtenSparseGatherAutograd::apply(row_pointers, indices, operand,
+                                               max_non_zeroes_per_row);
+      });
+}
+
+// Registers implementations for torch.ops.tpu ops for CPU tensors.
+TORCH_LIBRARY_IMPL(tpu, CPU, m) {
+  // All entries here should be registered via ImplStable, ImplExperimental, or
+  // ImplDeprecated to mark their API stages.
+  ImplExperimental<OpName::kRaggedAllToAll>(m, AtenRaggedAllToAll);
+  ImplExperimental<OpName::kRaggedAllToAllOut>(m, AtenRaggedAllToAllOut);
 }
 
 // Returns a mutable reference to the global CPU fallback mode (defaulted to

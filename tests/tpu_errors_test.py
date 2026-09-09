@@ -2742,6 +2742,92 @@ module {
     ):
       torch.ops.tpu.sparse_gather(row_pointers, indices_wrong_len, operand, 8)
 
+  @et.why_tpu_only("Custom op sparse_gather is TPU only.")
+  def test_sparse_gather_unsupported_device_without_sparse_core(self):
+    device = et.device()
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device=device)
+    indices = torch.tensor([0] * 16, dtype=torch.int32, device=device)
+    operand = torch.ones(10, 8, dtype=torch.float32, device=device)
+
+    # Valid inputs executed on a TPU device without SparseCore support
+    # (e.g., TPU v5 lite) should raise an error.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_gather(): sparse_gather requires a TPU device with SparseCore support""",
+    ):
+      torch.ops.tpu.sparse_gather(row_pointers, indices, operand, 8)
+
+  @et.why_tpu_only("Custom op sparse_gather_backward is TPU only.")
+  def test_sparse_gather_backward_invalid_grad_output_dim(self):
+    device = et.device()
+    grad_output_1d = torch.ones(8, dtype=torch.float32, device=device)
+    indices = torch.tensor([0] * 8, dtype=torch.int32, device=device)
+    grad_operand = torch.zeros(10, 8, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_gather_backward(): expected grad_output to be a 2D tensor, got a 1D tensor of shape [8]""",
+    ):
+      torch.ops.tpu.sparse_gather_backward(
+          grad_output_1d, indices, grad_operand
+      )
+
+  @et.why_tpu_only("Custom op sparse_gather_backward is TPU only.")
+  def test_sparse_gather_backward_invalid_indices_dim(self):
+    device = et.device()
+    grad_output = torch.ones(8, 8, dtype=torch.float32, device=device)
+    indices_2d = torch.tensor([[0] * 8], dtype=torch.int32, device=device)
+    grad_operand = torch.zeros(10, 8, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_gather_backward(): expected indices to be a 1D tensor, got a 2D tensor of shape [1, 8]""",
+    ):
+      torch.ops.tpu.sparse_gather_backward(
+          grad_output, indices_2d, grad_operand
+      )
+
+  @et.why_tpu_only("Custom op sparse_gather_backward is TPU only.")
+  def test_sparse_gather_backward_invalid_grad_operand_dim(self):
+    device = et.device()
+    grad_output = torch.ones(8, 8, dtype=torch.float32, device=device)
+    indices = torch.tensor([0] * 8, dtype=torch.int32, device=device)
+    grad_operand_1d = torch.zeros(10, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_gather_backward(): expected grad_operand to be a 2D tensor, got a 1D tensor of shape [10]""",
+    ):
+      torch.ops.tpu.sparse_gather_backward(
+          grad_output, indices, grad_operand_1d
+      )
+
+  @et.why_tpu_only("Custom op sparse_gather_backward is TPU only.")
+  def test_sparse_gather_backward_invalid_batch_size(self):
+    device = et.device()
+    grad_output = torch.ones(7, 8, dtype=torch.float32, device=device)
+    indices = torch.tensor([0] * 8, dtype=torch.int32, device=device)
+    grad_operand = torch.zeros(10, 8, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_gather_backward(): expected indices length (8) to match grad_output batch size, got 7""",
+    ):
+      torch.ops.tpu.sparse_gather_backward(grad_output, indices, grad_operand)
+
+  @et.why_tpu_only("Custom op sparse_gather_backward is TPU only.")
+  def test_sparse_gather_backward_invalid_embedding_dim(self):
+    device = et.device()
+    grad_output = torch.ones(8, 4, dtype=torch.float32, device=device)
+    indices = torch.tensor([0] * 8, dtype=torch.int32, device=device)
+    grad_operand = torch.zeros(10, 8, dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_gather_backward(): expected embedding dimension to match (8), got 4""",
+    ):
+      torch.ops.tpu.sparse_gather_backward(grad_output, indices, grad_operand)
+
   @et.why_tpu_only("TPU-specific C++ kernel argument validation")
   def test_scaled_mm_v2_invalid_contraction_dim_size(self):
     (
