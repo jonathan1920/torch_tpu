@@ -695,6 +695,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/optimization_barrier:optimization_barrier_kernels",
         "//torch_tpu/csrc/ops/polygamma:polygamma_aten_kernels",
         "//torch_tpu/csrc/ops/pooling:adaptive_avg_pool_aten_kernels",
+        "//torch_tpu/csrc/ops/pooling:adaptive_max_pool_aten_kernels",
         "//torch_tpu/csrc/ops/pooling:avg_pool_aten_kernels",
         "//torch_tpu/csrc/ops/pooling:max_pool_aten_kernels",
         "//torch_tpu/csrc/ops/prelu:prelu_aten_kernels",

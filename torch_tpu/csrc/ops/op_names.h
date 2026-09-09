@@ -39,6 +39,7 @@ enum class OpName {
   kAdaptiveAvgPool3dBackward,
   kAdaptiveAvgPool3dBackwardGradInput,
   kAdaptiveAvgPool3dOut,
+  kAdaptiveMaxPool2dOut,
   kAdd,
   kAddOut,
   kAddReluOut,

@@ -146,4 +146,39 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "adaptive_max_pool_aten_kernels",
+    srcs = ["adaptive_max_pool_aten_kernels.cc"],
+    hdrs = ["adaptive_max_pool_aten_kernels.h"],
+    deps = [
+        ":pooling",
+        "//shims/torch:aten_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/csrc/common:aten_utils",
+        "//torch_tpu/csrc/common:cache_key",
+        "//torch_tpu/csrc/common:dimension_types",
+        "//torch_tpu/csrc/common:dtype",
+        "//torch_tpu/csrc/common:error_utils",
+        "//torch_tpu/csrc/common:to_string",
+        "//torch_tpu/csrc/common:utils",
+        "//torch_tpu/csrc/eager:device_buffer",
+        "//torch_tpu/csrc/eager:device_buffer_utils",
+        "//torch_tpu/csrc/eager:op_dispatcher",
+        "//torch_tpu/csrc/eager:tensor_to_buffer",
+        "//torch_tpu/csrc/ops:op_builder_utils",
+        "//torch_tpu/csrc/ops:op_names",
+        "//torch_tpu/csrc/ops/macros:kernel",
+        "//torch_tpu/csrc/ops/resize:resize_aten_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
 torch_tpu_package_end()

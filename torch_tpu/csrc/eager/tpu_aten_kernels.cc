@@ -161,6 +161,7 @@
 #include "torch_tpu/csrc/ops/optimization_barrier/optimization_barrier_kernels.h"
 #include "torch_tpu/csrc/ops/polygamma/polygamma_aten_kernels.h"
 #include "torch_tpu/csrc/ops/pooling/adaptive_avg_pool_aten_kernels.h"
+#include "torch_tpu/csrc/ops/pooling/adaptive_max_pool_aten_kernels.h"
 #include "torch_tpu/csrc/ops/pooling/avg_pool_aten_kernels.h"
 #include "torch_tpu/csrc/ops/pooling/max_pool_aten_kernels.h"
 #include "torch_tpu/csrc/ops/pooling/pooling.h"
@@ -343,6 +344,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kAdaptiveAvgPool3dBackwardGradInput>(
       m, AtenAdaptiveAvgPool3dBackwardGradInput);
   ImplStable<OpName::kAdaptiveAvgPool3dOut>(m, AtenAdaptiveAvgPool3dOut);
+  ImplStable<OpName::kAdaptiveMaxPool2dOut>(m, AtenAdaptiveMaxPool2dOut);
   ImplStable<OpName::kAddOut>(m, AtenAddOut);
   ImplStable<OpName::kAddReluOut>(m, AtenAddReluOut);
   ImplStable<OpName::kAddReluScalar>(m, AtenAddReluScalar);

@@ -1804,6 +1804,14 @@ class TestOps(op_testing.OpInfoTestBase):
         },
     )
 
+  @op_testing.skip_if_torch_tpu_vs_gpu_mode
+  def test_adaptive_max_pool2d(self):
+    self.do_test_op(
+        "nn.functional.adaptive_max_pool2d",
+        # TODO: adaptive_max_pool2d_backward is not implemented on TPU yet.
+        check_grad=False,
+    )
+
   def test_add(self):
     self.do_test_op("add")
 

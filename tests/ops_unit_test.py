@@ -1185,6 +1185,76 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
         )
     )
 
+  def test_adaptive_max_pool2d(self):
+    """Tests nn.functional.adaptive_max_pool2d and aten.adaptive_max_pool2d.out."""
+    for shape, out_size in [
+        # Divisible cases
+        ((2, 3, 4, 4), (2, 2)),
+        ((1, 2, 6, 6), (3, 3)),
+        ((2, 4, 8, 8), (4, 4)),
+        # Non-divisible cases
+        ((1, 2, 5, 7), (3, 2)),
+        ((2, 3, 7, 7), (3, 3)),
+        ((1, 1, 10, 10), (3, 3)),
+        # Single int output_size
+        ((2, 3, 6, 6), 3),
+        ((1, 2, 7, 7), (4, 3)),
+        # 3D tensor (C, H, W)
+        ((3, 7, 7), (3, 3)),
+        ((2, 5, 7), (2, 3)),
+        # Zero-batch tensor (0, 3, 8, 8)
+        ((0, 3, 8, 8), (4, 4)),
+        # 3D zero-channel tensor (0, 4, 4)
+        ((0, 4, 4), (2, 2)),
+        ((0, 4, 4), (0, 0)),
+        # Zero output dimension cases (4D and 3D)
+        ((2, 3, 4, 4), 0),
+        ((2, 3, 4, 4), (0, 0)),
+        ((2, 3, 4, 4), (0, 3)),
+        ((2, 3, 4, 4), (3, 0)),
+        ((3, 4, 4), 0),
+        ((3, 4, 4), (0, 0)),
+        ((3, 4, 4), (0, 3)),
+        ((3, 4, 4), (3, 0)),
+    ]:
+      for dtype in (torch.float32, torch.bfloat16, torch.float16):
+        x_cpu = torch.randn(shape, dtype=dtype)
+        out_size_pair = (
+            (out_size, out_size) if isinstance(out_size, int) else out_size
+        )
+
+        def compute_functional(device, x=x_cpu, os=out_size):
+          return torch.nn.functional.adaptive_max_pool2d(
+              x.to(device), os, return_indices=True
+          )
+
+        self.assert_close_tpu_vs_cpu(
+            compute_functional, rtol=1e-3, atol=1e-3, check_dtype=True
+        )
+
+        def compute_out(device, x=x_cpu, os=out_size_pair, dt=dtype):
+          out_buf = torch.empty((0,), dtype=dt, device=device)
+          idx_buf = torch.empty((0,), dtype=torch.int64, device=device)
+          torch.ops.aten.adaptive_max_pool2d.out(
+              x.to(device), os, out=out_buf, indices=idx_buf
+          )
+          return out_buf, idx_buf
+
+        self.assert_close_tpu_vs_cpu(
+            compute_out, rtol=1e-3, atol=1e-3, check_dtype=True
+        )
+
+    # Tie-breaking test with duplicate maxima
+    tie_x_cpu = torch.tensor(
+        [[[[1.0, 5.0, 5.0], [5.0, 2.0, 3.0], [4.0, 5.0, 1.0]]]],
+        dtype=torch.float32,
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.nn.functional.adaptive_max_pool2d(
+            tie_x_cpu.to(device), (2, 2), return_indices=True
+        )
+    )
+
   def test_rsqrt_complex_grad(self):
     device = torch.device("tpu")
     x = torch.randn(
@@ -1299,7 +1369,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
       return torch.gather(self_tensor, 1, index)
 
     self.assert_close_tpu_vs_cpu(test_fn)
-
 
   @parameterized.product(
       input_dtype=[torch.int32, torch.int64],

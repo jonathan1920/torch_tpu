@@ -51,6 +51,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "adaptive_avg_pool3d_backward.grad_input";
     case OpName::kAdaptiveAvgPool3dOut:
       return "adaptive_avg_pool3d.out";
+    case OpName::kAdaptiveMaxPool2dOut:
+      return "adaptive_max_pool2d.out";
     case OpName::kAdd:
       return "add";
     case OpName::kAddOut:

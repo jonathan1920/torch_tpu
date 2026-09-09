@@ -4066,6 +4066,182 @@ Supported combinations for non-constant padding:
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int64, output_size=2)
 
+  def test_adaptive_max_pool2d_unsupported_dtypes(self):
+    t_bool = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.bool)
+    t_complex = torch.zeros(
+        (1, 1, 4, 4), device=et.device(), dtype=torch.complex64
+    )
+    t_complex128 = torch.zeros(
+        (1, 1, 4, 4), device=et.device(), dtype=torch.complex128
+    )
+    t_uint8 = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.uint8)
+    t_int8 = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.int8)
+    t_int16 = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.int16)
+    t_int32 = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.int32)
+    t_int64 = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_max_pool2d(): bool dtype is not supported""",
+        gpu=""""adaptive_max_pool2d_cuda" not implemented for 'Bool'""",
+    ):
+      torch.nn.functional.adaptive_max_pool2d(t_bool, output_size=2)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""adaptive_max_pool2d(): not implemented for complex64""",
+        gpu=""""adaptive_max_pool2d_cuda" not implemented for 'ComplexFloat'""",
+    ):
+      torch.nn.functional.adaptive_max_pool2d(t_complex, output_size=2)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""adaptive_max_pool2d(): not implemented for complex128""",
+        gpu=""""adaptive_max_pool2d_cuda" not implemented for 'ComplexDouble'""",
+    ):
+      torch.nn.functional.adaptive_max_pool2d(t_complex128, output_size=2)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""adaptive_max_pool2d(): not implemented for uint8""",
+        gpu=""""adaptive_max_pool2d_cuda" not implemented for 'Byte'""",
+    ):
+      torch.nn.functional.adaptive_max_pool2d(t_uint8, output_size=2)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""adaptive_max_pool2d(): not implemented for int8""",
+        gpu=""""adaptive_max_pool2d_cuda" not implemented for 'Char'""",
+    ):
+      torch.nn.functional.adaptive_max_pool2d(t_int8, output_size=2)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""adaptive_max_pool2d(): not implemented for int16""",
+        gpu=""""adaptive_max_pool2d_cuda" not implemented for 'Short'""",
+    ):
+      torch.nn.functional.adaptive_max_pool2d(t_int16, output_size=2)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""adaptive_max_pool2d(): not implemented for int32""",
+        gpu=""""adaptive_max_pool2d_cuda" not implemented for 'Int'""",
+    ):
+      torch.nn.functional.adaptive_max_pool2d(t_int32, output_size=2)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""adaptive_max_pool2d(): not implemented for int64""",
+        gpu=""""adaptive_max_pool2d_cuda" not implemented for 'Long'""",
+    ):
+      torch.nn.functional.adaptive_max_pool2d(t_int64, output_size=2)
+
+  def test_adaptive_max_pool2d_invalid_rank(self):
+    inp_2d = torch.ones(10, 10, device=et.device())
+    inp_5d = torch.ones(1, 1, 1, 10, 10, device=et.device())
+    out = torch.empty(1, device=et.device())
+    indices = torch.empty(1, device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_max_pool2d(): expected 3D or 4D tensor, got [10, 10]""",
+        gpu="""adaptive_max_pool2d(): Expected 3D or 4D tensor, but got: [10, 10]""",
+    ):
+      torch.ops.aten.adaptive_max_pool2d.out(
+          inp_2d, [2, 2], out=out, indices=indices
+      )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_max_pool2d(): expected 3D or 4D tensor, got [1, 1, 1, 10, 10]""",
+        gpu="""adaptive_max_pool2d(): Expected 3D or 4D tensor, but got: [1, 1, 1, 10, 10]""",
+    ):
+      torch.ops.aten.adaptive_max_pool2d.out(
+          inp_5d, [2, 2], out=out, indices=indices
+      )
+
+  def test_adaptive_max_pool2d_empty_spatial_dim(self):
+    inp_empty_h = torch.ones(1, 0, 4, device=et.device())
+    inp_empty_w = torch.ones(1, 4, 0, device=et.device())
+    out = torch.empty(1, device=et.device())
+    indices = torch.empty(1, device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_max_pool2d(): expected input to have non-zero size for non-batch dimensions, got [1, 0, 4] with dimension 1 being empty""",
+        gpu="""adaptive_max_pool2d(): Expected input to have non-zero size for non-batch dimensions, but input has sizes [1, 0, 4] with dimension 1 being empty""",
+    ):
+      torch.ops.aten.adaptive_max_pool2d.out(
+          inp_empty_h, [2, 2], out=out, indices=indices
+      )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_max_pool2d(): expected input to have non-zero size for non-batch dimensions, got [1, 4, 0] with dimension 2 being empty""",
+        gpu="""adaptive_max_pool2d(): Expected input to have non-zero size for non-batch dimensions, but input has sizes [1, 4, 0] with dimension 2 being empty""",
+    ):
+      torch.ops.aten.adaptive_max_pool2d.out(
+          inp_empty_w, [2, 2], out=out, indices=indices
+      )
+
+  def test_adaptive_max_pool2d_invalid_output_size(self):
+    inp = torch.ones(1, 1, 4, 4, device=et.device())
+    out = torch.empty(1, device=et.device())
+    indices = torch.empty(1, device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_max_pool2d(): expected output_size to have 2 elements, got 1""",
+        gpu="""adaptive_max_pool2d(): internal error: output_size.size() must be 2""",
+    ):
+      torch.ops.aten.adaptive_max_pool2d.out(inp, [1], out=out, indices=indices)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_max_pool2d(): expected output_size to have 2 elements, got 3""",
+        gpu="""adaptive_max_pool2d(): internal error: output_size.size() must be 2""",
+    ):
+      torch.ops.aten.adaptive_max_pool2d.out(
+          inp, [1, 2, 3], out=out, indices=indices
+      )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_max_pool2d(): expected output size to be non-negative, got [-1, 2]""",
+        gpu="""numel: integer multiplication overflow""",
+    ):
+      torch.ops.aten.adaptive_max_pool2d.out(
+          inp, [-1, 2], out=out, indices=indices
+      )
+
+  def test_adaptive_max_pool2d_out_dtype_mismatch(self):
+    inp = torch.ones(1, 1, 4, 4, device=et.device(), dtype=torch.float32)
+    out = torch.empty(1, device=et.device(), dtype=torch.int32)
+    indices = torch.empty(1, device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_max_pool2d(): expected out tensor to have dtype float32, got int32""",
+        gpu="""Expected out tensor to have dtype float, but got int instead""",
+    ):
+      torch.ops.aten.adaptive_max_pool2d.out(
+          inp, [2, 2], out=out, indices=indices
+      )
+
+  def test_adaptive_max_pool2d_indices_dtype_mismatch(self):
+    inp = torch.ones(1, 1, 4, 4, device=et.device(), dtype=torch.float32)
+    out = torch.empty(1, device=et.device(), dtype=torch.float32)
+    indices = torch.empty(1, device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_max_pool2d(): expected indices tensor to have dtype int64, got int32""",
+        gpu="""Expected out tensor to have dtype long, but got int instead""",
+    ):
+      torch.ops.aten.adaptive_max_pool2d.out(
+          inp, [2, 2], out=out, indices=indices
+      )
+
   def test_adaptive_avg_pool3d_unsupported_dtypes(self):
     t_complex = torch.zeros(
         (1, 1, 4, 4), device=et.device(), dtype=torch.complex64
