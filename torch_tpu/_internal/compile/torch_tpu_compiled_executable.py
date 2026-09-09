@@ -28,9 +28,11 @@ from torch._inductor.utils import InputType
 from torch_tpu._internal.compile import tpu_torch_compile
 
 _UNSET_GRAPH_HELPER_STR = (
-    "FX/MLIR graph is not recorded by default. To record it, use debug mode:"
-    " from torch_tpu._internal.compile import TpuBackend; "
-    "torch.compile(..., backend=TpuBackend(debug=True))"
+    "FX/MLIR graph is not recorded by default. To record it: "
+    "debugs = []\n"
+    "torch.compile(..., backend='tpu',\n"
+    "              options={'debug_callback': debugs.append})\n"
+    "print(debugs)"
 )
 
 # Callable type for reconstructing the FX graph outputs from TPU execution

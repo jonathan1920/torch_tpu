@@ -28,6 +28,7 @@ torch_tpu_py_library(
     name = "compiler",
     srcs = ["compiler.py"],
     deps = [
+        ":debug",
         ":torch_tpu_compiled_executable",
         ":tpu_torch_compile",
         "//shims/torch:pytorch",
@@ -81,6 +82,7 @@ torch_tpu_py_library(
         "//learning/agents/tern/torch_agent:__subpackages__",
     ],
     deps = [
+        ":debug",
         ":scan",
         ":tpu_backend",
         "//shims/torch:pytorch",
@@ -98,7 +100,9 @@ torch_tpu_py_library(
     ],
     deps = [
         ":compiler",
+        ":debug",
         ":split_compiler",
+        ":torch_tpu_compiled_executable",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/benchmarks:xprof_adapter",
@@ -189,6 +193,11 @@ pybind_extension(
         "@xla//xla/service:computation_placer",
         "@xla//xla/service:device_assignment",
     ],
+)
+
+torch_tpu_py_library(
+    name = "debug",
+    srcs = ["debug.py"],
 )
 
 torch_tpu_package_end()
