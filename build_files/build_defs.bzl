@@ -644,7 +644,9 @@ def torch_tpu_cc_test(
         requires_libtpu: If True, wraps the C++ test inside an sh_test wrapper
             in OSS to load libtpu.so cleanly. If None (default), the value is set
             depending on whether the test is declared as running on TPUs (`True`)
-            or CPUs (`False`).
+            or CPUs (`False`). Note that requires_libtpu only means the test needs `libtpu` -
+            it does NOT imply that the test needs an actual TPU (in fact most such tests run
+            on CPU).
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
