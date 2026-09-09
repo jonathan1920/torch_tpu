@@ -224,7 +224,6 @@ torch_tpu_py_test(
         "//tests/distributed:distributed_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile",
-        "//torch_tpu/_internal/compile:split_compiler",
         "//torch_tpu/_internal/compile:torch_tpu_compiled_executable",
         "//torch_tpu/_internal/device:_device_module",
         "//torch_tpu/_internal/distributed:multiprocessing",

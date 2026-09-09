@@ -82,6 +82,9 @@ class CompiledArtifact(abc.ABC, OutputCode):
     """
     pass
 
+  _mlir_text: str | None = None
+  _graph_module_debug_str: str | None = None
+
   def resolve(self) -> None:
     """Waits for any pending background compilation to complete."""
     pass
@@ -94,6 +97,60 @@ class CompiledArtifact(abc.ABC, OutputCode):
   def updates_default_generator_state(self) -> bool:
     """Returns whether the executable updates the default generator state."""
     return False
+
+  @property
+  def mlir_text(self) -> str | None:
+    if self._mlir_text is not None:
+      return self._mlir_text
+    texts = self.mlir_texts
+    return texts[0] if texts else None
+
+  @mlir_text.setter
+  def mlir_text(self, value: str) -> None:
+    self._mlir_text = value
+
+  @property
+  def mlir_texts(self) -> Sequence[str]:
+    self.resolve()
+    return [self._mlir_text] if self._mlir_text is not None else []
+
+  @property
+  def graph_module_debug_str(self) -> str | None:
+    if self._graph_module_debug_str is not None:
+      return self._graph_module_debug_str
+    strs = self.graph_module_debug_strs
+    return strs[0] if strs else None
+
+  @graph_module_debug_str.setter
+  def graph_module_debug_str(self, value: str) -> None:
+    self._graph_module_debug_str = value
+
+  @property
+  def graph_module_debug_strs(self) -> Sequence[str]:
+    self.resolve()
+    return (
+        [self._graph_module_debug_str]
+        if self._graph_module_debug_str is not None
+        else []
+    )
+
+  def fingerprint(self) -> str:
+    return ""
+
+  @property
+  def compiled_executables(self) -> Sequence["CompiledArtifact"]:
+    return [self]
+
+  def prepare_for_serialization(self) -> None:
+    pass
+
+  def post_compile(
+      self,
+      example_inputs: Sequence[Any],
+      constants: Any,
+      graph_kwargs: Any,
+  ) -> None:
+    pass
 
 
 def _unpickle_compiled_executable(
@@ -574,14 +631,6 @@ class NoOpCompiledArtifact(CompiledArtifact):
 
   def updates_default_generator_state(self) -> bool:
     return False
-
-  @property
-  def graph_module_debug_str(self) -> str | None:
-    return None
-
-  @property
-  def mlir_text(self) -> str | None:
-    return None
 
   def prepare_for_serialization(self) -> None:
     pass
