@@ -40,8 +40,30 @@ def _make_dummy_params(device: torch.device):
   return params, grads
 
 
-def _validate_compiled_linear_train_step(test_case, custom_opt, device):
-  model = torch.nn.Linear(128, 64).to(device=device, dtype=torch.float32)
+def _make_dummy_muon_params(device: torch.device):
+  p1 = torch.tensor(
+      [[1.0, 2.0, -1.0], [0.5, -0.5, 1.5]], dtype=torch.float32, device=device
+  )
+  p2 = torch.tensor(
+      [[0.5, -0.5], [1.5, 0.0]], dtype=torch.float32, device=device
+  )
+  g1 = torch.tensor(
+      [[0.1, -0.2, 0.5], [-0.1, 0.2, -0.3]], dtype=torch.float32, device=device
+  )
+  g2 = torch.tensor(
+      [[-0.1, 0.2], [0.3, -0.4]], dtype=torch.float32, device=device
+  )
+  params = {"w1": p1, "w2": p2}
+  grads = {"w1": g1, "w2": g2}
+  return params, grads
+
+
+def _validate_compiled_linear_train_step(
+    test_case, custom_opt, device, bias: bool = True
+):
+  model = torch.nn.Linear(128, 64, bias=bias).to(
+      device=device, dtype=torch.float32
+  )
   model.train()
 
   pg = custom_opt.init_param_group(model)
@@ -297,6 +319,87 @@ class SGDOptimizersTest(seed_test_utils.RepeatableTest):
   def test_torch_sgd_compiled_linear_train_step(self):
     opt = optimizers.TorchSgd(lr=1e-2, momentum=0.9)
     _validate_compiled_linear_train_step(self, opt, self.device)
+
+
+class MuonOptimizersTest(seed_test_utils.RepeatableTest):
+
+  def setUp(self):
+    super().setUp()
+    self.device = torch.device("tpu")
+
+  def _validate_opt_step(
+      self,
+      custom_opt,
+      lr=1e-3,
+      weight_decay=0.1,
+      momentum=0.95,
+  ):
+    params_custom, grads_custom = _make_dummy_muon_params(self.device)
+    params_ref, grads_ref = _make_dummy_muon_params(self.device)
+
+    pg = custom_opt.init_param_group(params_custom)
+    new_pg = custom_opt.step(pg, grads_custom)
+
+    ref_params = {
+        k: torch.nn.Parameter(v.clone().detach()) for k, v in params_ref.items()
+    }
+    ref_opt = torch.optim.Muon(
+        list(ref_params.values()),
+        lr=lr,
+        weight_decay=weight_decay,
+        momentum=momentum,
+        nesterov=custom_opt.nesterov,
+        ns_coefficients=custom_opt.ns_coefficients,
+        eps=custom_opt.eps,
+        ns_steps=custom_opt.ns_steps,
+        adjust_lr_fn=custom_opt.adjust_lr_fn,
+    )
+    for k, p in ref_params.items():
+      p.grad = grads_ref[k].clone().detach()
+    ref_opt.step()
+
+    for k in params_ref:
+      test_utils.assert_close(
+          new_pg.params[k],
+          ref_params[k].detach(),
+          rtol=1e-4,
+          atol=1e-4,
+          preamble=f"Mismatch in param {k}",
+      )
+      ref_m = ref_opt.state[ref_params[k]]["momentum_buffer"]
+      test_utils.assert_close(
+          new_pg.opt_state_m[k],
+          ref_m,
+          rtol=1e-4,
+          atol=1e-4,
+          preamble=f"Mismatch in opt_state_m for {k}",
+      )
+
+  def test_reference_muon_step(self):
+    opt = optimizers.ReferenceMuon(lr=1e-3, momentum=0.95, weight_decay=0.1)
+    self._validate_opt_step(opt, lr=1e-3, momentum=0.95, weight_decay=0.1)
+
+  def test_reference_muon_compiled_linear_train_step(self):
+    opt = optimizers.ReferenceMuon(lr=1e-3, momentum=0.95, weight_decay=0.1)
+    _validate_compiled_linear_train_step(self, opt, self.device, bias=False)
+
+  def test_torch_muon_step(self):
+    opt = optimizers.TorchMuon(lr=1e-3, momentum=0.95, weight_decay=0.1)
+    self._validate_opt_step(opt, lr=1e-3, momentum=0.95, weight_decay=0.1)
+
+  def test_torch_muon_custom_kwargs(self):
+    opt = optimizers.TorchMuon(
+        lr=1e-3,
+        momentum=0.95,
+        weight_decay=0.1,
+        nesterov=False,
+        adjust_lr_fn="match_rms_adamw",
+    )
+    self._validate_opt_step(opt, lr=1e-3, momentum=0.95, weight_decay=0.1)
+
+  def test_torch_muon_compiled_linear_train_step(self):
+    opt = optimizers.TorchMuon(lr=1e-3, momentum=0.95, weight_decay=0.1)
+    _validate_compiled_linear_train_step(self, opt, self.device, bias=False)
 
 
 if __name__ == "__main__":
