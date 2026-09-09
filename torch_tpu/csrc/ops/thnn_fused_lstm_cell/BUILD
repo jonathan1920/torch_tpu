@@ -39,6 +39,7 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops/macros:kernel",
         "//torch_tpu/csrc/ops/reductions",
         "//torch_tpu/csrc/ops/reductions:reduction_utils",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@stablehlo//:attr_type_builder_util",

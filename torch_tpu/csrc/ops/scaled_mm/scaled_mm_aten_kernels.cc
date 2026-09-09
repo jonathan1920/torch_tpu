@@ -45,14 +45,12 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/macro_utils.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/precision_context.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -578,38 +576,58 @@ absl::Status ValidateScaledMmInputs(
   return absl::OkStatus();
 }
 
-Indices GetScaledMmDonatedIndices(const std::optional<at::Tensor>& out,
-                                  const at::Tensor& self,
-                                  const at::Tensor& mat2,
-                                  const std::optional<at::Tensor>& bias,
-                                  bool has_bias, mlir::ElementType elem_dtype,
-                                  absl::Span<const int64_t> output_dims) {
-  // If `out` aliases one of the inputs (e.g. self, mat2, or bias), donate that
-  // input's device buffer in eligible eager modes (DeferNever) to avoid
-  // allocation churn.
-  if (!out.has_value()) {
-    return {};
-  }
-  if (ShouldDonateInPlaceBuffer(*out, self, elem_dtype, output_dims)) {
-    return {0};
-  }
-  if (ShouldDonateInPlaceBuffer(*out, mat2, elem_dtype, output_dims)) {
-    return {1};
-  }
-  if (has_bias &&
-      ShouldDonateInPlaceBuffer(*out, *bias, elem_dtype, output_dims)) {
-    return {4};
-  }
-  return {};
+auto GetScaledMmOpBuilder(bool has_bias, bool has_scale_result,
+                          mlir::ElementType target_elem_dtype,
+                          mlir::stablehlo::Precision current_precision) {
+  return [has_bias, has_scale_result, target_elem_dtype, current_precision](
+             absl::Span<mlir::MlirOp> builder_inputs,
+             mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
+    mlir::MlirOp lhs_op = builder_inputs[0];
+    mlir::MlirOp rhs_op = builder_inputs[1];
+    mlir::MlirOp scale_a_op = builder_inputs[2];
+    mlir::MlirOp scale_b_op = builder_inputs[3];
+
+    std::optional<mlir::MlirOp> bias_op;
+    std::optional<mlir::MlirOp> scale_result_op;
+
+    if (has_bias) {
+      bias_op = builder_inputs[4];
+    }
+    if (has_scale_result) {
+      scale_result_op = builder_inputs[has_bias ? 5 : 4];
+    }
+
+    TT_ASSIGN_OR_RETURN(std::optional<mlir::Type> out_dtype_mlir,
+                        GetMlirType(builder.getContext(), target_elem_dtype));
+
+    return BuildScaledMmShlo(lhs_op, rhs_op, scale_a_op, scale_b_op, bias_op,
+                             scale_result_op, out_dtype_mlir,
+                             current_precision);
+  };
 }
 
-absl::StatusOr<DeviceBufferRef> ScaledMm(
+std::vector<at::Tensor> BuildScaledMmInputs(
     const at::Tensor& self, const at::Tensor& mat2, const at::Tensor& scale_a,
-    const at::Tensor& scale_b, std::optional<at::Tensor> bias,
-    std::optional<at::Tensor> scale_result,
-    std::optional<at::ScalarType> out_dtype, bool use_fast_accum,
-    OpParamCacheKeys param_keys,
-    const std::optional<at::Tensor>& out = std::nullopt) {
+    const at::Tensor& scale_b, const std::optional<at::Tensor>& bias,
+    const std::optional<at::Tensor>& scale_result, bool has_bias,
+    bool has_scale_result) {
+  std::vector<at::Tensor> inputs = {self, mat2, scale_a, scale_b};
+  if (has_bias) {
+    inputs.push_back(*bias);
+  }
+  if (has_scale_result) {
+    inputs.push_back(*scale_result);
+  }
+  return inputs;
+}
+
+absl::Status ScaledMmOut(const at::Tensor& self, const at::Tensor& mat2,
+                         const at::Tensor& scale_a, const at::Tensor& scale_b,
+                         std::optional<at::Tensor> bias,
+                         std::optional<at::Tensor> scale_result,
+                         std::optional<at::ScalarType> out_dtype,
+                         bool use_fast_accum, OpParamCacheKeys param_keys,
+                         at::Tensor& out) {
   TT_RETURN_IF_ERROR(ValidateScaledMmInputs(self, mat2, scale_a, scale_b, bias,
                                             scale_result, use_fast_accum));
 
@@ -630,57 +648,18 @@ absl::StatusOr<DeviceBufferRef> ScaledMm(
   bool has_bias = bias.has_value() && bias->defined();
   bool has_scale_result = scale_result.has_value() && scale_result->defined();
 
-  std::vector<at::Tensor> inputs = {self, mat2, scale_a, scale_b};
-  if (has_bias) {
-    inputs.push_back(*bias);
-  }
-  if (has_scale_result) {
-    inputs.push_back(*scale_result);
-  }
+  std::vector<at::Tensor> inputs =
+      BuildScaledMmInputs(self, mat2, scale_a, scale_b, bias, scale_result,
+                          has_bias, has_scale_result);
+  auto op_builder = GetScaledMmOpBuilder(has_bias, has_scale_result,
+                                         target_elem_dtype, current_precision);
 
-  auto op_builder =
-      [has_bias, has_scale_result, target_elem_dtype, current_precision](
-          absl::Span<mlir::MlirOp> builder_inputs,
-          mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
-    mlir::MlirOp lhs_op = builder_inputs[0];
-    mlir::MlirOp rhs_op = builder_inputs[1];
-    mlir::MlirOp scale_a_op = builder_inputs[2];
-    mlir::MlirOp scale_b_op = builder_inputs[3];
-
-    std::optional<mlir::MlirOp> bias_op;
-    std::optional<mlir::MlirOp> scale_result_op;
-
-    if (has_bias) {
-      bias_op = builder_inputs[4];
-    }
-    if (has_scale_result) {
-      scale_result_op = builder_inputs[has_bias ? 5 : 4];
-    }
-
-    TT_ASSIGN_OR_RETURN(std::optional<mlir::Type> out_dtype_mlir,
-                        GetMlirType(builder.getContext(), target_elem_dtype));
-
-    TT_ASSIGN_OR_RETURN(
-        mlir::MlirOp result,
-        BuildScaledMmShlo(lhs_op, rhs_op, scale_a_op, scale_b_op, bias_op,
-                          scale_result_op, out_dtype_mlir, current_precision));
-
-    return result;
-  };
-
-  Indices donated_indices = GetScaledMmDonatedIndices(
-      out, self, mat2, bias, has_bias, target_elem_dtype, output_dims);
-
-  TT_ASSIGN_OR_RETURN(DeviceBufferRef result_buf,
-                      DispatchOp<kDynamicSize>(
-                          std::move(op_builder), inputs,
-                          {.out_dtype = target_elem_dtype,
-                           .out_dims = output_dims,
-                           .computation_dtype = comp_dtype,
-                           .op_param_cache_keys = std::move(param_keys),
-                           .donated_indices = std::move(donated_indices)}));
-
-  return result_buf;
+  return DispatchOpOut<kDynamicSize>(
+      std::move(op_builder), inputs, out,
+      {.out_dtype = target_elem_dtype,
+       .out_dims = output_dims,
+       .computation_dtype = comp_dtype,
+       .op_param_cache_keys = std::move(param_keys)});
 }
 
 }  // namespace
@@ -702,11 +681,9 @@ at::Tensor AtenScaledMm(const at::Tensor& self, const at::Tensor& mat2,
         TT_ASSIGN_OR_THROW(at::Tensor out,
                            MakeEmptyTensor({self.size(0), n},
                                            target_scalar_type, self.device()));
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef result_buf,
-            ScaledMm(self, mat2, scale_a, scale_b, bias, scale_result,
-                     out_dtype, use_fast_accum, std::move(param_keys)));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        TT_THROW_IF_ERROR(ScaledMmOut(self, mat2, scale_a, scale_b, bias,
+                                      scale_result, out_dtype, use_fast_accum,
+                                      std::move(param_keys), out));
         return out;
       });
 }
@@ -718,39 +695,36 @@ at::Tensor& AtenScaledMmOut(const at::Tensor& self, const at::Tensor& mat2,
                             const std::optional<at::Tensor>& scale_result,
                             std::optional<at::ScalarType> out_dtype,
                             bool use_fast_accum, at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kScaledMmOut, param_keys,
-      (self, mat2, scale_a, scale_b, bias, scale_result, out_dtype,
-       use_fast_accum, out),
-      {
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef result_buf,
-            ScaledMm(self, mat2, scale_a, scale_b, bias, scale_result,
-                     out_dtype, use_fast_accum, std::move(param_keys), out));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-        return out;
-      });
+  TT_KERNEL(OpName::kScaledMmOut, param_keys,
+            (self, mat2, scale_a, scale_b, bias, scale_result, out_dtype,
+             use_fast_accum, out),
+            {
+              TT_THROW_IF_ERROR(ScaledMmOut(
+                  self, mat2, scale_a, scale_b, bias, scale_result, out_dtype,
+                  use_fast_accum, std::move(param_keys), out));
+              return out;
+            });
 }
 
 #if TT_TORCH_VERSION_GE(2, 14)  // See scaled_mm_aten_kernels.h.
-absl::StatusOr<DeviceBufferRef> ScaledMmV2(
-    const at::Tensor& self, const at::Tensor& mat2,
-    const at::ITensorListRef& scale_a, at::IntArrayRef recipe_a,
-    at::IntArrayRef swizzle_a, const at::ITensorListRef& scale_b,
-    at::IntArrayRef recipe_b, at::IntArrayRef swizzle_b,
-    std::optional<at::Tensor> bias, std::optional<at::ScalarType> out_dtype,
-    at::IntArrayRef contraction_dim, bool use_fast_accum,
-    OpParamCacheKeys param_keys,
-    const std::optional<at::Tensor>& out = std::nullopt) {
+absl::Status ScaledMmV2Out(const at::Tensor& self, const at::Tensor& mat2,
+                           const at::ITensorListRef& scale_a,
+                           at::IntArrayRef recipe_a, at::IntArrayRef swizzle_a,
+                           const at::ITensorListRef& scale_b,
+                           at::IntArrayRef recipe_b, at::IntArrayRef swizzle_b,
+                           std::optional<at::Tensor> bias,
+                           std::optional<at::ScalarType> out_dtype,
+                           at::IntArrayRef contraction_dim, bool use_fast_accum,
+                           OpParamCacheKeys param_keys, at::Tensor& out) {
 #else
-absl::StatusOr<DeviceBufferRef> ScaledMmV2(
-    const at::Tensor& self, const at::Tensor& mat2, at::TensorList scale_a,
-    at::IntArrayRef recipe_a, at::IntArrayRef swizzle_a, at::TensorList scale_b,
-    at::IntArrayRef recipe_b, at::IntArrayRef swizzle_b,
-    std::optional<at::Tensor> bias, std::optional<at::ScalarType> out_dtype,
-    at::IntArrayRef contraction_dim, bool use_fast_accum,
-    OpParamCacheKeys param_keys,
-    const std::optional<at::Tensor>& out = std::nullopt) {
+absl::Status ScaledMmV2Out(const at::Tensor& self, const at::Tensor& mat2,
+                           at::TensorList scale_a, at::IntArrayRef recipe_a,
+                           at::IntArrayRef swizzle_a, at::TensorList scale_b,
+                           at::IntArrayRef recipe_b, at::IntArrayRef swizzle_b,
+                           std::optional<at::Tensor> bias,
+                           std::optional<at::ScalarType> out_dtype,
+                           at::IntArrayRef contraction_dim, bool use_fast_accum,
+                           OpParamCacheKeys param_keys, at::Tensor& out) {
 #endif
   TT_RETURN_IF_ERROR(ValidateScaledMmV2Inputs(
       self, mat2, scale_a, recipe_a, swizzle_a, scale_b, recipe_b, swizzle_b,
@@ -808,28 +782,17 @@ absl::StatusOr<DeviceBufferRef> ScaledMmV2(
     TT_ASSIGN_OR_RETURN(std::optional<mlir::Type> out_dtype_mlir,
                         GetMlirType(builder.getContext(), target_elem_dtype));
 
-    TT_ASSIGN_OR_RETURN(
-        mlir::MlirOp result,
-        BuildScaledMmV2Shlo(lhs_op, rhs_op, scale_a_op, scale_b_op, bias_op,
-                            out_dtype_mlir, current_precision, scaling_a,
-                            scaling_b, swiz_a, swiz_b));
-
-    return result;
+    return BuildScaledMmV2Shlo(lhs_op, rhs_op, scale_a_op, scale_b_op, bias_op,
+                               out_dtype_mlir, current_precision, scaling_a,
+                               scaling_b, swiz_a, swiz_b);
   };
 
-  Indices donated_indices = GetScaledMmDonatedIndices(
-      out, self, mat2, bias, has_bias, target_elem_dtype, output_dims);
-
-  TT_ASSIGN_OR_RETURN(DeviceBufferRef result_buf,
-                      DispatchOp<kDynamicSize>(
-                          std::move(op_builder), inputs,
-                          {.out_dtype = target_elem_dtype,
-                           .out_dims = output_dims,
-                           .computation_dtype = comp_dtype,
-                           .op_param_cache_keys = std::move(param_keys),
-                           .donated_indices = std::move(donated_indices)}));
-
-  return result_buf;
+  return DispatchOpOut<kDynamicSize>(
+      std::move(op_builder), inputs, out,
+      {.out_dtype = target_elem_dtype,
+       .out_dims = output_dims,
+       .computation_dtype = comp_dtype,
+       .op_param_cache_keys = std::move(param_keys)});
 }
 
 #if TT_TORCH_VERSION_GE(2, 14)  // See scaled_mm_aten_kernels.h.
@@ -862,12 +825,10 @@ at::Tensor AtenScaledMmV2(const at::Tensor& self, const at::Tensor& mat2,
         TT_ASSIGN_OR_THROW(at::Tensor out,
                            MakeEmptyTensor({self.size(0), mat2.size(1)},
                                            target_scalar_type, self.device()));
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef result_buf,
-            ScaledMmV2(self, mat2, scale_a, recipe_a, swizzle_a, scale_b,
-                       recipe_b, swizzle_b, bias, out_dtype, contraction_dim,
-                       use_fast_accum, std::move(param_keys)));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        TT_THROW_IF_ERROR(
+            ScaledMmV2Out(self, mat2, scale_a, recipe_a, swizzle_a, scale_b,
+                          recipe_b, swizzle_b, bias, out_dtype, contraction_dim,
+                          use_fast_accum, std::move(param_keys), out));
         return out;
       });
 }
@@ -892,21 +853,16 @@ at::Tensor& AtenScaledMmV2Out(const at::Tensor& self, const at::Tensor& mat2,
                               at::IntArrayRef contraction_dim,
                               bool use_fast_accum, at::Tensor& out) {
 #endif
-  TT_KERNEL(
-      OpName::kScaledMmV2Out, param_keys,
-      (self, mat2, scale_a, recipe_a, swizzle_a, scale_b, recipe_b, swizzle_b,
-       bias, out_dtype, contraction_dim, use_fast_accum, out),
-      {
-        TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(out, {self.size(0), mat2.size(1)}));
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef result_buf,
-            ScaledMmV2(self, mat2, scale_a, recipe_a, swizzle_a, scale_b,
-                       recipe_b, swizzle_b, bias, out_dtype, contraction_dim,
-                       use_fast_accum, std::move(param_keys), out));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-        return out;
-      });
+  TT_KERNEL(OpName::kScaledMmV2Out, param_keys,
+            (self, mat2, scale_a, recipe_a, swizzle_a, scale_b, recipe_b,
+             swizzle_b, bias, out_dtype, contraction_dim, use_fast_accum, out),
+            {
+              TT_THROW_IF_ERROR(ScaledMmV2Out(
+                  self, mat2, scale_a, recipe_a, swizzle_a, scale_b, recipe_b,
+                  swizzle_b, bias, out_dtype, contraction_dim, use_fast_accum,
+                  std::move(param_keys), out));
+              return out;
+            });
 }
 
 }  // namespace torch_tpu

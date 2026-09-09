@@ -30,13 +30,10 @@
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 absl::StatusOr<mlir::MlirOp> BuildDigammaShlo(mlir::MlirOp input_op,
@@ -68,22 +65,11 @@ at::Tensor& AtenDigammaOut(const at::Tensor& self, at::Tensor& out) {
         [out_dtype](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
       return BuildDigammaShlo(input, out_dtype);
     };
-    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
-    // If `out` aliases `self`, donate input 0's device buffer to the output in
-    // eligible eager modes (DeferNever) to avoid allocation churn.
-    Indices donated_indices;
-    if (ShouldDonateInPlaceBuffer(out, self, out_dtype, out.sizes())) {
-      donated_indices = {0};
-    }
-
-    TT_ASSIGN_OR_THROW(
-        auto result_buf,
-        DispatchOp<1>(std::move(op_builder), self,
-                      {.out_dtype = out_dtype,
-                       .out_dims = out.sizes(),
-                       .op_param_cache_keys = std::move(param_keys),
-                       .donated_indices = std::move(donated_indices)}));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+    TT_THROW_IF_ERROR(
+        DispatchOpOut<1>(std::move(op_builder), self, out,
+                         {.out_dtype = out_dtype,
+                          .out_dims = self.sizes(),
+                          .op_param_cache_keys = std::move(param_keys)}));
     return out;
   });
 }

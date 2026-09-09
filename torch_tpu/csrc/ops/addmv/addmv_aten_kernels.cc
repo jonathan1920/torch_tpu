@@ -36,14 +36,11 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/precision_context.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -112,10 +109,10 @@ absl::StatusOr<mlir::MlirOp> BuildAddmvShlo(
   return stablehlo::Add(broadcasted_bias, scaled_mv_op);
 }
 
-absl::StatusOr<DeviceBufferRef> Addmv(
-    const at::Tensor& self, const at::Tensor& mat, const at::Tensor& vec,
-    MaybePromotedScalar beta, const at::Tensor& alpha_tensor, at::Tensor& out,
-    OpParamCacheKeys& param_keys) {
+absl::Status Addmv(const at::Tensor& self, const at::Tensor& mat,
+                   const at::Tensor& vec, MaybePromotedScalar beta,
+                   const at::Tensor& alpha_tensor, at::Tensor& out,
+                   OpParamCacheKeys& param_keys) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
 
@@ -131,11 +128,6 @@ absl::StatusOr<DeviceBufferRef> Addmv(
   // reading from uninitialized tensors (at::empty) at the moment, so instead of
   // dispatching to ternary op, we dispatch to binary op without self.
   if (beta.IsZero()) {
-    Indices zero_donated_indices;
-    if (ShouldDonateInPlaceBuffer(out, vec, out_dtype, result_shape)) {
-      zero_donated_indices = {1};
-    }
-    options.donated_indices = std::move(zero_donated_indices);
     auto op_builder = [out_dtype,
                        precision](FixedSizeSpan<mlir::MlirOp, 3> inputs)
         -> absl::StatusOr<mlir::MlirOp> {
@@ -143,19 +135,8 @@ absl::StatusOr<DeviceBufferRef> Addmv(
       return BuildAddmvShloBetaZero(mat_op, vec_op, alpha_op, out_dtype,
                                     precision);
     };
-    TT_ASSIGN_OR_RETURN(auto result_buf, DispatchOp<3>(std::move(op_builder),
-                                                       {mat, vec, alpha_tensor},
-                                                       std::move(options)));
-    return result_buf;
-  }
-
-  // If `out` aliases `self` or `vec`, donate that device buffer to the output
-  // in eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(out, self, out_dtype, result_shape)) {
-    donated_indices = {0};
-  } else if (ShouldDonateInPlaceBuffer(out, vec, out_dtype, result_shape)) {
-    donated_indices = {2};
+    return DispatchOpOut<3>(std::move(op_builder), {mat, vec, alpha_tensor},
+                            out, std::move(options));
   }
 
   auto op_builder = [out_dtype,
@@ -166,12 +147,9 @@ absl::StatusOr<DeviceBufferRef> Addmv(
                           precision);
   };
   TT_ASSIGN_OR_RETURN(auto beta_tensor, beta.GetTensor(out.scalar_type()));
-  options.donated_indices = std::move(donated_indices);
-  TT_ASSIGN_OR_RETURN(auto result_buf,
-                      DispatchOp<5>(std::move(op_builder),
-                                    {self, mat, vec, beta_tensor, alpha_tensor},
-                                    std::move(options)));
-  return result_buf;
+  return DispatchOpOut<5>(std::move(op_builder),
+                          {self, mat, vec, beta_tensor, alpha_tensor}, out,
+                          std::move(options));
 }
 
 absl::Status ValidateAddmvInputs(const at::Tensor& self, const at::Tensor& mat,
@@ -234,12 +212,8 @@ at::Tensor& AtenAddmvOut(const at::Tensor& self, const at::Tensor& mat,
 
         TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
                            promoted_alpha.GetTensor(out.scalar_type()));
-        TT_ASSIGN_OR_THROW(auto result_buf,
-                           Addmv(self, mat, vec, std::move(promoted_beta),
-                                 alpha_tensor, out, param_keys));
-        TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        TT_THROW_IF_ERROR(Addmv(self, mat, vec, std::move(promoted_beta),
+                                alpha_tensor, out, param_keys));
         return out;
       });
 }

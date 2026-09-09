@@ -17,12 +17,12 @@
 #include "torch_tpu/csrc/ops/index_reduce/index_reduce_aten_kernels.h"
 
 #include <cstdint>
-#include <optional>
 #include <string_view>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/core/ScalarType.h"
@@ -34,9 +34,7 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/utils.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/index_utils.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
@@ -61,11 +59,10 @@ absl::StatusOr<ScatterOp> GetReduceOp(const std::string_view reduce) {
          << reduce;
 }
 
-absl::StatusOr<DeviceBufferRef> IndexReduce(
-    const at::Tensor& self, int64_t dim, const at::Tensor& index,
-    const at::Tensor& source, const std::string_view reduce, bool include_self,
-    const at::ScalarType& out_scalar_type, OpParamCacheKeys param_keys,
-    std::optional<at::Tensor> out = std::nullopt) {
+absl::Status IndexReduce(const at::Tensor& self, int64_t dim,
+                         const at::Tensor& index, const at::Tensor& source,
+                         const std::string_view reduce, bool include_self,
+                         at::Tensor& out, OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(dim,
                       ValidateIndexInputsAndGetDim(self, dim, index, source));
   TT_ASSIGN_OR_RETURN(ScatterOp reduce_op, GetReduceOp(reduce));
@@ -73,7 +70,7 @@ absl::StatusOr<DeviceBufferRef> IndexReduce(
       include_self ? ScatterIncludeSelf::kYes : ScatterIncludeSelf::kNo;
 
   at::ScalarType promoted_scalar_type =
-      c10::promoteTypes(self.scalar_type(), out_scalar_type);
+      c10::promoteTypes(self.scalar_type(), out.scalar_type());
   TT_ASSIGN_OR_RETURN(const auto computation_dtype,
                       ConvertTo<mlir::ElementType>(promoted_scalar_type));
 
@@ -86,23 +83,14 @@ absl::StatusOr<DeviceBufferRef> IndexReduce(
       };
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
-                      ConvertTo<mlir::ElementType>(out_scalar_type));
+                      ConvertTo<mlir::ElementType>(out.scalar_type()));
   Dimensions output_dims = CopyIntVector(self.sizes());
 
-  // If `out` aliases `self`, donate input 0's device buffer to the output in
-  // eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (out.has_value() &&
-      ShouldDonateInPlaceBuffer(*out, self, output_dtype, output_dims)) {
-    donated_indices = {0};
-  }
-
-  return DispatchOp<3>(std::move(index_reduce_op_builder),
-                       {self, index, source},
-                       {.out_dtype = output_dtype,
-                        .out_dims = output_dims,
-                        .op_param_cache_keys = std::move(param_keys),
-                        .donated_indices = std::move(donated_indices)});
+  return DispatchOpOut<3>(std::move(index_reduce_op_builder),
+                          {self, index, source}, out,
+                          {.out_dtype = output_dtype,
+                           .out_dims = output_dims,
+                           .op_param_cache_keys = std::move(param_keys)});
 }
 
 }  // namespace
@@ -112,16 +100,13 @@ at::Tensor& TpuAtenIndexReduceOut(const at::Tensor& self, int64_t dim,
                                   const at::Tensor& source,
                                   std::string_view reduce, bool include_self,
                                   at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kIndexReduceOut, param_keys,
-      (self, dim, index, source, reduce, include_self, out), {
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef result_buf,
-            IndexReduce(self, dim, index, source, reduce, include_self,
-                        out.scalar_type(), std::move(param_keys), out));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-        return out;
-      });
+  TT_KERNEL(OpName::kIndexReduceOut, param_keys,
+            (self, dim, index, source, reduce, include_self, out), {
+              TT_THROW_IF_ERROR(IndexReduce(self, dim, index, source, reduce,
+                                            include_self, out,
+                                            std::move(param_keys)));
+              return out;
+            });
 }
 
 }  // namespace torch_tpu

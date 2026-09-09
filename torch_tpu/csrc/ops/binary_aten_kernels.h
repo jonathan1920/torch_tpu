@@ -63,11 +63,6 @@ struct TernaryOpOptions {
   Indices donated_indices = {};
 };
 
-enum class OutputOpMode {
-  kOutOfPlace,
-  kInPlace,
-};
-
 namespace internal {
 
 absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(const at::Tensor& self,
@@ -83,13 +78,17 @@ absl::StatusOr<DeviceBufferRef> DispatchTernaryOp(
     const at::Tensor& self, const at::Tensor& other, const at::Tensor& third,
     MlirTernaryOpBuilder ternary_op_builder, TernaryOpOptions opts);
 
-}  // namespace internal
+absl::Status DispatchBinaryOpOut(const at::Tensor& self,
+                                 const at::Tensor& other, at::Tensor& out,
+                                 MlirBinaryOpBuilder bin_op_builder,
+                                 BinaryOpOptions opts);
 
-// Handles output tensor post-processing for Binary and Ternary operations on
-// TPU. Enforces that outputs for in-place aliases match the result buffer's
-// shape, and resizes the output tensor for out-of-place execution.
-absl::Status FinalizeOpOutput(at::Tensor& out, DeviceBufferRef result_buf,
-                              OutputOpMode mode);
+absl::Status DispatchBinaryOpOut(const at::Tensor& self,
+                                 const at::Scalar& other, at::Tensor& out,
+                                 MlirBinaryOpBuilder bin_op_builder,
+                                 BinaryOpOptions opts);
+
+}  // namespace internal
 
 template <typename OtherType>
 absl::StatusOr<at::Tensor> BinaryOp(const at::Tensor& tensor,
@@ -106,58 +105,13 @@ template <typename OtherType>
 absl::Status BinaryOpOut(const at::Tensor& tensor, const OtherType& other,
                          at::Tensor& out, MlirBinaryOpBuilder op_builder,
                          BinaryOpOptions opts) {
-  TT_RET_CHECK(out.device().type() == GetPrivateUse1DeviceType(),
-               error::kInvalidArgument)
-      << "the out tensor is expected to be on tpu, got " << out.device().str();
-  if (!opts.output_dtype_override) {
-    TT_ASSIGN_OR_RETURN(auto output_dtype,
-                        ConvertTo<mlir::ElementType>(out.scalar_type()));
-    opts.output_dtype_override = output_dtype;
-  }
-
-  // An `out=` variant binary operation can have its output tensor alias either
-  // input operand:
-  //
-  // 1. `out` aliases `tensor` (input 0):
-  //      # Example: In-place method or passing `out=a`
-  //      a.add_(b)
-  //      torch.add(a, b, out=a)
-  //    Input 0's buffer can be donated to `out`.
-  //
-  // 2. `out` aliases `other` (input 1):
-  //      # Example: Passing `other` as destination buffer
-  //      torch.add(a, b, out=b)
-  //    Input 1's buffer can be donated to `out`. This is especially beneficial
-  //    when `a` broadcasts to `b`'s shape (where `a`'s shape does not match
-  //    `out` and cannot be donated, but `b` matches `out` and can be donated).
-  bool is_inplace = out.is_alias_of(tensor);
-  if constexpr (std::is_same_v<OtherType, at::Tensor>) {
-    is_inplace = is_inplace || out.is_alias_of(other);
-  }
-
-  if (is_inplace) {
-    if (ShouldDonateInPlaceBuffer(out, tensor, *opts.output_dtype_override)) {
-      opts.donated_indices = {0};
-    } else if constexpr (std::is_same_v<OtherType, at::Tensor>) {
-      if (ShouldDonateInPlaceBuffer(out, other, *opts.output_dtype_override)) {
-        opts.donated_indices = {1};
-      }
-    }
-  }
-
-  TT_ASSIGN_OR_RETURN(auto result_buf, internal::DispatchBinaryOp(
-                                           tensor, other, std::move(op_builder),
-                                           std::move(opts)));
-
-  OutputOpMode mode =
-      is_inplace ? OutputOpMode::kInPlace : OutputOpMode::kOutOfPlace;
-  return FinalizeOpOutput(out, std::move(result_buf), mode);
+  return internal::DispatchBinaryOpOut(tensor, other, out,
+                                       std::move(op_builder), std::move(opts));
 }
 
-// Performs output tensor post-processing for Ternary operations on TPU.
-// Validates that `out` is on the TPU, delegates dispatching to
-// `DispatchTernaryOp`, checks for in-place aliasing, and finalizes the output
-// tensor using `FinalizeOpOutput`.
+// Performs output tensor processing for Ternary operations on TPU.
+// Validates that `out` is on the TPU, enforces shape constraints for in-place
+// aliasing, and dispatches via DispatchOpOut.
 absl::Status TernaryOpOut(const at::Tensor& self, const at::Tensor& other,
                           const at::Tensor& third, at::Tensor& out,
                           MlirTernaryOpBuilder op_builder,

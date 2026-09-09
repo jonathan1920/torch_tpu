@@ -41,9 +41,7 @@
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/common/utils.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/index_put/index_put.h"
 #include "torch_tpu/csrc/ops/index_utils.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
@@ -338,10 +336,10 @@ inline bool IsValuesScalar(const at::Tensor& values) {
 //
 // This function dispatches to the appropriate StableHLO implementation based
 // on the presence of a boolean mask in the indices.
-absl::StatusOr<DeviceBufferRef> IndexPutWithBooleanMask(
+absl::Status IndexPutWithBooleanMask(
     const at::Tensor& self,
     const c10::List<std::optional<at::Tensor>>& indices_list_opt,
-    const at::Tensor& values, const bool accumulate) {
+    const at::Tensor& values, const bool accumulate, at::Tensor& out) {
   int64_t mask_index = 0;
   for (; mask_index < indices_list_opt.size(); ++mask_index) {
     auto maybe_tensor = indices_list_opt[mask_index];
@@ -378,27 +376,17 @@ absl::StatusOr<DeviceBufferRef> IndexPutWithBooleanMask(
 
   TT_ASSIGN_OR_RETURN(const auto elem_type,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
-  // Donate self (input 0)'s device buffer to the output in eligible eager
-  // modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(self, self.sizes(), elem_type)) {
-    donated_indices = {0};
-  }
-  TT_ASSIGN_OR_RETURN(
-      auto result_buf,
-      DispatchOp<3>(std::move(index_op_builder), {self, mask, values},
-                    {.out_dtype = elem_type,
-                     .out_dims = at::IntArrayRef(self.sizes()),
-                     .op_param_cache_keys = std::move(param_keys),
-                     .donated_indices = std::move(donated_indices)}));
-
-  return std::move(result_buf);
+  return DispatchOpOut<3>(std::move(index_op_builder), {self, mask, values},
+                          out,
+                          {.out_dtype = elem_type,
+                           .out_dims = at::IntArrayRef(self.sizes()),
+                           .op_param_cache_keys = std::move(param_keys)});
 }
 
-absl::StatusOr<DeviceBufferRef> IndexPut(
+absl::Status IndexPut(
     at::Tensor& self,
     const c10::List<std::optional<at::Tensor>>& indices_list_opt,
-    const at::Tensor& values, const bool accumulate) {
+    const at::Tensor& values, const bool accumulate, at::Tensor& out) {
   Indices indexed_dims;
   TT_ASSIGN_OR_RETURN(
       std::vector<at::Tensor> index_tensors,
@@ -420,6 +408,7 @@ absl::StatusOr<DeviceBufferRef> IndexPut(
   int64_t index_end_dim = indexed_dims.back();
   if (!AreIndicesContiguous(indexed_dims)) {
     self = MoveIndicesToFront(self, index_tensors, indexed_dims);
+    out = self;
     ABSL_VLOG(1) << "[IndexPut] self after moving indices to front: "
                  << self.sizes();
     index_start_dim = 0;
@@ -472,26 +461,17 @@ absl::StatusOr<DeviceBufferRef> IndexPut(
 
   TT_ASSIGN_OR_RETURN(const auto elem_type,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
-  // Donate self (input 0)'s device buffer to the output in eligible eager
-  // modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(self, self.sizes(), elem_type)) {
-    donated_indices = {0};
-  }
-  TT_ASSIGN_OR_RETURN(auto result_buf,
-                      DispatchOp<kDynamicSize>(
-                          std::move(index_op_builder), all_tensors,
-                          {.out_dtype = elem_type,
-                           .out_dims = at::IntArrayRef(self.sizes()),
-                           .op_param_cache_keys = std::move(param_keys),
-                           .donated_indices = std::move(donated_indices)}));
-  return std::move(result_buf);
+  return DispatchOpOut<kDynamicSize>(
+      std::move(index_op_builder), all_tensors, out,
+      {.out_dtype = elem_type,
+       .out_dims = at::IntArrayRef(self.sizes()),
+       .op_param_cache_keys = std::move(param_keys)});
 }
 
-absl::StatusOr<DeviceBufferRef> IndexPutHelper(
+absl::Status IndexPutHelper(
     at::Tensor& self,
     const c10::List<std::optional<at::Tensor>>& indices_list_opt,
-    const at::Tensor& values, const bool accumulate) {
+    const at::Tensor& values, const bool accumulate, at::Tensor& out) {
   ABSL_VLOG(1) << "[IndexPut] self: " << self.sizes();
   ABSL_VLOG(1) << "[IndexPut] values: " << values.sizes();
   ABSL_VLOG(1) << "[IndexPut] indices_list_opt: " << indices_list_opt.size();
@@ -516,9 +496,10 @@ absl::StatusOr<DeviceBufferRef> IndexPutHelper(
     //
     // self[mask] = scalar_value
     //
-    return IndexPutWithBooleanMask(self, indices_list_opt, values, accumulate);
+    return IndexPutWithBooleanMask(self, indices_list_opt, values, accumulate,
+                                   out);
   }
-  return IndexPut(self, indices_list_opt, values, accumulate);
+  return IndexPut(self, indices_list_opt, values, accumulate, out);
 }
 
 }  // namespace
@@ -532,9 +513,8 @@ at::Tensor& TpuAtenIndexPutImpl_(
        IgnoreInCacheKey(accumulate, "Delegates to IndexPutHelper()"),
        IgnoreInCacheKey(unsafe, "Unused")),
       {
-        TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
-                           IndexPutHelper(self, indices, values, accumulate));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
+        TT_THROW_IF_ERROR(
+            IndexPutHelper(self, indices, values, accumulate, self));
         return self;
       });
 }

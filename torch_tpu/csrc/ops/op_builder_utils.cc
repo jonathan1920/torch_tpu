@@ -30,7 +30,6 @@
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
-#include "ATen/core/TensorBody.h"
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/log/absl_check.h"
@@ -76,13 +75,11 @@
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch/headeronly/util/complex.h"
-#include "torch_tpu/csrc/common/context_states.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/common/utils.h"
-#include "torch_tpu/csrc/eager/eager_mode.h"
 #include "torch_tpu/csrc/ops/python_context.h"
 #include "tsl/platform/path.h"
 #include "xla/mlir/utils/error_util.h"
@@ -737,42 +734,6 @@ void AnnotateBufferDonations(mlir::ModuleOp module,
         << main.getNumArguments() << ")";
     main.setArgAttr(input_idx, "jax.buffer_donor", builder.getBoolAttr(true));
   }
-}
-
-bool ShouldDonateInPlaceBuffer(const at::Tensor& donor,
-                               at::IntArrayRef destination_dims,
-                               mlir::ElementType destination_dtype,
-                               std::optional<EagerMode> eager_mode) {
-  // 1. Opt-out switch: disable donation if explicitly configured.
-  if (!IsInplaceBufferDonationEnabled()) {
-    return false;
-  }
-
-  // 2. Buffer donation is only sound in synchronous eager modes (kDeferNever
-  // and kDeferNeverAndLaunchBlocking). In lazy or deferred graph modes,
-  // donating an input buffer could overwrite memory still referenced by pending
-  // graph nodes.
-  const auto mode = eager_mode.value_or(GetEagerMode());
-  if (!IsDeferNeverMode(mode)) {
-    return false;
-  }
-
-  // 3. The donor tensor must:
-  // - Be contiguous and zero-offset: XLA allocates dense flat buffers starting
-  //   at offset 0; strided views or slices cannot donate partial storage.
-  // - Not be conjugated: Complex conjugate bit is tracked via tensor metadata.
-  // - Be non-empty: 0-element tensors have no real device buffer to donate.
-  // - Match destination shape: Prevents invalid reuse during broadcast
-  // operations.
-  if (!donor.is_contiguous() || donor.storage_offset() != 0 ||
-      donor.is_conj() || donor.numel() == 0 ||
-      donor.sizes() != destination_dims) {
-    return false;
-  }
-
-  // 4. Element types must match.
-  const auto donor_dtype = ConvertTo<mlir::ElementType>(donor.scalar_type());
-  return donor_dtype.ok() && *donor_dtype == destination_dtype;
 }
 
 absl::StatusOr<mlir::MlirOp> CastIfNeeded(

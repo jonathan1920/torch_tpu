@@ -22,6 +22,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -32,9 +33,7 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/utils.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
@@ -86,9 +85,10 @@ absl::StatusOr<mlir::MlirOp> BuildLeakyReluBackwardShlo(
                                  select_broadcasted[2]);
 }
 
-absl::StatusOr<DeviceBufferRef> AtenLeakyReluTensorHelper(
-    const at::Tensor& self, const at::Tensor& negative_slope,
-    const at::Tensor& out, OpParamCacheKeys param_keys) {
+absl::Status AtenLeakyReluTensorHelper(const at::Tensor& self,
+                                       const at::Tensor& negative_slope,
+                                       at::Tensor& out,
+                                       OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(const auto dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   TT_RET_CHECK(!IsBoolean(dtype), error::kInvalidArgument)
@@ -107,25 +107,18 @@ absl::StatusOr<DeviceBufferRef> AtenLeakyReluTensorHelper(
     return BuildLeakyReluShlo(inputs[0], inputs[1], out_dtype);
   };
 
-  // If `out` aliases `self`, donate input 0's device buffer to the output in
-  // eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(out, self, out_dtype, self.sizes())) {
-    donated_indices = {0};
-  }
-
-  return DispatchOp<2>(std::move(op_builder), {self, negative_slope},
-                       {.out_dtype = out_dtype,
-                        .out_dims = CopyIntVector(self.sizes()),
-                        .op_param_cache_keys = std::move(param_keys),
-                        .donated_indices = std::move(donated_indices)});
+  return DispatchOpOut<2>(std::move(op_builder), {self, negative_slope}, out,
+                          {.out_dtype = out_dtype,
+                           .out_dims = CopyIntVector(self.sizes()),
+                           .op_param_cache_keys = std::move(param_keys)});
 }
 
-absl::StatusOr<DeviceBufferRef> AtenLeakyReluBackwardTensorHelper(
-    const at::Tensor& grad_output, const at::Tensor& self_or_result,
-    const at::Tensor& negative_slope, bool self_is_result,
-    OpParamCacheKeys param_keys,
-    std::optional<at::Tensor> grad_input = std::nullopt) {
+absl::Status AtenLeakyReluBackwardTensorHelper(const at::Tensor& grad_output,
+                                               const at::Tensor& self_or_result,
+                                               const at::Tensor& negative_slope,
+                                               bool self_is_result,
+                                               OpParamCacheKeys param_keys,
+                                               at::Tensor& grad_input) {
   TT_ASSIGN_OR_RETURN(const auto dtype,
                       ConvertTo<mlir::ElementType>(grad_output.scalar_type()));
   TT_RET_CHECK(!IsBoolean(dtype), error::kInvalidArgument)
@@ -146,42 +139,30 @@ absl::StatusOr<DeviceBufferRef> AtenLeakyReluBackwardTensorHelper(
                                       out_dtype);
   };
 
-  // If `grad_input` aliases `grad_output` or `self_or_result`, donate that
-  // input's device buffer to the output in eligible eager modes (DeferNever)
-  // to avoid allocation churn.
-  Indices donated_indices;
-  if (grad_input.has_value()) {
-    if (ShouldDonateInPlaceBuffer(*grad_input, grad_output, out_dtype,
-                                  out_dims)) {
-      donated_indices = {0};
-    } else if (ShouldDonateInPlaceBuffer(*grad_input, self_or_result, out_dtype,
-                                         out_dims)) {
-      donated_indices = {1};
-    }
-  }
-
-  return DispatchOp<3>(std::move(op_builder),
-                       {grad_output, self_or_result, negative_slope},
-                       {.out_dtype = out_dtype,
-                        .out_dims = out_dims,
-                        .op_param_cache_keys = std::move(param_keys),
-                        .donated_indices = std::move(donated_indices)});
+  return DispatchOpOut<3>(std::move(op_builder),
+                          {grad_output, self_or_result, negative_slope},
+                          grad_input,
+                          {.out_dtype = out_dtype,
+                           .out_dims = out_dims,
+                           .op_param_cache_keys = std::move(param_keys)});
 }
 
-absl::StatusOr<DeviceBufferRef> LeakyReluScalarHelper(
-    const at::Tensor& self, PromotedScalar negative_slope,
-    const at::Tensor& out, OpParamCacheKeys param_keys) {
+absl::Status LeakyReluScalarHelper(const at::Tensor& self,
+                                   PromotedScalar negative_slope,
+                                   at::Tensor& out,
+                                   OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(at::Tensor negative_slope_tensor,
                       negative_slope.GetTensor(self.scalar_type()));
   return AtenLeakyReluTensorHelper(self, negative_slope_tensor, out,
                                    std::move(param_keys));
 }
 
-absl::StatusOr<DeviceBufferRef> LeakyReluBackwardScalarHelper(
-    const at::Tensor& grad_output, const at::Tensor& self_or_result,
-    PromotedScalar negative_slope, bool self_is_result,
-    OpParamCacheKeys param_keys,
-    std::optional<at::Tensor> grad_input = std::nullopt) {
+absl::Status LeakyReluBackwardScalarHelper(const at::Tensor& grad_output,
+                                           const at::Tensor& self_or_result,
+                                           PromotedScalar negative_slope,
+                                           bool self_is_result,
+                                           OpParamCacheKeys param_keys,
+                                           at::Tensor& grad_input) {
   TT_RET_CHECK(!self_is_result || negative_slope.scalar().toDouble() >= 0,
                error::kInvalidArgument)
       << "expected non-negative slopes for self_is_result=true, got "
@@ -201,11 +182,9 @@ at::Tensor& AtenLeakyReluOut(const at::Tensor& self,
   auto promoted_negative_slope = PromoteScalar(negative_slope);
   TT_KERNEL(
       OpName::kLeakyReluOut, param_keys, (self, promoted_negative_slope, out), {
-        TT_ASSIGN_OR_THROW(
-            auto result_buf,
+        TT_THROW_IF_ERROR(
             LeakyReluScalarHelper(self, std::move(promoted_negative_slope), out,
                                   std::move(param_keys)));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });
 }
@@ -221,13 +200,9 @@ at::Tensor& AtenLeakyReluBackwardGradInput(const at::Tensor& grad_output,
       (grad_output, self_or_result, promoted_negative_slope, self_is_result,
        grad_input),
       {
-        TT_ASSIGN_OR_THROW(
-            auto result_buf,
-            LeakyReluBackwardScalarHelper(
-                grad_output, self_or_result, std::move(promoted_negative_slope),
-                self_is_result, std::move(param_keys), grad_input));
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(result_buf), grad_input));
+        TT_THROW_IF_ERROR(LeakyReluBackwardScalarHelper(
+            grad_output, self_or_result, std::move(promoted_negative_slope),
+            self_is_result, std::move(param_keys), grad_input));
         return grad_input;
       });
 }

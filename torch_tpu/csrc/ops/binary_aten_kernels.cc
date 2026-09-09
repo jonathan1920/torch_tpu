@@ -44,6 +44,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/csrc/common/aten_utils.h"
 #include "torch_tpu/csrc/common/cache_key.h"
+#include "torch_tpu/csrc/common/device_type.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
@@ -56,7 +57,6 @@
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/csrc/ops/unary.h"
 
 namespace torch_tpu {
@@ -182,24 +182,86 @@ absl::StatusOr<DeviceBufferRef> DispatchTernaryOp(
        .donated_indices = std::move(opts.donated_indices)});
 }
 
-}  // namespace internal
+absl::Status DispatchBinaryOpOut(const at::Tensor& self,
+                                 const at::Scalar& other, at::Tensor& out,
+                                 MlirBinaryOpBuilder bin_op_builder,
+                                 BinaryOpOptions opts) {
+  at::ScalarType result_type = at::result_type(self, other);
+  TT_ASSIGN_OR_RETURN(at::Tensor other_tensor, MakeTensor(other, result_type));
+  return DispatchBinaryOpOut(self, other_tensor, out, std::move(bin_op_builder),
+                             std::move(opts));
+}
 
-absl::Status FinalizeOpOutput(at::Tensor& out, DeviceBufferRef result_buf,
-                              OutputOpMode mode) {
-  if (mode == OutputOpMode::kInPlace) {
-    TT_RET_CHECK(absl::MakeConstSpan(out.sizes()) == result_buf.dimensions(),
-                 error::kInvalidArgument)
-        << "output with shape " << ToString(result_buf.dimensions())
-        << " doesn't match the broadcast shape of the tensor being operated on "
-           "in-place, which has shape "
-        << ToString(out.sizes());
-  } else {
-    TT_RETURN_IF_ERROR(
-        ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
+absl::Status ValidateInPlaceBroadcast(const at::Tensor& out,
+                                      absl::Span<const at::Tensor> inputs,
+                                      const Dimensions& output_dims) {
+  for (const at::Tensor& input : inputs) {
+    if (out.is_alias_of(input)) {
+      TT_RET_CHECK(absl::MakeConstSpan(out.sizes()) == output_dims,
+                   error::kInvalidArgument)
+          << "output with shape " << ToString(output_dims)
+          << " doesn't match the broadcast shape of the tensor being operated "
+             "on "
+             "in-place, which has shape "
+          << ToString(out.sizes());
+      break;
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status DispatchBinaryOpOut(const at::Tensor& self,
+                                 const at::Tensor& other, at::Tensor& out,
+                                 MlirBinaryOpBuilder bin_op_builder,
+                                 BinaryOpOptions opts) {
+  TT_RET_CHECK(out.device().type() == GetPrivateUse1DeviceType(),
+               error::kInvalidArgument)
+      << "the out tensor is expected to be on tpu, got " << out.device().str();
+
+  TT_ASSIGN_OR_RETURN(auto tpu_tensors, MoveCpuScalarsToTpu({self, other}));
+  const at::Tensor& self_tpu = tpu_tensors[0];
+  const at::Tensor& other_tpu = tpu_tensors[1];
+
+  TT_ASSIGN_OR_RETURN(const Dimensions output_dims,
+                      InferSize(self_tpu.sizes(), other_tpu.sizes()));
+
+  TT_RETURN_IF_ERROR(
+      ValidateInPlaceBroadcast(out, {self_tpu, other_tpu}, output_dims));
+
+  at::ScalarType promoted_scalar_type = at::result_type(self_tpu, other_tpu);
+  if (opts.force_float_inputs) {
+    if (c10::isIntegralType(promoted_scalar_type, /*includeBool=*/true)) {
+      promoted_scalar_type = c10::get_default_dtype_as_scalartype();
+    }
+  }
+  TT_ASSIGN_OR_RETURN(mlir::ElementType computation_dtype,
+                      ToElementType(promoted_scalar_type));
+  if (!opts.output_dtype_override) {
+    TT_ASSIGN_OR_RETURN(opts.output_dtype_override,
+                        ConvertTo<mlir::ElementType>(out.scalar_type()));
   }
 
-  return AssignBufferToAtTensor(std::move(result_buf), out);
+  auto op_builder =
+      [bin_op_builder = std::move(bin_op_builder),
+       reverse = opts.reverse_operands](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
+        auto& [self_op, other_op] = inputs;
+        if (reverse) {
+          return bin_op_builder(other_op, self_op);
+        }
+        return bin_op_builder(self_op, other_op);
+      };
+  return DispatchOpOut<2>(
+      std::move(op_builder), {self_tpu, other_tpu}, out,
+      {.op_name = opts.op_name,
+       .out_dtype = *opts.output_dtype_override,
+       .out_dims = output_dims,
+       .computation_dtype = computation_dtype,
+       .op_param_cache_keys = std::move(opts.op_param_cache_keys),
+       .split_mode = opts.split_mode,
+       .donated_indices = std::move(opts.donated_indices)});
 }
+
+}  // namespace internal
 
 absl::Status TernaryOpOut(const at::Tensor& self, const at::Tensor& other,
                           const at::Tensor& third, at::Tensor& out,
@@ -208,58 +270,47 @@ absl::Status TernaryOpOut(const at::Tensor& self, const at::Tensor& other,
   TT_RET_CHECK(IsPrivateUse1Device(out), error::kInvalidArgument)
       << "expected output tensor to be on 'tpu' device, got '" << out.device()
       << "'";
-  if (!opts.output_dtype_override) {
-    TT_ASSIGN_OR_RETURN(auto output_dtype,
-                        ConvertTo<mlir::ElementType>(out.scalar_type()));
-    opts.output_dtype_override = output_dtype;
-  }
 
-  // An `out=` variant operation can have its output tensor alias any of the
-  // inputs depending on how the user invokes it in PyTorch:
-  //
-  // 1. `out` aliases `self` (input 0):
-  //      # Example: In-place method or explicitly passing `out=a`
-  //      a.add_(b)
-  //      torch.add(a, b, out=a)
-  //    Input 0's buffer can be donated to `out`.
-  //
-  // 2. `out` aliases `other` (input 1):
-  //      # Example: Passing `other` as the destination buffer
-  //      torch.add(a, b, out=b)
-  //      torch.sub(a, b, alpha=2.0, out=b)
-  //    Input 1's buffer can be donated to `out`. This is especially beneficial
-  //    when `a` broadcasts to `b`'s shape (where `a` cannot be donated).
-  //
-  // 3. `out` aliases `third` (input 2):
-  //      # Example: A general ternary operation specifying `out=c`
-  //      # (e.g., torch.addcmul(a, b, c, out=c))
-  //    Input 2's buffer can be donated to `out`. While current callers in this
-  //    file pass an internal scalar `alpha_tensor` for `third`, `TernaryOpOut`
-  //    is structured symmetrically to support general 3-operand ops.
-  bool is_inplace =
-      out.is_alias_of(self) || out.is_alias_of(other) || out.is_alias_of(third);
-
-  if (is_inplace) {
-    if (ShouldDonateInPlaceBuffer(out, self, *opts.output_dtype_override)) {
-      opts.donated_indices = {0};
-    } else if (ShouldDonateInPlaceBuffer(out, other,
-                                         *opts.output_dtype_override)) {
-      opts.donated_indices = {1};
-    } else if (ShouldDonateInPlaceBuffer(out, third,
-                                         *opts.output_dtype_override)) {
-      opts.donated_indices = {2};
-    }
-  }
+  TT_ASSIGN_OR_RETURN(auto tpu_tensors,
+                      internal::MoveCpuScalarsToTpu({self, other, third}));
+  const at::Tensor& self_tpu = tpu_tensors[0];
+  const at::Tensor& other_tpu = tpu_tensors[1];
+  const at::Tensor& third_tpu = tpu_tensors[2];
 
   TT_ASSIGN_OR_RETURN(
-      auto result_buf,
-      internal::DispatchTernaryOp(self, other, third, std::move(op_builder),
-                                  std::move(opts)));
+      const Dimensions output_dims,
+      InferSize(self_tpu.sizes(), other_tpu.sizes(), third_tpu.sizes()));
 
-  OutputOpMode mode =
-      is_inplace ? OutputOpMode::kInPlace : OutputOpMode::kOutOfPlace;
+  TT_RETURN_IF_ERROR(internal::ValidateInPlaceBroadcast(
+      out, {self_tpu, other_tpu, third_tpu}, output_dims));
 
-  return FinalizeOpOutput(out, std::move(result_buf), mode);
+  at::ScalarType promoted_scalar_type = at::result_type(self_tpu, other_tpu);
+  if (opts.force_float_inputs) {
+    if (c10::isIntegralType(promoted_scalar_type, /*includeBool=*/true)) {
+      promoted_scalar_type = c10::get_default_dtype_as_scalartype();
+    }
+  }
+  TT_ASSIGN_OR_RETURN(mlir::ElementType computation_dtype,
+                      internal::ToElementType(promoted_scalar_type));
+  if (!opts.output_dtype_override) {
+    TT_ASSIGN_OR_RETURN(opts.output_dtype_override,
+                        ConvertTo<mlir::ElementType>(out.scalar_type()));
+  }
+
+  auto ternary_builder = [op_builder = std::move(op_builder)](
+                             FixedSizeSpan<mlir::MlirOp, 3> inputs) {
+    auto& [self_op, other_op, third_op] = inputs;
+    return op_builder(self_op, other_op, third_op);
+  };
+  return DispatchOpOut<3>(
+      std::move(ternary_builder), {self_tpu, other_tpu, third_tpu}, out,
+      {.op_name = opts.op_name,
+       .out_dtype = *opts.output_dtype_override,
+       .out_dims = output_dims,
+       .computation_dtype = computation_dtype,
+       .op_param_cache_keys = std::move(opts.op_param_cache_keys),
+       .split_mode = opts.split_mode,
+       .donated_indices = std::move(opts.donated_indices)});
 }
 
 namespace {

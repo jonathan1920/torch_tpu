@@ -18,13 +18,13 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
 
 #include "ATen/core/TensorBody.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "c10/util/string_view.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -43,7 +43,6 @@
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -66,9 +65,15 @@ mlir::MlirOp MaybeCastToFloat(mlir::MlirOp self_op, bool input_is_integer) {
                           : self_op;
 }
 
-absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(
-    const at::Tensor& self, OpParamCacheKeys param_keys,
-    std::optional<at::Tensor> a_out = std::nullopt) {
+absl::Status ValidateGeqrfInputs(const at::Tensor& self) {
+  TT_RET_CHECK(self.dim() >= 2, error::kInvalidArgument)
+      << "expected input to have at least 2 dimensions, got " << self.dim();
+  return absl::OkStatus();
+}
+
+template <typename ReturnType, typename DispatchFn>
+ReturnType DispatchGeqrf(const at::Tensor& self, OpParamCacheKeys param_keys,
+                         DispatchFn&& dispatch_fn) {
   TT_ASSIGN_OR_RETURN(const mlir::ElementType out_dtype, GetOutDtype(self));
 
   // Capture metadata properties (like 'input_is_integer') by copy instead of
@@ -76,8 +81,7 @@ absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(
   // its entire autograd graph in memory, avoiding high peak HBM consumption.
   const bool input_is_integer = IsInteger(self);
 
-  TT_RET_CHECK(self.dim() >= 2, error::kInvalidArgument)
-      << "expected input to have at least 2 dimensions, got " << self.dim();
+  TT_RETURN_IF_ERROR(ValidateGeqrfInputs(self));
   const int64_t m = self.size(self.dim() - 2);
   const int64_t n = self.size(self.dim() - 1);
   Dimensions tau_dims(self.sizes().begin(), self.sizes().end() - 2);
@@ -93,19 +97,31 @@ absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(
     return result_ops;
   };
 
-  // Donate input 0 (self)'s device buffer to output 0 in eligible eager modes
-  // (DeferNever) if output `a` aliases `self` to avoid allocation churn.
-  Indices donated_indices;
-  if (a_out.has_value() &&
-      ShouldDonateInPlaceBuffer(*a_out, self, out_dtype, self.sizes())) {
-    donated_indices = {0};
-  }
+  return dispatch_fn(
+      std::move(op_builder),
+      DispatchOpOptions<2>{.out_dtypes = {out_dtype, out_dtype},
+                           .out_dims_list = {self.sizes(), std::move(tau_dims)},
+                           .op_param_cache_keys = std::move(param_keys)});
+}
 
-  return DispatchOp<1, 2>(std::move(op_builder), {self},
-                          {.out_dtypes = {out_dtype, out_dtype},
-                           .out_dims_list = {self.sizes(), tau_dims},
-                           .op_param_cache_keys = std::move(param_keys),
-                           .donated_indices = std::move(donated_indices)});
+absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(const at::Tensor& self,
+                                              OpParamCacheKeys param_keys) {
+  return DispatchGeqrf<absl::StatusOr<DeviceBufferRefArray<2>>>(
+      self, std::move(param_keys),
+      [&self](auto op_builder, DispatchOpOptions<2> options) {
+        return DispatchOp<1, 2>(std::move(op_builder), {self},
+                                std::move(options));
+      });
+}
+
+absl::Status GeqrfOut(const at::Tensor& self, OpParamCacheKeys param_keys,
+                      at::Tensor& a, at::Tensor& tau) {
+  return DispatchGeqrf<absl::Status>(
+      self, std::move(param_keys),
+      [&self, &a, &tau](auto op_builder, DispatchOpOptions<2> options) {
+        return DispatchOpOut<1, 2>(std::move(op_builder), self, {a, tau},
+                                   std::move(options));
+      });
 }
 
 struct QrDims {
@@ -148,9 +164,8 @@ absl::StatusOr<QrDims> ComputeQrDims(const at::Tensor& self,
   return QrDims{std::move(q_dims), std::move(r_dims)};
 }
 
-absl::StatusOr<DeviceBufferRefArray<2>> Qr(
-    const at::Tensor& self, c10::string_view mode, OpParamCacheKeys param_keys,
-    const std::optional<at::Tensor>& q = std::nullopt) {
+absl::Status QrOut(const at::Tensor& self, c10::string_view mode,
+                   OpParamCacheKeys param_keys, at::Tensor& q, at::Tensor& r) {
   TT_ASSIGN_OR_RETURN(const mlir::ElementType out_dtype, GetOutDtype(self));
 
   auto op_builder =
@@ -163,19 +178,10 @@ absl::StatusOr<DeviceBufferRefArray<2>> Qr(
 
   TT_ASSIGN_OR_RETURN(const QrDims qr_dims, ComputeQrDims(self, mode));
 
-  // Donate input 0 (self)'s device buffer to output 0 (q) in eligible eager
-  // modes (DeferNever) if output `q` aliases `self` to avoid allocation churn.
-  Indices donated_indices;
-  if (q.has_value() &&
-      ShouldDonateInPlaceBuffer(*q, self, out_dtype, qr_dims.q_dims)) {
-    donated_indices = {0};
-  }
-
-  return DispatchOp<1, 2>(std::move(op_builder), {self},
-                          {.out_dtypes = {out_dtype, out_dtype},
-                           .out_dims_list = {qr_dims.q_dims, qr_dims.r_dims},
-                           .op_param_cache_keys = std::move(param_keys),
-                           .donated_indices = std::move(donated_indices)});
+  return DispatchOpOut<1, 2>(std::move(op_builder), self, {q, r},
+                             {.out_dtypes = {out_dtype, out_dtype},
+                              .out_dims_list = {qr_dims.q_dims, qr_dims.r_dims},
+                              .op_param_cache_keys = std::move(param_keys)});
 }
 
 }  // namespace
@@ -192,15 +198,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenGeqrfA(const at::Tensor& self,
                                                 at::Tensor& a,
                                                 at::Tensor& tau) {
   TT_KERNEL(OpName::kGeqrfA, param_keys, (self, a, tau), {
-    TT_ASSIGN_OR_THROW(const DeviceBufferRefArray<2> result_buffers,
-                       Geqrf(self, std::move(param_keys), a));
-    TT_THROW_IF_ERROR(
-        ResizeTensorIfShapeDiffers(a, result_buffers[0].dimensions()));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], a));
-
-    TT_THROW_IF_ERROR(
-        ResizeTensorIfShapeDiffers(tau, result_buffers[1].dimensions()));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[1], tau));
+    TT_THROW_IF_ERROR(GeqrfOut(self, std::move(param_keys), a, tau));
     return {a, tau};
   });
 }
@@ -210,15 +208,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenLinalgQrOut(const at::Tensor& self,
                                                      at::Tensor& q,
                                                      at::Tensor& r) {
   TT_KERNEL(OpName::kLinalgQrOut, param_keys, (self, mode, q, r), {
-    TT_ASSIGN_OR_THROW(const DeviceBufferRefArray<2> result_buffers,
-                       Qr(self, mode, std::move(param_keys), q));
-    TT_THROW_IF_ERROR(
-        ResizeTensorIfShapeDiffers(q, result_buffers[0].dimensions()));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], q));
-
-    TT_THROW_IF_ERROR(
-        ResizeTensorIfShapeDiffers(r, result_buffers[1].dimensions()));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[1], r));
+    TT_THROW_IF_ERROR(QrOut(self, mode, std::move(param_keys), q, r));
     return {q, r};
   });
 }

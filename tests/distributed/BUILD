@@ -698,6 +698,7 @@ torch_tpu_py_test(
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "nozapfhahn",  # Requires 4 TPU v7x chips and nopresubmit; excluded from Zapfhahn coverage.
         "requires-tpu-v7x:4",
         # Skip this test on TPU v5 and v6. It was written targeting TPU v7. Running it on v5 and v6
         # will cause issues due to their different topology.

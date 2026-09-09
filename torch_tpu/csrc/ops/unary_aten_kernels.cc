@@ -39,13 +39,11 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/macro_utils.h"  // IWYU pragma: keep
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/csrc/ops/unary.h"
 
 // A "Simple Unary" op is an Aten op that:
@@ -143,21 +141,13 @@ absl::Status UnaryOpInPlace(at::Tensor& self, MlirUnaryOpBuilder op_builder,
                             UnaryOpOptions options) {
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(self, self.sizes(), output_dtype)) {
-    donated_indices = {0};
-  }
-  TT_ASSIGN_OR_RETURN(
-      auto result_buf,
-      DispatchOp<1>(
-          std::move(op_builder), self,
-          {.op_name = options.op_name,
-           .out_dtype = output_dtype,
-           .out_dims = self.sizes(),
-           .computation_dtype = options.computation_dtype,
-           .op_param_cache_keys = std::move(options.op_param_cache_keys),
-           .donated_indices = std::move(donated_indices)}));
-  return AssignBufferToAtTensor(std::move(result_buf), self);
+  return DispatchOpOut<1>(
+      std::move(op_builder), self, self,
+      {.op_name = options.op_name,
+       .out_dtype = output_dtype,
+       .out_dims = self.sizes(),
+       .computation_dtype = options.computation_dtype,
+       .op_param_cache_keys = std::move(options.op_param_cache_keys)});
 }
 
 absl::Status UnaryOpInPlace(at::Tensor& self, OpName op_name,
@@ -190,23 +180,13 @@ absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
 
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(out, self, output_dtype, shape)) {
-    donated_indices = {0};
-  }
-
-  TT_ASSIGN_OR_RETURN(
-      auto result_buf,
-      DispatchOp<1>(
-          std::move(op_builder), self,
-          {.op_name = options.op_name,
-           .out_dtype = output_dtype,
-           .out_dims = shape,
-           .computation_dtype = options.computation_dtype,
-           .op_param_cache_keys = std::move(options.op_param_cache_keys),
-           .donated_indices = std::move(donated_indices)}));
-  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, shape));
-  return AssignBufferToAtTensor(std::move(result_buf), out);
+  return DispatchOpOut<1>(
+      std::move(op_builder), self, out,
+      {.op_name = options.op_name,
+       .out_dtype = output_dtype,
+       .out_dims = shape,
+       .computation_dtype = options.computation_dtype,
+       .op_param_cache_keys = std::move(options.op_param_cache_keys)});
 }
 
 absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out, OpName op_name,

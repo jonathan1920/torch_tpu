@@ -57,7 +57,6 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/ops:op_names",
         "//torch_tpu/csrc/ops:precision_context",
         "//torch_tpu/csrc/ops/macros:kernel",
-        "//torch_tpu/csrc/ops/resize:resize_aten_kernels",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",

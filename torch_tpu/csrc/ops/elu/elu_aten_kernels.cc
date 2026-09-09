@@ -32,9 +32,7 @@
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/common/utils.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
@@ -155,25 +153,12 @@ at::Tensor& AtenEluOut(const at::Tensor& input, const at::Scalar& alpha,
           return BuildEluShlo(input, alpha, scale, input_scale);
         };
 
-        // If `out` aliases `input`, donate input 0's device buffer to the
-        // output in eligible eager modes (DeferNever) to avoid allocation
-        // churn.
-        Indices donated_indices;
-        if (ShouldDonateInPlaceBuffer(out, input, out_dtype)) {
-          donated_indices = {0};
-        }
-
-        TT_ASSIGN_OR_THROW(
-            auto result_buf,
-            DispatchOp<4>(
-                std::move(op_builder),
-                {input, alpha_tensor, scale_tensor, input_scale_tensor},
-                {.out_dtype = out_dtype,
-                 .out_dims = CopyIntVector(out.sizes()),
-                 .op_param_cache_keys = std::move(param_keys),
-                 .donated_indices = std::move(donated_indices)}));
-
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        TT_THROW_IF_ERROR(DispatchOpOut<4>(
+            std::move(op_builder),
+            {input, alpha_tensor, scale_tensor, input_scale_tensor}, out,
+            {.out_dtype = out_dtype,
+             .out_dims = CopyIntVector(out.sizes()),
+             .op_param_cache_keys = std::move(param_keys)}));
         return out;
       });
 }
@@ -215,31 +200,15 @@ at::Tensor& AtenEluBackwardGradInput(
             ConvertTo<mlir::ElementType>(grad_input.scalar_type()));
         auto output_shape = CopyIntVector(grad_input.sizes());
 
-        // If `grad_input` aliases `grad_output` or `self_or_result`, donate
-        // that input's device buffer to the output in eligible eager modes
-        // (DeferNever) to avoid allocation churn.
-        Indices donated_indices;
-        if (ShouldDonateInPlaceBuffer(grad_input, grad_output, output_dtype,
-                                      output_shape)) {
-          donated_indices = {0};
-        } else if (ShouldDonateInPlaceBuffer(grad_input, self_or_result,
-                                             output_dtype, output_shape)) {
-          donated_indices = {1};
-        }
-
-        TT_ASSIGN_OR_THROW(
-            auto result,
-            DispatchOp<5>(std::move(op_builder),
-                          {grad_output, self_or_result, alpha_tensor,
-                           scale_tensor, input_scale_tensor},
-                          /*options=*/
-                          {.out_dtype = output_dtype,
-                           .out_dims = output_shape,
-                           .op_param_cache_keys = std::move(param_keys),
-                           .donated_indices = std::move(donated_indices)}));
-
         TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(result), grad_input));
+            DispatchOpOut<5>(std::move(op_builder),
+                             {grad_output, self_or_result, alpha_tensor,
+                              scale_tensor, input_scale_tensor},
+                             grad_input,
+                             /*options=*/
+                             {.out_dtype = output_dtype,
+                              .out_dims = output_shape,
+                              .op_param_cache_keys = std::move(param_keys)}));
         return grad_input;
       });
 }

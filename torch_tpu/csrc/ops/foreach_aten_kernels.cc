@@ -52,7 +52,6 @@
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
-#include "torch_tpu/csrc/eager/eager_mode.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/binary.h"
@@ -344,31 +343,37 @@ bool IsCurrentOpInPlace() {
   return name.ends_with('_') || absl::StrContains(name, "_.");
 }
 
-// Populates the list of input indices to donate for foreach ops when executed
-// in-place. Each input i (0 <= i < self.size()) corresponds 1-to-1 with output
-// i.
-Indices GetForeachDonatedIndices(at::TensorList self, DtypeSpan out_dtypes) {
-  Indices donated_indices;
-  if (!IsInplaceBufferDonationEnabled()) return donated_indices;
-
-  const auto eager_mode = GetEagerMode();
-  if (!IsDeferNeverMode(eager_mode)) return donated_indices;
-
-  if (!IsCurrentOpInPlace()) return donated_indices;
-
-  // For in-place foreach ops (e.g., `torch._foreach_add_`), there is no
-  // separate `out` argument. By PyTorch in-place semantics, `self[i]` is both
-  // the input operand and the destination tensor that receives output `i`.
-  // Because input `self[i]` and output `i` represent the exact same tensor,
-  // they alias by definition. Therefore, input index `i` is donated to output
-  // `i`.
+bool CanDispatchInPlace(at::TensorList self, DtypeSpan out_dtypes) {
+  if (self.size() != out_dtypes.size()) {
+    return false;
+  }
   for (size_t i = 0; i < self.size(); ++i) {
-    if (ShouldDonateInPlaceBuffer(self[i], self[i].sizes(), out_dtypes[i],
-                                  eager_mode)) {
-      donated_indices.push_back(i);
+    const auto self_dtype = ConvertTo<mlir::ElementType>(self[i].scalar_type());
+    if (!self_dtype.ok() || *self_dtype != out_dtypes[i]) {
+      return false;
     }
   }
-  return donated_indices;
+  return true;
+}
+
+// Dispatches a foreach op. When executed in-place and output dtypes match the
+// input tensors, delegates to DispatchOpOut which automatically manages
+// in-place buffer donation and output tensor assignment. For out-of-place
+// execution or when dtypes promote across operands, dispatches via DispatchOp
+// and returns the resulting device buffers for subsequent copy/cast.
+absl::StatusOr<std::vector<DeviceBufferRef>> DispatchForeach(
+    at::TensorList self,
+    NAryMlirOpBuilder<kDynamicSize, kDynamicSize> op_builder,
+    std::vector<at::Tensor> inputs, DispatchOpOptions<kDynamicSize> options) {
+  if (IsCurrentOpInPlace() && CanDispatchInPlace(self, options.out_dtypes)) {
+    std::vector<at::Tensor> outputs(self.begin(), self.end());
+    TT_RETURN_IF_ERROR((DispatchOpOut<kDynamicSize, kDynamicSize>(
+        std::move(op_builder), inputs, outputs, std::move(options))));
+    return std::vector<DeviceBufferRef>{};
+  }
+
+  return DispatchOp<kDynamicSize, kDynamicSize>(std::move(op_builder), inputs,
+                                                std::move(options));
 }
 
 absl::StatusOr<DtypeVec> GetOutputDtypes(at::TensorList self,
@@ -666,13 +671,10 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachUnaryOp(
       .op_name = op_name,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
-      .op_param_cache_keys = OpParamCacheKeys::Empty(),
-      .donated_indices = GetForeachDonatedIndices(self, out_dtypes)};
+      .op_param_cache_keys = OpParamCacheKeys::Empty()};
 
-  TT_ASSIGN_OR_RETURN(std::vector<DeviceBufferRef> result_buffers,
-                      (DispatchOp<kDynamicSize, kDynamicSize>(
-                          std::move(op_builder), inputs, std::move(options))));
-  return result_buffers;
+  return DispatchForeach(self, std::move(op_builder), std::move(inputs),
+                         std::move(options));
 }
 
 absl::StatusOr<std::vector<DeviceBufferRef>> ForeachUnaryOp(
@@ -750,11 +752,10 @@ std::vector<DeviceBufferRef> ForeachAddList(
       .out_dtypes = out_dtypes,
       .out_dims_list = absl::MakeConstSpan(out_dims_list),
       .op_param_cache_keys = std::move(param_keys),
-      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
   TT_ASSIGN_OR_THROW(auto result_buffers,
-                     (DispatchOp<kDynamicSize, kDynamicSize>(
-                         std::move(op_builder), inputs, std::move(options))));
+                     DispatchForeach(self, std::move(op_builder),
+                                     std::move(inputs), std::move(options)));
   return result_buffers;
 }
 
@@ -797,12 +798,11 @@ std::vector<DeviceBufferRef> ForeachAddcdiv(at::TensorList self,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
-      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
 
   TT_ASSIGN_OR_THROW(auto result_buffers,
-                     (DispatchOp<kDynamicSize, kDynamicSize>(
-                         std::move(op_builder), inputs, std::move(options))));
+                     DispatchForeach(self, std::move(op_builder),
+                                     std::move(inputs), std::move(options)));
   return result_buffers;
 }
 
@@ -845,12 +845,11 @@ std::vector<DeviceBufferRef> ForeachAddcmul(at::TensorList self,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
-      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
 
   TT_ASSIGN_OR_THROW(auto result_buffers,
-                     (DispatchOp<kDynamicSize, kDynamicSize>(
-                         std::move(op_builder), inputs, std::move(options))));
+                     DispatchForeach(self, std::move(op_builder),
+                                     std::move(inputs), std::move(options)));
   return result_buffers;
 }
 
@@ -943,12 +942,11 @@ std::vector<DeviceBufferRef> ForeachDiv(at::TensorList self,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
-      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
 
   TT_ASSIGN_OR_THROW(auto result_buffers,
-                     (DispatchOp<kDynamicSize, kDynamicSize>(
-                         std::move(op_builder), inputs, std::move(options))));
+                     DispatchForeach(self, std::move(op_builder),
+                                     std::move(inputs), std::move(options)));
   return result_buffers;
 }
 
@@ -987,12 +985,11 @@ std::vector<DeviceBufferRef> ForeachLerp(at::TensorList self,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
-      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
 
   TT_ASSIGN_OR_THROW(auto result_buffers,
-                     (DispatchOp<kDynamicSize, kDynamicSize>(
-                         std::move(op_builder), inputs, std::move(options))));
+                     DispatchForeach(self, std::move(op_builder),
+                                     std::move(inputs), std::move(options)));
   return result_buffers;
 }
 
@@ -1024,13 +1021,12 @@ std::vector<DeviceBufferRef> ForeachMulList(at::TensorList self,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
-      .donated_indices = GetForeachDonatedIndices(self, out_dtypes),
   };
 
   // Dispatch the op and prepare results.
   TT_ASSIGN_OR_THROW(auto result_buffers,
-                     (DispatchOp<kDynamicSize, kDynamicSize>(
-                         std::move(op_builder), inputs, std::move(options))));
+                     DispatchForeach(self, std::move(op_builder),
+                                     std::move(inputs), std::move(options)));
   return result_buffers;
 }
 

@@ -40,8 +40,7 @@ absl::StatusOr<DeviceBufferRef> BuildAvgPoolNd(
     std::optional<int64_t> divisor_override, mlir::ElementType out_dtype,
     at::IntArrayRef out_sizes, int64_t spatial_dim_count,
     OpParamCacheKeys param_keys,
-    std::optional<OpName> override_op_name = std::nullopt,
-    const std::optional<at::Tensor>& out = std::nullopt);
+    std::optional<OpName> override_op_name = std::nullopt);
 
 absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,

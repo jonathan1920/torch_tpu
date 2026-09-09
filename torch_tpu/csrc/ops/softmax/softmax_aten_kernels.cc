@@ -18,7 +18,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <optional>
 #include <utility>
 
 #include "ATen/core/TensorBody.h"
@@ -34,9 +33,7 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
@@ -98,11 +95,10 @@ absl::Status SoftmaxInternalOut(const at::Tensor& self, int64_t dim,
                      .computation_dtype = computation_dtype});
 }
 
-absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
+absl::Status SoftmaxBackwardDataInternalOut(
     const at::Tensor& grad_output, const at::Tensor& output, int64_t dim,
     at::ScalarType input_dtype, SoftmaxMode softmax_mode,
-    OpParamCacheKeys param_keys,
-    std::optional<at::Tensor> grad_input = std::nullopt) {
+    at::Tensor& grad_input, OpParamCacheKeys param_keys) {
   const auto precision = GetAndAddPrecisionTo(param_keys);
 
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=input checked during forward
@@ -113,31 +109,14 @@ absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
       const auto input_mlir_type, ConvertTo<mlir::ElementType>(input_dtype));
 
-  // If `grad_input` aliases `grad_output` or `output`, donate that input's
-  // device buffer to the output in eligible eager modes (DeferNever) to avoid
-  // allocation churn.
-  Indices donated_indices;
-  if (grad_input.has_value()) {
-    if (ShouldDonateInPlaceBuffer(*grad_input, grad_output, input_mlir_type,
-                                  output.sizes())) {
-      donated_indices = {0};
-    } else if (ShouldDonateInPlaceBuffer(*grad_input, output, input_mlir_type,
-                                         output.sizes())) {
-      donated_indices = {1};
-    }
-  }
-
-  TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=errors should be covered
-                        // inside.
-      auto result,
-      (DispatchOp<2>(
-          GetSoftmaxBackwardDataFunctional(dim, softmax_mode, precision),
-          {grad_output, output},
-          {.out_dtype = input_mlir_type,
-           .out_dims = output.sizes(),
-           .op_param_cache_keys = std::move(param_keys),
-           .donated_indices = std::move(donated_indices)})));
-  return result;
+  DispatchOpOptions<1> options = {
+      .out_dtype = input_mlir_type,
+      .out_dims = output.sizes(),
+      .op_param_cache_keys = std::move(param_keys),
+  };
+  return DispatchOpOut<2>(
+      GetSoftmaxBackwardDataFunctional(dim, softmax_mode, precision),
+      {grad_output, output}, grad_input, std::move(options));
 }
 
 }  // namespace
@@ -169,16 +148,9 @@ at::Tensor& AtenSoftmaxBackwardDataOut(const at::Tensor& grad_output,
                                        at::Tensor& grad_input) {
   TT_KERNEL(OpName::kSoftmaxBackwardDataOut, param_keys,
             (grad_output, output, dim, input_dtype, grad_input), {
-              TT_THROW_IF_ERROR(
-                  ResizeTensorIfShapeDiffers(grad_input, output.sizes()));
-              TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                                 SoftmaxBackwardDataInternalOut(
-                                     grad_output, output, dim, input_dtype,
-                                     SoftmaxMode::kSoftmax,
-                                     std::move(param_keys), grad_input));
-              TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be
-                                  // covered inside.
-                  AssignBufferToAtTensor(std::move(result), grad_input));
+              TT_THROW_IF_ERROR(SoftmaxBackwardDataInternalOut(
+                  grad_output, output, dim, input_dtype, SoftmaxMode::kSoftmax,
+                  grad_input, std::move(param_keys)));
               return grad_input;
             });
 }
@@ -189,16 +161,9 @@ at::Tensor& AtenLogSoftmaxBackwardDataOut(const at::Tensor& grad_output,
                                           at::Tensor& grad_input) {
   TT_KERNEL(OpName::kLogSoftmaxBackwardDataOut, param_keys,
             (grad_output, output, dim, input_dtype, grad_input), {
-              TT_THROW_IF_ERROR(
-                  ResizeTensorIfShapeDiffers(grad_input, output.sizes()));
-              TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                                 SoftmaxBackwardDataInternalOut(
-                                     grad_output, output, dim, input_dtype,
-                                     SoftmaxMode::kLogSoftmax,
-                                     std::move(param_keys), grad_input));
-              TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be
-                                  // covered inside.
-                  AssignBufferToAtTensor(std::move(result), grad_input));
+              TT_THROW_IF_ERROR(SoftmaxBackwardDataInternalOut(
+                  grad_output, output, dim, input_dtype,
+                  SoftmaxMode::kLogSoftmax, grad_input, std::move(param_keys)));
               return grad_input;
             });
 }

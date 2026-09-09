@@ -20,7 +20,8 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "absl/types/span.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -42,39 +43,49 @@
 
 namespace torch_tpu {
 
+namespace {
+
+template <typename ReturnType, typename DispatchFn>
+ReturnType DispatchWhere(const at::Tensor& condition, const at::Tensor& self,
+                         const at::Tensor& other, DispatchFn&& dispatch_fn) {
+  const at::ScalarType output_aten_type =
+      at::promoteTypes(self.scalar_type(), other.scalar_type());
+  TT_ASSIGN_OR_RETURN(const auto output_element_type,
+                      ConvertTo<mlir::ElementType>(output_aten_type));
+  TT_ASSIGN_OR_RETURN(auto condition_self_dims,
+                      InferSize(condition.sizes(), self.sizes()));
+  TT_ASSIGN_OR_RETURN(auto output_dims,
+                      InferSize(condition_self_dims, other.sizes()));
+
+  auto op_builder = [output_element_type](
+                        FixedSizeSpan<mlir::MlirOp, 3> inputs) {
+    auto& [condition_op, self_op, other_op] = inputs;
+    return BuildWhereShlo(condition_op, self_op, other_op, output_element_type);
+  };
+
+  return dispatch_fn(output_aten_type, output_element_type,
+                     std::move(output_dims), std::move(op_builder));
+}
+
+}  // namespace
+
 // where.self
 at::Tensor AtenWhereSelf(const at::Tensor& condition, const at::Tensor& self,
                          const at::Tensor& other) {
   TT_KERNEL(OpName::kWhereSelf, _, (condition, self, other), {
-    // Determine output shape and type.
-    at::ScalarType output_aten_type =
-        at::promoteTypes(self.scalar_type(), other.scalar_type());
-    TT_ASSIGN_OR_THROW(const auto output_element_type,
-                       ConvertTo<mlir::ElementType>(output_aten_type));
-    TT_ASSIGN_OR_THROW(auto condition_self_dims,
-                       InferSize(condition.sizes(), self.sizes()));
-    TT_ASSIGN_OR_THROW(auto output_dims,
-                       InferSize(condition_self_dims, other.sizes()));
-
-    // No scalars to cache
-
-    // Create the op builder
-    auto op_builder =
-        [output_element_type](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
-          auto& [condition, self, other] = inputs;
-          return BuildWhereShlo(condition, self, other, output_element_type);
-        };
-
-    const auto elem_type = output_element_type;
-    // Dispatch the op
     TT_ASSIGN_OR_THROW(
         DeviceBufferRef result_buf,
-        DispatchOp<3>(std::move(op_builder), {condition, self, other},
-                      {.out_dtype = elem_type,
-                       .out_dims = output_dims,
-                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
-
-    // Return the result
+        (DispatchWhere<absl::StatusOr<DeviceBufferRef>>(
+            condition, self, other,
+            [&](at::ScalarType /*output_aten_type*/,
+                mlir::ElementType output_element_type,
+                const Dimensions& output_dims, auto op_builder) {
+              return DispatchOp<3>(
+                  std::move(op_builder), {condition, self, other},
+                  {.out_dtype = output_element_type,
+                   .out_dims = output_dims,
+                   .op_param_cache_keys = OpParamCacheKeys::Empty()});
+            })));
     return MakeTensor(std::move(result_buf));
   });
 }
@@ -84,57 +95,26 @@ at::Tensor& AtenWhereSelfOut(const at::Tensor& condition,
                              const at::Tensor& self, const at::Tensor& other,
                              at::Tensor& out) {
   TT_KERNEL(OpName::kWhereSelfOut, _, (condition, self, other, out), {
-    // Determine output shape and type.
-    at::ScalarType output_aten_type =
-        at::promoteTypes(self.scalar_type(), other.scalar_type());
-    TT_ASSIGN_OR_THROW(const auto output_element_type,
-                       ConvertTo<mlir::ElementType>(output_aten_type));
-    TT_ASSIGN_OR_THROW(auto condition_self_dims,
-                       InferSize(condition.sizes(), self.sizes()));
-    TT_ASSIGN_OR_THROW(auto output_dims,
-                       InferSize(condition_self_dims, other.sizes()));
-
-    // Check out-tensor conditions
-
-    TT_CHECK_THROW(output_aten_type == out.scalar_type(),
-                   error::kInvalidArgument)
-        << "expected the output dtype to be " << ToString(output_aten_type)
-        << " (result of promoting the dtype of the input tensors -- "
-        << ToString(self.scalar_type()) << " and "
-        << ToString(other.scalar_type()) << "), got "
-        << ToString(out.scalar_type());
-    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_dims));
-
-    // No scalars to cache
-
-    // Create the op builder.
-    auto op_builder =
-        [output_element_type](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
-          auto& [condition, self, other] = inputs;
-          return BuildWhereShlo(condition, self, other, output_element_type);
-        };
-
-    const auto elem_type = output_element_type;
-    // If `out` aliases `self` or `other`, donate that device buffer to the
-    // output in eligible eager modes (DeferNever) to avoid allocation churn.
-    Indices donated_indices;
-    if (ShouldDonateInPlaceBuffer(out, self, elem_type, output_dims)) {
-      donated_indices = {1};
-    } else if (ShouldDonateInPlaceBuffer(out, other, elem_type, output_dims)) {
-      donated_indices = {2};
-    }
-
-    // Dispatch the op.
-    TT_ASSIGN_OR_THROW(
-        DeviceBufferRef result_buf,
-        DispatchOp<3>(std::move(op_builder), {condition, self, other},
-                      {.out_dtype = elem_type,
-                       .out_dims = output_dims,
-                       .op_param_cache_keys = OpParamCacheKeys::Empty(),
-                       .donated_indices = std::move(donated_indices)}));
-
-    // Assign the result.
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+    TT_THROW_IF_ERROR((DispatchWhere<absl::Status>(
+        condition, self, other,
+        [&](at::ScalarType output_aten_type,
+            mlir::ElementType output_element_type,
+            const Dimensions& output_dims, auto op_builder) -> absl::Status {
+          TT_RET_CHECK(output_aten_type == out.scalar_type(),
+                       error::kInvalidArgument)
+              << "expected the output dtype to be "
+              << ToString(output_aten_type)
+              << " (result of promoting the dtype of the input tensors -- "
+              << ToString(self.scalar_type()) << " and "
+              << ToString(other.scalar_type()) << "), got "
+              << ToString(out.scalar_type());
+          TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_dims));
+          return DispatchOpOut<3>(
+              std::move(op_builder), {condition, self, other}, out,
+              {.out_dtype = output_element_type,
+               .out_dims = output_dims,
+               .op_param_cache_keys = OpParamCacheKeys::Empty()});
+        })));
     return out;
   });
 }

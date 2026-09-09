@@ -22,7 +22,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -33,25 +33,22 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/utils.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/index_add/index_add.h"
 #include "torch_tpu/csrc/ops/index_utils.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
 namespace {
 
-absl::StatusOr<DeviceBufferRef> IndexAdd(
-    const at::Tensor& self, int64_t dim, const at::Tensor& index,
-    const at::Tensor& source, PromotedScalar& promoted_alpha,
-    const at::ScalarType& out_scalar_type, OpParamCacheKeys param_keys,
-    std::optional<at::Tensor> out = std::nullopt) {
+absl::Status IndexAdd(const at::Tensor& self, int64_t dim,
+                      const at::Tensor& index, const at::Tensor& source,
+                      PromotedScalar& promoted_alpha,
+                      const at::ScalarType& out_scalar_type,
+                      OpParamCacheKeys param_keys, at::Tensor& out) {
   TT_ASSIGN_OR_RETURN(dim,
                       ValidateIndexInputsAndGetDim(self, dim, index, source));
 
@@ -74,20 +71,11 @@ absl::StatusOr<DeviceBufferRef> IndexAdd(
                       ConvertTo<mlir::ElementType>(out_scalar_type));
   Dimensions output_dims = CopyIntVector(self.sizes());
 
-  // If `out` aliases `self`, donate input 0's device buffer to the output in
-  // eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (out.has_value() &&
-      ShouldDonateInPlaceBuffer(*out, self, output_dtype, output_dims)) {
-    donated_indices = {0};
-  }
-
-  return DispatchOp<4>(std::move(index_add_op_builder),
-                       {self, index, source, alpha_tensor},
-                       {.out_dtype = output_dtype,
-                        .out_dims = output_dims,
-                        .op_param_cache_keys = std::move(param_keys),
-                        .donated_indices = std::move(donated_indices)});
+  return DispatchOpOut<4>(std::move(index_add_op_builder),
+                          {self, index, source, alpha_tensor}, out,
+                          {.out_dtype = output_dtype,
+                           .out_dims = output_dims,
+                           .op_param_cache_keys = std::move(param_keys)});
 }
 
 }  // namespace
@@ -97,17 +85,13 @@ at::Tensor& TpuAtenIndexAddOut(const at::Tensor& self, int64_t dim,
                                const at::Tensor& source,
                                const at::Scalar& alpha, at::Tensor& out) {
   PromotedScalar promoted_alpha = PromoteScalar(alpha);
-  TT_KERNEL(
-      OpName::kIndexAddOut, param_keys,
-      (self, dim, index, source, promoted_alpha, out), {
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef result_buf,
-            IndexAdd(self, dim, index, source, promoted_alpha,
-                     out.scalar_type(), std::move(param_keys), out));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-        return out;
-      });
+  TT_KERNEL(OpName::kIndexAddOut, param_keys,
+            (self, dim, index, source, promoted_alpha, out), {
+              TT_THROW_IF_ERROR(IndexAdd(self, dim, index, source,
+                                         promoted_alpha, out.scalar_type(),
+                                         std::move(param_keys), out));
+              return out;
+            });
 }
 
 }  // namespace torch_tpu

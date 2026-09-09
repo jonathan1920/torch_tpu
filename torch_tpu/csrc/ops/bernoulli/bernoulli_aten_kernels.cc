@@ -23,6 +23,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Generator.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -30,6 +31,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "torch_tpu/csrc/common/cache_key.h"
 #include "torch_tpu/csrc/common/dimension_types.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
@@ -94,6 +96,24 @@ NAryMlirOpBuilder<2, 1> GetBernoulliTensorFunctional(
   };
 }
 
+absl::Status DispatchBernoulliTensorRng(at::Tensor& dest,
+                                        const at::Tensor& p_tensor,
+                                        std::optional<at::Generator> generator,
+                                        Dimensions dims,
+                                        mlir::ElementType output_dtype,
+                                        OpParamCacheKeys param_keys) {
+  return DispatchRngOpOut(
+      dest, generator, output_dtype,
+      [&](at::Tensor rng_input_state) -> absl::Status {
+        return DispatchOpOut<2, 1>(
+            GetBernoulliTensorFunctional(dims, output_dtype),
+            {rng_input_state, p_tensor}, dest,
+            {.out_dtype = output_dtype,
+             .out_dims = dims,
+             .op_param_cache_keys = std::move(param_keys)});
+      });
+}
+
 }  // namespace
 
 at::Tensor& AtenBernoulliOut(const at::Tensor& self,
@@ -109,25 +129,8 @@ at::Tensor& AtenBernoulliOut(const at::Tensor& self,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
     const auto dims = CopyIntVector(self.sizes());
 
-    Indices donated_indices;
-    if (ShouldDonateInPlaceBuffer(out, self, output_dtype, dims)) {
-      donated_indices = {1};
-    }
-
-    TT_THROW_IF_ERROR(DispatchRngOp(
-        out, generator,
-        [&](at::Tensor rng_input_state)
-            -> absl::StatusOr<std::vector<DeviceBufferRef>> {
-          TT_ASSIGN_OR_RETURN(
-              auto buf, (DispatchOp<2, 1>(
-                            GetBernoulliTensorFunctional(dims, output_dtype),
-                            {rng_input_state, self},
-                            {.out_dtype = output_dtype,
-                             .out_dims = dims,
-                             .op_param_cache_keys = std::move(param_keys),
-                             .donated_indices = std::move(donated_indices)})));
-          return std::vector<DeviceBufferRef>{std::move(buf)};
-        }));
+    TT_THROW_IF_ERROR(DispatchBernoulliTensorRng(
+        out, self, generator, dims, output_dtype, std::move(param_keys)));
     return out;
   });
 }
@@ -175,25 +178,8 @@ at::Tensor& AtenBernoulli_Tensor(at::Tensor& self, const at::Tensor& p,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
     const auto dims = CopyIntVector(self.sizes());
 
-    Indices donated_indices;
-    if (ShouldDonateInPlaceBuffer(self, p, output_dtype, dims)) {
-      donated_indices = {1};
-    }
-
-    TT_THROW_IF_ERROR(DispatchRngOp(
-        self, generator,
-        [&](at::Tensor rng_input_state)
-            -> absl::StatusOr<std::vector<DeviceBufferRef>> {
-          TT_ASSIGN_OR_RETURN(
-              auto buf, (DispatchOp<2, 1>(
-                            GetBernoulliTensorFunctional(dims, output_dtype),
-                            {rng_input_state, p},
-                            {.out_dtype = output_dtype,
-                             .out_dims = dims,
-                             .op_param_cache_keys = std::move(param_keys),
-                             .donated_indices = std::move(donated_indices)})));
-          return std::vector<DeviceBufferRef>{std::move(buf)};
-        }));
+    TT_THROW_IF_ERROR(DispatchBernoulliTensorRng(
+        self, p, generator, dims, output_dtype, std::move(param_keys)));
     return self;
   });
 }

@@ -231,25 +231,71 @@ struct OpDispatchFailure {
 void SetOpDispatchFailure(std::string op_base_name,
                           std::string failure_message);
 
-template <int kArity>
-struct OpInputsTraits {
-  using type = std::array<TensorHolder, kArity>;
+template <int kSize>
+struct TensorGroupTraits {
+  using type = std::array<TensorHolder, kSize>;
 };
 
 template <>
-struct OpInputsTraits<1> {
+struct TensorGroupTraits<1> {
   using type = at::Tensor;
 };
 
 template <>
-struct OpInputsTraits<kDynamicSize> {
+struct TensorGroupTraits<kDynamicSize> {
   using type = std::vector<at::Tensor>;
 };
+
+template <int kArity>
+using OpInputsTraits = TensorGroupTraits<kArity>;
+
+template <int kNumOutputs>
+using OpOutputsTraits = TensorGroupTraits<kNumOutputs>;
 
 }  // namespace internal
 
 template <int kArity>
 using OpInputs = internal::OpInputsTraits<kArity>::type;
+
+template <int kNumOutputs>
+using OpOutputs = internal::OpOutputsTraits<kNumOutputs>::type;
+
+namespace internal {
+
+template <int kSize>
+absl::Span<const at::Tensor> GetTensorSpan(const OpInputs<kSize>& tensors) {
+  if constexpr (kSize == kDynamicSize) {
+    return tensors;
+  } else if constexpr (kSize == 1) {
+    return absl::MakeSpan(&tensors, 1);
+  } else {
+    ABSL_CHECK_EQ(tensors.size(), kSize)  // CRASH_OK
+        << "expected " << kSize << " tensors, got " << tensors.size();
+    return absl::Span<const at::Tensor>(tensors.data(), tensors.size());
+  }
+}
+
+// Resizes `output` (if shape differs) and assigns `result_buffer` to it.
+absl::Status AssignBufferToOutput(const at::Tensor& output,
+                                  DeviceBufferRef result_buffer);
+
+// Resizes each defined tensor in `outputs` (if shape differs) and assigns the
+// corresponding result buffer to it.
+absl::Status AssignBuffersToOutputs(absl::Span<const at::Tensor> outputs,
+                                    absl::Span<DeviceBufferRef> result_buffers);
+
+// Automatically detects and populates buffer donations from `inputs` into
+// `outputs` in eager mode if `donated_indices` is empty.
+//
+// IMPORTANT: A device buffer CANNOT be donated multiple times. In XLA, each
+// input buffer can be donated to at most ONE output buffer.
+void AutoDonateInPlaceBuffers(
+    absl::Span<const at::Tensor> outputs,
+    absl::Span<const mlir::ElementType> out_dtypes,
+    absl::Span<const absl::Span<const int64_t>> out_dims_list,
+    absl::Span<const at::Tensor> inputs, Indices& donated_indices);
+
+}  // namespace internal
 
 // Dispatches an op with the given number of inputs (kArity) and given number of
 // outputs (kNumOutputs). This function enforces the number inputs or outputs at
@@ -281,16 +327,8 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
   }
   const auto op_name = options.op_name.value_or(ctx_op_name);
 
-  absl::Span<const at::Tensor> inputs_span;
-  if constexpr (kArity == kDynamicSize) {
-    inputs_span = inputs;
-  } else if constexpr (kArity == 1) {
-    inputs_span = absl::MakeSpan(&inputs, 1);  // `inputs` is an at::Tensor.
-  } else {
-    ABSL_CHECK_EQ(inputs.size(), kArity)  // CRASH_OK
-        << "expected " << kArity << " inputs, got " << inputs.size();
-    inputs_span = absl::Span<const at::Tensor>(inputs.data(), inputs.size());
-  }
+  const absl::Span<const at::Tensor> inputs_span =
+      internal::GetTensorSpan<kArity>(inputs);
 
   TT_ASSIGN_OR_RETURN(std::vector<DeviceBufferRef> inputs_vec,
                       GetBuffers(inputs_span));
@@ -391,6 +429,47 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
       return MoveToStdArray(
           FixedSizeSpan<DeviceBufferRef, kNumOutputs>(absl::MakeSpan(results)));
     }
+  }
+}
+
+// Dispatches an op with out-tensor(s) (or in-place destination tensor(s)).
+//
+// Automatically detects if any output is eligible to donate an input tensor's
+// device buffer in eager mode (via `AutoDonateInPlaceBuffers`) when
+// `donated_indices` is not explicitly specified in `options`. After
+// dispatching, resizes each output (if its shape differs) and assigns the
+// resulting device buffer to that output tensor.
+template <int kArity, int kNumOutputs = 1>
+absl::Status DispatchOpOut(NAryMlirOpBuilder<kArity, kNumOutputs> op_builder,
+                           const OpInputs<kArity>& inputs,
+                           const OpOutputs<kNumOutputs>& outputs,
+                           DispatchOpOptions<kNumOutputs> options) {
+  const absl::Span<const at::Tensor> inputs_span =
+      internal::GetTensorSpan<kArity>(inputs);
+  const absl::Span<const at::Tensor> outputs_span =
+      internal::GetTensorSpan<kNumOutputs>(outputs);
+
+  if constexpr (kNumOutputs == 1) {
+    internal::AutoDonateInPlaceBuffers(outputs_span,
+                                       absl::MakeSpan(&options.out_dtype, 1),
+                                       absl::MakeSpan(&options.out_dims, 1),
+                                       inputs_span, options.donated_indices);
+  } else {
+    internal::AutoDonateInPlaceBuffers(outputs_span, options.out_dtypes,
+                                       options.out_dims_list, inputs_span,
+                                       options.donated_indices);
+  }
+
+  TT_ASSIGN_OR_RETURN(auto result_bufs,
+                      (DispatchOp<kArity, kNumOutputs>(
+                          std::move(op_builder), inputs, std::move(options))));
+
+  if constexpr (kNumOutputs == 1) {
+    return internal::AssignBufferToOutput(outputs_span[0],
+                                          std::move(result_bufs));
+  } else {
+    return internal::AssignBuffersToOutputs(outputs_span,
+                                            absl::MakeSpan(result_bufs));
   }
 }
 

@@ -28,6 +28,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "c10/util/Optional.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/csrc/common/dtype.h"
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
@@ -109,6 +110,25 @@ absl::Status DispatchRngOp(
       DeviceBufferRef output_buf,
       DispatchRngOpAndReturnBuffer(generator, std::move(dispatch_func), usage));
   return AssignBufferToAtTensor(std::move(output_buf), result_tensor);
+}
+
+// Helper that executes an RNG op with out-tensor via `DispatchOpOut`, handling
+// locking, generator state retrieval, and advancement.
+template <typename DispatchFunc>
+absl::Status DispatchRngOpOut(
+    at::Tensor& out, c10::optional<at::Generator> generator,
+    mlir::ElementType out_dtype, DispatchFunc dispatch_func,
+    const std::optional<RngUsage>& usage = std::nullopt) {
+  auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
+      generator, GetDefaultDeviceGenerator());
+
+  std::scoped_lock<std::mutex> lock(gen->mutex_);
+  TT_RETURN_IF_ERROR(std::move(dispatch_func)(gen->DeviceStateTensor()));
+
+  int64_t num_elements = usage.has_value() ? usage->num_elements : out.numel();
+  int64_t bit_width =
+      usage.has_value() ? usage->bit_width : TorchEquivalentBitwidth(out_dtype);
+  return gen->AdvanceDeviceStateTensor(num_elements, bit_width);
 }
 
 }  // namespace torch_tpu

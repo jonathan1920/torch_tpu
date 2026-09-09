@@ -30,15 +30,11 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/common/utils.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/binary.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -74,7 +70,6 @@ at::Tensor& AtenAddcmulOut(const at::Tensor& self, const at::Tensor& tensor1,
                            InferSize(tensor1.sizes(), tensor2.sizes()));
         TT_ASSIGN_OR_THROW(auto expected_size,
                            InferSize(self.sizes(), t1_t2_size));
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, expected_size));
 
         TT_ASSIGN_OR_THROW(at::Tensor value_tensor, promoted_value.GetTensor());
         TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool &&
@@ -96,30 +91,11 @@ at::Tensor& AtenAddcmulOut(const at::Tensor& self, const at::Tensor& tensor1,
         TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
                            ConvertTo<mlir::ElementType>(out.scalar_type()));
 
-        // If `out` aliases one of the input tensors, donate that input's device
-        // buffer in eligible eager modes (DeferNever) to avoid allocation
-        // churn.
-        Indices donated_indices;
-        if (ShouldDonateInPlaceBuffer(out, self, out_dtype, expected_size)) {
-          donated_indices = {0};
-        } else if (ShouldDonateInPlaceBuffer(out, tensor1, out_dtype,
-                                             expected_size)) {
-          donated_indices = {1};
-        } else if (ShouldDonateInPlaceBuffer(out, tensor2, out_dtype,
-                                             expected_size)) {
-          donated_indices = {2};
-        }
-
-        TT_ASSIGN_OR_THROW(
-            auto result_buffer,
-            DispatchOp<4>(std::move(op_builder),
-                          {self, tensor1, tensor2, value_tensor},
-                          {.out_dtype = out_dtype,
-                           .out_dims = CopyIntVector(out.sizes()),
-                           .op_param_cache_keys = OpParamCacheKeys::Empty(),
-                           .donated_indices = std::move(donated_indices)}));
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(result_buffer), out));
+        TT_THROW_IF_ERROR(DispatchOpOut<4>(
+            std::move(op_builder), {self, tensor1, tensor2, value_tensor}, out,
+            {.out_dtype = out_dtype,
+             .out_dims = expected_size,
+             .op_param_cache_keys = OpParamCacheKeys::Empty()}));
         return out;
       });
 }

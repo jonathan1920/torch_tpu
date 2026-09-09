@@ -541,12 +541,7 @@ at::Tensor& AtenFftC2cOut(const at::Tensor& self, at::IntArrayRef dim,
 
         // Explicitly check for static shape.
         // Shape introspection is unsafe with dynamism.
-        // NOTE: This implementation is not dynamism safe. It currently uses
-        // static shape indices, more work is needed to determine how this op
-        // supports bounded dynamic values.
         TT_THROW_IF_ERROR(FFTValidateStaticShape(self, "input"));
-
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
 
         TT_ASSIGN_OR_THROW(auto normalized_dims, GetNormalizedDims(self, dim));
 
@@ -559,23 +554,13 @@ at::Tensor& AtenFftC2cOut(const at::Tensor& self, at::IntArrayRef dim,
           return BuildFftC2cShlo(input, normalized_dims, norm_enum, forward);
         };
 
-        // If `out` aliases `self`, donate input 0's device buffer to the
-        // output in eligible eager modes (DeferNever) to avoid allocation
-        // churn.
-        Indices donated_indices;
-        if (ShouldDonateInPlaceBuffer(out, self, output_dtype, out.sizes())) {
-          donated_indices = {0};
-        }
-
-        TT_ASSIGN_OR_THROW(
-            auto result,
-            DispatchOp<1>(std::move(op_builder), self,
-                          {.out_dtype = output_dtype,
-                           .out_dims = CopyIntVector(out.sizes()),
-                           .op_param_cache_keys = std::move(param_keys),
-                           .donated_indices = std::move(donated_indices)}));
-
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+        DispatchOpOptions<1> options = {
+            .out_dtype = output_dtype,
+            .out_dims = self.sizes(),
+            .op_param_cache_keys = std::move(param_keys),
+        };
+        TT_THROW_IF_ERROR(DispatchOpOut<1>(std::move(op_builder), self, out,
+                                           std::move(options)));
         return out;
       });
 }

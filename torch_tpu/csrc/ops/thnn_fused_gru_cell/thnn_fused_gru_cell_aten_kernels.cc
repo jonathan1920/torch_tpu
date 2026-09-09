@@ -23,6 +23,7 @@
 #include <utility>
 
 #include "ATen/core/TensorBody.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -168,11 +169,9 @@ absl::StatusOr<std::array<mlir::MlirOp, 3>> BuildGruCellBackwardShlo(
                                      grad_hx};
 }
 
-absl::StatusOr<DeviceBufferRefArray<2>> ThnnFusedGruCellImpl(
-    const at::Tensor& input_gates, const at::Tensor& hidden_gates,
-    const at::Tensor& hx, const std::optional<at::Tensor>& input_bias,
-    const std::optional<at::Tensor>& hidden_bias, OpParamCacheKeys param_keys,
-    const std::optional<at::Tensor>& out0 = std::nullopt) {
+absl::Status ValidateThnnFusedGruCellInputs(const at::Tensor& input_gates,
+                                            const at::Tensor& hidden_gates,
+                                            const at::Tensor& hx) {
   TT_RET_CHECK(input_gates.sizes() == hidden_gates.sizes(),
                error::kInvalidArgument)
       << "expected size of argument #1 'input_gates' to match size of "
@@ -187,6 +186,17 @@ absl::StatusOr<DeviceBufferRefArray<2>> ThnnFusedGruCellImpl(
       << "expected feature size of argument #1 'input_gates' to match 3 * "
          "feature size of argument #3 'hx' ("
       << 3 * hx.size(1) << "), got " << input_gates.size(1);
+  return absl::OkStatus();
+}
+
+template <typename ReturnType, typename Dispatch5, typename Dispatch3>
+ReturnType DispatchThnnFusedGruCellCommon(
+    const at::Tensor& input_gates, const at::Tensor& hidden_gates,
+    const at::Tensor& hx, const std::optional<at::Tensor>& input_bias,
+    const std::optional<at::Tensor>& hidden_bias, OpParamCacheKeys param_keys,
+    Dispatch5&& dispatch5, Dispatch3&& dispatch3) {
+  TT_RETURN_IF_ERROR(
+      ValidateThnnFusedGruCellInputs(input_gates, hidden_gates, hx));
 
   const int64_t batch = hx.size(0);
   const int64_t hidden = hx.size(1);
@@ -206,14 +216,6 @@ absl::StatusOr<DeviceBufferRefArray<2>> ThnnFusedGruCellImpl(
   const std::array<mlir::ElementType, 2> out_dtypes = {out_dtype, out_dtype};
   const std::array<absl::Span<const int64_t>, 2> out_dims_list = {hy_dims,
                                                                   ws_dims};
-
-  // If `out0` aliases `hx`, donate input 2 (hx)'s device buffer to output 0
-  // in eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (out0.has_value() &&
-      ShouldDonateInPlaceBuffer(*out0, hx, out_dtype, hx.sizes())) {
-    donated_indices = {2};
-  }
 
   if (has_bias) {
     auto op_builder = [batch, hidden, acc_dtype,
@@ -235,13 +237,13 @@ absl::StatusOr<DeviceBufferRefArray<2>> ThnnFusedGruCellImpl(
       mlir::MlirOp hg_b = mlir::stablehlo::Add(hg_acc, hb_b);
       return BuildGruCellShlo(ig_b, hg_b, hx_op, batch, hidden, out_dtype);
     };
-    return DispatchOp<5, 2>(
+    return dispatch5(
         std::move(op_builder),
-        {input_gates, hidden_gates, hx, *s_input_bias, *s_hidden_bias},
-        {.out_dtypes = out_dtypes,
-         .out_dims_list = out_dims_list,
-         .op_param_cache_keys = std::move(param_keys),
-         .donated_indices = std::move(donated_indices)});
+        OpInputs<5>{input_gates, hidden_gates, hx, *s_input_bias,
+                    *s_hidden_bias},
+        DispatchOpOptions<2>{.out_dtypes = out_dtypes,
+                             .out_dims_list = out_dims_list,
+                             .op_param_cache_keys = std::move(param_keys)});
   } else {
     auto op_builder = [batch, hidden, acc_dtype,
                        out_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs)
@@ -254,13 +256,48 @@ absl::StatusOr<DeviceBufferRefArray<2>> ThnnFusedGruCellImpl(
       mlir::MlirOp hg_acc = to_acc(hg);
       return BuildGruCellShlo(ig_acc, hg_acc, hx_op, batch, hidden, out_dtype);
     };
-    return DispatchOp<3, 2>(std::move(op_builder),
-                            {input_gates, hidden_gates, hx},
-                            {.out_dtypes = out_dtypes,
+    return dispatch3(
+        std::move(op_builder), OpInputs<3>{input_gates, hidden_gates, hx},
+        DispatchOpOptions<2>{.out_dtypes = out_dtypes,
                              .out_dims_list = out_dims_list,
-                             .op_param_cache_keys = std::move(param_keys),
-                             .donated_indices = std::move(donated_indices)});
+                             .op_param_cache_keys = std::move(param_keys)});
   }
+}
+
+absl::StatusOr<DeviceBufferRefArray<2>> ThnnFusedGruCellImpl(
+    const at::Tensor& input_gates, const at::Tensor& hidden_gates,
+    const at::Tensor& hx, const std::optional<at::Tensor>& input_bias,
+    const std::optional<at::Tensor>& hidden_bias, OpParamCacheKeys param_keys) {
+  return DispatchThnnFusedGruCellCommon<
+      absl::StatusOr<DeviceBufferRefArray<2>>>(
+      input_gates, hidden_gates, hx, input_bias, hidden_bias,
+      std::move(param_keys),
+      [](auto op_builder, auto inputs, auto options) {
+        return DispatchOp<5, 2>(std::move(op_builder), inputs,
+                                std::move(options));
+      },
+      [](auto op_builder, auto inputs, auto options) {
+        return DispatchOp<3, 2>(std::move(op_builder), inputs,
+                                std::move(options));
+      });
+}
+
+absl::Status ThnnFusedGruCellOutImpl(
+    const at::Tensor& input_gates, const at::Tensor& hidden_gates,
+    const at::Tensor& hx, const std::optional<at::Tensor>& input_bias,
+    const std::optional<at::Tensor>& hidden_bias, OpParamCacheKeys param_keys,
+    at::Tensor& out0, at::Tensor& out1) {
+  return DispatchThnnFusedGruCellCommon<absl::Status>(
+      input_gates, hidden_gates, hx, input_bias, hidden_bias,
+      std::move(param_keys),
+      [&](auto op_builder, auto inputs, auto options) {
+        return DispatchOpOut<5, 2>(std::move(op_builder), inputs, {out0, out1},
+                                   std::move(options));
+      },
+      [&](auto op_builder, auto inputs, auto options) {
+        return DispatchOpOut<3, 2>(std::move(op_builder), inputs, {out0, out1},
+                                   std::move(options));
+      });
 }
 
 }  // namespace
@@ -288,12 +325,9 @@ std::tuple<at::Tensor&, at::Tensor&> AtenThnnFusedGruCellOut(
   TT_KERNEL(
       OpName::kThnnFusedGruCellOut, param_keys,
       (input_gates, hidden_gates, hx, input_bias, hidden_bias, out0, out1), {
-        TT_ASSIGN_OR_THROW(
-            const DeviceBufferRefArray<2> result_buffers,
-            ThnnFusedGruCellImpl(input_gates, hidden_gates, hx, input_bias,
-                                 hidden_bias, std::move(param_keys), out0));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], out0));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[1], out1));
+        TT_THROW_IF_ERROR(ThnnFusedGruCellOutImpl(
+            input_gates, hidden_gates, hx, input_bias, hidden_bias,
+            std::move(param_keys), out0, out1));
         return {out0, out1};
       });
 }

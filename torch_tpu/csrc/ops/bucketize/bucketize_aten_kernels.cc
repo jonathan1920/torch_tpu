@@ -44,7 +44,6 @@
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -142,11 +141,11 @@ absl::StatusOr<mlir::MlirOp> BuildBucketizeShlo(mlir::MlirOp self_op,
   return BuildCompareAllShlo(self_op, boundaries_op, out_dtype, right);
 }
 
-absl::StatusOr<DeviceBufferRef> Bucketize(const at::Tensor& self,
-                                          const at::Tensor& boundaries,
-                                          bool out_int32, bool right,
-                                          OpParamCacheKeys param_keys,
-                                          Indices donated_indices = {}) {
+template <typename ReturnType, typename OpDispatcherFn>
+ReturnType DispatchBucketize(const at::Tensor& self,
+                             const at::Tensor& boundaries, bool out_int32,
+                             bool right, OpParamCacheKeys param_keys,
+                             OpDispatcherFn&& dispatch_fn) {
   TT_RETURN_IF_ERROR(ValidateInputAndBoundaries(self, boundaries));
 
   TT_ASSIGN_OR_RETURN(
@@ -172,11 +171,36 @@ absl::StatusOr<DeviceBufferRef> Bucketize(const at::Tensor& self,
     return result_op;
   };
 
-  return DispatchOp<2>(std::move(op_builder), {self, boundaries},
-                       {.out_dtype = out_dtype,
-                        .out_dims = CopyIntVector(self.sizes()),
-                        .op_param_cache_keys = std::move(param_keys),
-                        .donated_indices = donated_indices});
+  return dispatch_fn(std::move(op_builder), out_dtype, std::move(param_keys));
+}
+
+absl::StatusOr<DeviceBufferRef> Bucketize(const at::Tensor& self,
+                                          const at::Tensor& boundaries,
+                                          bool out_int32, bool right,
+                                          OpParamCacheKeys param_keys) {
+  return DispatchBucketize<absl::StatusOr<DeviceBufferRef>>(
+      self, boundaries, out_int32, right, std::move(param_keys),
+      [&](auto op_builder, mlir::ElementType out_dtype,
+          OpParamCacheKeys param_keys) {
+        return DispatchOp<2>(std::move(op_builder), {self, boundaries},
+                             {.out_dtype = out_dtype,
+                              .out_dims = CopyIntVector(self.sizes()),
+                              .op_param_cache_keys = std::move(param_keys)});
+      });
+}
+
+absl::Status BucketizeOut(const at::Tensor& self, const at::Tensor& boundaries,
+                          bool out_int32, bool right, at::Tensor& out,
+                          OpParamCacheKeys param_keys) {
+  return DispatchBucketize<absl::Status>(
+      self, boundaries, out_int32, right, std::move(param_keys),
+      [&](auto op_builder, mlir::ElementType out_dtype,
+          OpParamCacheKeys param_keys) {
+        return DispatchOpOut<2>(std::move(op_builder), {self, boundaries}, out,
+                                {.out_dtype = out_dtype,
+                                 .out_dims = CopyIntVector(self.sizes()),
+                                 .op_param_cache_keys = std::move(param_keys)});
+      });
 }
 
 }  // namespace
@@ -211,23 +235,12 @@ at::Tensor AtenBucketizeTensor(const at::Tensor& self,
 at::Tensor& AtenBucketizeTensorOut(const at::Tensor& self,
                                    const at::Tensor& boundaries, bool out_int32,
                                    bool right, at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kBucketizeTensorOut, param_keys,
-      (self, boundaries, out_int32, right, out), {
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
-        Indices donated_indices = {};
-        const auto out_dtype =
-            out_int32 ? mlir::ElementType::I32 : mlir::ElementType::I64;
-        if (ShouldDonateInPlaceBuffer(out, self, out_dtype, self.sizes())) {
-          donated_indices = {0};
-        }
-        TT_ASSIGN_OR_THROW(DeviceBufferRef result_buffer,
-                           Bucketize(self, boundaries, out_int32, right,
-                                     std::move(param_keys), donated_indices));
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(result_buffer), out));
-        return out;
-      });
+  TT_KERNEL(OpName::kBucketizeTensorOut, param_keys,
+            (self, boundaries, out_int32, right, out), {
+              TT_THROW_IF_ERROR(BucketizeOut(self, boundaries, out_int32, right,
+                                             out, std::move(param_keys)));
+              return out;
+            });
 }
 
 }  // namespace torch_tpu

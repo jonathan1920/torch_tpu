@@ -337,6 +337,24 @@ absl::StatusOr<DeviceBufferRef> DispatchNormal2(
       });
 }
 
+absl::Status DispatchNormal2Out(c10::optional<at::Generator> generator,
+                                NAryMlirOpBuilder<2, 1> builder,
+                                const at::Tensor& input_tensor, at::Tensor& out,
+                                mlir::ElementType mlir_type,
+                                llvm::ArrayRef<int64_t> out_dims,
+                                OpParamCacheKeys param_keys) {
+  return DispatchRngOpOut(out, generator, mlir_type,
+                          [&](at::Tensor rng_input_state) -> absl::Status {
+                            return DispatchOpOut<2, 1>(
+                                std::move(builder),
+                                {input_tensor, rng_input_state}, out,
+                                {.out_dtype = mlir_type,
+                                 .out_dims = CopyIntVector(out_dims),
+                                 .op_param_cache_keys = std::move(param_keys),
+                                 .split_mode = OpSplitMode::kSplitAfter});
+                          });
+}
+
 NAryMlirOpBuilder<2, 1> GetNormalFloatTensorBuilder(
     double mean, llvm::ArrayRef<int64_t> out_dims, at::ScalarType out_dtype) {
   return [mean, out_dims = CopyIntVector(out_dims),
@@ -392,6 +410,26 @@ absl::StatusOr<DeviceBufferRef> DispatchNormal3(
                            .donated_indices = std::move(donated_indices)})));
         return std::vector<DeviceBufferRef>{std::move(buf)};
       });
+}
+
+absl::Status DispatchNormal3Out(c10::optional<at::Generator> generator,
+                                NAryMlirOpBuilder<3, 1> builder,
+                                const at::Tensor& input_tensor1,
+                                const at::Tensor& input_tensor2,
+                                at::Tensor& out, mlir::ElementType mlir_type,
+                                llvm::ArrayRef<int64_t> out_dims,
+                                OpParamCacheKeys param_keys) {
+  return DispatchRngOpOut(out, generator, mlir_type,
+                          [&](at::Tensor rng_input_state) -> absl::Status {
+                            return DispatchOpOut<3, 1>(
+                                std::move(builder),
+                                {input_tensor1, input_tensor2, rng_input_state},
+                                out,
+                                {.out_dtype = mlir_type,
+                                 .out_dims = CopyIntVector(out_dims),
+                                 .op_param_cache_keys = std::move(param_keys),
+                                 .split_mode = OpSplitMode::kSplitAfter});
+                          });
 }
 
 NAryMlirOpBuilder<3, 1> GetNormalTensorTensorBuilder(
@@ -494,17 +532,9 @@ at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
         TT_ASSIGN_OR_THROW(auto mlir_type,
                            ConvertTo<mlir::ElementType>(out_dtype));
 
-        Indices donated_indices;
-        if (ShouldDonateInPlaceBuffer(out, std, mlir_type, out_dims)) {
-          donated_indices = {0};
-        }
-
-        TT_ASSIGN_OR_THROW(
-            auto output_buf,
-            DispatchNormal2(gen, std::move(builder), std, mlir_type, out_dims,
-                            std::move(param_keys), std::move(donated_indices)));
-
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
+        TT_THROW_IF_ERROR(DispatchNormal2Out(gen, std::move(builder), std, out,
+                                             mlir_type, out_dims,
+                                             std::move(param_keys)));
         return out;
       });
 }
@@ -561,17 +591,9 @@ at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
         TT_ASSIGN_OR_THROW(auto mlir_type,
                            ConvertTo<mlir::ElementType>(out_dtype));
 
-        Indices donated_indices;
-        if (ShouldDonateInPlaceBuffer(out, mean, mlir_type, out_dims)) {
-          donated_indices = {0};
-        }
-
-        TT_ASSIGN_OR_THROW(
-            auto output_buf,
-            DispatchNormal2(gen, std::move(builder), mean, mlir_type, out_dims,
-                            std::move(param_keys), std::move(donated_indices)));
-
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
+        TT_THROW_IF_ERROR(DispatchNormal2Out(gen, std::move(builder), mean, out,
+                                             mlir_type, out_dims,
+                                             std::move(param_keys)));
         return out;
       });
 }
@@ -627,20 +649,9 @@ at::Tensor& AtenNormalTensorTensorOut(const at::Tensor& mean,
         TT_ASSIGN_OR_THROW(auto mlir_type,
                            ConvertTo<mlir::ElementType>(out_dtype));
 
-        Indices donated_indices;
-        if (ShouldDonateInPlaceBuffer(out, mean, mlir_type, out_dims)) {
-          donated_indices = {0};
-        } else if (ShouldDonateInPlaceBuffer(out, std, mlir_type, out_dims)) {
-          donated_indices = {1};
-        }
-
-        TT_ASSIGN_OR_THROW(
-            auto output_buf,
-            DispatchNormal3(gen, std::move(builder), mean, std, mlir_type,
-                            out_dims, OpParamCacheKeys::Empty(),
-                            std::move(donated_indices)));
-
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
+        TT_THROW_IF_ERROR(DispatchNormal3Out(gen, std::move(builder), mean, std,
+                                             out, mlir_type, out_dims,
+                                             OpParamCacheKeys::Empty()));
         return out;
       });
 }

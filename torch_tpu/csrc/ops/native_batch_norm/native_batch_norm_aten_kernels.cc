@@ -46,7 +46,6 @@
 #include "torch_tpu/csrc/ops/native_batch_norm/native_batch_norm.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -69,12 +68,18 @@ inline std::optional<mlir::MlirOp> GetOptionalMlirOp(
   return std::nullopt;
 }
 
-absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
+struct BatchNormDispatchParams {
+  std::vector<at::Tensor> inputs;
+  std::array<mlir::ElementType, 3> output_dtypes;
+  std::array<Dimensions, 3> output_dims;
+  NAryMlirOpBuilder<kDynamicSize, 3> op_builder;
+};
+
+absl::StatusOr<BatchNormDispatchParams> PrepareBatchNormDispatch(
     const at::Tensor& input, std::optional<at::Tensor> weight,
     std::optional<at::Tensor> bias, std::optional<at::Tensor> running_mean,
     std::optional<at::Tensor> running_variance, bool training, double momentum,
-    double eps, OpParamCacheKeys param_keys,
-    const std::optional<at::Tensor>& out = std::nullopt) {
+    double eps) {
   TT_RETURN_IF_ERROR(ValidateIsFloating(input, /*arg_name=*/"input"));
   ABSL_VLOG(1) << "TpuBatchNorm weight: " << !!weight << ", bias: " << !!bias
                << ", running_mean: " << !!running_mean
@@ -96,8 +101,9 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
   TT_ASSIGN_OR_RETURN(const auto acc_dtype,
                       ConvertTo<mlir::ElementType>(acc_type));
 
-  const std::array<absl::Span<const int64_t>, 3> output_dims = {
-      input_dims, output_mean_dims, output_variance_inverted_dims};
+  const std::array<Dimensions, 3> output_dims = {
+      Dimensions(input_dims.begin(), input_dims.end()), output_mean_dims,
+      output_variance_inverted_dims};
   const std::array<mlir::ElementType, 3> output_dtypes = {input_dtype,
                                                           acc_dtype, acc_dtype};
 
@@ -144,24 +150,52 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
                           running_var_op, training, momentum, eps, acc_dtype);
   };
 
-  // If `out` aliases `input`, donate input 0's device buffer to the output in
-  // eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (out.has_value() &&
-      ShouldDonateInPlaceBuffer(*out, input, input_dtype, input_dims)) {
-    donated_indices = {0};
-  }
+  return BatchNormDispatchParams{
+      .inputs = std::move(inputs),
+      .output_dtypes = output_dtypes,
+      .output_dims = output_dims,
+      .op_builder = std::move(op_builder),
+  };
+}
 
+absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
+    const at::Tensor& input, std::optional<at::Tensor> weight,
+    std::optional<at::Tensor> bias, std::optional<at::Tensor> running_mean,
+    std::optional<at::Tensor> running_variance, bool training, double momentum,
+    double eps, OpParamCacheKeys param_keys) {
+  TT_ASSIGN_OR_RETURN(auto p, PrepareBatchNormDispatch(
+                                  input, weight, bias, running_mean,
+                                  running_variance, training, momentum, eps));
+  const std::array<absl::Span<const int64_t>, 3> output_dims = {
+      p.output_dims[0], p.output_dims[1], p.output_dims[2]};
   std::optional<DeviceBufferRefArray<3>> results;
   TT_ASSIGN_OR_RETURN(results,
                       (DispatchOp<kDynamicSize, 3>(
-                          std::move(op_builder), inputs,
-                          {.out_dtypes = output_dtypes,
+                          std::move(p.op_builder), p.inputs,
+                          {.out_dtypes = p.output_dtypes,
                            .out_dims_list = output_dims,
-                           .op_param_cache_keys = std::move(param_keys),
-                           .donated_indices = std::move(donated_indices)})));
-
+                           .op_param_cache_keys = std::move(param_keys)})));
   return std::move(*results);
+}
+
+absl::Status TpuBatchNormOut(const at::Tensor& input,
+                             std::optional<at::Tensor> weight,
+                             std::optional<at::Tensor> bias,
+                             std::optional<at::Tensor> running_mean,
+                             std::optional<at::Tensor> running_variance,
+                             bool training, double momentum, double eps,
+                             OpParamCacheKeys param_keys, at::Tensor& out,
+                             at::Tensor& save_mean, at::Tensor& save_invstd) {
+  TT_ASSIGN_OR_RETURN(auto p, PrepareBatchNormDispatch(
+                                  input, weight, bias, running_mean,
+                                  running_variance, training, momentum, eps));
+  const std::array<absl::Span<const int64_t>, 3> output_dims = {
+      p.output_dims[0], p.output_dims[1], p.output_dims[2]};
+  return DispatchOpOut<kDynamicSize, 3>(
+      std::move(p.op_builder), p.inputs, {out, save_mean, save_invstd},
+      {.out_dtypes = p.output_dtypes,
+       .out_dims_list = output_dims,
+       .op_param_cache_keys = std::move(param_keys)});
 }
 
 absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNormBackward(
@@ -303,25 +337,11 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenNativeBatchNormOut(
       (input, weight, bias, running_mean, running_variance, training, momentum,
        eps, out, save_mean, save_invstd),
       {
-        TT_ASSIGN_OR_THROW(
-            (auto [output, mean, variance_inverse]),
-            TpuBatchNorm(input, SanitizeOptionalTensor(weight),
-                         SanitizeOptionalTensor(bias),
-                         SanitizeOptionalTensor(running_mean),
-                         SanitizeOptionalTensor(running_variance), training,
-                         momentum, eps, std::move(param_keys), out));
-
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output.dimensions()));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output), out));
-
-        TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(save_mean, mean.dimensions()));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(mean), save_mean));
-
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(
-            save_invstd, variance_inverse.dimensions()));
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(variance_inverse), save_invstd));
+        TT_THROW_IF_ERROR(TpuBatchNormOut(
+            input, SanitizeOptionalTensor(weight), SanitizeOptionalTensor(bias),
+            SanitizeOptionalTensor(running_mean),
+            SanitizeOptionalTensor(running_variance), training, momentum, eps,
+            std::move(param_keys), out, save_mean, save_invstd));
 
         return {out, save_mean, save_invstd};
       });
@@ -373,25 +393,11 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenNativeBatchNormLegitOut(
       (input, weight, bias, running_mean, running_variance, training, momentum,
        eps, out, save_mean, save_invstd),
       {
-        TT_ASSIGN_OR_THROW(
-            (auto [output, mean, variance_inverse]),
-            TpuBatchNorm(input, SanitizeOptionalTensor(weight),
-                         SanitizeOptionalTensor(bias),
-                         SanitizeOptionalTensor(running_mean),
-                         SanitizeOptionalTensor(running_variance), training,
-                         momentum, eps, std::move(param_keys), out));
-
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output.dimensions()));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output), out));
-
-        TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(save_mean, mean.dimensions()));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(mean), save_mean));
-
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(
-            save_invstd, variance_inverse.dimensions()));
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(variance_inverse), save_invstd));
+        TT_THROW_IF_ERROR(TpuBatchNormOut(
+            input, SanitizeOptionalTensor(weight), SanitizeOptionalTensor(bias),
+            SanitizeOptionalTensor(running_mean),
+            SanitizeOptionalTensor(running_variance), training, momentum, eps,
+            std::move(param_keys), out, save_mean, save_invstd));
 
         return {out, save_mean, save_invstd};
       });
@@ -409,25 +415,11 @@ AtenNativeBatchNormLegitNoStatsOut(const at::Tensor& input,
       (input, weight, bias, training, momentum, eps, out, save_mean,
        save_invstd),
       {
-        TT_ASSIGN_OR_THROW(
-            (auto [output, mean, variance_inverse]),
-            TpuBatchNorm(input, SanitizeOptionalTensor(weight),
-                         SanitizeOptionalTensor(bias),
-                         /*running_mean=*/std::nullopt,
-                         /*running_variance=*/std::nullopt, training, momentum,
-                         eps, std::move(param_keys), out));
-
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output.dimensions()));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output), out));
-
-        TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(save_mean, mean.dimensions()));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(mean), save_mean));
-
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(
-            save_invstd, variance_inverse.dimensions()));
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(variance_inverse), save_invstd));
+        TT_THROW_IF_ERROR(TpuBatchNormOut(
+            input, SanitizeOptionalTensor(weight), SanitizeOptionalTensor(bias),
+            /*running_mean=*/std::nullopt, /*running_variance=*/std::nullopt,
+            training, momentum, eps, std::move(param_keys), out, save_mean,
+            save_invstd));
 
         return {out, save_mean, save_invstd};
       });

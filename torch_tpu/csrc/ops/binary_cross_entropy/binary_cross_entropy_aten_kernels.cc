@@ -39,7 +39,6 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/common/utils.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/binary.h"
@@ -47,7 +46,6 @@
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/reductions/sum.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/csrc/ops/unary.h"
 
 namespace torch_tpu {
@@ -136,10 +134,10 @@ absl::StatusOr<mlir::MlirOp> BuildBinaryCrossEntropyShlo(
          << reduction;
 }
 
-absl::StatusOr<DeviceBufferRef> DispatchBinaryCrossEntropy(
+absl::Status DispatchBinaryCrossEntropyOut(
     const at::Tensor& self, const at::Tensor& target,
-    const std::optional<at::Tensor>& weight, int64_t reduction,
-    OpParamCacheKeys param_keys, std::optional<at::Tensor> out = std::nullopt) {
+    const std::optional<at::Tensor>& weight, int64_t reduction, at::Tensor& out,
+    OpParamCacheKeys param_keys) {
   TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(self, "input"));
   TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(target, "target"));
   TT_RET_CHECK(self.sizes() == target.sizes(), error::kInvalidArgument)
@@ -177,33 +175,15 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryCrossEntropy(
                             ? CopyIntVector(self.sizes())
                             : Dimensions();
 
-  // In `Reduction::None` mode, BCE is purely element-wise: `out_dims` matches
-  // `self.sizes()` exactly, so if `out` aliases `self` or `target`, that input
-  // buffer can be donated to the output in eligible eager modes (DeferNever).
-  // In contrast, when `reduction` is `Mean` or `Sum`, the output is reduced to
-  // a 0-D scalar, so buffer reuse is incompatible.
-  Indices donated_indices;
-  if (reduction == at::Reduction::None && out.has_value()) {
-    if (ShouldDonateInPlaceBuffer(*out, self, output_dtype, out_dims)) {
-      donated_indices = {0};
-    } else if (ShouldDonateInPlaceBuffer(*out, target, output_dtype,
-                                         out_dims)) {
-      donated_indices = {1};
-    }
-  }
-
   DispatchOpOptions<1> options = {
       .out_dtype = output_dtype,
       .out_dims = out_dims,
       .computation_dtype = computation_dtype,
       .op_param_cache_keys = std::move(param_keys),
-      .donated_indices = std::move(donated_indices),
   };
 
-  TT_ASSIGN_OR_RETURN(auto output_buf,
-                      (DispatchOp<kDynamicSize, 1>(
-                          std::move(op_builder), inputs, std::move(options))));
-  return std::move(output_buf);
+  return DispatchOpOut<kDynamicSize>(std::move(op_builder), inputs, out,
+                                     std::move(options));
 }
 
 absl::StatusOr<mlir::MlirOp> BuildBinaryCrossEntropyBackwardShlo(
@@ -250,11 +230,10 @@ absl::StatusOr<mlir::MlirOp> BuildBinaryCrossEntropyBackwardShlo(
   return grad_input;
 }
 
-absl::StatusOr<DeviceBufferRef> DispatchBinaryCrossEntropyBackward(
+absl::Status DispatchBinaryCrossEntropyBackwardOut(
     const at::Tensor& grad_output, const at::Tensor& self,
     const at::Tensor& target, const std::optional<at::Tensor>& weight,
-    int64_t reduction, OpParamCacheKeys param_keys,
-    std::optional<at::Tensor> grad_input = std::nullopt) {
+    int64_t reduction, at::Tensor& grad_input, OpParamCacheKeys param_keys) {
   TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(grad_output, "grad_output"));
   TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(self, "input"));
   TT_RETURN_IF_ERROR(ValidateIsFloatingPoint(target, "target"));
@@ -297,39 +276,15 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryCrossEntropyBackward(
 
   Dimensions out_dims = CopyIntVector(self.sizes());
 
-  // If `grad_input` aliases `grad_output`, `self`, `target`, or `weight`,
-  // donate that input's device buffer to the output in eligible eager modes
-  // (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (grad_input.has_value()) {
-    if (ShouldDonateInPlaceBuffer(*grad_input, grad_output, output_dtype,
-                                  out_dims)) {
-      donated_indices = {0};
-    } else if (ShouldDonateInPlaceBuffer(*grad_input, self, output_dtype,
-                                         out_dims)) {
-      donated_indices = {1};
-    } else if (ShouldDonateInPlaceBuffer(*grad_input, target, output_dtype,
-                                         out_dims)) {
-      donated_indices = {2};
-    } else if (has_weight &&
-               ShouldDonateInPlaceBuffer(*grad_input, *weight, output_dtype,
-                                         out_dims)) {
-      donated_indices = {3};
-    }
-  }
-
   DispatchOpOptions<1> options = {
       .out_dtype = output_dtype,
       .out_dims = out_dims,
       .computation_dtype = computation_dtype,
       .op_param_cache_keys = std::move(param_keys),
-      .donated_indices = std::move(donated_indices),
   };
 
-  TT_ASSIGN_OR_RETURN(auto output_buf,
-                      (DispatchOp<kDynamicSize, 1>(
-                          std::move(op_builder), inputs, std::move(options))));
-  return std::move(output_buf);
+  return DispatchOpOut<kDynamicSize>(std::move(op_builder), inputs, grad_input,
+                                     std::move(options));
 }
 
 }  // namespace
@@ -338,71 +293,64 @@ at::Tensor AtenBinaryCrossEntropy(const at::Tensor& self,
                                   const at::Tensor& target,
                                   const std::optional<at::Tensor>& weight,
                                   int64_t reduction) {
-  TT_KERNEL(OpName::kBinaryCrossEntropy, param_keys,
-            (self, target, weight, reduction), {
-              TT_ASSIGN_OR_THROW(
-                  auto output_buf,
-                  DispatchBinaryCrossEntropy(self, target, weight, reduction,
-                                             std::move(param_keys)));
-              return MakeTensor(std::move(output_buf));
-            });
+  TT_KERNEL(
+      OpName::kBinaryCrossEntropy, param_keys,
+      (self, target, weight, reduction), {
+        TT_ASSIGN_OR_THROW(
+            at::Tensor out,
+            MakeEmptyTensor(/*size=*/{0}, self.scalar_type(), self.device()));
+        TT_THROW_IF_ERROR(DispatchBinaryCrossEntropyOut(
+            self, target, weight, reduction, out, std::move(param_keys)));
+        return out;
+      });
 }
 
 at::Tensor& AtenBinaryCrossEntropyOut(const at::Tensor& self,
                                       const at::Tensor& target,
                                       const std::optional<at::Tensor>& weight,
                                       int64_t reduction, at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kBinaryCrossEntropyOut, param_keys,
-      (self, target, weight, reduction, out), {
-        TT_ASSIGN_OR_THROW(auto output_buf, DispatchBinaryCrossEntropy(
-                                                self, target, weight, reduction,
-                                                std::move(param_keys), out));
-
-        TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(out, output_buf.dimensions()));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
-        return out;
-      });
+  TT_KERNEL(OpName::kBinaryCrossEntropyOut, param_keys,
+            (self, target, weight, reduction, out), {
+              TT_THROW_IF_ERROR(DispatchBinaryCrossEntropyOut(
+                  self, target, weight, reduction, out, std::move(param_keys)));
+              return out;
+            });
 }
 
 at::Tensor AtenBinaryCrossEntropyBackward(
     const at::Tensor& grad_output, const at::Tensor& self,
     const at::Tensor& target, const std::optional<at::Tensor>& weight,
     int64_t reduction) {
-  TT_KERNEL(OpName::kBinaryCrossEntropyBackward, param_keys,
-            (grad_output, self, target, weight, reduction), {
-              TT_ASSIGN_OR_THROW(auto output_buf,
-                                 DispatchBinaryCrossEntropyBackward(
-                                     grad_output, self, target, weight,
-                                     reduction, std::move(param_keys)));
-              return MakeTensor(std::move(output_buf));
-            });
+  TT_KERNEL(
+      OpName::kBinaryCrossEntropyBackward, param_keys,
+      (grad_output, self, target, weight, reduction), {
+        TT_ASSIGN_OR_THROW(
+            at::Tensor grad_input,
+            MakeEmptyTensor(/*size=*/{0}, self.scalar_type(), self.device()));
+        TT_THROW_IF_ERROR(DispatchBinaryCrossEntropyBackwardOut(
+            grad_output, self, target, weight, reduction, grad_input,
+            std::move(param_keys)));
+        return grad_input;
+      });
 }
 
 at::Tensor& AtenBinaryCrossEntropyBackwardGradInput(
     const at::Tensor& grad_output, const at::Tensor& self,
     const at::Tensor& target, const std::optional<at::Tensor>& weight,
     int64_t reduction, at::Tensor& grad_input) {
-  TT_KERNEL(
-      OpName::kBinaryCrossEntropyBackwardGradInput, param_keys,
-      (grad_output, self, target, weight, reduction, grad_input), {
-        TT_CHECK_THROW(grad_input.scalar_type() == self.scalar_type(),
-                       error::kInvalidArgument)
-            << "expected grad_input dtype " << ToString(self.scalar_type())
-            << ", got " << ToString(grad_input.scalar_type());
+  TT_KERNEL(OpName::kBinaryCrossEntropyBackwardGradInput, param_keys,
+            (grad_output, self, target, weight, reduction, grad_input), {
+              TT_CHECK_THROW(grad_input.scalar_type() == self.scalar_type(),
+                             error::kInvalidArgument)
+                  << "expected grad_input dtype "
+                  << ToString(self.scalar_type()) << ", got "
+                  << ToString(grad_input.scalar_type());
 
-        TT_ASSIGN_OR_THROW(auto output_buf,
-                           DispatchBinaryCrossEntropyBackward(
-                               grad_output, self, target, weight, reduction,
-                               std::move(param_keys), grad_input));
-
-        TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(grad_input, output_buf.dimensions()));
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(output_buf), grad_input));
-        return grad_input;
-      });
+              TT_THROW_IF_ERROR(DispatchBinaryCrossEntropyBackwardOut(
+                  grad_output, self, target, weight, reduction, grad_input,
+                  std::move(param_keys)));
+              return grad_input;
+            });
 }
 
 }  // namespace torch_tpu

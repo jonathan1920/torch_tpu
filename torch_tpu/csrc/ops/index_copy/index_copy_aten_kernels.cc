@@ -17,13 +17,11 @@
 #include "torch_tpu/csrc/ops/index_copy/index_copy_aten_kernels.h"
 
 #include <cstdint>
-#include <optional>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "absl/log/log.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -35,24 +33,20 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/utils.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/index_copy/index_copy.h"
 #include "torch_tpu/csrc/ops/index_utils.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
 namespace {
 
-absl::StatusOr<DeviceBufferRef> IndexCopy(
-    const at::Tensor& self, int64_t dim, const at::Tensor& index,
-    const at::Tensor& source, OpParamCacheKeys param_keys,
-    std::optional<at::Tensor> out = std::nullopt) {
+absl::Status IndexCopy(const at::Tensor& self, int64_t dim,
+                       const at::Tensor& index, const at::Tensor& source,
+                       at::Tensor& out, OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(dim,
                       ValidateIndexInputsAndGetDim(self, dim, index, source));
 
@@ -71,19 +65,11 @@ absl::StatusOr<DeviceBufferRef> IndexCopy(
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   Dimensions output_dims = CopyIntVector(self.sizes());
 
-  // If `out` aliases `self`, donate input 0's device buffer to the output in
-  // eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (out.has_value() &&
-      ShouldDonateInPlaceBuffer(*out, self, output_dtype, output_dims)) {
-    donated_indices = {0};
-  }
-
-  return DispatchOp<3>(std::move(index_copy_op_builder), {self, index, source},
-                       {.out_dtype = output_dtype,
-                        .out_dims = output_dims,
-                        .op_param_cache_keys = std::move(param_keys),
-                        .donated_indices = std::move(donated_indices)});
+  return DispatchOpOut<3>(std::move(index_copy_op_builder),
+                          {self, index, source}, out,
+                          {.out_dtype = output_dtype,
+                           .out_dims = output_dims,
+                           .op_param_cache_keys = std::move(param_keys)});
 }
 
 }  // namespace
@@ -93,11 +79,8 @@ at::Tensor& AtenIndexCopyOut(const at::Tensor& self, int64_t dim,
                              at::Tensor& out) {
   TT_KERNEL(
       OpName::kIndexCopyOut, param_keys, (self, dim, index, source, out), {
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef result_buf,
-            IndexCopy(self, dim, index, source, std::move(param_keys), out));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        TT_THROW_IF_ERROR(
+            IndexCopy(self, dim, index, source, out, std::move(param_keys)));
         return out;
       });
 }

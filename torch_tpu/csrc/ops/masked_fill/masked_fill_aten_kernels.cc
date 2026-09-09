@@ -34,9 +34,7 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/copy_from/copy_from_aten_kernels.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
@@ -83,9 +81,8 @@ absl::Status ValidateValueCastableWithoutOverflow(const at::Scalar& value,
 //
 // Sets up the op builder using StableHLO `where` (`where(mask, value, input)`),
 // and dispatches the operation.
-absl::StatusOr<DeviceBufferRef> Dispatch(const at::Tensor& self,
-                                         const at::Tensor& mask,
-                                         const at::Tensor& value) {
+absl::Status Dispatch(at::Tensor& self, const at::Tensor& mask,
+                      const at::Tensor& value) {
   TT_RETURN_IF_ERROR(ValidateInferredOutputShapeMatchesSelf(self, mask));
 
   TT_ASSIGN_OR_RETURN(const auto self_mlir_type,
@@ -97,30 +94,18 @@ absl::StatusOr<DeviceBufferRef> Dispatch(const at::Tensor& self,
     return BuildWhereShlo(mask, value, input, self_mlir_type);
   };
 
-  // Donate input 0's device buffer to the output in eligible eager modes
-  // (DeferNever) to avoid memory allocation churn.
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(self, self.sizes(), self_mlir_type)) {
-    donated_indices = {0};
-  }
-
-  TT_ASSIGN_OR_RETURN(
-      DeviceBufferRef out,
-      DispatchOp<3>(std::move(op_builder), {self, mask, value},
-                    {.out_dtype = self_mlir_type,
-                     .out_dims = self.sizes(),
-                     .op_param_cache_keys = OpParamCacheKeys::Empty(),
-                     .donated_indices = std::move(donated_indices)}));
-  return out;
+  return DispatchOpOut<3>(std::move(op_builder), {self, mask, value}, self,
+                          {.out_dtype = self_mlir_type,
+                           .out_dims = self.sizes(),
+                           .op_param_cache_keys = OpParamCacheKeys::Empty()});
 }
 
 // Performs in-place masked fill using a scalar value.
 //
 // Checks that `value` can be safely cast to `self`'s data type without
 // overflow before materializing it as a tensor and executing the fill.
-absl::StatusOr<DeviceBufferRef> DispatchWithScalarValue(const at::Tensor& self,
-                                                        const at::Tensor& mask,
-                                                        PromotedScalar& value) {
+absl::Status DispatchWithScalarValue(at::Tensor& self, const at::Tensor& mask,
+                                     PromotedScalar& value) {
   const at::ScalarType dtype = self.scalar_type();
   TT_RETURN_IF_ERROR(  //
       ValidateValueCastableWithoutOverflow(value.scalar(), dtype));
@@ -134,8 +119,8 @@ absl::StatusOr<DeviceBufferRef> DispatchWithScalarValue(const at::Tensor& self,
 // Requires `value` to be a 0D tensor. To align with PyTorch GPU behavior,
 // synchronously copies `value` to CPU to check for scalar overflow before
 // executing the fill, which triggers a host-device synchronization.
-absl::StatusOr<DeviceBufferRef> DispatchWithTensorValue(
-    const at::Tensor& self, const at::Tensor& mask, const at::Tensor& value) {
+absl::Status DispatchWithTensorValue(at::Tensor& self, const at::Tensor& mask,
+                                     const at::Tensor& value) {
   TT_RET_CHECK(value.dim() == 0, error::kInvalidArgument)
       << "expected value to be a 0D tensor, got " << value.dim()
       << "D tensor of shape " << ToString(value.sizes());
@@ -158,9 +143,7 @@ at::Tensor& AtenMaskedFill_Scalar(at::Tensor& self, const at::Tensor& mask,
                                   const at::Scalar& value) {
   auto promoted_value = PromoteScalar(value);
   TT_KERNEL(OpName::kMaskedFill_Scalar, _, (self, mask, promoted_value), {
-    TT_ASSIGN_OR_THROW(DeviceBufferRef out,
-                       DispatchWithScalarValue(self, mask, promoted_value));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(out), self));
+    TT_THROW_IF_ERROR(DispatchWithScalarValue(self, mask, promoted_value));
     return self;
   });
 }
@@ -168,9 +151,7 @@ at::Tensor& AtenMaskedFill_Scalar(at::Tensor& self, const at::Tensor& mask,
 at::Tensor& AtenMaskedFill_Tensor(at::Tensor& self, const at::Tensor& mask,
                                   const at::Tensor& value) {
   TT_KERNEL(OpName::kMaskedFill_Tensor, _, (self, mask, value), {
-    TT_ASSIGN_OR_THROW(DeviceBufferRef out,
-                       DispatchWithTensorValue(self, mask, value));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(out), self));
+    TT_THROW_IF_ERROR(DispatchWithTensorValue(self, mask, value));
     return self;
   });
 }

@@ -27,6 +27,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "c10/core/ScalarType.h"
 #include "c10/util/Exception.h"
 #include "c10/util/OptionalArrayRef.h"
@@ -46,7 +47,6 @@
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/binary.h"
-#include "torch_tpu/csrc/ops/binary_aten_kernels.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
@@ -210,18 +210,11 @@ at::Tensor& AtenVarOut(const at::Tensor& self,
             CreateVarBuilder(std::move(canonicalized_dims), reduction_mode,
                              reduction_size, scalar_dtype_mlir);
 
-        TT_ASSIGN_OR_THROW(
-            auto result_bufs,
-            (DispatchOp<2, 1>(std::move(var_builder), {self, correction_tensor},
-                              {.out_dtype = scalar_dtype_mlir,
-                               .out_dims = output_dims,
-                               .op_param_cache_keys = std::move(param_keys)})));
-
-        bool is_inplace =
-            out.is_alias_of(self) || out.is_alias_of(correction_tensor);
-        OutputOpMode mode =
-            is_inplace ? OutputOpMode::kInPlace : OutputOpMode::kOutOfPlace;
-        TT_THROW_IF_ERROR(FinalizeOpOutput(out, std::move(result_bufs), mode));
+        TT_THROW_IF_ERROR((DispatchOpOut<2, 1>(
+            std::move(var_builder), {self, correction_tensor}, out,
+            {.out_dtype = scalar_dtype_mlir,
+             .out_dims = output_dims,
+             .op_param_cache_keys = std::move(param_keys)})));
         return out;
       });
 }

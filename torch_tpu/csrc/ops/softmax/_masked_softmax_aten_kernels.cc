@@ -31,7 +31,6 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
@@ -157,10 +156,8 @@ absl::Status MaskedSoftmaxInternalOut(const at::Tensor& self,
   TT_ASSIGN_OR_RETURN(const int64_t resolved_mask_type,
                       ValidateMaskedSoftmaxInputs(self, mask, mask_type));
 
-  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, self.sizes()));
-
   if (self.numel() == 0) {
-    return absl::OkStatus();
+    return ResizeTensorIfShapeDiffers(out, self.sizes());
   }
 
   const int64_t default_dim = self.dim() > 0 ? self.dim() - 1 : 0;
@@ -180,22 +177,13 @@ absl::Status MaskedSoftmaxInternalOut(const at::Tensor& self,
                                   resolved_mask_type);
   };
 
-  // If `out` aliases `self`, donate input 0's device buffer to the output in
-  // eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(out, self, computation_dtype, self.sizes())) {
-    donated_indices = {0};
-  }
-
-  TT_ASSIGN_OR_RETURN(
-      DeviceBufferRef result,
-      (DispatchOp<2>(functional_builder, {self, mask},
-                     {.out_dtype = computation_dtype,
-                      .out_dims = self.sizes(),
-                      .op_param_cache_keys = std::move(param_keys),
-                      .donated_indices = std::move(donated_indices)})));
-
-  return AssignBufferToAtTensor(std::move(result), out);
+  DispatchOpOptions<1> options = {
+      .out_dtype = computation_dtype,
+      .out_dims = self.sizes(),
+      .op_param_cache_keys = std::move(param_keys),
+  };
+  return DispatchOpOut<2>(functional_builder, {self, mask}, out,
+                          std::move(options));
 }
 
 absl::Status MaskedSoftmaxBackwardInternalOut(const at::Tensor& grad_output,
@@ -207,10 +195,8 @@ absl::Status MaskedSoftmaxBackwardInternalOut(const at::Tensor& grad_output,
   TT_RETURN_IF_ERROR(
       ValidateMaskedSoftmaxBackwardInputs(grad_output, output, mask));
 
-  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(grad_input, output.sizes()));
-
   if (grad_output.numel() == 0) {
-    return absl::OkStatus();
+    return ResizeTensorIfShapeDiffers(grad_input, output.sizes());
   }
 
   const int64_t default_dim = output.dim() > 0 ? output.dim() - 1 : 0;
@@ -231,27 +217,13 @@ absl::Status MaskedSoftmaxBackwardInternalOut(const at::Tensor& grad_output,
                                               mask_op, wrapped_dim, precision);
   };
 
-  // If `grad_input` aliases `grad_output` or `output`, donate that input's
-  // device buffer to the output in eligible eager modes (DeferNever) to avoid
-  // allocation churn.
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(grad_input, grad_output, computation_dtype,
-                                output.sizes())) {
-    donated_indices = {0};
-  } else if (ShouldDonateInPlaceBuffer(grad_input, output, computation_dtype,
-                                       output.sizes())) {
-    donated_indices = {1};
-  }
-
-  TT_ASSIGN_OR_RETURN(
-      DeviceBufferRef result,
-      (DispatchOp<3>(functional_builder, {grad_output, output, mask},
-                     {.out_dtype = computation_dtype,
-                      .out_dims = output.sizes(),
-                      .op_param_cache_keys = std::move(param_keys),
-                      .donated_indices = std::move(donated_indices)})));
-
-  return AssignBufferToAtTensor(std::move(result), grad_input);
+  DispatchOpOptions<1> options = {
+      .out_dtype = computation_dtype,
+      .out_dims = output.sizes(),
+      .op_param_cache_keys = std::move(param_keys),
+  };
+  return DispatchOpOut<3>(functional_builder, {grad_output, output, mask},
+                          grad_input, std::move(options));
 }
 
 }  // namespace

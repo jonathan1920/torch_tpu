@@ -16,7 +16,6 @@
 
 #include "torch_tpu/csrc/ops/bmm/bmm_aten_kernels.h"
 
-#include <optional>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
@@ -41,7 +40,6 @@
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/precision_context.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -95,9 +93,10 @@ absl::Status ValidateBmmInputs(const at::Tensor& self, const at::Tensor& mat2) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<DeviceBufferRef> Bmm(
-    const at::Tensor& self, const at::Tensor& mat2, at::ScalarType out_dtype,
-    OpParamCacheKeys param_keys, std::optional<at::Tensor> out = std::nullopt) {
+template <typename ReturnType, typename DispatchFn>
+ReturnType DispatchBmm(const at::Tensor& self, const at::Tensor& mat2,
+                       at::ScalarType out_dtype, OpParamCacheKeys param_keys,
+                       DispatchFn&& dispatch_fn) {
   TT_RETURN_IF_ERROR(ValidateBmmInputs(self, mat2));
   TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype_mlir,
                       ConvertTo<mlir::ElementType>(out_dtype));
@@ -108,33 +107,26 @@ absl::StatusOr<DeviceBufferRef> Bmm(
                      current_precision](FixedSizeSpan<mlir::MlirOp, 2> inputs)
       -> absl::StatusOr<mlir::MlirOp> {
     auto& [self_op, mat2_op] = inputs;
-    TT_ASSIGN_OR_RETURN(
-        auto result,
-        BuildBmmShlo(self_op, mat2_op, output_dtype_mlir, current_precision));
-    return result;
+    return BuildBmmShlo(self_op, mat2_op, output_dtype_mlir, current_precision);
   };
 
-  // If `out` aliases `self` or `mat2`, donate that device buffer to the output
-  // in eligible eager modes (DeferNever) to avoid memory allocation churn.
-  Indices donated_indices;
-  if (out.has_value()) {
-    if (ShouldDonateInPlaceBuffer(*out, self, output_dtype_mlir,
-                                  output_dims_vec)) {
-      donated_indices = {0};
-    } else if (ShouldDonateInPlaceBuffer(*out, mat2, output_dtype_mlir,
-                                         output_dims_vec)) {
-      donated_indices = {1};
-    }
-  }
+  return dispatch_fn(
+      std::move(op_builder),
+      DispatchOpOptions<1>{.out_dtype = output_dtype_mlir,
+                           .out_dims = std::move(output_dims_vec),
+                           .op_param_cache_keys = std::move(param_keys)});
+}
 
-  TT_ASSIGN_OR_RETURN(
-      auto result_buffer,
-      DispatchOp<2>(std::move(op_builder), {self, mat2},
-                    {.out_dtype = output_dtype_mlir,
-                     .out_dims = output_dims_vec,
-                     .op_param_cache_keys = std::move(param_keys),
-                     .donated_indices = std::move(donated_indices)}));
-  return result_buffer;
+absl::StatusOr<DeviceBufferRef> Bmm(const at::Tensor& self,
+                                    const at::Tensor& mat2,
+                                    at::ScalarType out_dtype,
+                                    OpParamCacheKeys param_keys) {
+  return DispatchBmm<absl::StatusOr<DeviceBufferRef>>(
+      self, mat2, out_dtype, std::move(param_keys),
+      [&](auto op_builder, auto config) {
+        return DispatchOp<2>(std::move(op_builder), {self, mat2},
+                             std::move(config));
+      });
 }
 
 absl::Status BmmOut(const at::Tensor& self, const at::Tensor& mat2,
@@ -142,11 +134,12 @@ absl::Status BmmOut(const at::Tensor& self, const at::Tensor& mat2,
                     OpParamCacheKeys param_keys) {
   TT_RETURN_IF_ERROR(ValidateBmmInputs(self, mat2));
   TT_RETURN_IF_ERROR(ValidateBmmOut(out, out_dtype));
-  TT_ASSIGN_OR_RETURN(auto result_buffer,
-                      Bmm(self, mat2, out_dtype, std::move(param_keys), out));
-  TT_RETURN_IF_ERROR(
-      ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
-  return AssignBufferToAtTensor(std::move(result_buffer), out);
+  return DispatchBmm<absl::Status>(self, mat2, out_dtype, std::move(param_keys),
+                                   [&](auto op_builder, auto config) {
+                                     return DispatchOpOut<2>(
+                                         std::move(op_builder), {self, mat2},
+                                         out, std::move(config));
+                                   });
 }
 
 }  // namespace

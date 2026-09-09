@@ -265,11 +265,14 @@ absl::StatusOr<mlir::MlirOp> BuildSearchsortedLoopShlo(
   return result;
 }
 
-absl::StatusOr<DeviceBufferRef> SearchsortedTensorInternal(
-    const at::Tensor& sorted_sequence, const at::Tensor& values, bool out_int32,
-    bool right, c10::optional<c10::string_view> side,
-    const c10::optional<at::Tensor>& sorter, OpParamCacheKeys&& param_keys,
-    Indices donated_indices = {}) {
+template <typename ReturnType, typename DispatchFn>
+ReturnType SearchsortedTensorCommon(const at::Tensor& sorted_sequence,
+                                    const at::Tensor& values, bool out_int32,
+                                    bool right,
+                                    c10::optional<c10::string_view> side,
+                                    const c10::optional<at::Tensor>& sorter,
+                                    OpParamCacheKeys&& param_keys,
+                                    DispatchFn&& dispatch_fn) {
   TT_ASSIGN_OR_RETURN(at::Tensor resolved_sorted,
                       ResolveAuxiliaryTensorDevice(sorted_sequence));
   TT_ASSIGN_OR_RETURN(at::Tensor resolved_values,
@@ -286,10 +289,6 @@ absl::StatusOr<DeviceBufferRef> SearchsortedTensorInternal(
   TT_ASSIGN_OR_RETURN(mlir::ElementType out_mlir_type,
                       internal::ToElementType(out_dtype));
   Dimensions out_dims = CopyIntVector(resolved_values.sizes());
-
-  if (resolved_values.numel() == 0) {
-    return CreateZeroSizeDeviceBufferRef(out_dims, out_mlir_type);
-  }
 
   std::vector<at::Tensor> input_vec = {resolved_sorted, resolved_values};
   input_vec.reserve(3);
@@ -343,11 +342,58 @@ absl::StatusOr<DeviceBufferRef> SearchsortedTensorInternal(
                                      builder);
   };
 
-  return DispatchOp<kDynamicSize>(std::move(build_shlo), input_vec,
-                                  {.out_dtype = out_mlir_type,
-                                   .out_dims = out_dims,
-                                   .op_param_cache_keys = std::move(param_keys),
-                                   .donated_indices = donated_indices});
+  return dispatch_fn(std::move(build_shlo), std::move(input_vec), out_mlir_type,
+                     out_dims, std::move(param_keys),
+                     resolved_values.numel() == 0);
+}
+
+absl::StatusOr<DeviceBufferRef> SearchsortedTensorInternal(
+    const at::Tensor& sorted_sequence, const at::Tensor& values, bool out_int32,
+    bool right, c10::optional<c10::string_view> side,
+    const c10::optional<at::Tensor>& sorter, OpParamCacheKeys&& param_keys) {
+  return SearchsortedTensorCommon<absl::StatusOr<DeviceBufferRef>>(
+      sorted_sequence, values, out_int32, right, side, sorter,
+      std::move(param_keys),
+      [](auto build_shlo, auto input_vec, mlir::ElementType out_mlir_type,
+         const Dimensions& out_dims, OpParamCacheKeys&& param_keys,
+         bool is_empty) -> absl::StatusOr<DeviceBufferRef> {
+        if (is_empty) {
+          return CreateZeroSizeDeviceBufferRef(out_dims, out_mlir_type);
+        }
+        return DispatchOp<kDynamicSize>(
+            std::move(build_shlo), input_vec,
+            {.out_dtype = out_mlir_type,
+             .out_dims = out_dims,
+             .op_param_cache_keys = std::move(param_keys)});
+      });
+}
+
+absl::Status SearchsortedTensorOut(const at::Tensor& sorted_sequence,
+                                   const at::Tensor& values, bool out_int32,
+                                   bool right,
+                                   c10::optional<c10::string_view> side,
+                                   const c10::optional<at::Tensor>& sorter,
+                                   at::Tensor& out,
+                                   OpParamCacheKeys&& param_keys) {
+  return SearchsortedTensorCommon<absl::Status>(
+      sorted_sequence, values, out_int32, right, side, sorter,
+      std::move(param_keys),
+      [&out](auto build_shlo, auto input_vec, mlir::ElementType out_mlir_type,
+             const Dimensions& out_dims, OpParamCacheKeys&& param_keys,
+             bool is_empty) -> absl::Status {
+        if (is_empty) {
+          TT_ASSIGN_OR_RETURN(
+              DeviceBufferRef result_buf,
+              CreateZeroSizeDeviceBufferRef(out_dims, out_mlir_type));
+          TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, out_dims));
+          return AssignBufferToAtTensor(std::move(result_buf), out);
+        }
+        return DispatchOpOut<kDynamicSize>(
+            std::move(build_shlo), input_vec, out,
+            {.out_dtype = out_mlir_type,
+             .out_dims = out_dims,
+             .op_param_cache_keys = std::move(param_keys)});
+      });
 }
 
 }  // namespace
@@ -373,26 +419,13 @@ at::Tensor& AtenSearchsortedTensorOut(const at::Tensor& sorted_sequence,
                                       c10::optional<c10::string_view> side,
                                       const c10::optional<at::Tensor>& sorter,
                                       at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kSearchsortedTensorOut, param_keys,
-      (sorted_sequence, values, out_int32, right, side, sorter, out), {
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, values.sizes()));
-        Indices donated_indices = {};
-        at::ScalarType out_dtype =
-            out_int32 ? at::ScalarType::Int : at::ScalarType::Long;
-        TT_ASSIGN_OR_THROW(mlir::ElementType out_mlir_type,
-                           internal::ToElementType(out_dtype));
-        if (ShouldDonateInPlaceBuffer(out, values, out_mlir_type,
-                                      values.sizes())) {
-          donated_indices = {1};
-        }
-        TT_ASSIGN_OR_THROW(auto result,
-                           SearchsortedTensorInternal(
-                               sorted_sequence, values, out_int32, right, side,
-                               sorter, std::move(param_keys), donated_indices));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
-        return out;
-      });
+  TT_KERNEL(OpName::kSearchsortedTensorOut, param_keys,
+            (sorted_sequence, values, out_int32, right, side, sorter, out), {
+              TT_THROW_IF_ERROR(SearchsortedTensorOut(
+                  sorted_sequence, values, out_int32, right, side, sorter, out,
+                  std::move(param_keys)));
+              return out;
+            });
 }
 
 at::Tensor AtenSearchsortedScalar(const at::Tensor& sorted_sequence,
@@ -423,12 +456,9 @@ at::Tensor& AtenSearchsortedScalarOut(const at::Tensor& sorted_sequence,
       OpName::kSearchsortedScalarOut, param_keys,
       (sorted_sequence, promoted_value, out_int32, right, side, sorter, out), {
         TT_ASSIGN_OR_THROW(at::Tensor values, promoted_value.GetTensor());
-        TT_ASSIGN_OR_THROW(auto result,
-                           SearchsortedTensorInternal(
-                               sorted_sequence, values, out_int32, right, side,
-                               sorter, std::move(param_keys)));
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, {}));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+        TT_THROW_IF_ERROR(SearchsortedTensorOut(sorted_sequence, values,
+                                                out_int32, right, side, sorter,
+                                                out, std::move(param_keys)));
         return out;
       });
 }

@@ -1349,6 +1349,7 @@ torch_tpu_py_test(
     shard_count = 8,
     tags = [
         "nosan",  # *san builds are low-value for error tests.
+        "nozapfhahn",  # Requires --config=cuda; excluded from Zapfhahn coverage.
         _REQUIRES_GPU_SM90,
         "wheel_test_excluded",
     ],
@@ -1511,6 +1512,7 @@ torch_tpu_py_test(
     main = "rng_cuda_ref_test.py",
     nolocal = "Skipping in local runs by default as it requires --config=cuda.",
     tags = [
+        "nozapfhahn",  # Requires --config=cuda; excluded from Zapfhahn coverage.
         # Requires compute capability >= 7.0 for Triton / torch.compile.
         # Requires 2 devices for multi-device tests.
         # Multi-device sm80 is not available on Forge.
@@ -1564,6 +1566,7 @@ torch_tpu_py_test(
     main = "rng_multiprocess_test.py",
     nolocal = "Skipping in local runs by default as it requires --config=cuda.",
     tags = [
+        "nozapfhahn",  # Requires --config=cuda; excluded from Zapfhahn coverage.
         # Requires compute capability >= 7.0 for Triton / torch.compile.
         # Requires 2 devices for multi-device tests.
         # Multi-device sm80 is not available on Forge.
@@ -1889,6 +1892,7 @@ torch_tpu_py_test(
     srcs = ["autoload_disabled_backend_test.py"],
     main = "autoload_disabled_backend_test.py",
     tags = [
+        "nozapfhahn",  # Requires --config=cuda; excluded from Zapfhahn coverage.
         _REQUIRES_GPU_SM90,
     ],
     deps = [

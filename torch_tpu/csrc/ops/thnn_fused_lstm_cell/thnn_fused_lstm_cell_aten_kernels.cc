@@ -23,6 +23,7 @@
 #include <utility>
 
 #include "ATen/core/TensorBody.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -164,12 +165,9 @@ absl::StatusOr<std::array<mlir::MlirOp, 2>> BuildLstmCellBackwardShlo(
   return std::array<mlir::MlirOp, 2>{grad_gates, grad_cx};
 }
 
-absl::StatusOr<DeviceBufferRefArray<3>> ThnnFusedLstmCellImpl(
-    const at::Tensor& input_gates, const at::Tensor& hidden_gates,
-    const at::Tensor& cx, const std::optional<at::Tensor>& input_bias,
-    const std::optional<at::Tensor>& hidden_bias, OpParamCacheKeys param_keys,
-    const std::optional<at::Tensor>& out0 = std::nullopt,
-    const std::optional<at::Tensor>& out1 = std::nullopt) {
+absl::Status ValidateThnnFusedLstmCellInputs(const at::Tensor& input_gates,
+                                             const at::Tensor& hidden_gates,
+                                             const at::Tensor& cx) {
   TT_RET_CHECK(input_gates.sizes() == hidden_gates.sizes(),
                error::kInvalidArgument)
       << "expected size of argument #1 'input_gates' to match size of "
@@ -184,6 +182,17 @@ absl::StatusOr<DeviceBufferRefArray<3>> ThnnFusedLstmCellImpl(
       << "expected feature size of argument #1 'input_gates' to match 4 * "
          "feature size of argument #3 'cx' ("
       << 4 * cx.size(1) << "), got " << input_gates.size(1);
+  return absl::OkStatus();
+}
+
+template <typename ReturnType, typename Dispatch5, typename Dispatch3>
+ReturnType DispatchThnnFusedLstmCellCommon(
+    const at::Tensor& input_gates, const at::Tensor& hidden_gates,
+    const at::Tensor& cx, const std::optional<at::Tensor>& input_bias,
+    const std::optional<at::Tensor>& hidden_bias, OpParamCacheKeys param_keys,
+    Dispatch5&& dispatch5, Dispatch3&& dispatch3) {
+  TT_RETURN_IF_ERROR(
+      ValidateThnnFusedLstmCellInputs(input_gates, hidden_gates, cx));
 
   const int64_t batch = cx.size(0);
   const int64_t hidden = cx.size(1);
@@ -204,16 +213,6 @@ absl::StatusOr<DeviceBufferRefArray<3>> ThnnFusedLstmCellImpl(
                                                        out_dtype};
   const std::array<absl::Span<const int64_t>, 3> out_dims_list = {
       hc_dims, hc_dims, ws_dims};
-
-  // If `out1` (cy) or `out0` (hy) aliases `cx`, donate input 2 (cx)'s device
-  // buffer in eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if ((out1.has_value() &&
-       ShouldDonateInPlaceBuffer(*out1, cx, out_dtype, cx.sizes())) ||
-      (out0.has_value() &&
-       ShouldDonateInPlaceBuffer(*out0, cx, out_dtype, cx.sizes()))) {
-    donated_indices = {2};
-  }
 
   if (has_bias) {
     auto op_builder = [batch, hidden, acc_dtype,
@@ -236,13 +235,13 @@ absl::StatusOr<DeviceBufferRefArray<3>> ThnnFusedLstmCellImpl(
       mlir::MlirOp g3 = mlir::stablehlo::Add(ig_b, hg_b);
       return LstmCellFromGates(g3, c, batch, hidden, out_dtype);
     };
-    return DispatchOp<5, 3>(
+    return dispatch5(
         std::move(op_builder),
-        {input_gates, hidden_gates, cx, *s_input_bias, *s_hidden_bias},
-        {.out_dtypes = out_dtypes,
-         .out_dims_list = out_dims_list,
-         .op_param_cache_keys = std::move(param_keys),
-         .donated_indices = std::move(donated_indices)});
+        OpInputs<5>{input_gates, hidden_gates, cx, *s_input_bias,
+                    *s_hidden_bias},
+        DispatchOpOptions<3>{.out_dtypes = out_dtypes,
+                             .out_dims_list = out_dims_list,
+                             .op_param_cache_keys = std::move(param_keys)});
   } else {
     auto op_builder = [batch, hidden, acc_dtype,
                        out_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs)
@@ -256,13 +255,48 @@ absl::StatusOr<DeviceBufferRefArray<3>> ThnnFusedLstmCellImpl(
       mlir::MlirOp g1 = mlir::stablehlo::Add(ig_acc, hg_acc);
       return LstmCellFromGates(g1, c, batch, hidden, out_dtype);
     };
-    return DispatchOp<3, 3>(std::move(op_builder),
-                            {input_gates, hidden_gates, cx},
-                            {.out_dtypes = out_dtypes,
+    return dispatch3(
+        std::move(op_builder), OpInputs<3>{input_gates, hidden_gates, cx},
+        DispatchOpOptions<3>{.out_dtypes = out_dtypes,
                              .out_dims_list = out_dims_list,
-                             .op_param_cache_keys = std::move(param_keys),
-                             .donated_indices = std::move(donated_indices)});
+                             .op_param_cache_keys = std::move(param_keys)});
   }
+}
+
+absl::StatusOr<DeviceBufferRefArray<3>> ThnnFusedLstmCellImpl(
+    const at::Tensor& input_gates, const at::Tensor& hidden_gates,
+    const at::Tensor& cx, const std::optional<at::Tensor>& input_bias,
+    const std::optional<at::Tensor>& hidden_bias, OpParamCacheKeys param_keys) {
+  return DispatchThnnFusedLstmCellCommon<
+      absl::StatusOr<DeviceBufferRefArray<3>>>(
+      input_gates, hidden_gates, cx, input_bias, hidden_bias,
+      std::move(param_keys),
+      [](auto op_builder, auto inputs, auto options) {
+        return DispatchOp<5, 3>(std::move(op_builder), inputs,
+                                std::move(options));
+      },
+      [](auto op_builder, auto inputs, auto options) {
+        return DispatchOp<3, 3>(std::move(op_builder), inputs,
+                                std::move(options));
+      });
+}
+
+absl::Status ThnnFusedLstmCellOutImpl(
+    const at::Tensor& input_gates, const at::Tensor& hidden_gates,
+    const at::Tensor& cx, const std::optional<at::Tensor>& input_bias,
+    const std::optional<at::Tensor>& hidden_bias, OpParamCacheKeys param_keys,
+    at::Tensor& out0, at::Tensor& out1, at::Tensor& out2) {
+  return DispatchThnnFusedLstmCellCommon<absl::Status>(
+      input_gates, hidden_gates, cx, input_bias, hidden_bias,
+      std::move(param_keys),
+      [&](auto op_builder, auto inputs, auto options) {
+        return DispatchOpOut<5, 3>(std::move(op_builder), inputs,
+                                   {out0, out1, out2}, std::move(options));
+      },
+      [&](auto op_builder, auto inputs, auto options) {
+        return DispatchOpOut<3, 3>(std::move(op_builder), inputs,
+                                   {out0, out1, out2}, std::move(options));
+      });
 }
 
 }  // namespace
@@ -288,20 +322,15 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenThnnFusedLstmCellOut(
     const at::Tensor& cx, const std::optional<at::Tensor>& input_bias,
     const std::optional<at::Tensor>& hidden_bias, at::Tensor& out0,
     at::Tensor& out1, at::Tensor& out2) {
-  TT_KERNEL(
-      OpName::kThnnFusedLstmCellOut, param_keys,
-      (input_gates, hidden_gates, cx, input_bias, hidden_bias, out0, out1,
-       out2),
-      {
-        TT_ASSIGN_OR_THROW(const DeviceBufferRefArray<3> result_buffers,
-                           ThnnFusedLstmCellImpl(
-                               input_gates, hidden_gates, cx, input_bias,
-                               hidden_bias, std::move(param_keys), out0, out1));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], out0));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[1], out1));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[2], out2));
-        return {out0, out1, out2};
-      });
+  TT_KERNEL(OpName::kThnnFusedLstmCellOut, param_keys,
+            (input_gates, hidden_gates, cx, input_bias, hidden_bias, out0, out1,
+             out2),
+            {
+              TT_THROW_IF_ERROR(ThnnFusedLstmCellOutImpl(
+                  input_gates, hidden_gates, cx, input_bias, hidden_bias,
+                  std::move(param_keys), out0, out1, out2));
+              return {out0, out1, out2};
+            });
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor>

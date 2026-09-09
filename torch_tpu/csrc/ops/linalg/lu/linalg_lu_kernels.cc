@@ -53,9 +53,7 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/to_string.h"
 #include "torch_tpu/csrc/common/utils.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/copy_from/copy_from_aten_kernels.h"
 #include "torch_tpu/csrc/ops/linalg/solve_triangular/linalg_solve_triangular_kernels.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
@@ -230,26 +228,11 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
         TT_ASSIGN_OR_THROW(mlir::ElementType out_mlir_type,
                            ConvertTo<mlir::ElementType>(a.scalar_type()));
 
-        // If `lu` aliases `a`, donate input 0 (a)'s device buffer to output 0
-        // in eligible eager modes (DeferNever) to avoid allocation churn.
-        Indices donated_indices;
-        if (ShouldDonateInPlaceBuffer(lu, a, out_mlir_type, a.sizes())) {
-          donated_indices = {0};
-        }
-
-        TT_ASSIGN_OR_THROW(
-            auto results,
-            (DispatchOp<1, 2>(
-                LuDecompositionBuilder, {a},
-                {.out_dtypes = {out_mlir_type, mlir::ElementType::I32},
-                 .out_dims_list = {a.sizes(), pivot_dims},
-                 .op_param_cache_keys = std::move(param_keys),
-                 .donated_indices = std::move(donated_indices)})));
-
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(lu, a.sizes()));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[0], lu));
-        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(pivots, pivot_dims));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[1], pivots));
+        TT_THROW_IF_ERROR((DispatchOpOut<1, 2>(
+            LuDecompositionBuilder, a, {lu, pivots},
+            {.out_dtypes = {out_mlir_type, mlir::ElementType::I32},
+             .out_dims_list = {a.sizes(), pivot_dims},
+             .op_param_cache_keys = std::move(param_keys)})));
         // Pivots are 0-based, but torch uses 1-based indexing.
         pivots.add_(1);
         // Find the first non-zero diagonal element.
@@ -390,65 +373,34 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
           return absl::OkStatus();
         };
 
-        const auto l_inversion = [lu, left, adjoint, &param_keys = param_keys](
-                                     at::Tensor& t) -> absl::Status {
+        const auto solve_triangular_step =
+            [lu, left, adjoint, &param_keys = param_keys](
+                at::Tensor& t, bool upper, bool unitriangular,
+                std::string_view step_name) -> absl::Status {
           TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype,
                               ConvertTo<mlir::ElementType>(t.scalar_type()));
           auto step_keys = param_keys.Clone();
-          TT_RETURN_IF_ERROR(step_keys.SetParam("step", "L"));
+          TT_RETURN_IF_ERROR(step_keys.SetParam("step", step_name));
 
-          // Donate input 1 (t)'s device buffer to the output in eligible eager
-          // modes (DeferNever) to avoid allocation churn.
-          Indices donated_indices;
-          if (ShouldDonateInPlaceBuffer(t, t.sizes(), out_dtype)) {
-            donated_indices = {1};
-          }
-
-          TT_ASSIGN_OR_RETURN(
-              auto buffer,
-              DispatchOp<2>(LinalgSolveTriangularBuilder({.upper = false,
-                                                          .left = left,
-                                                          .unitriangular = true,
-                                                          .adjoint = adjoint}),
-                            {lu, t},
-                            {.out_dtype = out_dtype,
-                             .out_dims = CopyIntVector(t.sizes()),
-                             .op_param_cache_keys = std::move(step_keys),
-                             .donated_indices = std::move(donated_indices)}));
-
-          TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(buffer), t));
-          return absl::OkStatus();
+          return DispatchOpOut<2>(
+              LinalgSolveTriangularBuilder({.upper = upper,
+                                            .left = left,
+                                            .unitriangular = unitriangular,
+                                            .adjoint = adjoint}),
+              {lu, t}, t,
+              {.out_dtype = out_dtype,
+               .out_dims = CopyIntVector(t.sizes()),
+               .op_param_cache_keys = std::move(step_keys)});
         };
 
-        const auto u_inversion = [lu, left, adjoint, &param_keys = param_keys](
-                                     at::Tensor& t) -> absl::Status {
-          TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype,
-                              ConvertTo<mlir::ElementType>(t.scalar_type()));
-          auto step_keys = param_keys.Clone();
-          TT_RETURN_IF_ERROR(step_keys.SetParam("step", "U"));
+        const auto l_inversion = [&](at::Tensor& t) {
+          return solve_triangular_step(t, /*upper=*/false,
+                                       /*unitriangular=*/true, "L");
+        };
 
-          // Donate input 1 (t)'s device buffer to the output in eligible eager
-          // modes (DeferNever) to avoid allocation churn.
-          Indices donated_indices;
-          if (ShouldDonateInPlaceBuffer(t, t.sizes(), out_dtype)) {
-            donated_indices = {1};
-          }
-
-          TT_ASSIGN_OR_RETURN(
-              auto buffer,
-              DispatchOp<2>(
-                  LinalgSolveTriangularBuilder({.upper = true,
-                                                .left = left,
-                                                .unitriangular = false,
-                                                .adjoint = adjoint}),
-                  {lu, t},
-                  {.out_dtype = out_dtype,
-                   .out_dims = CopyIntVector(t.sizes()),
-                   .op_param_cache_keys = std::move(step_keys),
-                   .donated_indices = std::move(donated_indices)}));
-
-          TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(buffer), t));
-          return absl::OkStatus();
+        const auto u_inversion = [&](at::Tensor& t) {
+          return solve_triangular_step(t, /*upper=*/true,
+                                       /*unitriangular=*/false, "U");
         };
 
         out.copy_(b);

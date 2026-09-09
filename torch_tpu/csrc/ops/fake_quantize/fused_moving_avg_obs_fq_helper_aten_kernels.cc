@@ -43,7 +43,6 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/a_min_max/a_min_max.h"
@@ -51,7 +50,6 @@
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/reductions/reductions.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -498,63 +496,21 @@ FusedMovingAvgObsFqHelperImpl(const at::Tensor& self,
   TT_ASSIGN_OR_RETURN(const auto zp_dtype,
                       ConvertTo<mlir::ElementType>(zero_point.scalar_type()));
 
-  Indices donated_indices;
-  if (!is_uninitialized) {
-    if (ShouldDonateInPlaceBuffer(running_min, rmin_in, rmin_dtype,
-                                  qparam_shape)) {
-      donated_indices.push_back(3);
-    }
-    if (ShouldDonateInPlaceBuffer(running_max, rmax_in, rmax_dtype,
-                                  qparam_shape)) {
-      donated_indices.push_back(4);
-    }
-    if (ShouldDonateInPlaceBuffer(scale, scale_in, scale_dtype, qparam_shape)) {
-      donated_indices.push_back(5);
-    }
-    if (ShouldDonateInPlaceBuffer(zero_point, zp_in, zp_dtype, qparam_shape)) {
-      donated_indices.push_back(6);
-    }
-  }
-
-  TT_ASSIGN_OR_RETURN(
-      auto result_buffers,
-      (DispatchOp<7, 6>(
-          std::move(op_builder),
-          {self, observer_on, fake_quant_on, rmin_in, rmax_in, scale_in, zp_in},
-          {.out_dtypes = {self_dtype, mlir::ElementType::PRED, rmin_dtype,
-                          rmax_dtype, scale_dtype, zp_dtype},
-           .out_dims_list = {self.sizes(), self.sizes(), qparam_shape,
-                             qparam_shape, qparam_shape, qparam_shape},
-           .op_param_cache_keys = std::move(param_keys),
-           .donated_indices = std::move(donated_indices)})));
-
   TT_ASSIGN_OR_RETURN(
       at::Tensor output,
       MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
   TT_ASSIGN_OR_RETURN(at::Tensor mask,
                       MakeEmptyTensor(self.sizes(), at::kBool, self.device()));
-  TT_RETURN_IF_ERROR(
-      AssignBufferToAtTensor(std::move(result_buffers[0]), output));
-  TT_RETURN_IF_ERROR(
-      AssignBufferToAtTensor(std::move(result_buffers[1]), mask));
 
-  // Resize output state tensors if they were dynamically allocated
-  // from uninitialized state.
-  if (is_uninitialized) {
-    TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(running_min, qparam_shape));
-    TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(running_max, qparam_shape));
-    TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(scale, qparam_shape));
-    TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(zero_point, qparam_shape));
-  }
-
-  TT_RETURN_IF_ERROR(
-      AssignBufferToAtTensor(std::move(result_buffers[2]), running_min));
-  TT_RETURN_IF_ERROR(
-      AssignBufferToAtTensor(std::move(result_buffers[3]), running_max));
-  TT_RETURN_IF_ERROR(
-      AssignBufferToAtTensor(std::move(result_buffers[4]), scale));
-  TT_RETURN_IF_ERROR(
-      AssignBufferToAtTensor(std::move(result_buffers[5]), zero_point));
+  TT_RETURN_IF_ERROR((DispatchOpOut<7, 6>(
+      std::move(op_builder),
+      {self, observer_on, fake_quant_on, rmin_in, rmax_in, scale_in, zp_in},
+      {output, mask, running_min, running_max, scale, zero_point},
+      {.out_dtypes = {self_dtype, mlir::ElementType::PRED, rmin_dtype,
+                      rmax_dtype, scale_dtype, zp_dtype},
+       .out_dims_list = {self.sizes(), self.sizes(), qparam_shape, qparam_shape,
+                         qparam_shape, qparam_shape},
+       .op_param_cache_keys = std::move(param_keys)})));
 
   return std::make_tuple(output, mask);
 }

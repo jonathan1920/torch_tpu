@@ -312,29 +312,13 @@ at::Tensor& AtenNllLossBackwardGradInput(
           inputs.push_back(weight.value());
         }
 
-        // If `grad_input` aliases `self`, donate input 1's device buffer to
-        // the output in eligible eager modes (DeferNever) to avoid allocation
-        // churn.
-        Indices donated_indices;
-        if (ShouldDonateInPlaceBuffer(grad_input, self, output_dtype,
-                                      output_dims)) {
-          donated_indices = {1};
-        }
-
         DispatchOpOptions<1> options = {
             .out_dtype = output_dtype,
             .out_dims = output_dims,
             .op_param_cache_keys = std::move(param_keys),
-            .donated_indices = std::move(donated_indices)};
-
-        TT_ASSIGN_OR_THROW(
-            auto grad_input_buf,
-            (DispatchOp<kDynamicSize, 1>(std::move(op_builder), inputs,
-                                         std::move(options))));
-
-        at::native::resize_output(grad_input, grad_input_buf.dimensions());
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(grad_input_buf), grad_input));
+        };
+        TT_THROW_IF_ERROR(DispatchOpOut<kDynamicSize>(
+            std::move(op_builder), inputs, grad_input, std::move(options)));
         return grad_input;
       });
 }

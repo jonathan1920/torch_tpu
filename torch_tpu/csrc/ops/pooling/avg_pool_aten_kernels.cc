@@ -46,12 +46,10 @@
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/pooling/pooling.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -467,6 +465,23 @@ absl::StatusOr<mlir::MlirOp> BuildAvgPoolBackwardShlo(
       sliced_grad, batch_input_info.original_dim_size, spatial_dim_count);
   return CastIfNeeded(result, orig_dtype);
 }
+
+auto GetAvgPoolOpBuilder(at::IntArrayRef kernel_size, at::IntArrayRef stride,
+                         at::IntArrayRef padding, bool ceil_mode,
+                         bool count_include_pad,
+                         std::optional<int64_t> divisor_override,
+                         int64_t spatial_dim_count) {
+  return
+      [kernel_size_vec = CopyIntVector(kernel_size),
+       stride_vec = CopyIntVector(stride), padding_vec = CopyIntVector(padding),
+       ceil_mode, count_include_pad, divisor_override, spatial_dim_count](
+          mlir::MlirOp input_op) -> absl::StatusOr<mlir::MlirOp> {
+        return BuildAvgPoolShlo(input_op, spatial_dim_count, kernel_size_vec,
+                                stride_vec, padding_vec, ceil_mode,
+                                count_include_pad, divisor_override);
+      };
+}
+
 }  // namespace
 
 // Helper function to build and dispatch N-dimensional average pooling
@@ -476,35 +491,16 @@ absl::StatusOr<DeviceBufferRef> BuildAvgPoolNd(
     at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,
     std::optional<int64_t> divisor_override, mlir::ElementType out_dtype,
     at::IntArrayRef out_sizes, int64_t spatial_dim_count,
-    OpParamCacheKeys param_keys, std::optional<OpName> override_op_name,
-    const std::optional<at::Tensor>& out) {
-  auto op_builder = [kernel_size_vec = CopyIntVector(kernel_size),
-                     stride_vec = CopyIntVector(stride),
-                     padding_vec = CopyIntVector(padding), ceil_mode,
-                     count_include_pad, divisor_override, spatial_dim_count](
-                        mlir::MlirOp input_op) -> absl::StatusOr<mlir::MlirOp> {
-    return BuildAvgPoolShlo(input_op, spatial_dim_count, kernel_size_vec,
-                            stride_vec, padding_vec, ceil_mode,
-                            count_include_pad, divisor_override);
-  };
+    OpParamCacheKeys param_keys, std::optional<OpName> override_op_name) {
+  auto op_builder = GetAvgPoolOpBuilder(kernel_size, stride, padding, ceil_mode,
+                                        count_include_pad, divisor_override,
+                                        spatial_dim_count);
 
-  // If `out` aliases `self`, donate input 0's device buffer to the output in
-  // eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (out.has_value() &&
-      ShouldDonateInPlaceBuffer(*out, self, out_dtype, out_sizes)) {
-    donated_indices = {0};
-  }
-
-  TT_ASSIGN_OR_RETURN(
-      auto result_buf,
-      DispatchOp<1>(std::move(op_builder), self,
-                    {.op_name = override_op_name,
-                     .out_dtype = out_dtype,
-                     .out_dims = CopyIntVector(out_sizes),
-                     .op_param_cache_keys = std::move(param_keys),
-                     .donated_indices = std::move(donated_indices)}));
-  return result_buf;
+  return DispatchOp<1>(std::move(op_builder), self,
+                       {.op_name = override_op_name,
+                        .out_dtype = out_dtype,
+                        .out_dims = CopyIntVector(out_sizes),
+                        .op_param_cache_keys = std::move(param_keys)});
 }
 
 absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
@@ -516,16 +512,16 @@ absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
       const Dimensions output_size,
       GetPoolingOutputSize(self.sizes(), kernel_size, stride, padding,
                            at::IntArrayRef({1}), ceil_mode, spatial_dim_count));
-  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_size));
   TT_ASSIGN_OR_RETURN(auto out_type,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
-  TT_ASSIGN_OR_RETURN(
-      auto result_buf,
-      BuildAvgPoolNd(self, kernel_size, stride, padding, ceil_mode,
-                     count_include_pad, divisor_override, out_type, output_size,
-                     spatial_dim_count, std::move(param_keys),
-                     /*override_op_name=*/std::nullopt, out));
-  TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+  auto op_builder = GetAvgPoolOpBuilder(kernel_size, stride, padding, ceil_mode,
+                                        count_include_pad, divisor_override,
+                                        spatial_dim_count);
+  TT_RETURN_IF_ERROR(
+      DispatchOpOut<1>(std::move(op_builder), self, out,
+                       {.out_dtype = out_type,
+                        .out_dims = output_size,
+                        .op_param_cache_keys = std::move(param_keys)}));
   return out;
 }
 
@@ -551,27 +547,14 @@ absl::StatusOr<at::Tensor> BuildAvgPoolBackwardGradInputNd(
         padding_vec, ceil_mode, count_include_pad, divisor_override);
   };
 
-  // If `grad_input` aliases `grad_output` or `self`, donate that input's device
-  // buffer to the output in eligible eager modes (DeferNever) to avoid
-  // allocation churn.
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(grad_input, grad_output, output_dtype,
-                                grad_input.sizes())) {
-    donated_indices = {0};
-  } else if (ShouldDonateInPlaceBuffer(grad_input, self, output_dtype,
-                                       grad_input.sizes())) {
-    donated_indices = {1};
-  }
-
-  TT_ASSIGN_OR_RETURN(
-      auto result,
-      (DispatchOp<2>(std::move(op_builder), {grad_output, self},
-                     {.out_dtype = output_dtype,
-                      .out_dims = CopyIntVector(grad_input.sizes()),
-                      .op_param_cache_keys = std::move(param_keys),
-                      .donated_indices = std::move(donated_indices)})));
-
-  TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(result), grad_input));
+  DispatchOpOptions<1> options = {
+      .out_dtype = output_dtype,
+      .out_dims = grad_input.sizes(),
+      .op_param_cache_keys = std::move(param_keys),
+  };
+  TT_RETURN_IF_ERROR(DispatchOpOut<2>(std::move(op_builder),
+                                      {grad_output, self}, grad_input,
+                                      std::move(options)));
   return grad_input;
 }
 

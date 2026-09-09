@@ -16,6 +16,8 @@
 
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -25,7 +27,9 @@
 #include "ATen/core/ATen_fwd.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -50,6 +54,7 @@
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
+#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace torch_tpu {
@@ -145,6 +150,28 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
                         .op_param_cache_keys = std::move(op_param_cache_keys)});
 }
 
+bool IsEligibleDonor(const at::Tensor& in, const at::Tensor& out,
+                     mlir::ElementType out_dtype,
+                     at::IntArrayRef destination_dims) {
+  if (!out.is_alias_of(in) || !in.is_contiguous() || in.storage_offset() != 0 ||
+      in.is_conj() || in.numel() == 0 || in.sizes() != destination_dims) {
+    return false;
+  }
+  const auto in_dtype = ConvertTo<mlir::ElementType>(in.scalar_type());
+  return in_dtype.ok() && *in_dtype == out_dtype;
+}
+
+void MarkDonatedAndAliases(size_t donated_idx,
+                           absl::Span<const at::Tensor> inputs,
+                           std::vector<bool>& input_donated) {
+  const at::Tensor& donated_in = inputs[donated_idx];
+  for (size_t k = 0; k < inputs.size(); ++k) {
+    if (inputs[k].is_alias_of(donated_in)) {
+      input_donated[k] = true;
+    }
+  }
+}
+
 }  // namespace
 
 namespace internal {
@@ -162,6 +189,76 @@ void SetOpDispatchFailure(std::string op_base_name,
 
 std::string EncodeParamCacheKey(const std::optional<PromotedScalar>& value) {
   return value.has_value() ? "s" : "";
+}
+
+// Automatically detects and configures buffer donations from `inputs` into
+// multiple `outputs` in eager mode.
+//
+// Safety and layout invariants verified for each donor-destination pair:
+// 1. In-place aliasing: destination must alias donor (is_alias_of).
+// 2. Feature flag & execution mode: donation must be enabled via
+//    IsInplaceBufferDonationEnabled() and restricted to synchronous eager modes
+//    (kDeferNever, kDeferNeverAndLaunchBlocking). In deferred execution
+//    (kDeferAndFuse), automated donation is currently not done.
+// 3. Dense layout: donor must be contiguous, zero-offset, unconjugated,
+//    non-empty, and identical in shape to the destination dimensions.
+// 4. Data type: donor element type must match the destination element type.
+// 5. Single donation constraint: In XLA / StableHLO, each device buffer can be
+//    donated to at most ONE output buffer. Once an input is donated, it and all
+//    its storage aliases (is_alias_of) are marked as donated to prevent any
+//    duplicate buffer donation across multiple outputs.
+void AutoDonateInPlaceBuffers(
+    absl::Span<const at::Tensor> outputs,
+    absl::Span<const mlir::ElementType> out_dtypes,
+    absl::Span<const absl::Span<const int64_t>> out_dims_list,
+    absl::Span<const at::Tensor> inputs, Indices& donated_indices) {
+  if (!donated_indices.empty() || !IsInplaceBufferDonationEnabled() ||
+      !IsDeferNeverMode(GetEagerMode())) {
+    return;
+  }
+
+  std::vector<bool> input_donated(inputs.size(), false);
+  for (size_t out_idx = 0; out_idx < outputs.size(); ++out_idx) {
+    const at::Tensor& out = outputs[out_idx];
+    if (!out.defined()) {
+      continue;
+    }
+    const auto out_dtype = out_dtypes[out_idx];
+    const at::IntArrayRef destination_dims(out_dims_list[out_idx].data(),
+                                           out_dims_list[out_idx].size());
+    for (size_t in_idx = 0; in_idx < inputs.size(); ++in_idx) {
+      if (input_donated[in_idx]) {
+        continue;
+      }
+      if (IsEligibleDonor(inputs[in_idx], out, out_dtype, destination_dims)) {
+        donated_indices.push_back(static_cast<int64_t>(in_idx));
+        MarkDonatedAndAliases(in_idx, inputs, input_donated);
+        break;
+      }
+    }
+  }
+}
+
+absl::Status AssignBufferToOutput(const at::Tensor& output,
+                                  DeviceBufferRef result_buffer) {
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Output tensors are always defined.
+      output.defined(), error::kInvalidArgument)
+      << "expected defined output tensor";
+  TT_RETURN_IF_ERROR(
+      ResizeTensorIfShapeDiffers(output, result_buffer.dimensions()));
+  return AssignBufferToAtTensor(std::move(result_buffer), output);
+}
+
+absl::Status AssignBuffersToOutputs(
+    absl::Span<const at::Tensor> outputs,
+    absl::Span<DeviceBufferRef> result_buffers) {
+  ABSL_CHECK_EQ(outputs.size(), result_buffers.size())  // CRASH_OK
+      << "Mismatch between number of output tensors and result buffers.";
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    TT_RETURN_IF_ERROR(
+        AssignBufferToOutput(outputs[i], std::move(result_buffers[i])));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace internal

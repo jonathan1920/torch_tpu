@@ -36,7 +36,6 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
@@ -44,7 +43,6 @@
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/precision_context.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -93,10 +91,9 @@ absl::Status ValidateMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
   return absl::OkStatus();
 }
 
-absl::StatusOr<DeviceBufferRef> Mm(
-    const at::Tensor& lhs, const at::Tensor& rhs, at::Tensor& out,
-    OpParamCacheKeys param_keys,
-    std::optional<at::ScalarType> out_dtype = std::nullopt) {
+absl::Status Mm(const at::Tensor& lhs, const at::Tensor& rhs, at::Tensor& out,
+                OpParamCacheKeys param_keys,
+                std::optional<at::ScalarType> out_dtype = std::nullopt) {
   TT_RETURN_IF_ERROR(ValidateMmOutInputs(lhs, rhs, out, out_dtype));
   int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
 
@@ -123,24 +120,10 @@ absl::StatusOr<DeviceBufferRef> Mm(
     return BuildMmShlo(lhs_op, rhs_op, current_precision);
   };
 
-  // If `out` aliases `lhs` or `rhs`, donate that device buffer to the output in
-  // eligible eager modes (DeferNever) to avoid memory allocation churn.
-  Indices donated_indices;
-  if (ShouldDonateInPlaceBuffer(out, lhs, target_elem_dtype, output_dims)) {
-    donated_indices = {0};
-  } else if (ShouldDonateInPlaceBuffer(out, rhs, target_elem_dtype,
-                                       output_dims)) {
-    donated_indices = {1};
-  }
-
-  TT_ASSIGN_OR_RETURN(
-      auto result_buf,
-      DispatchOp<2>(std::move(op_builder), {lhs, rhs},
-                    {.out_dtype = target_elem_dtype,
-                     .out_dims = output_dims,
-                     .op_param_cache_keys = std::move(param_keys),
-                     .donated_indices = std::move(donated_indices)}));
-  return result_buf;
+  return DispatchOpOut<2>(std::move(op_builder), {lhs, rhs}, out,
+                          {.out_dtype = target_elem_dtype,
+                           .out_dims = output_dims,
+                           .op_param_cache_keys = std::move(param_keys)});
 }
 
 }  // namespace
@@ -151,10 +134,7 @@ at::Tensor AtenMmDtype(const at::Tensor& lhs, const at::Tensor& rhs,
     int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
     TT_ASSIGN_OR_THROW(at::Tensor out,
                        MakeEmptyTensor(output_dims, out_dtype, lhs.device()));
-
-    TT_ASSIGN_OR_THROW(auto result_buf,
-                       Mm(lhs, rhs, out, std::move(param_keys), out_dtype));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+    TT_THROW_IF_ERROR(Mm(lhs, rhs, out, std::move(param_keys), out_dtype));
     return out;
   });
 }
@@ -162,11 +142,7 @@ at::Tensor AtenMmDtype(const at::Tensor& lhs, const at::Tensor& rhs,
 at::Tensor& AtenMmDtypeOut(const at::Tensor& lhs, const at::Tensor& rhs,
                            at::ScalarType out_dtype, at::Tensor& out) {
   TT_KERNEL(OpName::kMmDtypeOut, param_keys, (lhs, rhs, out_dtype, out), {
-    TT_ASSIGN_OR_THROW(auto result_buf,
-                       Mm(lhs, rhs, out, std::move(param_keys), out_dtype));
-    int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
-    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_dims));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+    TT_THROW_IF_ERROR(Mm(lhs, rhs, out, std::move(param_keys), out_dtype));
     return out;
   });
 }
@@ -174,11 +150,7 @@ at::Tensor& AtenMmDtypeOut(const at::Tensor& lhs, const at::Tensor& rhs,
 at::Tensor& AtenMmOut(const at::Tensor& lhs, const at::Tensor& rhs,
                       at::Tensor& out) {
   TT_KERNEL(OpName::kMmOut, param_keys, (lhs, rhs, out), {
-    TT_ASSIGN_OR_THROW(auto result_buf,
-                       Mm(lhs, rhs, out, std::move(param_keys)));
-    int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
-    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_dims));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+    TT_THROW_IF_ERROR(Mm(lhs, rhs, out, std::move(param_keys)));
     return out;
   });
 }

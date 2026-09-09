@@ -21,7 +21,6 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
@@ -48,7 +47,6 @@
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
 #include "torch_tpu/csrc/ops/precision_context.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/csrc/ops/unary.h"
 
 namespace torch_tpu {
@@ -164,152 +162,131 @@ absl::StatusOr<mlir::ElementType> ValidateAddmmInputsAndGetOutputDtype(
   return output_dtype_mlir;
 }
 
-absl::StatusOr<DeviceBufferRef> AddMm(
-    const at::Tensor& self, const at::Tensor& mat1, const at::Tensor& mat2,
-    MaybePromotedScalar beta, PromotedScalar alpha,
-    at::ScalarType out_scalar_type, OpParamCacheKeys& param_keys,
-    std::optional<at::Tensor> out = std::nullopt) {
+template <typename ReturnType, typename Dispatch4, typename Dispatch5>
+ReturnType DispatchAddmm(const at::Tensor& self, const at::Tensor& mat1,
+                         const at::Tensor& mat2, MaybePromotedScalar beta,
+                         PromotedScalar alpha, at::ScalarType out_scalar_type,
+                         OpParamCacheKeys& param_keys,
+                         std::optional<bool> use_gelu, Dispatch4&& dispatch4,
+                         Dispatch5&& dispatch5) {
   TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype_mlir,
                       ValidateAddmmInputsAndGetOutputDtype(
                           self, mat1, mat2, beta, alpha, out_scalar_type));
   Dimensions output_dims_vec = {mat1.size(0), mat2.size(1)};
   const auto current_precision = GetAndAddPrecisionTo(param_keys);
 
-  // If `out` aliases `self`, `mat1`, or `mat2`, donate that device buffer to
-  // the output in eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (out.has_value()) {
-    if (ShouldDonateInPlaceBuffer(*out, self, output_dtype_mlir,
-                                  output_dims_vec)) {
-      donated_indices = {0};
-    } else if (ShouldDonateInPlaceBuffer(*out, mat1, output_dtype_mlir,
-                                         output_dims_vec)) {
-      donated_indices = {1};
-    } else if (ShouldDonateInPlaceBuffer(*out, mat2, output_dtype_mlir,
-                                         output_dims_vec)) {
-      donated_indices = {2};
+  auto apply_activation =
+      [use_gelu,
+       output_dtype_mlir](mlir::MlirOp res) -> absl::StatusOr<mlir::MlirOp> {
+    if (!use_gelu.has_value()) {
+      return res;
     }
-  }
-
-  if (beta.ValueMatchesExclude()) {
-    // If beta is zero, we can skip promoting it and dispatch the optimized
-    // 4-input op.
-    TT_ASSIGN_OR_RETURN(const at::Tensor alpha_tensor,
-                        alpha.GetTensor(out_scalar_type));
-    auto op_builder = [output_dtype_mlir, output_dims_vec, current_precision](
-                          FixedSizeSpan<mlir::MlirOp, 4> inputs_op)
-        -> absl::StatusOr<mlir::MlirOp> {
-      auto& [self_op, mat1_op, mat2_op, alpha_op] = inputs_op;
-      return BuildAddmmShlo(self_op, mat1_op, mat2_op, std::nullopt, alpha_op,
-                            output_dtype_mlir, current_precision);
-    };
-    return DispatchOp<4>(std::move(op_builder),
-                         {self, mat1, mat2, alpha_tensor},
-                         {.out_dtype = output_dtype_mlir,
-                          .out_dims = output_dims_vec,
-                          .op_param_cache_keys = std::move(param_keys),
-                          .donated_indices = std::move(donated_indices)});
-  }
-
-  // Complex path: beta is non-zero, so we promote it and dispatch the 5-input
-  // op.
-  TT_ASSIGN_OR_RETURN(const at::Tensor beta_tensor,
-                      beta.GetTensor(out_scalar_type));
-  TT_ASSIGN_OR_RETURN(const at::Tensor alpha_tensor,
-                      alpha.GetTensor(out_scalar_type));
-  auto op_builder = [output_dtype_mlir, output_dims_vec, current_precision](
-                        FixedSizeSpan<mlir::MlirOp, 5> inputs_op)
-      -> absl::StatusOr<mlir::MlirOp> {
-    auto& [self_op, mat1_op, mat2_op, beta_op, alpha_op] = inputs_op;
-    return BuildAddmmShlo(self_op, mat1_op, mat2_op, beta_op, alpha_op,
-                          output_dtype_mlir, current_precision);
+    if (*use_gelu) {
+      return BuildGeluShlo(res, "none", output_dtype_mlir);
+    }
+    return BuildReluShlo(res);
   };
-  return DispatchOp<5>(std::move(op_builder),
-                       {self, mat1, mat2, beta_tensor, alpha_tensor},
-                       {.out_dtype = output_dtype_mlir,
-                        .out_dims = output_dims_vec,
-                        .op_param_cache_keys = std::move(param_keys),
-                        .donated_indices = std::move(donated_indices)});
-}
-
-absl::StatusOr<DeviceBufferRef> AddMmActivation(
-    const at::Tensor& self, const at::Tensor& mat1, const at::Tensor& mat2,
-    MaybePromotedScalar beta, PromotedScalar alpha, bool use_gelu,
-    at::ScalarType out_scalar_type, OpParamCacheKeys& param_keys,
-    std::optional<at::Tensor> out = std::nullopt) {
-  TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype_mlir,
-                      ValidateAddmmInputsAndGetOutputDtype(
-                          self, mat1, mat2, beta, alpha, out_scalar_type));
-  Dimensions output_dims_vec = {mat1.size(0), mat2.size(1)};
-  const auto current_precision = GetAndAddPrecisionTo(param_keys);
-
-  // If `out` aliases `self`, `mat1`, or `mat2`, donate that device buffer to
-  // the output in eligible eager modes (DeferNever) to avoid allocation churn.
-  Indices donated_indices;
-  if (out.has_value()) {
-    if (ShouldDonateInPlaceBuffer(*out, self, output_dtype_mlir,
-                                  output_dims_vec)) {
-      donated_indices = {0};
-    } else if (ShouldDonateInPlaceBuffer(*out, mat1, output_dtype_mlir,
-                                         output_dims_vec)) {
-      donated_indices = {1};
-    } else if (ShouldDonateInPlaceBuffer(*out, mat2, output_dtype_mlir,
-                                         output_dims_vec)) {
-      donated_indices = {2};
-    }
-  }
 
   if (beta.ValueMatchesExclude()) {
-    // If beta is zero, we can skip promoting it and dispatch the optimized
-    // 4-input op.
     TT_ASSIGN_OR_RETURN(const at::Tensor alpha_tensor,
                         alpha.GetTensor(out_scalar_type));
-    auto op_builder = [output_dtype_mlir, output_dims_vec, current_precision,
-                       use_gelu](FixedSizeSpan<mlir::MlirOp, 4> inputs_op)
+    auto op_builder = [output_dtype_mlir, current_precision, apply_activation](
+                          FixedSizeSpan<mlir::MlirOp, 4> inputs_op)
         -> absl::StatusOr<mlir::MlirOp> {
       auto& [self_op, mat1_op, mat2_op, alpha_op] = inputs_op;
       TT_ASSIGN_OR_RETURN(
           mlir::MlirOp res,
           BuildAddmmShlo(self_op, mat1_op, mat2_op, std::nullopt, alpha_op,
                          output_dtype_mlir, current_precision));
-      if (use_gelu) {
-        return BuildGeluShlo(res, "none", output_dtype_mlir);
-      }
-      return BuildReluShlo(res);
+      return apply_activation(res);
     };
-    return DispatchOp<4>(std::move(op_builder),
-                         {self, mat1, mat2, alpha_tensor},
-                         {.out_dtype = output_dtype_mlir,
-                          .out_dims = output_dims_vec,
-                          .op_param_cache_keys = std::move(param_keys),
-                          .donated_indices = std::move(donated_indices)});
+    return dispatch4(
+        std::move(op_builder), alpha_tensor,
+        DispatchOpOptions<1>{.out_dtype = output_dtype_mlir,
+                             .out_dims = output_dims_vec,
+                             .op_param_cache_keys = std::move(param_keys)});
   }
 
-  // Complex path: beta is non-zero, so we promote it and dispatch the 5-input
-  // op.
   TT_ASSIGN_OR_RETURN(const at::Tensor beta_tensor,
                       beta.GetTensor(out_scalar_type));
   TT_ASSIGN_OR_RETURN(const at::Tensor alpha_tensor,
                       alpha.GetTensor(out_scalar_type));
-  auto op_builder = [output_dtype_mlir, output_dims_vec, current_precision,
-                     use_gelu](FixedSizeSpan<mlir::MlirOp, 5> inputs_op)
+  auto op_builder = [output_dtype_mlir, current_precision,
+                     apply_activation](FixedSizeSpan<mlir::MlirOp, 5> inputs_op)
       -> absl::StatusOr<mlir::MlirOp> {
     auto& [self_op, mat1_op, mat2_op, beta_op, alpha_op] = inputs_op;
     TT_ASSIGN_OR_RETURN(
         mlir::MlirOp res,
         BuildAddmmShlo(self_op, mat1_op, mat2_op, beta_op, alpha_op,
                        output_dtype_mlir, current_precision));
-    if (use_gelu) {
-      return BuildGeluShlo(res, "none", output_dtype_mlir);
-    }
-    return BuildReluShlo(res);
+    return apply_activation(res);
   };
-  return DispatchOp<5>(std::move(op_builder),
-                       {self, mat1, mat2, beta_tensor, alpha_tensor},
-                       {.out_dtype = output_dtype_mlir,
-                        .out_dims = output_dims_vec,
-                        .op_param_cache_keys = std::move(param_keys),
-                        .donated_indices = std::move(donated_indices)});
+  return dispatch5(
+      std::move(op_builder), beta_tensor, alpha_tensor,
+      DispatchOpOptions<1>{.out_dtype = output_dtype_mlir,
+                           .out_dims = output_dims_vec,
+                           .op_param_cache_keys = std::move(param_keys)});
+}
+
+absl::StatusOr<DeviceBufferRef> AddMm(
+    const at::Tensor& self, const at::Tensor& mat1, const at::Tensor& mat2,
+    MaybePromotedScalar beta, PromotedScalar alpha,
+    at::ScalarType out_scalar_type, OpParamCacheKeys& param_keys) {
+  return DispatchAddmm<absl::StatusOr<DeviceBufferRef>>(
+      self, mat1, mat2, std::move(beta), std::move(alpha), out_scalar_type,
+      param_keys, /*use_gelu=*/std::nullopt,
+      [&](auto op_builder, const at::Tensor& alpha_tensor, auto options) {
+        return DispatchOp<4>(std::move(op_builder),
+                             {self, mat1, mat2, alpha_tensor},
+                             std::move(options));
+      },
+      [&](auto op_builder, const at::Tensor& beta_tensor,
+          const at::Tensor& alpha_tensor, auto options) {
+        return DispatchOp<5>(std::move(op_builder),
+                             {self, mat1, mat2, beta_tensor, alpha_tensor},
+                             std::move(options));
+      });
+}
+
+absl::Status AddMmOut(const at::Tensor& self, const at::Tensor& mat1,
+                      const at::Tensor& mat2, MaybePromotedScalar beta,
+                      PromotedScalar alpha, at::ScalarType out_scalar_type,
+                      OpParamCacheKeys& param_keys, at::Tensor& out) {
+  return DispatchAddmm<absl::Status>(
+      self, mat1, mat2, std::move(beta), std::move(alpha), out_scalar_type,
+      param_keys, /*use_gelu=*/std::nullopt,
+      [&](auto op_builder, const at::Tensor& alpha_tensor, auto options) {
+        return DispatchOpOut<4>(std::move(op_builder),
+                                {self, mat1, mat2, alpha_tensor}, out,
+                                std::move(options));
+      },
+      [&](auto op_builder, const at::Tensor& beta_tensor,
+          const at::Tensor& alpha_tensor, auto options) {
+        return DispatchOpOut<5>(std::move(op_builder),
+                                {self, mat1, mat2, beta_tensor, alpha_tensor},
+                                out, std::move(options));
+      });
+}
+
+absl::Status AddMmActivationOut(const at::Tensor& self, const at::Tensor& mat1,
+                                const at::Tensor& mat2,
+                                MaybePromotedScalar beta, PromotedScalar alpha,
+                                bool use_gelu, at::ScalarType out_scalar_type,
+                                OpParamCacheKeys& param_keys, at::Tensor& out) {
+  return DispatchAddmm<absl::Status>(
+      self, mat1, mat2, std::move(beta), std::move(alpha), out_scalar_type,
+      param_keys, use_gelu,
+      [&](auto op_builder, const at::Tensor& alpha_tensor, auto options) {
+        return DispatchOpOut<4>(std::move(op_builder),
+                                {self, mat1, mat2, alpha_tensor}, out,
+                                std::move(options));
+      },
+      [&](auto op_builder, const at::Tensor& beta_tensor,
+          const at::Tensor& alpha_tensor, auto options) {
+        return DispatchOpOut<5>(std::move(op_builder),
+                                {self, mat1, mat2, beta_tensor, alpha_tensor},
+                                out, std::move(options));
+      });
 }
 
 }  // namespace
@@ -328,18 +305,9 @@ at::Tensor& AtenAddmmOut(const at::Tensor& self, const at::Tensor& mat1,
             << "expected input and out tensors to have the same dtype, got "
             << torch_tpu::ToString(self.scalar_type()) << " vs "
             << torch_tpu::ToString(out.scalar_type());
-        TT_ASSIGN_OR_THROW(auto result_buffer,
-                           AddMm(self, mat1, mat2, std::move(promoted_beta),
-                                 std::move(promoted_alpha), out.scalar_type(),
-                                 param_keys, out));
-        ABSL_VLOG(3)
-            << "calling ResizeTensorIfShapeDiffers for out tensor with "
-               "target shape: ["
-            << absl::StrJoin(result_buffer.dimensions(), ", ") << "]";
-        TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
-        TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=No user triggerable errors.
-            AssignBufferToAtTensor(std::move(result_buffer), out));
+        TT_THROW_IF_ERROR(AddMmOut(self, mat1, mat2, std::move(promoted_beta),
+                                   std::move(promoted_alpha), out.scalar_type(),
+                                   param_keys, out));
         return out;
       });
 }
@@ -361,19 +329,10 @@ at::Tensor& AtenAddmmActivationOut(const at::Tensor& self,
             << "expected input and out tensors to have the same dtype, got "
             << torch_tpu::ToString(self.scalar_type()) << " vs "
             << torch_tpu::ToString(out.scalar_type());
-        TT_ASSIGN_OR_THROW(
-            auto result_buffer,
-            AddMmActivation(self, mat1, mat2, std::move(promoted_beta),
-                            std::move(promoted_alpha), use_gelu,
-                            out.scalar_type(), param_keys, out));
-        ABSL_VLOG(3)
-            << "calling ResizeTensorIfShapeDiffers for out tensor with "
-               "target shape: ["
-            << absl::StrJoin(result_buffer.dimensions(), ", ") << "]";
         TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
-        TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=No user triggerable errors.
-            AssignBufferToAtTensor(std::move(result_buffer), out));
+            AddMmActivationOut(self, mat1, mat2, std::move(promoted_beta),
+                               std::move(promoted_alpha), use_gelu,
+                               out.scalar_type(), param_keys, out));
         return out;
       });
 }
@@ -408,15 +367,9 @@ at::Tensor& AtenAddmmDtypeOut(const at::Tensor& self, const at::Tensor& mat1,
             << "expected out dtype to match out_dtype, got out dtype "
             << torch_tpu::ToString(out.scalar_type()) << " and out_dtype "
             << torch_tpu::ToString(out_dtype);
-        TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=errors from addmm
-                             // tested individually.
-            auto result_buffer,
-            AddMm(self, mat1, mat2, std::move(promoted_beta),
-                  std::move(promoted_alpha), out_dtype, param_keys));
-        TT_THROW_IF_ERROR(
-            ResizeTensorIfShapeDiffers(out, result_buffer.dimensions()));
-        TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=No user triggerable errors.
-            AssignBufferToAtTensor(std::move(result_buffer), out));
+        TT_THROW_IF_ERROR(AddMmOut(self, mat1, mat2, std::move(promoted_beta),
+                                   std::move(promoted_alpha), out_dtype,
+                                   param_keys, out));
         return out;
       });
 }

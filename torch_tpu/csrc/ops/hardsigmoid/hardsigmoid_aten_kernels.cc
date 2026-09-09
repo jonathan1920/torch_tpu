@@ -30,9 +30,7 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
@@ -99,41 +97,27 @@ at::Tensor& AtenHardsigmoidOut(const at::Tensor& self, at::Tensor& out) {
 at::Tensor& AtenHardsigmoidBackwardGradInput(const at::Tensor& grad_output,
                                              const at::Tensor& self,
                                              at::Tensor& grad_input) {
-  TT_KERNEL(
-      OpName::kHardsigmoidBackwardGradInput, _, (grad_output, self, grad_input),
-      {
-        TT_CHECK_THROW(self.is_floating_point(), error::kInvalidArgument)
-            << "expected the input dtype to be floating point, got "
-            << ToString(self.scalar_type());
-        TT_ASSIGN_OR_THROW(const auto output_mlir_type,
-                           ConvertTo<mlir::ElementType>(self.scalar_type()));
-        Indices donated_indices;
-        if (ShouldDonateInPlaceBuffer(grad_input, grad_output, output_mlir_type,
-                                      self.sizes())) {
-          donated_indices = {0};
-        } else if (ShouldDonateInPlaceBuffer(grad_input, self, output_mlir_type,
-                                             self.sizes())) {
-          donated_indices = {1};
-        }
+  TT_KERNEL(OpName::kHardsigmoidBackwardGradInput, _,
+            (grad_output, self, grad_input), {
+              TT_CHECK_THROW(self.is_floating_point(), error::kInvalidArgument)
+                  << "expected the input dtype to be floating point, got "
+                  << ToString(self.scalar_type());
+              TT_ASSIGN_OR_THROW(
+                  const auto output_mlir_type,
+                  ConvertTo<mlir::ElementType>(self.scalar_type()));
+              auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+                  -> absl::StatusOr<mlir::MlirOp> {
+                auto& [grad_output_op, self_op] = inputs;
+                return BuildHardsigmoidBackwardShlo(grad_output_op, self_op);
+              };
 
-        TT_ASSIGN_OR_THROW(
-            auto result, (DispatchOp<2>(
-                             [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
-                                 -> absl::StatusOr<mlir::MlirOp> {
-                               auto& [grad_output_op, self_op] = inputs;
-                               return BuildHardsigmoidBackwardShlo(
-                                   grad_output_op, self_op);
-                             },
-                             {grad_output, self},
-                             {.out_dtype = output_mlir_type,
-                              .out_dims = self.sizes(),
-                              .op_param_cache_keys = OpParamCacheKeys::Empty(),
-                              .donated_indices = std::move(donated_indices)})));
-
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(result), grad_input));
-        return grad_input;
-      });
+              TT_THROW_IF_ERROR(DispatchOpOut<2>(
+                  std::move(op_builder), {grad_output, self}, grad_input,
+                  {.out_dtype = output_mlir_type,
+                   .out_dims = self.sizes(),
+                   .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+              return grad_input;
+            });
 }
 
 }  // namespace torch_tpu

@@ -687,32 +687,6 @@ std::string BuildModuleNameFromPyContext(
 void AnnotateBufferDonations(mlir::ModuleOp module,
                              mlir::ArrayRef<int64_t> donated_inputs);
 
-// Determines whether an in-place donor tensor is eligible to donate its device
-// buffer for destination buffer reuse in eager mode. If `eager_mode` is
-// provided, it avoids querying `GetEagerMode()` on each call.
-bool ShouldDonateInPlaceBuffer(
-    const at::Tensor& donor, at::IntArrayRef destination_dims,
-    mlir::ElementType destination_dtype,
-    std::optional<EagerMode> eager_mode = std::nullopt);
-
-// Determines whether a destination tensor and donor tensor are eligible for
-// buffer donation (i.e. destination aliases donor, and donor satisfies all
-// eager in-place donation invariants). If `destination_dims` is omitted,
-// defaults to `destination.sizes()`. If `eager_mode` is provided, it avoids
-// querying `GetEagerMode()`.
-inline bool ShouldDonateInPlaceBuffer(
-    const at::Tensor& destination, const at::Tensor& donor,
-    mlir::ElementType destination_dtype,
-    std::optional<at::IntArrayRef> destination_dims = std::nullopt,
-    std::optional<EagerMode> eager_mode = std::nullopt) {
-  if (!destination.is_alias_of(donor)) {
-    return false;
-  }
-  return ShouldDonateInPlaceBuffer(
-      donor, destination_dims.value_or(destination.sizes()), destination_dtype,
-      eager_mode);
-}
-
 // Casts a given op to the expected type if necessary, preserving the values.
 // Returns an error if PyTorch doesn't support casting the PyTorch type
 // corresponding to the op's MLIR type to the PyTorch type corresponding to

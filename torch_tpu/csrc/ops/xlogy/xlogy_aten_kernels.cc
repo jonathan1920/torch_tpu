@@ -33,14 +33,11 @@
 #include "torch_tpu/csrc/common/error_utils.h"
 #include "torch_tpu/csrc/common/fixed_size_span.h"
 #include "torch_tpu/csrc/common/to_string.h"
-#include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/op_dispatcher.h"
-#include "torch_tpu/csrc/eager/tensor_to_buffer.h"
 #include "torch_tpu/csrc/ops/binary.h"
 #include "torch_tpu/csrc/ops/macros/kernel.h"
 #include "torch_tpu/csrc/ops/op_builder_utils.h"
 #include "torch_tpu/csrc/ops/op_names.h"
-#include "torch_tpu/csrc/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/csrc/ops/unary.h"
 
 namespace torch_tpu {
@@ -99,28 +96,14 @@ at::Tensor& AtenXlogyOutTensor(const at::Tensor& self, const at::Tensor& other,
 
     TT_ASSIGN_OR_THROW(const auto out_dims,
                        InferSize(self.sizes(), other.sizes()));
-    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, out_dims));
     TT_ASSIGN_OR_THROW(auto out_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
 
-    // If `out` aliases `self` or `other`, donate that device buffer to the
-    // output in eligible eager modes (DeferNever) to avoid allocation churn.
-    Indices donated_indices;
-    if (ShouldDonateInPlaceBuffer(out, self, out_dtype, out_dims)) {
-      donated_indices = {0};
-    } else if (ShouldDonateInPlaceBuffer(out, other, out_dtype, out_dims)) {
-      donated_indices = {1};
-    }
-
-    TT_ASSIGN_OR_THROW(
-        auto result_buffer,
-        DispatchOp<2>(std::move(op_builder), {self, other},
-                      {.out_dtype = out_dtype,
-                       .out_dims = out_dims,
-                       .op_param_cache_keys = OpParamCacheKeys::Empty(),
-                       .donated_indices = std::move(donated_indices)}));
-
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buffer), out));
+    TT_THROW_IF_ERROR(
+        DispatchOpOut<2>(std::move(op_builder), {self, other}, out,
+                         {.out_dtype = out_dtype,
+                          .out_dims = out_dims,
+                          .op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }
