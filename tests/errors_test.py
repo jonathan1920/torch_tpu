@@ -2189,7 +2189,11 @@ Device-side assertion tracking was not enabled by user.""",
       tensor = torch.arange(10).view(2, 5).to(et.device())
       tensor_other = torch.arange(15).view(3, 5).to(et.device())
       boolean_mask = tensor_other % 2 != 0
-      tensor[boolean_mask] = 100
+      torch.index_put_(
+          tensor,
+          (boolean_mask,),
+          torch.tensor(100, device=et.device()),
+      )
 
   def test_index_put_decompose_with_mask_error_mask_dim_more_than_indexed_tensor_dim(
       self,
@@ -2210,13 +2214,17 @@ Device-side assertion tracking was not enabled by user.""",
     err_type = RuntimeError if et.is_on_tpu() else IndexError
     with et.assert_raises_message(
         err_type,
-        gpu="""The shape of the mask [3] at index 0 does not match the shape of the indexed tensor [2, 3, 5, 9] at index 2""",
-        tpu="""index_put_(): expected the shape of the mask at index 0 to match the shape of the indexed tensor at index 2, got mask shape [3] and indexed tensor shape [2, 3, 5, 9]""",
+        gpu="""The shape of the mask [4] at index 0 does not match the shape of the indexed tensor [3, 5] at index 1""",
+        tpu="""index_put_(): expected the shape of the mask at index 0 to match the shape of the indexed tensor at index 1, got mask shape [4] and indexed tensor shape [3, 5]""",
     ):
-      tensor = torch.arange(270).view(2, 3, 5, 9).to(et.device())
-      boolean_mask_dim1 = tensor[0, :, 0, 0] % 2 != 0
-      boolean_mask_dim3 = tensor[0, 0, 0, :] % 2 != 0
-      tensor[:, :, boolean_mask_dim1, boolean_mask_dim3] = 100
+      tensor = torch.arange(15).view(3, 5).to(et.device())
+      mask0 = (torch.arange(3) % 2 != 0).to(et.device())
+      mask1 = (torch.arange(4) % 2 != 0).to(et.device())
+      torch.index_put_(
+          tensor,
+          (mask0, mask1),
+          torch.tensor(100, device=et.device()),
+      )
 
   def test_index_select_index_must_be_1d(self):
     with et.assert_raises_message(
