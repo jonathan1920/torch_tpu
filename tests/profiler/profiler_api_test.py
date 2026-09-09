@@ -24,8 +24,8 @@ import torch
 from torch_tpu._internal import profiler
 from torch_tpu._internal import sync as tpu_sync
 from torch_tpu._internal import testing as tt_testing
+from torch_tpu._internal.profiler import _api
 from torch_tpu._internal.profiler import _impl as profiler_impl
-from torch_tpu._internal.profiler import profiler_api
 from torch_tpu._internal.profiler.profiler_config import TpuProfilerConfig
 from tests import seed_test_utils
 
@@ -189,19 +189,19 @@ class ProfilerApiTest(seed_test_utils.RepeatableTest):
         pass
 
   def test_profiler_options_tpu_only(self):
-    options = profiler_api._get_profile_options([profiler.ProfilerActivity.TPU])
+    options = _api._get_profile_options([profiler.ProfilerActivity.TPU])
     self.assertEqual(options.device_tracer_level, 1)
     self.assertEqual(options.host_tracer_level, 0)
     self.assertEqual(options.python_tracer_level, 0)
 
   def test_profiler_options_cpu_only(self):
-    options = profiler_api._get_profile_options([profiler.ProfilerActivity.CPU])
+    options = _api._get_profile_options([profiler.ProfilerActivity.CPU])
     self.assertEqual(options.device_tracer_level, 0)
     self.assertEqual(options.host_tracer_level, 2)
     self.assertEqual(options.python_tracer_level, 1)
 
   def test_profiler_options_tpu_and_cpu(self):
-    options = profiler_api._get_profile_options(
+    options = _api._get_profile_options(
         activities=[
             profiler.ProfilerActivity.TPU,
             profiler.ProfilerActivity.CPU,
@@ -212,7 +212,7 @@ class ProfilerApiTest(seed_test_utils.RepeatableTest):
     self.assertEqual(options.python_tracer_level, 1)
 
   def test_profiler_options_none(self):
-    options = profiler_api._get_profile_options([])
+    options = _api._get_profile_options([])
     self.assertEqual(options.device_tracer_level, 0)
     self.assertEqual(options.host_tracer_level, 0)
     self.assertEqual(options.python_tracer_level, 0)

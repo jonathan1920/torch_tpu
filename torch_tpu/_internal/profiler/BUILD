@@ -39,9 +39,9 @@ torch_tpu_py_library(
 )
 
 # We use py_library_providing_imports_info with profiler.modspec.json to explicitly
-# re-export the submodules provided by :profiler_lib. This prevents PyStrictDeps
+# re-export the submodules provided by :_api. This prevents PyStrictDeps
 # violations at downstream use sites that import `from torch_tpu._internal.profiler import profiler`
-# without requiring them to directly depend on :profiler_lib.
+# without requiring them to directly depend on :_api.
 py_library_providing_imports_info(
     name = "profiler",
     srcs = [
@@ -52,15 +52,15 @@ py_library_providing_imports_info(
         "profiler.modspec.json",
     ],
     deps = [
+        ":_api",
         ":_impl",
         ":profiler_config",
-        ":profiler_lib",
     ],
 )
 
 torch_tpu_py_library(
-    name = "profiler_lib",
-    srcs = ["profiler_api.py"],
+    name = "_api",
+    srcs = ["_api.py"],
     deps = [
         ":_impl",
         ":_profiler_backend",
