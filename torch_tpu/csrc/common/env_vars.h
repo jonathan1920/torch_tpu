@@ -165,7 +165,6 @@ inline constexpr char kTpuProcessPortEnvVar[] =
     "TPU_PROCESS_PORT";  // Read by Google Cloud.
 // The output directory for TPU profiler XPlane files.
 inline constexpr char kTpuProfilerOutputDirEnvVar[] = "TPU_PROFILER_OUTPUT_DIR";
-
 // Specifies which TPU chips are visible to this process. Read by libtpu.
 // Note: TPU_VISIBLE_DEVICES is the source of truth for device visibility in
 // TorchTPU. TPU_VISIBLE_CHIPS is overwritten to match TPU_VISIBLE_DEVICES
@@ -219,14 +218,19 @@ inline constexpr auto kEnvVarToStage =
         {kTpuDeferAndFuse, std::nullopt},
         {kTpuHostBoundsEnvVar, SymbolStage::InternalImplementation()},
         {kTpuLaunchBlocking, std::nullopt},
-        {kTpuPremappedBufferSizeEnvVar, std::nullopt},
+        // Marked as Stable because it is an established XLA/PJRT runtime
+        // configuration knob widely used by production workloads. The TorchTPU
+        // team is committed to honor this env var.
+        {kTpuPremappedBufferSizeEnvVar, SymbolStage::Stable()},
         {kTpuProcessAddressesEnvVar, SymbolStage::InternalImplementation()},
         {kTpuProcessBoundsEnvVar, SymbolStage::InternalImplementation()},
         {kTpuProcessPortEnvVar, SymbolStage::InternalImplementation()},
         {kTpuProfilerOutputDirEnvVar, std::nullopt},
-
         {kTpuVisibleChipsEnvVar, SymbolStage::InternalImplementation()},
-        {kTpuVisibleDevicesEnvVar, std::nullopt},
+        // Marked as Stable because it is the standard TPU runtime equivalent to
+        // CUDA_VISIBLE_DEVICES that external production consumers and infra
+        // rely on. The TorchTPU team is committed to honor this env var.
+        {kTpuVisibleDevicesEnvVar, SymbolStage::Stable()},
         {kWorldSizeEnvVar, SymbolStage::Stable()},
         {kXlaFlagsEnvVar, SymbolStage::Experimental()},
         // go/keep-sorted end
