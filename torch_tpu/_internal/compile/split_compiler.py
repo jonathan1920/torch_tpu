@@ -47,7 +47,6 @@ from torch_tpu._internal.distributed import handshake
 from torch_tpu._internal.distributed import process_group_utils
 from torch_tpu._internal.distributed import spmd_util
 
-
 ProcessGroupId = handshake.ProcessGroupId
 RankCollectiveCounts = handshake.RankCollectiveCounts
 AsyncCompiledArtifact = torch_tpu_compiled_executable.AsyncCompiledArtifact
@@ -118,11 +117,19 @@ def _submit_handshake(
         pg_to_num_collectives,
     )
     if graph_module:
-      logging.debug(
-          "Handshake failed on rank %d for graph module: %s", rank, graph_module
+      logging.warning(
+          "Handshake failed on rank %d for graph module:\n"
+          "--- [BEGIN GRAPH MODULE: %s] ---\n"
+          "%s\n"
+          "--- [END GRAPH MODULE: %s] ---",
+          rank,
+          executable_fingerprint,
+          graph_module.print_readable(print_output=False),
+          executable_fingerprint,
       )
 
   return result
+
 
 def _get_unique_wait_tensor_producer(
     node: torch.fx.Node,
