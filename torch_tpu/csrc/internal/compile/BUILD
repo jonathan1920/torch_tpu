@@ -45,7 +45,6 @@ torch_tpu_cc_library(
         "//torch_tpu/csrc/common:utils",
         "//torch_tpu/csrc/eager:device_buffer",
         "//torch_tpu/csrc/eager:device_buffer_utils",
-        "//torch_tpu/csrc/eager:events_queue",
         "//torch_tpu/csrc/eager:materialize",
         "//torch_tpu/csrc/eager:structured_log_buffer",
         "//torch_tpu/csrc/eager:tensor_to_buffer",

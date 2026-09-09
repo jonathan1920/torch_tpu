@@ -56,7 +56,6 @@
 #include "torch_tpu/csrc/common/utils.h"
 #include "torch_tpu/csrc/eager/device_buffer.h"
 #include "torch_tpu/csrc/eager/device_buffer_utils.h"
-#include "torch_tpu/csrc/eager/events_queue.h"
 #include "torch_tpu/csrc/eager/materialize.h"
 #include "torch_tpu/csrc/eager/structured_log_buffer.h"
 #include "torch_tpu/csrc/eager/tensor_to_buffer.h"
@@ -84,6 +83,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> PrepareCompiledModeArguments(
     absl::Span<const at::Tensor> argument_tensors) {
   // Get each argument buffer ref's expected contiguous base shape.
   std::vector<DeviceBufferRef> argument_buffer_refs;
+  argument_buffer_refs.reserve(argument_tensors.size());
   for (const at::Tensor& argument_tensor : argument_tensors) {
     // If argument_tensor is contiguous with offset 0, then we know that
     // base_sizes and base_stride below would be the same as
@@ -133,6 +133,12 @@ absl::StatusOr<std::vector<DeviceBufferRef>> PrepareCompiledModeArguments(
   if (argument_indices.empty()) {
     return PrepareCompiledModeArguments(argument_tensors);
   }
+
+  TT_RET_CHECK(argument_tensors.size() == argument_indices.size(),
+               error::kInvalidArgument)
+      << "number of argument tensors (" << argument_tensors.size()
+      << ") does not match compiled argument indices ("
+      << argument_indices.size() << ")";
 
   int64_t num_base =
       *std::max_element(argument_indices.begin(), argument_indices.end()) + 1;
@@ -486,8 +492,18 @@ std::vector<at::Tensor> ExecuteCompiledModel(
     const SharedLoadedExecutableWithMetadata& executable,
     absl::Span<const at::Tensor> argument_tensors,
     absl::Span<const OutputShape> output_shapes) {
-  TT_ASSIGN_OR_THROW(std::vector<Shape> result_shapes_vec,
-                     GetOutputShapes(executable, output_shapes));
+  // Fast path: for static shapes (output_shapes is empty), the executable
+  // already owns the precomputed output shapes. Borrowing an absl::Span avoids
+  // allocating and deep-copying a std::vector<Shape> on every single step.
+  absl::Span<const Shape> result_shapes;
+  std::vector<Shape> dynamic_result_shapes;
+  if (output_shapes.empty()) {
+    result_shapes = executable->output_shapes();
+  } else {
+    TT_ASSIGN_OR_THROW(dynamic_result_shapes,
+                       GetOutputShapes(executable, output_shapes));
+    result_shapes = dynamic_result_shapes;
+  }
   // Get the materialized buffers for the bases of the argument tensors.
   TT_ASSIGN_OR_THROW(std::vector<DeviceBufferRef> argument_buffer_refs,
                      PrepareCompiledModeArguments(
@@ -498,8 +514,7 @@ std::vector<at::Tensor> ExecuteCompiledModel(
   TT_ASSIGN_OR_THROW(
       std::vector<DeviceBufferRef> result_buffer_refs,
       EnqueueExecutable(executable, std::move(argument_buffer_refs),
-                        result_shapes_vec));
-  RecordBackgroundMaterialization(result_buffer_refs);
+                        result_shapes));
 
   auto num_outputs = result_buffer_refs.size();
   std::vector<at::Tensor> output_tensors;

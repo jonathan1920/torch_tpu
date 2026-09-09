@@ -686,27 +686,34 @@ absl::Status MaterializeImpl(
   if (nodes_to_materialize.empty()) {
     return absl::OkStatus();
   }
+
   if (std::any_of(nodes_to_materialize.begin(), nodes_to_materialize.end(),
                   [](const SharedDeviceBufferList& node) {
-                    return node->is_placeholder();
+                    return node != nullptr && node->is_placeholder();
                   })) {
     return TT_ERROR(error::kInternal)
            << "cannot Materialize() a placeholder tensor or a tensor that "
               "depends on a placeholder. \nPlaceholder tensors should only "
-              "appear in compiled mode, which should never try to materialize "
-              "tensors";
+              "appear in compiled mode, which should never try to "
+              "materialize tensors";
   }
 
-  tsl::profiler::TraceMe t("MaterializeImpl");
-
-  // Deduplicate nodes_to_materialize.
+  // Fast-path: deduplicate and prune non-deferred nodes in-place. If no
+  // deferred nodes remain, return synchronously without profiler scopes or
+  // inter-thread task handoffs to the MaterializationWorker.
   {
     absl::flat_hash_set<const DeviceBufferList*> unique_nodes;
     std::erase_if(nodes_to_materialize,
                   [&unique_nodes](const SharedDeviceBufferList& node) {
-                    return !unique_nodes.insert(node.get()).second;
+                    return node == nullptr || !node->is_deferred() ||
+                           !unique_nodes.insert(node.get()).second;
                   });
   }
+  if (nodes_to_materialize.empty()) {
+    return absl::OkStatus();
+  }
+
+  tsl::profiler::TraceMe t("MaterializeImpl");
   ABSL_VLOG(1) << "[MaterializeImpl] Materializing "
                << nodes_to_materialize.size() << " nodes";
 
@@ -717,7 +724,7 @@ absl::Status MaterializeImpl(
 
   // Check that all nodes to materialize have been put into the "pending
   // materialization" state.
-  for (auto& node : nodes_to_materialize) {
+  for (const auto& node : nodes_to_materialize) {
     TT_RET_CHECK(node->is_materializing(), error::kInternal)
         << "materialization failed for node " << node;
   }
@@ -740,7 +747,6 @@ absl::Status Materialize(absl::Span<const SharedDeviceBufferList> nodes,
   // Non-deferred nodes are skipped inside the MaterializationWorker
   std::vector<SharedDeviceBufferList> nodes_to_materialize(nodes.begin(),
                                                            nodes.end());
-
   return MaterializeImpl(nodes_to_materialize, reason, materialization_mode);
 }
 
@@ -758,6 +764,7 @@ absl::Status Materialize(absl::Span<const DeviceBufferRef> buffer_refs,
   for (const DeviceBufferRef& buffer_ref : buffer_refs) {
     nodes_to_materialize.push_back(buffer_ref.device_buffer_list());
   }
+
   return MaterializeImpl(nodes_to_materialize, reason, materialization_mode);
 }
 

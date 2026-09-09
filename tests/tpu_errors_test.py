@@ -1416,6 +1416,19 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           ],
       )
 
+  @et.why_tpu_only("For testing compiled mode argument count validation.")
+  def test_execute_argument_count_mismatch(self):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_COMPILE_FX_GRAPH):
+      x = torch.ones(10, device="cpu").to(device=et.device())
+      z = x + x
+
+    compile_result = tpu_torch_compile.traverse_and_compile([z], [x, x])
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""execute(): failed to prepare compiled mode arguments: number of argument tensors (1) does not match compiled argument indices (2)""",
+    ):
+      tpu_torch_compile.execute(compile_result.executable, [x])
+
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_execute_output_shapes_rank_mismatch(self):
     with execution_mode.set_eager_mode(EagerMode.INTERNAL_COMPILE_FX_GRAPH):
