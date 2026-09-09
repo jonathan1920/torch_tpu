@@ -63,7 +63,7 @@ absl::Status ValidateNativeMultiHeadAttentionInputs(
     const at::Tensor& qkv_bias, const at::Tensor& proj_weight,
     const at::Tensor& proj_bias, const std::optional<at::Tensor>& mask) {
   TT_RET_CHECK(embed_dim > 0, error::kInvalidArgument)
-      << "expected embed_dim to be positive, got " << embed_dim;
+      << "expected embed_dim to be > 0, got " << embed_dim;
 
   TT_RET_CHECK(query.dim() == 3, error::kInvalidArgument)
       << "expected 3-D query, got " << query.dim() << "-D tensor";
@@ -147,7 +147,8 @@ absl::Status ValidateNativeMultiHeadAttentionInputs(
   if (mask.has_value() && mask->defined()) {
     const int64_t mask_rank = mask->dim();
     TT_RET_CHECK(mask_rank == 2 || mask_rank == 4, error::kInvalidArgument)
-        << "expected 2-D or 4-D mask, got " << mask_rank << "-D tensor";
+        << "expected mask to be a 2D or a 4D tensor, got " << mask_rank
+        << "D tensor of shape " << ToString(mask->sizes());
     if (mask_rank == 4) {
       TT_RET_CHECK(
           mask->size(0) == query.size(0) && mask->size(1) == num_head &&

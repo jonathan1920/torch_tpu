@@ -177,7 +177,7 @@ void PySynchronizeStream(int64_t stream_id, std::optional<int> device_index) {
 
 int64_t PyNextStreamId(int64_t device_index) {
   TT_CHECK_THROW(device_index >= 0 && device_index < 8, error::kInvalidArgument)
-      << "device index must be in the range [0, 8), but got: " << device_index;
+      << "expected device index to be in range [0, 8), got " << device_index;
   return NextStreamId(device_index);
 }
 

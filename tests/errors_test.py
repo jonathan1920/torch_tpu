@@ -9573,7 +9573,7 @@ Device-side assertion tracking was not enabled by user.""",
     with et.assert_raises_message(
         RuntimeError,
         tpu="""native_multi_head_attention(): expected 4-D mask shape to be [2, 2, 4, 4], got [2, 2, 4, 8]""",
-        gpu="""Mask Type should be defined""",
+        gpu="""Mask shape should match input. mask: [2, 2, 4, 8] input: [2, 2, 4, 4]""",
     ):
       torch.ops.aten._native_multi_head_attention(
           query,
@@ -9588,7 +9588,7 @@ Device-side assertion tracking was not enabled by user.""",
           mask,
           True,
           True,
-          None,
+          2,
       )
 
   def test_native_multi_head_attention_invalid_mask_rank(self):
@@ -9603,7 +9603,7 @@ Device-side assertion tracking was not enabled by user.""",
     mask = torch.ones(2, 4, 4, dtype=torch.bool, device=device)
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""native_multi_head_attention(): expected 2-D or 4-D mask, got 3-D tensor""",
+        tpu="""native_multi_head_attention(): expected mask to be a 2D or a 4D tensor, got 3D tensor of shape [2, 4, 4]""",
         gpu="""Mask shape should match input. mask: [2, 4, 4] input: [2, 2, 4, 4]""",
     ):
       torch.ops.aten._native_multi_head_attention(
@@ -11560,6 +11560,169 @@ Device-side assertion tracking was not enabled by user.""",
         ),
     ):
       torch.linalg.svd(t, full_matrices=False, out=(u, s, vh))
+
+  def test_min_unary_invalid_output_device(self):
+    tensor = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.tensor(0.0, device="cpu", dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""min(): expected output tensor to be on tpu, got cpu""",
+        gpu="""Expected self.device() == out.device() to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.min(tensor, out=out)
+
+  def test_max_unary_invalid_output_device(self):
+    tensor = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.tensor(0.0, device="cpu", dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""max(): expected output tensor to be on tpu, got cpu""",
+        gpu="""Expected self.device() == out.device() to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.max(tensor, out=out)
+
+  @et.skip_if(
+      lambda: torch.accelerator.device_count() > 8,
+      "Only works when there are up to 8 accelerator devices.",
+  )
+  def test_create_stream_with_out_of_bounds_device_index(self):
+    Stream = torch.cuda.Stream if et.is_on_gpu() else torch.tpu.Stream
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""expected device index to be in range [0, 8), got 8""",
+        gpu="""CUDA error: invalid device ordinal
+GPU device may be out of range, do you have enough GPUs?
+Device-side assertion tracking was not enabled by user.""",
+        message_reviewed_by="wan",
+    ):
+      Stream(8)
+
+  def test_native_multi_head_attention_dtypes_mismatch(self):
+    query = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float32)
+    key = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float16)
+    value = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float32)
+    qkv_weight = torch.ones(24, 8, device=et.device(), dtype=torch.float32)
+    qkv_bias = torch.ones(24, device=et.device(), dtype=torch.float32)
+    proj_weight = torch.ones(8, 8, device=et.device(), dtype=torch.float32)
+    proj_bias = torch.ones(8, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected query, key, value, qkv_weight, qkv_bias, proj_weight, and proj_bias to have matching dtypes, got float32, float16, float32, float32, float32, float32, float32""",
+        gpu="""expected mat1 and mat2 to have the same dtype, but got: c10::Half != float""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_native_multi_head_attention_non_positive_embed_dim(self):
+    query = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float32)
+    key = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float32)
+    value = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float32)
+    qkv_weight = torch.ones(24, 8, device=et.device(), dtype=torch.float32)
+    qkv_bias = torch.ones(24, device=et.device(), dtype=torch.float32)
+    proj_weight = torch.ones(8, 8, device=et.device(), dtype=torch.float32)
+    proj_bias = torch.ones(8, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""native_multi_head_attention(): expected embed_dim to be > 0, got 0""",
+        gpu="""passed-in embed_dim 0 didn't match last dim of query 8""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten._native_multi_head_attention(
+          query, key, value, 0, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
+      )
+
+  def test_jagged_offsets_multiple_lists(self):
+    values = torch.randn(5, 4, device=et.device())
+    o1 = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
+    o2 = torch.tensor([0, 3, 5], dtype=torch.int64, device=et.device())
+    err_type = NotImplementedError if et.is_on_tpu() else RuntimeError
+    with et.assert_raises_message(
+        err_type,
+        tpu="""jagged_to_padded_dense_forward(): expected only 1 offset tensor (only 1 jagged dim is supported for now), got 2 offset tensors""",
+        gpu="""max_lengths.size(), 1 != num_jagged_dim, 2""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(values, [o1, o2], [3], 0.0)
+
+  def test_jagged_offsets_empty(self):
+    values = torch.randn(5, 4, device=et.device())
+    offsets = torch.tensor([], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): expected offsets tensors to have size >= 1, got 0""",
+        gpu="""Trying to create tensor with negative dimension -1: [-1, 3, 4]""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [3], 0.0
+      )
+
+  def test_leaky_relu_backward_negative_slope_with_self_is_result(self):
+    grad_output = torch.ones(2, device=et.device())
+    self_or_result = torch.ones(2, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""In-place leakyReLu backward calculation is triggered with a negative slope which is not supported. This is caused by calling in-place forward function with a negative slope, please call out-of-place version instead. File an issue at https://github.com/pytorch/pytorch if you do require supporting in-place leakRelu backward calculation with negative slope""",
+        gpu="""In-place leakyReLu backward calculation is triggered with a negative slope which is not supported. This is caused by calling in-place forward function with a negative slope, please call out-of-place version instead. File an issue at https://github.com/pytorch/pytorch if you do require supporting in-place leakRelu backward calculation with negative slope""",
+    ):
+      torch.ops.aten.leaky_relu_backward(
+          grad_output, self_or_result, negative_slope=-1.0, self_is_result=True
+      )
+
+  def test_jagged_to_padded_multiple_max_lengths(self):
+    values = torch.randn(5, 4, device=et.device())
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): expected max_lengths to have only 1 element, got 2""",
+        gpu="""max_lengths.size(), 2 != num_jagged_dim, 1""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [3, 4], 0.0
+      )
+
+  def test_jagged_to_padded_negative_max_length(self):
+    values = torch.randn(5, 4, device=et.device())
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""jagged_to_padded_dense_forward(): expected max_lengths[0] to be >= 0, got -1""",
+        gpu="""Trying to create tensor with negative dimension -1: [2, -1, 4]""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten._jagged_to_padded_dense_forward(
+          values, [offsets], [-1], 0.0
+      )
+
+  def test_padded_to_jagged_dense_1d(self):
+    dense = torch.randn(10, device=et.device())
+    offsets = torch.tensor([0, 5, 10], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""padded_dense_to_jagged_forward(): expected dense to have >= 2 dimensions, got 1""",
+        gpu="""x_offsets.size(), 1 != num_jagged_dim, -1""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 10)
+
+  def test_padded_to_jagged_batch_size_mismatch(self):
+    dense = torch.randn(2, 5, 4, device=et.device())
+    offsets = torch.tensor([0, 2, 3, 5], dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""padded_dense_to_jagged_forward(): expected dense first dimension size to match the batch size inferred from the offsets (3), got 2""",
+        gpu="""outer_dense_size, 2 != offsets[0].numel() - 1, 3""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 5)
 
 
 class InputPreprocessingErrorTest(et.ErrorTestBase):

@@ -806,25 +806,6 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.ops.aten._add_relu_.Tensor(t, s, alpha=1j)
 
-  # Why do we run this test only on TPU (and not on CPU)?
-  # This test should be run only on TPU because there are no other available
-  # devices on CPU runs, other than CPU.
-  @parameterized.named_parameters(
-      {"testcase_name": "min", "op_name": "min", "op": torch.min},
-      {"testcase_name": "max", "op_name": "max", "op": torch.max},
-  )
-  @et.why_tpu_only("Can only test device mismatch on TPU.")
-  def test_min_max_unary_invalid_output_device(self, op_name: str, op: Any):
-    tensor = torch.ones(5, device=et.device(), dtype=torch.float32)
-    out = torch.tensor(0.0, device="cpu", dtype=torch.float32)
-
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu=f"""{op_name}(): expected output tensor to be on tpu, got cpu""",
-        message_reviewed_by="gunhyun",
-    ):
-      op(tensor, out=out)
-
   # CPU kernel runs successfully, broadcasting the inputs.
   @et.why_tpu_only("TODO: make the behavior consistent between TPU and CPU.")
   def test_lu_solve_rank_mismatch(self):
@@ -1239,18 +1220,6 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         tpu="""dynamic_reshape(): expected shape to be a list of int32 tensors, got float32 tensor at index 0""",
     ):
       torch.ops.tpu.dynamic_reshape(inp, shape, static_shape, is_dynamic)
-
-  @et.why_tpu_only("TODO: investigate why this is TPU-only.")
-  def test_leaky_relu_backward_negative_slope_with_self_is_result(self):
-    grad_output = torch.ones(2, device=et.device())
-    self_or_result = torch.ones(2, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""In-place leakyReLu backward calculation is triggered with a negative slope which is not supported. This is caused by calling in-place forward function with a negative slope, please call out-of-place version instead. File an issue at https://github.com/pytorch/pytorch if you do require supporting in-place leakRelu backward calculation with negative slope""",
-    ):
-      torch.ops.aten.leaky_relu_backward(
-          grad_output, self_or_result, negative_slope=-1.0, self_is_result=True
-      )
 
   @et.why_tpu_only(
       "TODO: support float16 dtype for `view_as_complex()` on TPU."
@@ -2902,14 +2871,6 @@ module {
     ):
       torch.sparse_coo_tensor(indices, values, (2, 3), device="tpu")
 
-  @et.why_tpu_only("Stream ID behaviors are device specific")
-  def test_create_stream_with_out_of_bounds_device_index(self):
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""device index must be in the range [0, 8), but got: 8""",
-    ):
-      torch.tpu.Stream(8)
-
   @et.why_tpu_only("PReLU weight shape broadcastability check on TPU.")
   def test_prelu_kernel_weight_shape_not_broadcastable(self):
     self_tensor = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
@@ -3002,36 +2963,6 @@ module {
           a, b, scale_a, scale_b, scale_result=scale_result, offs=offs
       )
 
-  @et.why_tpu_only("Verify mask dimension check on TPU.")
-  def test_native_multi_head_attention_invalid_mask_dim(self):
-    query = torch.ones(2, 4, 8, device=et.device())
-    key = torch.ones(2, 4, 8, device=et.device())
-    value = torch.ones(2, 4, 8, device=et.device())
-    qkv_weight = torch.ones(24, 8, device=et.device())
-    qkv_bias = torch.ones(24, device=et.device())
-    proj_weight = torch.ones(8, 8, device=et.device())
-    proj_bias = torch.ones(8, device=et.device())
-    mask = torch.ones(2, 2, 4, 4, 4, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""native_multi_head_attention(): expected 2-D or 4-D mask, got 5-D tensor""",
-    ):
-      torch.ops.aten._native_multi_head_attention(
-          query,
-          key,
-          value,
-          8,
-          2,
-          qkv_weight,
-          qkv_bias,
-          proj_weight,
-          proj_bias,
-          mask,
-          True,
-          True,
-          None,
-      )
-
   @et.why_tpu_only("GPU linear allows broadcastable 2-D bias.")
   def test_native_multi_head_attention_invalid_proj_bias_dim(self):
     query = torch.ones(2, 4, 8, device=et.device())
@@ -3049,25 +2980,8 @@ module {
           query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
       )
 
-  @et.why_tpu_only("GPU lacks explicit positive embed_dim check.")
-  def test_native_multi_head_attention_invalid_embed_dim(self):
-    query = torch.ones(2, 4, 8, device=et.device())
-    key = torch.ones(2, 4, 8, device=et.device())
-    value = torch.ones(2, 4, 8, device=et.device())
-    qkv_weight = torch.ones(24, 8, device=et.device())
-    qkv_bias = torch.ones(24, device=et.device())
-    proj_weight = torch.ones(8, 8, device=et.device())
-    proj_bias = torch.ones(8, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""native_multi_head_attention(): expected embed_dim to be positive, got 0""",
-    ):
-      torch.ops.aten._native_multi_head_attention(
-          query, key, value, 0, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
-      )
-
-  @et.why_tpu_only("GPU divides by zero on num_head=0 causing SIGFPE.")
-  def test_native_multi_head_attention_invalid_num_head(self):
+  @et.why_tpu_only("GPU doesn't check if num_head >= 0.")
+  def test_native_multi_head_attention_non_positive_num_head(self):
     query = torch.ones(2, 4, 8, device=et.device())
     key = torch.ones(2, 4, 8, device=et.device())
     value = torch.ones(2, 4, 8, device=et.device())
@@ -3081,23 +2995,6 @@ module {
     ):
       torch.ops.aten._native_multi_head_attention(
           query, key, value, 8, 0, qkv_weight, qkv_bias, proj_weight, proj_bias
-      )
-
-  @et.why_tpu_only("GPU kernel fails in GEMM dispatch for mismatched dtypes.")
-  def test_native_multi_head_attention_dtypes_mismatch(self):
-    query = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float32)
-    key = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float16)
-    value = torch.ones(2, 4, 8, device=et.device(), dtype=torch.float32)
-    qkv_weight = torch.ones(24, 8, device=et.device(), dtype=torch.float32)
-    qkv_bias = torch.ones(24, device=et.device(), dtype=torch.float32)
-    proj_weight = torch.ones(8, 8, device=et.device(), dtype=torch.float32)
-    proj_bias = torch.ones(8, device=et.device(), dtype=torch.float32)
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""native_multi_head_attention(): expected query, key, value, qkv_weight, qkv_bias, proj_weight, and proj_bias to have matching dtypes, got float32, float16, float32, float32, float32, float32, float32""",
-    ):
-      torch.ops.aten._native_multi_head_attention(
-          query, key, value, 8, 2, qkv_weight, qkv_bias, proj_weight, proj_bias
       )
 
   @et.why_tpu_only("Optimization Barrier requires non-empty list input")
@@ -3158,35 +3055,12 @@ module {
       )
 
   @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
-  def test_jagged_offsets_multiple_lists(self):
-    values = torch.randn(5, 4, device=et.device())
-    o1 = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
-    o2 = torch.tensor([0, 3, 5], dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        NotImplementedError,
-        tpu="""jagged_to_padded_dense_forward(): expected only 1 offset tensor (only 1 jagged dim is supported for now), got 2 offset tensors""",
-    ):
-      torch.ops.aten._jagged_to_padded_dense_forward(values, [o1, o2], [3], 0.0)
-
-  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
   def test_jagged_offsets_2d(self):
     values = torch.randn(5, 4, device=et.device())
     offsets = torch.tensor([[0, 2, 5]], dtype=torch.int64, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
         tpu="""jagged_to_padded_dense_forward(): expected offsets to have only 1 dimension, got 2""",
-    ):
-      torch.ops.aten._jagged_to_padded_dense_forward(
-          values, [offsets], [3], 0.0
-      )
-
-  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
-  def test_jagged_offsets_empty(self):
-    values = torch.randn(5, 4, device=et.device())
-    offsets = torch.tensor([], dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): expected offsets tensors to have size >= 1, got 0""",
     ):
       torch.ops.aten._jagged_to_padded_dense_forward(
           values, [offsets], [3], 0.0
@@ -3241,30 +3115,6 @@ module {
       )
 
   @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
-  def test_jagged_to_padded_multiple_max_lengths(self):
-    values = torch.randn(5, 4, device=et.device())
-    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): expected max_lengths to have only 1 element, got 2""",
-    ):
-      torch.ops.aten._jagged_to_padded_dense_forward(
-          values, [offsets], [3, 4], 0.0
-      )
-
-  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
-  def test_jagged_to_padded_negative_max_length(self):
-    values = torch.randn(5, 4, device=et.device())
-    offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""jagged_to_padded_dense_forward(): expected max_lengths[0] to be >= 0, got -1""",
-    ):
-      torch.ops.aten._jagged_to_padded_dense_forward(
-          values, [offsets], [-1], 0.0
-      )
-
-  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
   def test_jagged_to_padded_offsets_out_of_bounds(self):
     values = torch.randn(3, 4, device=et.device())
     offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
@@ -3277,16 +3127,6 @@ module {
       )
 
   @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
-  def test_padded_to_jagged_dense_1d(self):
-    dense = torch.randn(10, device=et.device())
-    offsets = torch.tensor([0, 5, 10], dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""padded_dense_to_jagged_forward(): expected dense to have >= 2 dimensions, got 1""",
-    ):
-      torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 10)
-
-  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
   def test_padded_to_jagged_total_l_mismatch(self):
     dense = torch.randn(2, 5, 4, device=et.device())
     offsets = torch.tensor([0, 2, 5], dtype=torch.int64, device=et.device())
@@ -3295,16 +3135,6 @@ module {
         tpu="""padded_dense_to_jagged_forward(): expected the last offset to match total_L (6), got 5""",
     ):
       torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 6)
-
-  @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
-  def test_padded_to_jagged_batch_size_mismatch(self):
-    dense = torch.randn(2, 5, 4, device=et.device())
-    offsets = torch.tensor([0, 2, 3, 5], dtype=torch.int64, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""padded_dense_to_jagged_forward(): expected dense first dimension size to match the batch size inferred from the offsets (3), got 2""",
-    ):
-      torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 5)
 
   @et.why_tpu_only("Custom eager input validation in TorchTPU jagged kernels")
   def test_padded_to_jagged_segment_exceeds_max_length(self):
