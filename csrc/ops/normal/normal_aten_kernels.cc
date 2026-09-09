@@ -307,8 +307,7 @@ absl::StatusOr<DeviceBufferRef> DispatchNormal1(
             (DispatchOp<1, 1>(std::move(builder), {rng_input_state},
                               {.out_dtype = mlir_type,
                                .out_dims = out_dims,
-                               .op_param_cache_keys = std::move(param_keys),
-                               .split_mode = OpSplitMode::kSplitAfter})));
+                               .op_param_cache_keys = std::move(param_keys)})));
         return std::vector<DeviceBufferRef>{std::move(buf)};
       });
 }
@@ -331,7 +330,6 @@ absl::StatusOr<DeviceBufferRef> DispatchNormal2(
                           {.out_dtype = mlir_type,
                            .out_dims = out_dims,
                            .op_param_cache_keys = std::move(param_keys),
-                           .split_mode = OpSplitMode::kSplitAfter,
                            .donated_indices = std::move(donated_indices)})));
         return std::vector<DeviceBufferRef>{std::move(buf)};
       });
@@ -350,8 +348,7 @@ absl::Status DispatchNormal2Out(c10::optional<at::Generator> generator,
                                 {input_tensor, rng_input_state}, out,
                                 {.out_dtype = mlir_type,
                                  .out_dims = CopyIntVector(out_dims),
-                                 .op_param_cache_keys = std::move(param_keys),
-                                 .split_mode = OpSplitMode::kSplitAfter});
+                                 .op_param_cache_keys = std::move(param_keys)});
                           });
 }
 
@@ -406,7 +403,6 @@ absl::StatusOr<DeviceBufferRef> DispatchNormal3(
                           {.out_dtype = mlir_type,
                            .out_dims = out_dims,
                            .op_param_cache_keys = std::move(param_keys),
-                           .split_mode = OpSplitMode::kSplitAfter,
                            .donated_indices = std::move(donated_indices)})));
         return std::vector<DeviceBufferRef>{std::move(buf)};
       });
@@ -427,8 +423,7 @@ absl::Status DispatchNormal3Out(c10::optional<at::Generator> generator,
                                 out,
                                 {.out_dtype = mlir_type,
                                  .out_dims = CopyIntVector(out_dims),
-                                 .op_param_cache_keys = std::move(param_keys),
-                                 .split_mode = OpSplitMode::kSplitAfter});
+                                 .op_param_cache_keys = std::move(param_keys)});
                           });
 }
 

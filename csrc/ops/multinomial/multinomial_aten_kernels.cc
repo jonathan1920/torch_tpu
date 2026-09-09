@@ -85,8 +85,7 @@ absl::StatusOr<DeviceBufferRefArray<1>> Multinomial(
       DispatchOp<1>(std::move(op_builder), self,
                     {.out_dtype = mlir::ElementType::I64,
                      .out_dims = GetOutputDimensions(self, num_samples),
-                     .op_param_cache_keys = std::move(param_keys),
-                     .split_mode = OpSplitMode::kSplitAfter}));
+                     .op_param_cache_keys = std::move(param_keys)}));
   return result_buf;
 }
 

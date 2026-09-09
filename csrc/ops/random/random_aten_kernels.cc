@@ -133,8 +133,7 @@ absl::Status Random(at::Tensor& self, c10::optional<at::Generator> generator,
                               {rng_input_state},
                               {.out_dtype = output_dtype,
                                .out_dims = self.sizes(),
-                               .op_param_cache_keys = std::move(param_keys),
-                               .split_mode = OpSplitMode::kSplitAfter})));
+                               .op_param_cache_keys = std::move(param_keys)})));
         return std::vector<DeviceBufferRef>{std::move(buf)};
       });
 }

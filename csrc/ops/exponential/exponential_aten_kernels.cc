@@ -113,13 +113,13 @@ at::Tensor& AtenExponential_(at::Tensor& self, double lambd,
             [&](at::Tensor rng_input_state)
                 -> absl::StatusOr<std::vector<DeviceBufferRef>> {
               TT_ASSIGN_OR_RETURN(
-                  auto buf, (DispatchOp<2, 1>(
-                                GetExponentialFunctional(dims, output_dtype),
-                                {rng_input_state, lambd_tensor},
-                                {.out_dtype = output_dtype,
-                                 .out_dims = self.sizes(),
-                                 .op_param_cache_keys = std::move(param_keys),
-                                 .split_mode = OpSplitMode::kSplitAfter})));
+                  auto buf,
+                  (DispatchOp<2, 1>(
+                      GetExponentialFunctional(dims, output_dtype),
+                      {rng_input_state, lambd_tensor},
+                      {.out_dtype = output_dtype,
+                       .out_dims = self.sizes(),
+                       .op_param_cache_keys = std::move(param_keys)})));
               return std::vector<DeviceBufferRef>{std::move(buf)};
             }));
         return self;

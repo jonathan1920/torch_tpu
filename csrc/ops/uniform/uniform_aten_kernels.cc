@@ -87,8 +87,7 @@ at::Tensor& AtenUniform_(at::Tensor& self, double from, double to,
                             {rng_input_state},
                             {.out_dtype = output_dtype,
                              .out_dims = self_real.sizes(),
-                             .op_param_cache_keys = std::move(param_keys),
-                             .split_mode = OpSplitMode::kSplitAfter})));
+                             .op_param_cache_keys = std::move(param_keys)})));
           return std::vector<DeviceBufferRef>{std::move(buf)};
         }));
     return self;
