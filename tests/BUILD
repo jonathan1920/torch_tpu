@@ -297,6 +297,36 @@ torch_tpu_py_library(
 # - The for-loop approach breaks the Cider-torch_tpu_py_test integration (in particular,
 #   it breaks running a single test case directly in the Cider UI).
 
+# In OSS, we have limited TPU v5 chips in presubmit, so we want to move some ops_test
+# variants to TPU v7 in OSS presubmit. We call such variants "OPS_TEST_ON_V7".
+#
+# The following constants define the oss_presubmit_tpu_generation, run_on_accelerators, and
+# tags parameters for the OPS_TEST_ON_V7 variants.
+#
+# oss_presubmit_tpu_generation and run_on_accelerators are mutually exclusive, so we can only
+# set one of them in both internal and OSS.
+
+_OPS_TEST_ON_V7_TPU_GENERATION = if_oss(
+    tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    None,
+)
+
+_OPS_TEST_ON_V7_RUN_ON_ACCELERATORS = if_oss(
+    None,
+    [
+        "requires-tpu-v6e",
+        "requires-tpu-v5lite",
+    ],
+)
+
+_OPS_TEST_ON_V7_TAGS = if_oss(
+    ["requires-tpu-v5lite"],
+    ["ok-to-wait-for-v6e-in-presubmit"],
+)
+
 torch_tpu_py_test(
     # TODO: switch this to TPU-vs-GPU.
     name = "ops_test_grad_vs_cpu",
@@ -353,17 +383,14 @@ torch_tpu_py_test(
         ["--max_samples_per_op_dtype=20"],
     ),
     main = "ops_test.py",
-    run_on_accelerators = [
-        "requires-tpu-v6e",
-        "requires-tpu-v5lite",
-    ],
+    oss_presubmit_tpu_generation = _OPS_TEST_ON_V7_TPU_GENERATION,
+    run_on_accelerators = _OPS_TEST_ON_V7_RUN_ON_ACCELERATORS,
     shard_count = 15,
     tags = [
         "noasan",  # TODO: fix the test timing out in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
-        "ok-to-wait-for-v6e-in-presubmit",
-    ],
+    ] + _OPS_TEST_ON_V7_TAGS,
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
@@ -393,17 +420,14 @@ torch_tpu_py_test(
         ["--max_samples_per_op_dtype=20"],
     ),
     main = "ops_test.py",
-    run_on_accelerators = [
-        "requires-tpu-v6e",
-        "requires-tpu-v5lite",
-    ],
+    oss_presubmit_tpu_generation = _OPS_TEST_ON_V7_TPU_GENERATION,
+    run_on_accelerators = _OPS_TEST_ON_V7_RUN_ON_ACCELERATORS,
     shard_count = 1,
     tags = [
         "noasan",  # TODO: fix the test timing out in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
-        "ok-to-wait-for-v6e-in-presubmit",
-    ],
+    ] + _OPS_TEST_ON_V7_TAGS,
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
@@ -433,17 +457,14 @@ torch_tpu_py_test(
         ["--max_samples_per_op_dtype=20"],
     ),
     main = "ops_test.py",
-    run_on_accelerators = [
-        "requires-tpu-v6e",
-        "requires-tpu-v5lite",
-    ],
+    oss_presubmit_tpu_generation = _OPS_TEST_ON_V7_TPU_GENERATION,
+    run_on_accelerators = _OPS_TEST_ON_V7_RUN_ON_ACCELERATORS,
     shard_count = 1,
     tags = [
         "noasan",  # TODO: fix the test timing out in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
-        "ok-to-wait-for-v6e-in-presubmit",
-    ],
+    ] + _OPS_TEST_ON_V7_TAGS,
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
