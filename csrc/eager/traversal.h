@@ -90,7 +90,7 @@ namespace torch_tpu {
 using RefToOpMap = absl::flat_hash_map<DeviceBufferRef, mlir::MlirOp>;
 
 // Annotates an existing GraphKey with argument layouts without rebuilding the
-// graph.
+// graph. It returns the input graph key as is when argument_layouts is empty.
 GraphKey AnnotateGraphKeyWithArgumentLayouts(
     const GraphKey& graph_key, absl::Span<const CustomLayout> argument_layouts);
 
@@ -312,7 +312,8 @@ class Traversal {
   // The tensor outputs of the Traversal. These may be in any state, but the
   // list is non-empty and all outputs are unique.
   std::vector<DeviceBufferRef> outputs_;
-  // The graph key of the Traversal; lazily computed.
+  // The graph key of the Traversal, without considering the argument layouts
+  // and buffer donations; lazily computed.
   mutable std::optional<GraphKey> graph_key_;
 
   // The acceptable dynamic bounds for each dimension in the traversal's
