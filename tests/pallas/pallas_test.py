@@ -413,20 +413,26 @@ class TestPallasKernels(seed_test_utils.RepeatableTest):
     # Create a deferred op that depends on the pre-donation value of x.
     pre_x_sum = x.sum()
 
-    tpu_backend = tpu_compile.TpuBackend(debug=True)
+    debugs: list[tpu_compile.TpuCompileDebug] = []
 
     # Run a donating compiled operation.
-    @torch.compile(fullgraph=True, dynamic=False, backend=tpu_backend)
+    @torch.compile(
+        fullgraph=True,
+        dynamic=False,
+        backend=tpu_compile.TpuBackend(),
+        options={"debug_callback": debugs.append},
+    )
     def donated_add_vectors_sum(x, y):
       return donating_add_vectors(x, y).sum()
 
     _ = donated_add_vectors_sum(x, y)
 
-    executables = tpu_backend._compiled_executables
+    self.assertLen(debugs, 1)
+    executables = debugs[0].compiled_executables
     self.assertLen(executables, 1)
     self.assertIn(
         "jax.buffer_donor",
-        executables[0].mlir_texts[0],
+        debugs[0].stablehlo_forward_text[0],
     )
 
     # The pre-donation value of x can no longer be used if we are in deferred
