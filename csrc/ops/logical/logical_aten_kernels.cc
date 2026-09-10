@@ -20,7 +20,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "c10/core/ScalarType.h"
 #include "csrc/common/cache_key.h"
 #include "csrc/common/dtype.h"
 #include "csrc/common/error_utils.h"
@@ -31,65 +31,33 @@
 #include "csrc/ops/op_names.h"
 #include "csrc/ops/unary_aten_kernels.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
 namespace torch_tpu {
 
 namespace {
 
-// This is needed because the output dtype of the logical ops is always PRED,
-// but the output dtype of BinaryOpOut is determined by the `out` tensor.
+// This helper function for binary logical operations validates output dtype
+// against kBool and dispatches via BinaryOpOut.
 absl::Status LogicalBinaryOutImpl(const at::Tensor& self,
                                   const at::Tensor& other, at::Tensor& out,
                                   MlirBinaryOpBuilder core_op_builder) {
-  TT_ASSIGN_OR_RETURN(const auto out_dtype,
-                      ConvertTo<mlir::ElementType>(out.scalar_type()));
-
-  // adds a type conversion to match the `out` tensor's dtype.
-  auto custom_op_builder =
-      [out_dtype, core_op_builder = std::move(core_op_builder)](
-          mlir::MlirOp self_op,
-          mlir::MlirOp other_op) -> absl::StatusOr<mlir::MlirOp> {
-    TT_ASSIGN_OR_RETURN(mlir::MlirOp result,
-                        core_op_builder(self_op, other_op));
-    if (out_dtype != mlir::ElementType::PRED) {
-      result = mlir::stablehlo::ConvertElementType(result, out_dtype);
-    }
-    return result;
-  };
-
-  TT_RETURN_IF_ERROR(
-      BinaryOpOut(self, other, out, std::move(custom_op_builder),
-                  {.output_dtype_override = out_dtype,
-                   .op_param_cache_keys = OpParamCacheKeys::Empty()}));
-  return absl::OkStatus();
+  TT_ASSIGN_OR_RETURN(const auto bool_dtype,
+                      ConvertTo<mlir::ElementType>(at::kBool));
+  return BinaryOpOut(self, other, out, std::move(core_op_builder),
+                     {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                      .result_dtype = bool_dtype});
 }
 
-// This helper function for unary logical operations handles the type casting
-// for in-place operations, where the output tensor's dtype might not be bool.
+// This helper function for unary logical operations validates output dtype
+// against kBool and dispatches via UnaryOpOut.
 absl::Status LogicalUnaryOutImpl(const at::Tensor& self, at::Tensor& out,
                                  MlirUnaryOpBuilder core_op_builder) {
-  TT_ASSIGN_OR_RETURN(const auto out_dtype,
-                      ConvertTo<mlir::ElementType>(out.scalar_type()));
-
-  // Wraps the core op builder to add a type conversion to match the `out`
-  // tensor's dtype.
-  auto custom_op_builder =
-      [out_dtype, core_op_builder = std::move(core_op_builder)](
-          mlir::MlirOp self_op) -> absl::StatusOr<mlir::MlirOp> {
-    TT_ASSIGN_OR_RETURN(mlir::MlirOp result, core_op_builder(self_op));
-    if (out_dtype != mlir::ElementType::PRED) {
-      result = mlir::stablehlo::ConvertElementType(result, out_dtype);
-    }
-    return result;
-  };
-
-  TT_RETURN_IF_ERROR(
-      ::torch_tpu::UnaryOpOut(self, out, std::move(custom_op_builder),
-                              {.op_param_cache_keys = OpParamCacheKeys::Empty(),
-                               .out_dtype = out_dtype}));
-  return absl::OkStatus();
+  TT_ASSIGN_OR_RETURN(const auto bool_dtype,
+                      ConvertTo<mlir::ElementType>(at::kBool));
+  return ::torch_tpu::UnaryOpOut(
+      self, out, std::move(core_op_builder),
+      {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+       .out_dtype = bool_dtype});
 }
 
 }  // namespace

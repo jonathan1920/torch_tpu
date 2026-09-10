@@ -23,11 +23,13 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/DeprecatedTypeProperties.h"
-#include "absl/log/absl_check.h"
+#include "ATen/ops/result_type.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "c10/core/DefaultDtype.h"
+#include "c10/core/ScalarType.h"
+#include "csrc/common/aten_utils.h"
 #include "csrc/common/cache_key.h"
-#include "csrc/common/device_type.h"
 #include "csrc/common/dtype.h"
 #include "csrc/common/error_utils.h"
 #include "csrc/eager/device_buffer.h"
@@ -35,6 +37,7 @@
 #include "csrc/ops/op_builder_utils.h"
 #include "csrc/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "torch/headeronly/core/ScalarType.h"
 
 namespace torch_tpu {
 
@@ -45,10 +48,25 @@ struct BinaryOpOptions {
   bool reverse_operands = false;
   bool force_float_inputs =
       false;  // Force inputs to be floats, by casting if necessary.
-  std::optional<mlir::ElementType> output_dtype_override = std::nullopt;
   OpParamCacheKeys op_param_cache_keys;
   OpSplitMode split_mode = OpSplitMode::kNone;
   Indices donated_indices = {};
+  // Natural result dtype of the operation.
+  // When std::nullopt (default), the result dtype is dynamically inferred from
+  // input operands using standard PyTorch type promotion rules (via
+  // at::result_type). When specified, overrides the inferred result dtype
+  // (e.g. for comparison ops returning bool, or complex constructors returning
+  // complex).
+  // - In BinaryOp: dtype of the returned tensor.
+  // - In BinaryOpOut: expected mathematical result dtype before casting to
+  // `out`
+  //   (validated via ValidateOutDtype).
+  std::optional<mlir::ElementType> result_dtype = std::nullopt;
+  // Whether the out-variant kernel allows casting the natural result dtype
+  // to a different output tensor dtype via c10::canCast (true for
+  // math/arithmetic ops, false for ops like `complex` or `polar` that enforce
+  // strict dtype matching).
+  bool allow_out_dtype_cast = true;
 };
 
 struct TernaryOpOptions {
@@ -57,10 +75,22 @@ struct TernaryOpOptions {
   std::optional<OpName> op_name = std::nullopt;
   bool force_float_inputs =
       false;  // Force inputs to be floats, by casting if necessary.
-  std::optional<mlir::ElementType> output_dtype_override = std::nullopt;
   OpParamCacheKeys op_param_cache_keys;
   OpSplitMode split_mode = OpSplitMode::kNone;
   Indices donated_indices = {};
+  // Natural result dtype of the operation.
+  // When std::nullopt (default), the result dtype is dynamically inferred from
+  // input operands using standard PyTorch type promotion rules. When specified,
+  // overrides the inferred result dtype.
+  // - In TernaryOp: dtype of the returned tensor.
+  // - In TernaryOpOut: expected mathematical result dtype before casting to
+  // `out`
+  //   (validated via ValidateOutDtype).
+  std::optional<mlir::ElementType> result_dtype = std::nullopt;
+  // Whether the out-variant kernel allows casting the natural result dtype
+  // to a different output tensor dtype via c10::canCast (true for
+  // math/arithmetic ops, false for ops that enforce strict dtype matching).
+  bool allow_out_dtype_cast = true;
 };
 
 namespace internal {
@@ -105,6 +135,24 @@ template <typename OtherType>
 absl::Status BinaryOpOut(const at::Tensor& tensor, const OtherType& other,
                          at::Tensor& out, MlirBinaryOpBuilder op_builder,
                          BinaryOpOptions opts) {
+  at::ScalarType expected_result_type;
+  if (opts.result_dtype.has_value()) {
+    expected_result_type = ConvertTo<at::ScalarType>(*opts.result_dtype);
+  } else {
+    expected_result_type = at::result_type(tensor, other);
+    // For operations that require floating-point computation (e.g., true
+    // division or ldexp), PyTorch promotes integral inputs to the default
+    // float dtype. The expected mathematical result dtype is therefore the
+    // default float dtype rather than the integral promoted type, ensuring
+    // ValidateOutDtype catches invalid downcasts to `out`.
+    if (opts.force_float_inputs &&
+        c10::isIntegralType(expected_result_type, /*includeBool=*/true)) {
+      expected_result_type = c10::get_default_dtype_as_scalartype();
+    }
+  }
+  TT_RETURN_IF_ERROR(
+      ValidateOutDtype(out, expected_result_type, opts.allow_out_dtype_cast));
+
   return internal::DispatchBinaryOpOut(tensor, other, out,
                                        std::move(op_builder), std::move(opts));
 }

@@ -116,9 +116,8 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
   }
   TT_ASSIGN_OR_RETURN(mlir::ElementType computation_dtype,
                       ToElementType(promoted_scalar_type));
-  mlir::ElementType output_dtype = opts.output_dtype_override
-                                       ? *opts.output_dtype_override
-                                       : computation_dtype;
+  mlir::ElementType output_dtype =
+      opts.result_dtype.value_or(computation_dtype);
 
   auto op_builder =
       [bin_op_builder = std::move(bin_op_builder),
@@ -162,9 +161,8 @@ absl::StatusOr<DeviceBufferRef> DispatchTernaryOp(
   }
   TT_ASSIGN_OR_RETURN(mlir::ElementType computation_dtype,
                       ToElementType(promoted_scalar_type));
-  mlir::ElementType output_dtype = opts.output_dtype_override
-                                       ? *opts.output_dtype_override
-                                       : computation_dtype;
+  mlir::ElementType output_dtype =
+      opts.result_dtype.value_or(computation_dtype);
 
   auto op_builder = [ternary_op_builder = std::move(ternary_op_builder)](
                         FixedSizeSpan<mlir::MlirOp, 3> inputs) {
@@ -236,10 +234,8 @@ absl::Status DispatchBinaryOpOut(const at::Tensor& self,
   }
   TT_ASSIGN_OR_RETURN(mlir::ElementType computation_dtype,
                       ToElementType(promoted_scalar_type));
-  if (!opts.output_dtype_override) {
-    TT_ASSIGN_OR_RETURN(opts.output_dtype_override,
-                        ConvertTo<mlir::ElementType>(out.scalar_type()));
-  }
+  TT_ASSIGN_OR_RETURN(const auto out_element_type,
+                      ConvertTo<mlir::ElementType>(out.scalar_type()));
 
   auto op_builder =
       [bin_op_builder = std::move(bin_op_builder),
@@ -253,7 +249,7 @@ absl::Status DispatchBinaryOpOut(const at::Tensor& self,
   return DispatchOpOut<2>(
       std::move(op_builder), {self_tpu, other_tpu}, out,
       {.op_name = opts.op_name,
-       .out_dtype = *opts.output_dtype_override,
+       .out_dtype = out_element_type,
        .out_dims = output_dims,
        .computation_dtype = computation_dtype,
        .op_param_cache_keys = std::move(opts.op_param_cache_keys),
@@ -270,6 +266,29 @@ absl::Status TernaryOpOut(const at::Tensor& self, const at::Tensor& other,
   TT_RET_CHECK(IsPrivateUse1Device(out), error::kInvalidArgument)
       << "expected output tensor to be on 'tpu' device, got '" << out.device()
       << "'";
+
+  at::ScalarType expected_result_type;
+  if (opts.result_dtype.has_value()) {
+    expected_result_type = ConvertTo<at::ScalarType>(*opts.result_dtype);
+  } else {
+    // Current callers in this file (e.g., add and sub with alpha) pass an
+    // internal scalar alpha_tensor for `third`, so result_type(self, other)
+    // determines the natural result dtype. Callers implementing general ternary
+    // ops should pass opts.result_dtype explicitly if `third` affects
+    // promotion.
+    expected_result_type = at::result_type(self, other);
+    // For operations that require floating-point computation, PyTorch promotes
+    // integral inputs to the default float dtype. The expected mathematical
+    // result dtype is therefore the default float dtype rather than the
+    // integral promoted type, ensuring ValidateOutDtype catches invalid
+    // downcasts to `out`.
+    if (opts.force_float_inputs &&
+        c10::isIntegralType(expected_result_type, /*includeBool=*/true)) {
+      expected_result_type = c10::get_default_dtype_as_scalartype();
+    }
+  }
+  TT_RETURN_IF_ERROR(
+      ValidateOutDtype(out, expected_result_type, opts.allow_out_dtype_cast));
 
   TT_ASSIGN_OR_RETURN(auto tpu_tensors,
                       internal::MoveCpuScalarsToTpu({self, other, third}));
@@ -292,10 +311,8 @@ absl::Status TernaryOpOut(const at::Tensor& self, const at::Tensor& other,
   }
   TT_ASSIGN_OR_RETURN(mlir::ElementType computation_dtype,
                       internal::ToElementType(promoted_scalar_type));
-  if (!opts.output_dtype_override) {
-    TT_ASSIGN_OR_RETURN(opts.output_dtype_override,
-                        ConvertTo<mlir::ElementType>(out.scalar_type()));
-  }
+  TT_ASSIGN_OR_RETURN(const auto out_element_type,
+                      ConvertTo<mlir::ElementType>(out.scalar_type()));
 
   auto ternary_builder = [op_builder = std::move(op_builder)](
                              FixedSizeSpan<mlir::MlirOp, 3> inputs) {
@@ -305,7 +322,7 @@ absl::Status TernaryOpOut(const at::Tensor& self, const at::Tensor& other,
   return DispatchOpOut<3>(
       std::move(ternary_builder), {self_tpu, other_tpu, third_tpu}, out,
       {.op_name = opts.op_name,
-       .out_dtype = *opts.output_dtype_override,
+       .out_dtype = out_element_type,
        .out_dims = output_dims,
        .computation_dtype = computation_dtype,
        .op_param_cache_keys = std::move(opts.op_param_cache_keys),
@@ -364,7 +381,7 @@ absl::StatusOr<mlir::MlirOp> BuildAlphaAddReluShlo(mlir::MlirOp self_op,
 struct DivOpOptions {
   MlirBinaryOpBuilder op_builder;
   OpParamCacheKeys op_param_cache_keys;
-  std::optional<mlir::ElementType> output_dtype_override;
+  std::optional<mlir::ElementType> result_dtype = std::nullopt;
 };
 
 template <typename OtherType>
@@ -391,7 +408,7 @@ absl::StatusOr<DivOpOptions> GetDivOpOptionsNoMode(const at::Tensor& self,
       c10::isIntegralType(GetScalarType(other), /*includeBool=*/true)) {
     return DivOpOptions{.op_builder = std::move(op_builder),
                         .op_param_cache_keys = OpParamCacheKeys::Empty(),
-                        .output_dtype_override = default_dtype};
+                        .result_dtype = default_dtype};
   }
 
   return DivOpOptions{.op_builder = std::move(op_builder),
@@ -422,8 +439,8 @@ absl::StatusOr<DivOpOptions> GetDivOpOptionsTruncMode() {
     auto sign = stablehlo::Sign(div_op);
     return stablehlo::Mul(floor, sign);
   };
-  return DivOpOptions{std::move(op_builder), std::move(param_keys),
-                      std::nullopt};
+  return DivOpOptions{.op_builder = std::move(op_builder),
+                      .op_param_cache_keys = std::move(param_keys)};
 }
 
 absl::StatusOr<DivOpOptions> GetDivOpOptionsFloorMode() {
@@ -476,8 +493,8 @@ absl::StatusOr<DivOpOptions> GetDivOpOptionsFloorMode() {
 
     return stablehlo::Select(pred_select, true_select, div);
   };
-  return DivOpOptions{std::move(op_builder), std::move(param_keys),
-                      std::nullopt};
+  return DivOpOptions{.op_builder = std::move(op_builder),
+                      .op_param_cache_keys = std::move(param_keys)};
 }
 
 // Returns the appropriate division operator builder based on the provided mode.
@@ -567,9 +584,8 @@ absl::Status ValidateBitwiseShiftInputs(const at::Tensor& self,
   return absl::OkStatus();
 }
 
-absl::Status ValidateComplexOutInputs(const at::Tensor& real,
-                                      const at::Tensor& imag,
-                                      const at::Tensor& out) {
+absl::Status ValidateComplexInputs(const at::Tensor& real,
+                                   const at::Tensor& imag) {
   TT_RET_CHECK(IsFloatOrDouble(real), error::kInvalidArgument)
       << "expected the dtype of the first argument to be float32 or float64, "
          "got "
@@ -579,13 +595,6 @@ absl::Status ValidateComplexOutInputs(const at::Tensor& real,
       << "expected the dtype of the second argument to be float32 or float64, "
          "got "
       << ToString(imag.scalar_type());
-
-  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Errors when creating the complex32
-                 // output tensor before.
-      IsXlaSupportedComplex(out), error::kInvalidArgument)
-      << "expected the dtype of the output to be one of the OpenXLA supported "
-         "complex dtypes (either complex64 or complex128), got "
-      << ToString(out.scalar_type());
 
   return absl::OkStatus();
 }
@@ -708,8 +717,11 @@ absl::Status AtenComparisonScalarOutHelper(
       break;
   }
 
+  TT_ASSIGN_OR_RETURN(const auto bool_dtype,
+                      ConvertTo<mlir::ElementType>(at::kBool));
   return BinaryOpOut(self, other_tensor, out, std::move(builder),
-                     {.op_param_cache_keys = OpParamCacheKeys::Empty()});
+                     {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                      .result_dtype = bool_dtype});
 }
 
 enum class BitwiseShiftDirection {
@@ -739,7 +751,7 @@ absl::Status BitwiseShiftScalarHelper(const at::Tensor& self,
 
 absl::Status SubHelperOut(const at::Tensor& a, const at::Tensor& b,
                           MaybePromotedScalar promoted_alpha,
-                          at::ScalarType out_dtype, at::Tensor& out,
+                          at::ScalarType promoted_scalar_type, at::Tensor& out,
                           OpParamCacheKeys& param_keys) {
   // As an optimization, skip the scaling if alpha is 1.
   if (promoted_alpha.IsOne()) {
@@ -748,7 +760,7 @@ absl::Status SubHelperOut(const at::Tensor& a, const at::Tensor& b,
   }
 
   TT_ASSIGN_OR_RETURN(const at::Tensor alpha_tensor,
-                      promoted_alpha.GetTensor(out_dtype));
+                      promoted_alpha.GetTensor(promoted_scalar_type));
 
   auto op_builder = [](mlir::MlirOp a_op, mlir::MlirOp b_op,
                        mlir::MlirOp alpha_op) -> absl::StatusOr<mlir::MlirOp> {
@@ -793,7 +805,8 @@ absl::Status DivOutMode(const at::Tensor& self, const at::Tensor& other,
   TT_ASSIGN_OR_RETURN(auto div_opts, GetDivOpBuilder(self, other, mode));
   return BinaryOpOut(
       self, other, out, std::move(div_opts.op_builder),
-      {.op_param_cache_keys = std::move(div_opts.op_param_cache_keys)});
+      {.op_param_cache_keys = std::move(div_opts.op_param_cache_keys),
+       .result_dtype = div_opts.result_dtype});
 }
 
 absl::Status BitwiseLeftShiftTensor(
@@ -1040,6 +1053,8 @@ at::Tensor& AtenAddOut(const at::Tensor& self, const at::Tensor& other,
   TT_KERNEL(OpName::kAddOut, param_keys, (self, other, promoted_alpha, out), {
     TT_THROW_IF_ERROR(ValidateAlphaTypeSupported(alpha));
 
+    const at::ScalarType promoted_scalar_type = at::result_type(self, other);
+
     // As an optimization, skip the scaling if alpha is 1.
     if (promoted_alpha.IsOne()) {
       TT_THROW_IF_ERROR(
@@ -1049,7 +1064,7 @@ at::Tensor& AtenAddOut(const at::Tensor& self, const at::Tensor& other,
     }
 
     TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
-                       promoted_alpha.GetTensor(out.scalar_type()));
+                       promoted_alpha.GetTensor(promoted_scalar_type));
 
     auto op_builder =
         [](mlir::MlirOp self_op, mlir::MlirOp other_op,
@@ -1073,6 +1088,9 @@ at::Tensor& AtenAddReluOut(const at::Tensor& self, const at::Tensor& other,
       OpName::kAddReluOut, param_keys, (self, other, promoted_alpha, out), {
         TT_THROW_IF_ERROR(ValidateAlphaTypeSupported(alpha));
 
+        const at::ScalarType promoted_scalar_type =
+            at::result_type(self, other);
+
         // As an optimization, skip the scaling if alpha is 1.
         if (promoted_alpha.IsOne()) {
           TT_THROW_IF_ERROR(
@@ -1082,7 +1100,7 @@ at::Tensor& AtenAddReluOut(const at::Tensor& self, const at::Tensor& other,
         }
 
         TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
-                           promoted_alpha.GetTensor(out.scalar_type()));
+                           promoted_alpha.GetTensor(promoted_scalar_type));
 
         TT_THROW_IF_ERROR(
             TernaryOpOut(self, other, alpha_tensor, out, BuildAlphaAddReluShlo,
@@ -1247,12 +1265,9 @@ at::Tensor& AtenBitwiseXorTensorOut(const at::Tensor& self,
                                     const at::Tensor& other, at::Tensor& out) {
   TT_KERNEL(OpName::kBitwiseXorOut, _, (self, other, out), {
     TT_THROW_IF_ERROR(ValidateBitwiseOpsInputs(self, other));
-    TT_ASSIGN_OR_THROW(auto output_dtype,
-                       ConvertTo<mlir::ElementType>(out.scalar_type()));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildBitwiseXorShlo,
-                    {.output_dtype_override = output_dtype,
-                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }
@@ -1260,10 +1275,16 @@ at::Tensor& AtenBitwiseXorTensorOut(const at::Tensor& self,
 at::Tensor& AtenComplexOut(const at::Tensor& real, const at::Tensor& imag,
                            at::Tensor& out) {
   TT_KERNEL(OpName::kComplexOut, _, (real, imag, out), {
-    TT_THROW_IF_ERROR(ValidateComplexOutInputs(real, imag, out));
+    TT_THROW_IF_ERROR(ValidateComplexInputs(real, imag));
+    const at::ScalarType complex_dtype =
+        c10::toComplexType(at::result_type(real, imag));
+    TT_ASSIGN_OR_THROW(const auto complex_element_type,
+                       ConvertTo<mlir::ElementType>(complex_dtype));
     TT_THROW_IF_ERROR(
         BinaryOpOut(real, imag, out, BuildComplexShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = complex_element_type,
+                     .allow_out_dtype_cast = false}));
     return out;
   });
 }
@@ -1307,8 +1328,8 @@ at::Tensor& AtenEqScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenEqTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kEqOut, _, (self, other, out), {
-    TT_ASSIGN_OR_THROW(auto output_dtype,
-                       ConvertTo<mlir::ElementType>(out.scalar_type()));
+    TT_ASSIGN_OR_THROW(const auto bool_dtype,
+                       ConvertTo<mlir::ElementType>(at::kBool));
     if (self.scalar_type() == at::kFloat4_e2m1fn_x2 ||
         other.scalar_type() == at::kFloat4_e2m1fn_x2) {
       TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch dispatcher catches dtype
@@ -1319,13 +1340,14 @@ at::Tensor& AtenEqTensorOut(const at::Tensor& self, const at::Tensor& other,
       at::Tensor other_u8 = other.view(at::kByte);
       TT_THROW_IF_ERROR(
           BinaryOpOut(self_u8, other_u8, out, BuildEqShlo,
-                      {.output_dtype_override = output_dtype,
-                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                      {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                       .result_dtype = bool_dtype}));
       return out;
     }
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildEqShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = bool_dtype}));
     return out;
   });
 }
@@ -1391,9 +1413,12 @@ at::Tensor& AtenGeTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kGeOut, _, (self, other, out), {
     TT_THROW_IF_ERROR(ValidateInputsNotComplex(self, other));
+    TT_ASSIGN_OR_THROW(const auto bool_dtype,
+                       ConvertTo<mlir::ElementType>(at::kBool));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildGeShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = bool_dtype}));
     return out;
   });
 }
@@ -1412,9 +1437,12 @@ at::Tensor& AtenGtTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kGtOut, _, (self, other, out), {
     TT_THROW_IF_ERROR(ValidateInputsNotComplex(self, other));
+    TT_ASSIGN_OR_THROW(const auto bool_dtype,
+                       ConvertTo<mlir::ElementType>(at::kBool));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildGtShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = bool_dtype}));
     return out;
   });
 }
@@ -1455,10 +1483,17 @@ at::Tensor& AtenLdexpOut(const at::Tensor& self, const at::Tensor& other,
                          at::Tensor& out) {
   TT_KERNEL(OpName::kLdexpOut, _, (self, other, out), {
     TT_THROW_IF_ERROR(ValidateLdexpOutput(out));
+    const at::ScalarType expected_result_type =
+        c10::isIntegralType(self.scalar_type(), /*includeBool=*/true)
+            ? c10::get_default_dtype_as_scalartype()
+            : self.scalar_type();
+    TT_ASSIGN_OR_THROW(const auto expected_element_type,
+                       ConvertTo<mlir::ElementType>(expected_result_type));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildLdexpShlo,
                     {.force_float_inputs = true,
-                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                     .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = expected_element_type}));
     return out;
   });
 }
@@ -1477,10 +1512,17 @@ at::Tensor AtenLdexpTensor(const at::Tensor& self, const at::Tensor& other) {
 at::Tensor& AtenLdexp_(at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kLdexp_, _, (self, other), {
     TT_THROW_IF_ERROR(ValidateLdexpOutput(self));
+    const at::ScalarType expected_result_type =
+        c10::isIntegralType(self.scalar_type(), /*includeBool=*/true)
+            ? c10::get_default_dtype_as_scalartype()
+            : self.scalar_type();
+    TT_ASSIGN_OR_THROW(const auto expected_element_type,
+                       ConvertTo<mlir::ElementType>(expected_result_type));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, self, BuildLdexpShlo,
                     {.force_float_inputs = true,
-                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                     .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = expected_element_type}));
     return self;
   });
 }
@@ -1499,9 +1541,12 @@ at::Tensor& AtenLeTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kLeOut, _, (self, other, out), {
     TT_THROW_IF_ERROR(ValidateInputsNotComplex(self, other));
+    TT_ASSIGN_OR_THROW(const auto bool_dtype,
+                       ConvertTo<mlir::ElementType>(at::kBool));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildLeShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = bool_dtype}));
     return out;
   });
 }
@@ -1543,9 +1588,12 @@ at::Tensor& AtenLtTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kLtOut, _, (self, other, out), {
     TT_THROW_IF_ERROR(ValidateInputsNotComplex(self, other));
+    TT_ASSIGN_OR_THROW(const auto bool_dtype,
+                       ConvertTo<mlir::ElementType>(at::kBool));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildLtShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = bool_dtype}));
     return out;
   });
 }
@@ -1597,8 +1645,8 @@ at::Tensor& AtenNeScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenNeTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kNeOut, _, (self, other, out), {
-    TT_ASSIGN_OR_THROW(auto output_dtype,
-                       ConvertTo<mlir::ElementType>(out.scalar_type()));
+    TT_ASSIGN_OR_THROW(const auto bool_dtype,
+                       ConvertTo<mlir::ElementType>(at::kBool));
     if (self.scalar_type() == at::kFloat4_e2m1fn_x2 ||
         other.scalar_type() == at::kFloat4_e2m1fn_x2) {
       TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch dispatcher catches dtype
@@ -1609,14 +1657,14 @@ at::Tensor& AtenNeTensorOut(const at::Tensor& self, const at::Tensor& other,
       at::Tensor other_u8 = other.view(at::kByte);
       TT_THROW_IF_ERROR(
           BinaryOpOut(self_u8, other_u8, out, BuildNeShlo,
-                      {.output_dtype_override = output_dtype,
-                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                      {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                       .result_dtype = bool_dtype}));
       return out;
     }
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildNeShlo,
-                    {.output_dtype_override = output_dtype,
-                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = bool_dtype}));
     return out;
   });
 }
@@ -1625,9 +1673,15 @@ at::Tensor& AtenPolarOut(const at::Tensor& abs, const at::Tensor& angle,
                          at::Tensor& out) {
   TT_KERNEL(OpName::kPolarOut, _, (abs, angle, out), {
     TT_THROW_IF_ERROR(ValidatePolarInputs(abs, angle));
+    const at::ScalarType complex_dtype =
+        c10::toComplexType(at::result_type(abs, angle));
+    TT_ASSIGN_OR_THROW(const auto complex_element_type,
+                       ConvertTo<mlir::ElementType>(complex_dtype));
     TT_THROW_IF_ERROR(
         BinaryOpOut(abs, angle, out, BuildPolarShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = complex_element_type,
+                     .allow_out_dtype_cast = false}));
     return out;
   });
 }
@@ -1637,16 +1691,18 @@ at::Tensor& AtenPowScalarOut(const at::Scalar& self, const at::Tensor& exponent,
   auto promoted_self = PromoteScalar(self);
   TT_KERNEL(OpName::kPowScalarOut, _, (promoted_self, exponent, out), {
     TT_THROW_IF_ERROR(ValidatePowInputs(self, exponent));
-    // Can't use reverse_operands here because a^b != b^a.
-    // Cast to out tensor dtype to be consistent with PyTorch.
-    TT_ASSIGN_OR_THROW(at::Tensor self_tensor,
-                       promoted_self.GetTensor(out.scalar_type()));
+    const at::ScalarType result_type = at::result_type(self, exponent);
+    TT_ASSIGN_OR_THROW(const at::Tensor self_tensor,
+                       promoted_self.GetTensor(result_type));
+    TT_ASSIGN_OR_THROW(const auto result_element_type,
+                       ConvertTo<mlir::ElementType>(result_type));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self_tensor, exponent, out, BuildPowShlo,
                     // Use kPowOut for cache key as the builder logic is the
                     // same as for AtenPowTensorTensorOut.
                     {.op_name = OpName::kPowOut,
-                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                     .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = result_element_type}));
     return out;
   });
 }
@@ -1657,15 +1713,18 @@ at::Tensor& AtenPowTensorScalarOut(const at::Tensor& self,
   auto promoted_exponent = PromoteScalar(exponent);
   TT_KERNEL(OpName::kPowTensorScalarOut, _, (self, promoted_exponent, out), {
     TT_THROW_IF_ERROR(ValidatePowInputs(self, exponent));
-    // Cast to self dtype to be consistent with PyTorch.
+    const at::ScalarType result_type = at::result_type(self, exponent);
     TT_ASSIGN_OR_THROW(const at::Tensor exponent_tensor,
-                       promoted_exponent.GetTensor(self.scalar_type()));
+                       promoted_exponent.GetTensor(result_type));
+    TT_ASSIGN_OR_THROW(const auto result_element_type,
+                       ConvertTo<mlir::ElementType>(result_type));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, exponent_tensor, out, BuildPowShlo,
                     // Use kPowOut for cache key as the builder logic is the
                     // same as for AtenPowTensorTensorOut.
                     {.op_name = OpName::kPowOut,
-                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                     .op_param_cache_keys = OpParamCacheKeys::Empty(),
+                     .result_dtype = result_element_type}));
     return out;
   });
 }
@@ -1787,8 +1846,9 @@ at::Tensor& AtenSubOut(const at::Tensor& self, const at::Tensor& other,
     TT_THROW_IF_ERROR(ValidateAlphaTypeSupported(alpha));
     TT_THROW_IF_ERROR(ValidateSubInputs(self, other));
 
+    const at::ScalarType promoted_scalar_type = at::result_type(self, other);
     TT_THROW_IF_ERROR(SubHelperOut(self, other, std::move(promoted_alpha),
-                                   out.scalar_type(), out, param_keys));
+                                   promoted_scalar_type, out, param_keys));
     return out;
   });
 }

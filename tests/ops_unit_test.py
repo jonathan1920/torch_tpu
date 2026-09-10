@@ -1368,6 +1368,97 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
         out_f64, torch.tensor([5.0], dtype=torch.float64, device=device)
     )
 
+  def test_binary_arithmetic_out_upcast(self):
+    device = torch.device("tpu")
+    a = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32, device=device)
+    b = torch.tensor([4.0, 5.0, 6.0], dtype=torch.float32, device=device)
+
+    # add: float32 -> float64 upcast
+    out_add = torch.empty(3, dtype=torch.float64, device=device)
+    torch.add(a, b, out=out_add)
+    self.assertEqual(out_add.dtype, torch.float64)
+    utils.assert_close(
+        out_add,
+        torch.tensor([5.0, 7.0, 9.0], dtype=torch.float64, device=device),
+    )
+
+    # sub: float32 -> float64 upcast
+    out_sub = torch.empty(3, dtype=torch.float64, device=device)
+    torch.sub(a, b, out=out_sub)
+    self.assertEqual(out_sub.dtype, torch.float64)
+    utils.assert_close(
+        out_sub,
+        torch.tensor([-3.0, -3.0, -3.0], dtype=torch.float64, device=device),
+    )
+
+    # mul: float32 -> float64 upcast
+    out_mul = torch.empty(3, dtype=torch.float64, device=device)
+    torch.mul(a, b, out=out_mul)
+    self.assertEqual(out_mul.dtype, torch.float64)
+    utils.assert_close(
+        out_mul,
+        torch.tensor([4.0, 10.0, 18.0], dtype=torch.float64, device=device),
+    )
+
+    # div: int32 -> float32 promotion and upcast
+    a_int = torch.tensor([1, 2, 4], dtype=torch.int32, device=device)
+    b_int = torch.tensor([2, 4, 8], dtype=torch.int32, device=device)
+    out_div = torch.empty(3, dtype=torch.float32, device=device)
+    torch.div(a_int, b_int, out=out_div)
+    self.assertEqual(out_div.dtype, torch.float32)
+    utils.assert_close(
+        out_div,
+        torch.tensor([0.5, 0.5, 0.5], dtype=torch.float32, device=device),
+    )
+
+    # pow: float32 -> float64 upcast
+    out_pow = torch.empty(3, dtype=torch.float64, device=device)
+    torch.pow(a, b, out=out_pow)
+    self.assertEqual(out_pow.dtype, torch.float64)
+    utils.assert_close(
+        out_pow,
+        torch.tensor([1.0, 32.0, 729.0], dtype=torch.float64, device=device),
+    )
+
+  def test_ldexp_out_upcast(self):
+    device = torch.device("tpu")
+    # ldexp: float32 -> float64 upcast
+    x = torch.tensor([2.0, 3.0], dtype=torch.float32, device=device)
+    exp = torch.tensor([2, 3], dtype=torch.int32, device=device)
+    out_ldexp = torch.empty(2, dtype=torch.float64, device=device)
+    torch.ldexp(x, exp, out=out_ldexp)
+    self.assertEqual(out_ldexp.dtype, torch.float64)
+    utils.assert_close(
+        out_ldexp,
+        torch.tensor([8.0, 24.0], dtype=torch.float64, device=device),
+    )
+
+  def test_complex_and_polar_out(self):
+    device = torch.device("tpu")
+    # complex: float32 -> complex64 out
+    real_f32 = torch.tensor([3.0, 1.0], dtype=torch.float32, device=device)
+    imag_f32 = torch.tensor([4.0, 2.0], dtype=torch.float32, device=device)
+    out_c64 = torch.empty(2, dtype=torch.complex64, device=device)
+    torch.complex(real_f32, imag_f32, out=out_c64)
+    self.assertEqual(out_c64.dtype, torch.complex64)
+    utils.assert_close(
+        out_c64,
+        torch.tensor(
+            [3.0 + 4.0j, 1.0 + 2.0j], dtype=torch.complex64, device=device
+        ),
+    )
+
+    # polar: float32 -> complex64 out
+    abs_f32 = torch.tensor([2.0], dtype=torch.float32, device=device)
+    angle_f32 = torch.tensor([0.0], dtype=torch.float32, device=device)
+    out_polar_c64 = torch.empty(1, dtype=torch.complex64, device=device)
+    torch.polar(abs_f32, angle_f32, out=out_polar_c64)
+    self.assertEqual(out_polar_c64.dtype, torch.complex64)
+    utils.assert_close(
+        out_polar_c64,
+        torch.tensor([2.0 + 0.0j], dtype=torch.complex64, device=device),
+    )
+
   def test_bool_abs(self):
     device = torch.device("tpu")
     x = torch.tensor(

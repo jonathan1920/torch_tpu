@@ -7715,6 +7715,114 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.any(t, out=out)
 
+  def test_add_out_dtype_mismatch(self):
+    a = torch.ones(5, device=et.device(), dtype=torch.float32)
+    b = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.empty(5, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""add(): result type float32 can't be cast to the desired output type int32""",
+        gpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.add(a, b, out=out)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""add(): result type float32 can't be cast to the desired output type int32""",
+        gpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.add(a, b, alpha=2.0, out=out)
+
+  def test_sub_out_dtype_mismatch(self):
+    a = torch.ones(5, device=et.device(), dtype=torch.float32)
+    b = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.empty(5, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sub(): result type float32 can't be cast to the desired output type int32""",
+        gpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.sub(a, b, out=out)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sub(): result type float32 can't be cast to the desired output type int32""",
+        gpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.sub(a, b, alpha=2.0, out=out)
+
+  def test_mul_out_dtype_mismatch(self):
+    a = torch.ones(5, device=et.device(), dtype=torch.float32)
+    b = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.empty(5, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""mul(): result type float32 can't be cast to the desired output type int32""",
+        gpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.mul(a, b, out=out)
+
+  def test_div_out_dtype_mismatch(self):
+    a = torch.ones(5, device=et.device(), dtype=torch.int32)
+    b = torch.ones(5, device=et.device(), dtype=torch.int32)
+    out = torch.empty(5, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""div(): result type float32 can't be cast to the desired output type int32""",
+        gpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.div(a, b, out=out)
+
+  def test_pow_out_dtype_mismatch(self):
+    a = torch.ones(5, device=et.device(), dtype=torch.float32)
+    b = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.empty(5, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""pow(): result type float32 can't be cast to the desired output type int32""",
+        gpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.pow(a, b, out=out)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""pow(): result type float32 can't be cast to the desired output type int32""",
+        gpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.pow(a, 2.0, out=out)
+
+  def test_complex_out_dtype_mismatch(self):
+    real = torch.ones(5, device=et.device(), dtype=torch.float32)
+    imag = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.empty(5, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""complex(): expected the output dtype to be complex64, got float32""",
+        gpu="""Expected object of scalar type ComplexFloat but got scalar type Float for argument 'out'""",
+        message_reviewed_by="wan",
+    ):
+      torch.complex(real, imag, out=out)
+
+  def test_polar_out_dtype_mismatch(self):
+    abs_t = torch.ones(5, device=et.device(), dtype=torch.float32)
+    angle_t = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.empty(5, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""polar(): expected the output dtype to be complex64, got float32""",
+        gpu="""Expected object of scalar type ComplexFloat but got scalar type Float for argument 'out'""",
+        message_reviewed_by="wan",
+    ):
+      torch.polar(abs_t, angle_t, out=out)
+
   def test_angle_out_dtype_mismatch(self):
     t = torch.tensor([1.0 + 1.0j], device=et.device())
     out_int = torch.empty(1, device=et.device(), dtype=torch.int32)
