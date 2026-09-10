@@ -25,13 +25,16 @@
 #include "absl/strings/str_format.h"
 #include "csrc/common/error_utils.h"
 #include "csrc/internal/mosaic/op_builders.h"
+#include "csrc/ops/scaled_dot_product_attention/flash_attention_config.h"
 #include "csrc/pjrt/pjrt_state.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -407,6 +410,73 @@ absl::StatusOr<stablehlo::CustomCallOp> CreateCustomCallOp(
       builder.getArrayAttr(output_layouts),
       /*output_operand_aliases=*/nullptr,
       /*result_tilings=*/nullptr);
+}
+
+DictionaryAttr CreateSymbolTransformIndicesAttr(
+    Builder& builder, llvm::StringRef function_name,
+    llvm::ArrayRef<int64_t> window_bounds) {
+  return builder.getDictionaryAttr({
+      builder.getNamedAttr(
+          "transform_indices",
+          mlir::FlatSymbolRefAttr::get(builder.getContext(), function_name)),
+      builder.getNamedAttr("window_bounds",
+                           builder.getDenseI64ArrayAttr(window_bounds)),
+  });
+}
+
+KVWindowMaps CreateKVWindowMaps(OpBuilder& builder, func::FuncOp fn,
+                                const FlashAttnConfig& config,
+                                const Tiling& tiling) {
+  return CreateKVWindowMaps(builder, fn, config.num_heads, config.kv_num_heads,
+                            tiling.kt, config.qk_head_dim, config.vo_head_dim);
+}
+
+KVWindowMaps CreateKVWindowMaps(OpBuilder& builder, func::FuncOp fn,
+                                int64_t num_heads, int64_t kv_num_heads,
+                                int64_t kt, int64_t qk_head_dim,
+                                int64_t vo_head_dim) {
+  ABSL_DCHECK_GT(num_heads, 0);
+  ABSL_DCHECK_GT(kv_num_heads, 0);
+  ABSL_DCHECK_EQ(num_heads % kv_num_heads, 0);
+
+  // GQA: Mosaic's AffineMap doesn't support FloorDiv, so we use a transform
+  // function.
+  ModuleOp module = fn->getParentOfType<ModuleOp>();
+  auto kv_transform_fn =
+      module ? module.lookupSymbol<func::FuncOp>("kv_transform_indices")
+             : nullptr;
+  if (!kv_transform_fn) {
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPoint(fn);
+    Location loc = fn.getLoc();
+    Type i32 = builder.getI32Type();
+    SmallVector<Type> input_types(4, i32);
+    SmallVector<Type> output_types(4, i32);
+    FunctionType fn_type = builder.getFunctionType(input_types, output_types);
+    kv_transform_fn =
+        func::FuncOp::create(builder, loc, "kv_transform_indices", fn_type);
+    kv_transform_fn.setPrivate();
+    Block* entry = kv_transform_fn.addEntryBlock();
+    OpBuilder fn_b = OpBuilder::atBlockBegin(entry);
+
+    Value batch = entry->getArgument(0);
+    Value head = entry->getArgument(1);
+    Value kv_tile = entry->getArgument(3);
+    int64_t head_group_size = num_heads / kv_num_heads;
+    Value group_size = arith::ConstantOp::create(
+        fn_b, loc, fn_b.getI32IntegerAttr(head_group_size));
+    Value kv_head = arith::DivSIOp::create(fn_b, loc, head, group_size);
+    Value c0 = arith::ConstantOp::create(fn_b, loc, fn_b.getI32IntegerAttr(0));
+    func::ReturnOp::create(fn_b, loc, ValueRange{batch, kv_head, kv_tile, c0});
+  }
+
+  DictionaryAttr k_map = CreateSymbolTransformIndicesAttr(
+      builder, "kv_transform_indices", {1, 1, kt, qk_head_dim});
+
+  DictionaryAttr v_map = CreateSymbolTransformIndicesAttr(
+      builder, "kv_transform_indices", {1, 1, kt, vo_head_dim});
+
+  return {k_map, v_map};
 }
 
 }  // namespace mlir::torch_tpu

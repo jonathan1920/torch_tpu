@@ -249,61 +249,6 @@ mlir::MlirOp ReshapeMask(mlir::MlirOp mask_mlir, int batch_size) {
   return mask_mlir;
 }
 
-std::tuple<mlir::MlirOp, mlir::MlirOp> ReplicateKV(mlir::MlirOp key,
-                                                   mlir::MlirOp value,
-                                                   int num_heads,
-                                                   int kv_num_heads) {
-  if (kv_num_heads == num_heads) {
-    return {key, value};
-  }
-
-  auto replicate = [&](mlir::MlirOp input) {
-    mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-    llvm::ArrayRef<int64_t> input_shape = input_type.getShape();
-    int64_t batch_size = input_shape[0];
-    int64_t seq_len = input_shape[2];
-    int64_t head_dim = input_shape[3];
-    int64_t head_count_ratio = num_heads / kv_num_heads;
-    auto broadcast_type = mlir::RankedTensorType::get(
-        {batch_size, kv_num_heads, head_count_ratio, seq_len, head_dim},
-        input_type.getElementType());
-    mlir::MlirOp broadcasted_input =
-        mlir::stablehlo::BroadcastInDim(broadcast_type, input, {0, 1, 3, 4});
-    return mlir::stablehlo::Reshape(broadcasted_input,
-                                    {batch_size, num_heads, seq_len, head_dim});
-  };
-  return {replicate(key), replicate(value)};
-}
-
-absl::StatusOr<std::tuple<mlir::MlirOp, mlir::MlirOp>> AccumulateKVGrads(
-    mlir::MlirOp grad_key, mlir::MlirOp grad_value, int num_heads,
-    int kv_num_heads) {
-  if (kv_num_heads == num_heads) {
-    return std::make_tuple(grad_key, grad_value);
-  }
-
-  auto reduce_gradients =
-      [&](mlir::MlirOp grad) -> absl::StatusOr<mlir::MlirOp> {
-    mlir::RankedTensorType grad_type = GetTensorTypeOrDie(grad);
-    llvm::ArrayRef<int64_t> grad_shape = grad_type.getShape();
-    int batch_size = grad_shape[0];
-    int64_t seq_len = grad_shape[2];
-    int64_t head_dim = grad_shape[3];
-    int64_t head_count_ratio = num_heads / kv_num_heads;
-    mlir::MlirOp reshaped_grad = mlir::stablehlo::Reshape(
-        grad, {batch_size, kv_num_heads, head_count_ratio, seq_len, head_dim});
-    TT_ASSIGN_OR_RETURN(
-        mlir::MlirOp reduced_grad,
-        BuildSumShlo(reshaped_grad, {2}, ReductionMode::kDropDims));
-    return reduced_grad;
-  };
-
-  TT_ASSIGN_OR_RETURN(grad_key, reduce_gradients(grad_key));
-  TT_ASSIGN_OR_RETURN(grad_value, reduce_gradients(grad_value));
-
-  return std::make_tuple(grad_key, grad_value);
-}
-
 absl::StatusOr<std::tuple<at::Tensor, at::Tensor>>
 CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
                                const at::Tensor& value,
@@ -347,10 +292,6 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
         flatten_batch_dims(key_mlir, config.batch_size, rank - 3);
     mlir::MlirOp value_4d =
         flatten_batch_dims(value_mlir, config.batch_size, rank - 3);
-
-    std::tie(key_4d, value_4d) =
-        ReplicateKV(key_4d, value_4d, config.num_heads, config.kv_num_heads);
-    config.kv_num_heads = config.num_heads;
 
     query_4d = PadSequenceDim(query_4d, 2, config.padded_q_sequence_length);
     key_4d = PadSequenceDim(key_4d, 2, config.padded_kv_sequence_length);
@@ -537,11 +478,6 @@ CreateFlashAttentionBackwardKernel(
     mlir::MlirOp value_batch =
         flatten_batch_dims(value_mlir, config.batch_size, rank - 3);
 
-    int64_t original_kv_num_heads = config.kv_num_heads;
-    std::tie(key_batch, value_batch) = ReplicateKV(
-        key_batch, value_batch, config.num_heads, config.kv_num_heads);
-    config.kv_num_heads = config.num_heads;
-
     // Reshape logsumexp to 4D [B_flat, N, 1, S]
     mlir::MlirOp logsumexp_4d =
         mlir::stablehlo::Reshape(logsumexp_mlir, aux_dims_4d);
@@ -576,11 +512,13 @@ CreateFlashAttentionBackwardKernel(
     TT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> dkv_kernel,
                         mlir::torch_tpu::CreateBackwardDkvKernel(
                             context.get(), config, tiling));
+    mlir::RankedTensorType key_type = GetTensorTypeOrDie(key_batch);
+    mlir::RankedTensorType value_type = GetTensorTypeOrDie(value_batch);
     TT_ASSIGN_OR_RETURN(
         auto dkv_custom_call,
         mlir::torch_tpu::CreateCustomCallOp(
             builder.getOpBuilder(), builder.getLoc(), std::move(dkv_kernel),
-            dkv_inputs, {key_batch.getType(), value_batch.getType()}));
+            dkv_inputs, {key_type, value_type}));
 
     mlir::MlirOp out_batch =
         flatten_batch_dims(out_mlir, config.batch_size, rank - 3);
@@ -617,11 +555,6 @@ CreateFlashAttentionBackwardKernel(
         SliceSequenceDim(grad_value_batch_padded, 2, config.kv_sequence_length);
     mlir::MlirOp grad_query_batch =
         SliceSequenceDim(grad_query_batch_padded, 2, config.q_sequence_length);
-
-    TT_ASSIGN_OR_RETURN(
-        std::tie(grad_key_batch, grad_value_batch),
-        AccumulateKVGrads(grad_key_batch, grad_value_batch, config.num_heads,
-                          original_kv_num_heads));
 
     mlir::MlirOp grad_query =
         unflatten_batch_dims(grad_query_batch, query_mlir);

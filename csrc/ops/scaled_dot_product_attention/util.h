@@ -19,12 +19,16 @@
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 
 #include "absl/status/statusor.h"
+#include "csrc/ops/scaled_dot_product_attention/flash_attention_config.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
@@ -35,6 +39,25 @@
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir::torch_tpu {
+
+struct KVWindowMaps {
+  DictionaryAttr k_map;
+  DictionaryAttr v_map;
+};
+
+DictionaryAttr CreateSymbolTransformIndicesAttr(
+    Builder& builder, llvm::StringRef function_name,
+    llvm::ArrayRef<int64_t> window_bounds);
+
+// Creates the KV window maps (k_map and v_map) for MHA, GQA, or MQA.
+KVWindowMaps CreateKVWindowMaps(OpBuilder& builder, func::FuncOp fn,
+                                const FlashAttnConfig& config,
+                                const Tiling& tiling);
+
+KVWindowMaps CreateKVWindowMaps(OpBuilder& builder, func::FuncOp fn,
+                                int64_t num_heads, int64_t kv_num_heads,
+                                int64_t kt, int64_t qk_head_dim,
+                                int64_t vo_head_dim);
 
 // Load a 2D tile from the given argument.
 TypedValue<VectorType> LoadTile(ImplicitLocOpBuilder& b, Value arg);

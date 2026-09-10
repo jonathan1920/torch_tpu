@@ -127,9 +127,6 @@ void SetKernelAttributes(llvm::ArrayRef<const int64_t> qk_dimensions,
                                  /*symbolCount=*/0, results, context)))});
   };
 
-  llvm::SmallVector<AffineExpr> inner_map_expr = {
-      builder.getAffineDimExpr(0), builder.getAffineDimExpr(1),
-      builder.getAffineDimExpr(3), builder.getAffineConstantExpr(0)};
   llvm::SmallVector<AffineExpr> q_map_expr = {
       builder.getAffineDimExpr(0), builder.getAffineDimExpr(1),
       builder.getAffineDimExpr(2), builder.getAffineConstantExpr(0)};
@@ -137,20 +134,15 @@ void SetKernelAttributes(llvm::ArrayRef<const int64_t> qk_dimensions,
       builder.getAffineDimExpr(0), builder.getAffineDimExpr(1),
       builder.getAffineConstantExpr(0), builder.getAffineDimExpr(2)};
 
-  auto kv_map_expr = inner_map_expr;
-  if (config.kv_num_heads < config.num_heads) {
-    kv_map_expr[1] = kv_map_expr[1].floorDiv(
-        builder.getAffineConstantExpr(config.num_heads / config.kv_num_heads));
-  }
-
   auto q_map = transform_indices(q_map_expr);
-  auto kv_map = transform_indices(kv_map_expr);
   auto aux_map = transform_indices(aux_map_expr);
 
+  auto [k_map, v_map] = CreateKVWindowMaps(builder, fn, config, tiling);
+
   SmallVector<DictionaryAttr> window_attrs;
-  window_attrs.push_back(q_map);   // Q
-  window_attrs.push_back(kv_map);  // K
-  window_attrs.push_back(kv_map);  // V
+  window_attrs.push_back(q_map);  // Q
+  window_attrs.push_back(k_map);  // K
+  window_attrs.push_back(v_map);  // V
 
   if (config.has_attn_bias) {
     SmallVector<AffineExpr, 4> mask_expr{
@@ -374,6 +366,12 @@ absl::StatusOr<OwningOpRef<ModuleOp>> CreateKernel(
     return TT_ERROR(::torch_tpu::error::kInvalidArgument)
            << "Padded sequence lengths must be divisible by tile sizes.";
   }
+
+  if (config.num_heads % config.kv_num_heads != 0) {
+    return TT_ERROR(::torch_tpu::error::kInvalidArgument)
+           << "num_heads must be divisible by kv_num_heads.";
+  }
+
   auto fn = buildModule(module_builder, config, tiling);
 
   absl::InlinedVector<int64_t, 4> q_shape = {

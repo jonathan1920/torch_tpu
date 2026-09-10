@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#include <algorithm>
 #include <cstdint>
 #include <initializer_list>
 #include <optional>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "csrc/common/error_utils.h"
@@ -37,7 +37,6 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/AttrTypeSubElements.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -45,10 +44,8 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
@@ -60,6 +57,7 @@
 namespace mlir::torch_tpu {
 
 using mlir::arith::AddFOp;         // USING_DECL_OK
+using mlir::arith::AndIOp;         // USING_DECL_OK
 using mlir::arith::CmpIOp;         // USING_DECL_OK
 using mlir::arith::CmpIPredicate;  // USING_DECL_OK
 using mlir::arith::ConstantOp;     // USING_DECL_OK
@@ -143,9 +141,10 @@ struct BwdArgIndices {
   int next_idx;
 };
 
-BwdArgIndices GetBwdArgIndices(const FlashAttnConfig& config) {
+BwdArgIndices GetBwdArgIndices(const FlashAttnConfig& config,
+                               int num_iteration_dims = 4) {
   BwdArgIndices indices;
-  int arg_idx = 4;
+  int arg_idx = num_iteration_dims;
   indices.q = arg_idx++;
   indices.k = arg_idx++;
   indices.v = arg_idx++;
@@ -213,7 +212,7 @@ func::FuncOp buildBackwardDkvModule(ImplicitLocOpBuilder& module_builder,
   SmallVector<int64_t> di_dims = {1, 1, 1, qt};
 
   // Inputs list!
-  SmallVector<Type> inputs(4, module_builder.getI32Type());
+  SmallVector<Type> inputs(5, module_builder.getI32Type());
   inputs.push_back(GetVmemMemRefType(context, q_dims, ity));
   inputs.push_back(GetVmemMemRefType(context, k_dims, ity));
   inputs.push_back(GetVmemMemRefType(context, v_dims, ity));
@@ -236,7 +235,8 @@ func::FuncOp buildBackwardDkvModule(ImplicitLocOpBuilder& module_builder,
   inputs.push_back(GetVmemMemRefType(context, dk_dims, oty));
   inputs.push_back(GetVmemMemRefType(context, dv_dims, oty));
 
-  BwdArgIndices arg_indices = GetBwdArgIndices(config);
+  BwdArgIndices arg_indices =
+      GetBwdArgIndices(config, /*num_iteration_dims=*/5);
   int arg_idx = arg_indices.next_idx;
   int dk_bf16_idx = arg_idx++;
   int dv_bf16_idx = arg_idx++;
@@ -255,29 +255,33 @@ func::FuncOp buildBackwardDkvModule(ImplicitLocOpBuilder& module_builder,
   ConstantOp zero = ConstantOp::create(
       fn_builder, fn_builder.getZeroAttr(fn_builder.getI32Type()));
 
-  IfOp::create(
-      fn_builder,
-      CmpIOp::create(fn_builder, CmpIPredicate::eq, zero, fn.getArgument(3)),
-      /*thenBuilder=*/
-      [&](OpBuilder& builder, Location loc) -> void {
-        ImplicitLocOpBuilder b(loc, builder);
-        ZeroTile(b, fn.getArgument(dk_f32_idx));
-        ZeroTile(b, fn.getArgument(dv_f32_idx));
-        YieldOp::create(b, loc);
-      });
+  Value is_first_q_tile =
+      CmpIOp::create(fn_builder, CmpIPredicate::eq, zero, fn.getArgument(3));
+  Value is_first_head_group =
+      CmpIOp::create(fn_builder, CmpIPredicate::eq, zero, fn.getArgument(4));
+  Value is_first_reduction_step =
+      AndIOp::create(fn_builder, is_first_q_tile, is_first_head_group);
+
+  IfOp::create(fn_builder, is_first_reduction_step,
+               /*thenBuilder=*/
+               [&](OpBuilder& builder, Location loc) -> void {
+                 ImplicitLocOpBuilder b(loc, builder);
+                 ZeroTile(b, fn.getArgument(dk_f32_idx));
+                 ZeroTile(b, fn.getArgument(dv_f32_idx));
+                 YieldOp::create(b, loc);
+               });
+
+  Value kv_tile_idx = fn.getArgument(2);
+  Value q_tile_idx = fn.getArgument(3);
 
   std::optional<IfOp> causal_if;
   if (config.is_causal) {
-    causal_if = CreateCausalIfOp(fn_builder, fn.getArgument(3),
-                                 fn.getArgument(2), qt, kt);
+    causal_if = CreateCausalIfOp(fn_builder, q_tile_idx, kv_tile_idx, qt, kt);
     fn_builder.setInsertionPointToStart(causal_if->thenBlock());
   }
 
   LoadedTiles tiles =
       LoadAndCastTiles(fn_builder, fn, config, tiling, oty, arg_indices);
-
-  Value kv_tile_idx = fn.getArgument(2);
-  Value q_tile_idx = fn.getArgument(3);
 
   auto shared_result = ComputeSharedBackwardLogic(
       fn_builder, config, qt, kt, tiles.q_tile, tiles.k_tile, tiles.v_tile,
@@ -303,10 +307,6 @@ func::FuncOp buildBackwardDkvModule(ImplicitLocOpBuilder& module_builder,
   auto updated_dv = AddFOp::create(fn_builder, prev_dv, dv_contraction);
   StoreTile(fn_builder, updated_dv, fn.getArgument(dv_f32_idx));
 
-  // TODO: need to accumulate this for the MQA case as multiple "head"
-  // iterations will contribute to the same kv grad.
-  // This is probably possible by some clever indexing and ensuring the scratch
-  // is zeroed on the correct index.
   StoreTile(fn_builder, updated_dk, fn.getArgument(dk_bf16_idx));
   StoreTile(fn_builder, updated_dv, fn.getArgument(dv_bf16_idx));
 
@@ -316,9 +316,142 @@ func::FuncOp buildBackwardDkvModule(ImplicitLocOpBuilder& module_builder,
   func::ReturnOp::create(fn_builder);
   return fn;
 }
-void SetBackwardKernelAttributes(const FlashAttnConfig& config,
-                                 const Tiling& tiling, func::FuncOp fn,
-                                 OpBuilder& builder, bool is_dq = false) {
+void SetBackwardDkvKernelAttributes(const FlashAttnConfig& config,
+                                    const Tiling& tiling, func::FuncOp fn,
+                                    OpBuilder& builder) {
+  MLIRContext* context = builder.getContext();
+  int64_t num_kv_tiles = config.padded_kv_sequence_length / tiling.kt;
+  int64_t num_q_tiles = config.padded_q_sequence_length / tiling.qt;
+  int64_t head_group_size = config.num_heads / config.kv_num_heads;
+
+  SmallVector<int64_t> iteration_bounds = {config.batch_size,
+                                           config.kv_num_heads, num_kv_tiles,
+                                           num_q_tiles, head_group_size};
+  fn->setAttr("iteration_bounds",
+              builder.getDenseI64ArrayAttr(iteration_bounds));
+
+  SmallVector<Attribute> dimension_semantics(
+      3, GetDimensionSemanticsAttr(context, DimensionSemantics::kParallel));
+  dimension_semantics.push_back(
+      GetDimensionSemanticsAttr(context, DimensionSemantics::kArbitrary));
+  dimension_semantics.push_back(
+      GetDimensionSemanticsAttr(context, DimensionSemantics::kArbitrary));
+  fn->setAttr("dimension_semantics", builder.getArrayAttr(dimension_semantics));
+
+  auto transform_indices = [&](AffineMap map) {
+    return builder.getDictionaryAttr(
+        {builder.getNamedAttr("transform_indices", AffineMapAttr::get(map))});
+  };
+
+  // Iteration indices: (d0, d1, d2, d3, d4) = (batch, kv_head, kv_tile, q_tile,
+  // head_group)
+  mlir::AffineExpr batch_itr = builder.getAffineDimExpr(0);
+  mlir::AffineExpr kv_head_itr = builder.getAffineDimExpr(1);
+  mlir::AffineExpr kv_seq_itr = builder.getAffineDimExpr(2);
+  mlir::AffineExpr constant_0 = builder.getAffineConstantExpr(0);
+
+  // K, V, dK, dV always index: (batch, kv_head, kv_tile, 0)
+  auto kv_map = AffineMap::get(
+      5, 0, {batch_itr, kv_head_itr, kv_seq_itr, constant_0}, context);
+  DictionaryAttr k_map = transform_indices(kv_map);
+  DictionaryAttr v_map = k_map;
+  DictionaryAttr dk_map = k_map;
+  DictionaryAttr dv_map = k_map;
+
+  // GQA / MQA: Mosaic AffineMap doesn't support Dim * Const + Dim, so use
+  // transform functions.
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPoint(fn);
+  Location loc = fn.getLoc();
+  Type i32 = builder.getI32Type();
+  SmallVector<Type> input_types(5, i32);
+  SmallVector<Type> output_types(4, i32);
+  FunctionType fn_type = builder.getFunctionType(input_types, output_types);
+
+  auto create_transform_fn = [&](llvm::StringRef name,
+                                 absl::AnyInvocable<SmallVector<Value, 4>(
+                                     OpBuilder&, Value batch, Value q_head,
+                                     Value q_tile, Value kv_tile, Value c0)>
+                                     get_results) {
+    auto transform_fn = func::FuncOp::create(builder, loc, name, fn_type);
+    transform_fn.setPrivate();
+    Block* entry = transform_fn.addEntryBlock();
+    OpBuilder fn_b = OpBuilder::atBlockBegin(entry);
+    Value batch = entry->getArgument(0);
+    Value kv_head = entry->getArgument(1);
+    Value kv_tile = entry->getArgument(2);
+    Value q_tile = entry->getArgument(3);
+    Value head_in_group = entry->getArgument(4);
+
+    Value group_size_val = arith::ConstantOp::create(
+        fn_b, loc, fn_b.getI32IntegerAttr(head_group_size));
+    Value kv_offset = arith::MulIOp::create(fn_b, loc, kv_head, group_size_val);
+    Value q_head = arith::AddIOp::create(fn_b, loc, kv_offset, head_in_group);
+
+    Value c0 = arith::ConstantOp::create(fn_b, loc, fn_b.getI32IntegerAttr(0));
+    SmallVector<Value, 4> results =
+        get_results(fn_b, batch, q_head, q_tile, kv_tile, c0);
+    func::ReturnOp::create(fn_b, loc, results);
+    return transform_fn;
+  };
+
+  create_transform_fn("q_transform_indices",
+                      [](OpBuilder&, Value batch, Value q_head, Value q_tile,
+                         Value kv_tile, Value c0) -> SmallVector<Value, 4> {
+                        return {batch, q_head, q_tile, c0};
+                      });
+  DictionaryAttr q_map_attr = CreateSymbolTransformIndicesAttr(
+      builder, "q_transform_indices", {1, 1, tiling.qt, config.qk_head_dim});
+  DictionaryAttr do_map_attr = CreateSymbolTransformIndicesAttr(
+      builder, "q_transform_indices", {1, 1, tiling.qt, config.vo_head_dim});
+
+  create_transform_fn("aux_transform_indices",
+                      [](OpBuilder&, Value batch, Value q_head, Value q_tile,
+                         Value kv_tile, Value c0) -> SmallVector<Value, 4> {
+                        return {batch, q_head, c0, q_tile};
+                      });
+  DictionaryAttr aux_map_attr = CreateSymbolTransformIndicesAttr(
+      builder, "aux_transform_indices", {1, 1, 1, tiling.qt});
+
+  DictionaryAttr lse_map_attr = aux_map_attr;
+  DictionaryAttr di_map_attr = aux_map_attr;
+
+  DictionaryAttr mask_map_attr;
+  if (config.has_attn_bias) {
+    create_transform_fn("mask_transform_indices",
+                        [&](OpBuilder&, Value batch, Value q_head, Value q_tile,
+                            Value kv_tile, Value c0) -> SmallVector<Value, 4> {
+                          SmallVector<Value, 4> coords = {batch, q_head, q_tile,
+                                                          kv_tile};
+                          for (auto dim : config.mask_broadcast_dims) {
+                            coords[dim] = c0;
+                          }
+                          return coords;
+                        });
+    mask_map_attr = CreateSymbolTransformIndicesAttr(
+        builder, "mask_transform_indices", {1, 1, tiling.qt, tiling.kt});
+  }
+
+  SmallVector<Attribute> window_attrs;
+  window_attrs.push_back(q_map_attr);    // Q
+  window_attrs.push_back(k_map);         // K
+  window_attrs.push_back(v_map);         // V
+  window_attrs.push_back(do_map_attr);   // dO
+  window_attrs.push_back(lse_map_attr);  // lse
+  window_attrs.push_back(di_map_attr);   // di
+  if (config.has_attn_bias) {
+    window_attrs.push_back(mask_map_attr);  // mask
+  }
+  window_attrs.push_back(dk_map);  // dK
+  window_attrs.push_back(dv_map);  // dV
+
+  fn->setAttr("window_params", builder.getArrayAttr(window_attrs));
+  fn->setAttr("scratch_operands", builder.getI64IntegerAttr(2));
+}
+
+void SetBackwardDqKernelAttributes(const FlashAttnConfig& config,
+                                   const Tiling& tiling, func::FuncOp fn,
+                                   OpBuilder& builder) {
   MLIRContext* context = builder.getContext();
 
   SmallVector<int64_t> iteration_bounds = {
@@ -330,13 +463,6 @@ void SetBackwardKernelAttributes(const FlashAttnConfig& config,
   int heads_idx = 1;
   int q_seq_idx = 2;
   int kv_seq_idx = 3;
-
-  if (!is_dq) {
-    std::swap(iteration_bounds[q_seq_idx], iteration_bounds[kv_seq_idx]);
-    std::swap(q_seq_idx, kv_seq_idx);
-  }
-
-  bool is_mqa = config.kv_num_heads < config.num_heads;
 
   fn->setAttr("iteration_bounds",
               builder.getDenseI64ArrayAttr(iteration_bounds));
@@ -361,24 +487,18 @@ void SetBackwardKernelAttributes(const FlashAttnConfig& config,
 
   llvm::SmallVector<AffineExpr> q_map_expr = {batch_itr, heads_itr, q_seq_itr,
                                               constant_0};
-  llvm::SmallVector<AffineExpr> kv_map_expr = {batch_itr, heads_itr, kv_seq_itr,
-                                               constant_0};
   llvm::SmallVector<AffineExpr> aux_map_expr = {batch_itr, heads_itr,
                                                 constant_0, q_seq_itr};
 
-  if (is_mqa) {
-    kv_map_expr[1] = kv_map_expr[1].floorDiv(
-        builder.getAffineConstantExpr(config.num_heads / config.kv_num_heads));
-  }
-
   auto q_map = AffineMap::get(4, 0, q_map_expr, context);
-  auto kv_map = AffineMap::get(4, 0, kv_map_expr, context);
   auto aux_map = AffineMap::get(4, 0, aux_map_expr, context);
+
+  auto [k_map, v_map] = CreateKVWindowMaps(builder, fn, config, tiling);
 
   SmallVector<Attribute> window_attrs;
   window_attrs.push_back(transform_indices(q_map));    // Q
-  window_attrs.push_back(transform_indices(kv_map));   // K
-  window_attrs.push_back(transform_indices(kv_map));   // V
+  window_attrs.push_back(k_map);                       // K
+  window_attrs.push_back(v_map);                       // V
   window_attrs.push_back(transform_indices(q_map));    // dO
   window_attrs.push_back(transform_indices(aux_map));  // lse
   window_attrs.push_back(transform_indices(aux_map));  // di
@@ -393,21 +513,11 @@ void SetBackwardKernelAttributes(const FlashAttnConfig& config,
     window_attrs.push_back(transform_indices(mask_map));
   }
 
-  if (is_dq) {
-    window_attrs.push_back(transform_indices(q_map));  // Out
-    window_attrs.push_back(transform_indices(q_map));  // dQ
-  } else {
-    window_attrs.push_back(transform_indices(kv_map));  // dK
-    window_attrs.push_back(transform_indices(kv_map));  // dV
-  }
+  window_attrs.push_back(transform_indices(q_map));  // Out
+  window_attrs.push_back(transform_indices(q_map));  // dQ
 
   fn->setAttr("window_params", builder.getArrayAttr(window_attrs));
-
-  if (is_dq) {
-    fn->setAttr("scratch_operands", builder.getI64IntegerAttr(1));
-  } else {
-    fn->setAttr("scratch_operands", builder.getI64IntegerAttr(2));
-  }
+  fn->setAttr("scratch_operands", builder.getI64IntegerAttr(1));
 }
 
 absl::StatusOr<OwningOpRef<ModuleOp>> CreateBackwardDkvKernel(
@@ -424,8 +534,13 @@ absl::StatusOr<OwningOpRef<ModuleOp>> CreateBackwardDkvKernel(
            << "Padded sequence lengths must be divisible by tile sizes.";
   }
 
+  if (config.num_heads % config.kv_num_heads != 0) {
+    return TT_ERROR(::torch_tpu::error::kInvalidArgument)
+           << "num_heads must be divisible by kv_num_heads.";
+  }
+
   auto fn = buildBackwardDkvModule(module_builder, config, tiling);
-  SetBackwardKernelAttributes(config, tiling, fn, builder);
+  SetBackwardDkvKernelAttributes(config, tiling, fn, builder);
 
   ABSL_VLOG(1) << "Backward dKV kernel:\n" << GetOpString(module.get());
 
@@ -549,8 +664,13 @@ absl::StatusOr<OwningOpRef<ModuleOp>> CreateBackwardDqKernel(
            << "Padded sequence lengths must be divisible by tile sizes.";
   }
 
+  if (config.num_heads % config.kv_num_heads != 0) {
+    return TT_ERROR(::torch_tpu::error::kInvalidArgument)
+           << "num_heads must be divisible by kv_num_heads.";
+  }
+
   auto fn = buildBackwardDqModule(module_builder, config, tiling);
-  SetBackwardKernelAttributes(config, tiling, fn, builder, /*is_dq=*/true);
+  SetBackwardDqKernelAttributes(config, tiling, fn, builder);
 
   ABSL_VLOG(1) << "Backward dQ kernel:\n" << GetOpString(module.get());
 
