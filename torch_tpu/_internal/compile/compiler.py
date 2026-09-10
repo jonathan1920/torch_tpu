@@ -43,6 +43,7 @@ from torch.utils import _pytree
 from torch_tpu._internal import export as torch_tpu_export
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.debug import TpuCompileDebug
+from torch_tpu._internal.compile.fx_passes import detect_causal_mask
 from torch_tpu._internal.compile.fx_passes import fold_gqa
 from torch_tpu._internal.compile.fx_passes import mark_activation_checkpoints
 from torch_tpu._internal.compile.fx_passes import mark_embedded_constants
@@ -482,6 +483,13 @@ class StaticCompiler(Compiler):
     graph_transform_observer.GraphTransformObserver(
         graph_module, "fold_gqa"
     ).apply_graph_pass(fold_gqa.apply)
+    graph_transform_observer.GraphTransformObserver(
+        graph_module, "detect_causal_mask"
+    ).apply_graph_pass(
+        lambda gm_or_graph: detect_causal_mask.apply(
+            gm_or_graph, example_inputs
+        )
+    )
     graph_transform_observer.GraphTransformObserver(
         graph_module, "mark_embedded_constants"
     ).apply_graph_pass(mark_embedded_constants.apply)

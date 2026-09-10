@@ -33,6 +33,7 @@ torch_tpu_py_library(
         ":tpu_torch_compile",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/benchmarks:xprof_adapter",
+        "//torch_tpu/_internal/compile/fx_passes:detect_causal_mask",
         "//torch_tpu/_internal/compile/fx_passes:fold_gqa",
         "//torch_tpu/_internal/compile/fx_passes:mark_activation_checkpoints",
         "//torch_tpu/_internal/compile/fx_passes:mark_embedded_constants",

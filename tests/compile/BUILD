@@ -28,6 +28,18 @@ package(
 exports_files(["data/goldfish.jpg"])
 
 torch_tpu_py_test(
+    name = "detect_causal_mask_test",
+    srcs = ["detect_causal_mask_test.py"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile/fx_passes:detect_causal_mask",
+    ],
+)
+
+torch_tpu_py_test(
     name = "backend_serialization_test",
     srcs = ["backend_serialization_test.py"],
     oss_presubmit_tpu_generation = tpu_gen(

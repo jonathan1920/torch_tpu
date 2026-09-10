@@ -20,6 +20,14 @@ package(
 )
 
 torch_tpu_py_library(
+    name = "detect_causal_mask",
+    srcs = ["detect_causal_mask.py"],
+    deps = [
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
     name = "mark_embedded_constants",
     srcs = ["mark_embedded_constants.py"],
     deps = [

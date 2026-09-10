@@ -705,7 +705,7 @@ absl::StatusOr<FusedAttentionResults> ScaledDotProductFusedAttentionShlo(
   };
 
   std::vector<at::Tensor> inputs = {query, key, value};
-  if (attn_bias.has_value() && attn_bias->defined()) {
+  if (attn_bias.has_value() && attn_bias->defined() && attn_bias->numel() > 0) {
     inputs.push_back(*attn_bias);
   }
 
@@ -770,7 +770,7 @@ ScaledDotProductFusedAttentionShloBackward(
       };
 
   std::vector<at::Tensor> inputs = {grad_out, query, key, value, sum_exp};
-  if (attn_bias.defined()) {
+  if (attn_bias.defined() && attn_bias.numel() > 0) {
     inputs.push_back(attn_bias);
   }
 
