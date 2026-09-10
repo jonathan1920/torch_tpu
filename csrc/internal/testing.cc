@@ -122,6 +122,10 @@ TT_PYBIND11_MODULE(testing, m) {
         "Resets the default device generators singleton state.");
   m.def("get_memory_kind", PyGetMemoryKind, py::arg("tensor"),
         "Returns the memory space kind of the given tensor's buffer.");
+  m.def("clear_sticky_error", ClearStickyError,
+        "Clears the global sticky error state.");
+  m.def("has_sticky_error", HasStickyError,
+        "Returns whether the global sticky error state is set.");
 }
 
 }  // namespace torch_tpu

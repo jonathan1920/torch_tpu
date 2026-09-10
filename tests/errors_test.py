@@ -11887,6 +11887,50 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.ops.aten._padded_dense_to_jagged_forward(dense, [offsets], 5)
 
+  def test_assert_async_ambiguous_empty(self):
+    empty_cond = torch.empty(0, dtype=torch.bool, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""assert_async(): boolean value of Tensor with no values is ambiguous""",
+        gpu="""Boolean value of Tensor with no values is ambiguous""",
+        message_reviewed_by="cbasile",
+    ):
+      torch.ops.aten._assert_async(empty_cond)
+
+  def test_assert_async_ambiguous_multiple(self):
+    multi_cond = torch.tensor(
+        [True, False], dtype=torch.bool, device=et.device()
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""assert_async(): boolean value of Tensor with more than one value is ambiguous""",
+        gpu="""Boolean value of Tensor with more than one value is ambiguous""",
+        message_reviewed_by="cbasile",
+    ):
+      torch.ops.aten._assert_async(multi_cond)
+
+  def test_assert_async_msg_ambiguous_empty(self):
+    empty_cond = torch.empty(0, dtype=torch.bool, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""assert_async(): boolean value of Tensor with no values is ambiguous""",
+        gpu="""Boolean value of Tensor with no values is ambiguous""",
+        message_reviewed_by="cbasile",
+    ):
+      torch.ops.aten._assert_async.msg(empty_cond, "empty assertion")
+
+  def test_assert_async_msg_ambiguous_multiple(self):
+    multi_cond = torch.tensor(
+        [True, False], dtype=torch.bool, device=et.device()
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""assert_async(): boolean value of Tensor with more than one value is ambiguous""",
+        gpu="""Boolean value of Tensor with more than one value is ambiguous""",
+        message_reviewed_by="cbasile",
+    ):
+      torch.ops.aten._assert_async.msg(multi_cond, "multiple assertion")
+
 
 class InputPreprocessingErrorTest(et.ErrorTestBase):
 

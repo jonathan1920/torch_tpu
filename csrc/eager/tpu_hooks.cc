@@ -48,7 +48,6 @@
 #include "csrc/eager/materialize.h"
 #include "csrc/eager/structured_log_buffer.h"
 #include "csrc/eager/tensor_to_buffer.h"
-#include "csrc/internal/sync/sync.h"
 #include "csrc/ops/macros/kernel.h"
 #include "csrc/ops/op_names.h"
 #include "csrc/pjrt/pjrt_state.h"
@@ -249,6 +248,7 @@ void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
                      MaterializeStream(stream.device_index(), stream.id(),
                                        MaterializationReason::kExplicitSync));
   TT_THROW_IF_ERROR(event->Wait());
+  SyncAndCheckStickyError();
 }
 void TpuDeviceGuardImpl::synchronizeDevice(
     c10::DeviceIndex device_index) const {
@@ -258,6 +258,7 @@ void TpuDeviceGuardImpl::synchronizeDevice(
   for (const auto& event : events) {
     TT_THROW_IF_ERROR(event->Wait());
   }
+  SyncAndCheckStickyError();
 }
 void TpuDeviceGuardImpl::destroyEvent(
     void* event, const c10::DeviceIndex device_index) const noexcept {

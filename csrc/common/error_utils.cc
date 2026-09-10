@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -39,6 +40,10 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/numeric/int128.h"
@@ -50,6 +55,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "c10/core/Device.h"
 #include "c10/core/WrapDimMinimal.h"
@@ -683,6 +689,73 @@ bool IsXlaOomError(const absl::Status& status) {
           // Some XLA OOM errors are reported as internal errors with this
           // word in the message.
           absl::StrContains(status.message(), "allocation_size"));
+}
+
+namespace internal {
+// Aligned to 64 bytes (cache-line size) to prevent false sharing with other
+// frequently mutated global variables on the hot dispatch path.
+alignas(64) std::atomic<bool> g_has_sticky_error{false};
+}  // namespace internal
+
+namespace {
+absl::Mutex g_sticky_error_mutex(absl::kConstInit);
+absl::NoDestructor<absl::Status> g_sticky_error
+    ABSL_GUARDED_BY(g_sticky_error_mutex){absl::OkStatus()};
+
+absl::Mutex g_assertion_mutex(absl::kConstInit);
+absl::CondVar g_assertion_cv;
+int64_t g_pending_assertions ABSL_GUARDED_BY(g_assertion_mutex) = 0;
+}  // namespace
+
+void SetStickyError(absl::Status status) {
+  if (status.ok()) {
+    return;
+  }
+  absl::MutexLock lock(g_sticky_error_mutex);
+  if (g_sticky_error->ok()) {
+    *g_sticky_error = std::move(status);
+    internal::g_has_sticky_error.store(true, std::memory_order_release);
+  }
+}
+
+absl::Status GetStickyError() {
+  absl::MutexLock lock(g_sticky_error_mutex);
+  return *g_sticky_error;
+}
+
+void IncrementPendingAssertionChecks() {
+  absl::MutexLock lock(g_assertion_mutex);
+  ++g_pending_assertions;
+}
+
+void DecrementPendingAssertionChecks() {
+  absl::MutexLock lock(g_assertion_mutex);
+  ABSL_CHECK_GT(g_pending_assertions, 0);  // CRASH_OK
+  --g_pending_assertions;
+  if (g_pending_assertions == 0) {
+    g_assertion_cv.SignalAll();
+  }
+}
+
+void WaitForPendingAssertionChecks() {
+  absl::MutexLock lock(g_assertion_mutex);
+  while (g_pending_assertions > 0) {
+    g_assertion_cv.Wait(&g_assertion_mutex);
+  }
+}
+
+void SyncAndCheckStickyError() {
+  WaitForPendingAssertionChecks();
+  if (ABSL_PREDICT_FALSE(HasStickyError())) {
+    TT_THROW_IF_ERROR(GetStickyError());
+  }
+}
+
+void ClearStickyError() {
+  WaitForPendingAssertionChecks();
+  absl::MutexLock lock(g_sticky_error_mutex);
+  *g_sticky_error = absl::OkStatus();
+  internal::g_has_sticky_error.store(false, std::memory_order_release);
 }
 
 absl::Status AdaptXlaError(const absl::Status& status,

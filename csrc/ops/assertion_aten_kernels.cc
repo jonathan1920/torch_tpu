@@ -13,74 +13,182 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include "csrc/ops/assertion_aten_kernels.h"
 
+#include <cstdint>
+#include <exception>
+#include <string>
 #include <string_view>
 #include <utility>
 
+#include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "absl/log/log.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/optimization.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "csrc/common/cache_key.h"
-#include "csrc/common/dtype.h"
+#include "csrc/common/context_states.h"
 #include "csrc/common/error_utils.h"
-#include "csrc/eager/op_dispatcher.h"
+#include "csrc/common/thread_pool.h"
+#include "csrc/eager/device_buffer.h"
+#include "csrc/eager/eager_mode.h"
+#include "csrc/eager/structured_log_buffer.h"
+#include "csrc/eager/tensor_to_buffer.h"
 #include "csrc/ops/macros/kernel.h"
-#include "csrc/ops/op_builder_utils.h"
 #include "csrc/ops/op_names.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "csrc/pjrt/pjrt_utils.h"
 
 namespace torch_tpu {
+namespace {
 
-// TODO(b/510886286): This is a temporary no-op stub.
-// Implement a proper async check using a parallel checker program or
-// device-side assertions to avoid blocking the host.
-void AtenAssertAsync(const at::Tensor& self) {
-  TT_KERNEL(OpName::kAssertAsync, _, (self), {
-    auto op_builder =
-        [](mlir::MlirOp input_op) -> absl::StatusOr<mlir::MlirOp> {
-      return input_op;
-    };
+// Returns the background thread pool for evaluating asynchronous assertion
+// checks. Uses a single thread to guarantee that assertions are processed in
+// strict FIFO program order, ensuring deterministic error reporting when
+// multiple assertions fail in sequence.
+ThreadPool& GetAssertionThreadPool() {
+  static absl::NoDestructor<ThreadPool> pool("assert_async", /*num_threads=*/1);
+  return *pool;
+}
 
-    TT_ASSIGN_OR_THROW(auto out_dtype,
-                       ConvertTo<mlir::ElementType>(self.scalar_type()));
+// Validates that the assertion condition tensor is a single-element scalar.
+// Matches PyTorch reference semantics where empty or multi-element tensors
+// produce an ambiguous boolean value error.
+void ValidateAssertionInput(const at::Tensor& self) {
+  const int64_t n = self.numel();
+  TT_CHECK_THROW(n != 0, error::kInvalidArgument)
+      << "boolean value of Tensor with no values is ambiguous";
+  TT_CHECK_THROW(n < 2, error::kInvalidArgument)
+      << "boolean value of Tensor with more than one value is ambiguous";
+}
 
-    auto status_or_buf =
-        DispatchOp<1>(op_builder, self,
-                      /*options=*/
-                      {.out_dtype = out_dtype,
-                       .out_dims = self.sizes(),
-                       .op_param_cache_keys = OpParamCacheKeys::Empty()});
+// Determines whether the assertion check should be scheduled asynchronously on
+// the host. Returns false during graph compilation or when dealing with
+// symbolic / placeholder tensors (e.g. during FX graph tracing or
+// torch.compile).
+bool ShouldScheduleAsyncCheck(const at::Tensor& self) {
+  const EagerMode mode = GetEagerMode();
+  if (mode == EagerMode::kInternalCompileFxGraph ||
+      mode == EagerMode::kInternalDeferAll) {
+    return false;
+  }
+  const auto buffer_ref_or = GetBuffer(self);
+  if (!buffer_ref_or.ok() || buffer_ref_or->is_placeholder()) {
+    return false;
+  }
+  return true;
+}
 
-    TT_THROW_IF_ERROR(status_or_buf.status());
+// Schedules an asynchronous assertion check for `self` on the background thread
+// pool. Materializes the tensor's TPU buffer, copies the 1-element scalar to
+// CPU, and evaluates its truth value without blocking the main execution
+// thread.
+void ScheduleAsyncAssertionCheck(const at::Tensor& self,
+                                 const std::string_view assert_msg) {
+  if (!ShouldScheduleAsyncCheck(self)) {
+    return;
+  }
+
+  // Materialize the condition tensor on device so its PjRtBuffer is populated
+  // and ready for device-to-host transfer.
+  auto materialized_buf_or =
+      MaterializeAndReturn(self, MaterializationReason::kCpuTransfer);
+  if (!materialized_buf_or.ok()) {
+    SetStickyError(materialized_buf_or.status());
+    return;
+  }
+  const DeviceBufferRef materialized_buf = *materialized_buf_or;
+
+  const std::string msg =
+      assert_msg.empty() ? "assertion failed" : std::string(assert_msg);
+
+  IncrementPendingAssertionChecks();
+  GetAssertionThreadPool().Schedule([materialized_buf, msg = std::move(msg)]() {
+    absl::Cleanup cleanup = [] { DecrementPendingAssertionChecks(); };
+
+    // Asynchronously copy the condition scalar to CPU host memory.
+    auto status_or_tensor =
+        TpuMemcpyDtoH(materialized_buf, /*non_blocking=*/false);
+    if (!status_or_tensor.ok()) {
+      SetStickyError(status_or_tensor.status());
+      return;
+    }
+
+    const at::Tensor& cpu_tensor = status_or_tensor.value();
+    bool condition_val = false;
+    try {
+      condition_val = cpu_tensor.item().toBool();
+    } catch (const std::exception& e) {
+      SetStickyError(TT_ERROR(error::kInvalidArgument)
+                     << "assert_async expects a boolean or scalar condition");
+      return;
+    }
+
+    if (!condition_val) {
+      SetStickyError(TT_ERROR(error::kInternal) << msg);
+    }
   });
 }
 
-// TODO(b/510886286): This is a temporary no-op stub.
-// Implement a proper async check using a parallel checker program or
-// device-side assertions to avoid blocking the host.
+}  // namespace
+
+// Implementation of aten::_assert_async and aten::_assert_async.msg for TPU.
+//
+// PyTorch's `torch._assert_async` verifies a boolean condition tensor on device
+// without synchronously blocking host execution on the critical path.
+//
+// Why on-device assertions cannot be used for `torch._assert_async` on TPU:
+// 1. Hardware halt semantics: While low-level TPU kernels (e.g. via Mosaic
+//    cf.AssertOp) can trigger on-device hardware assertion instructions, doing
+//    so permanently halts the execution core ("halt state"), preventing the
+//    device from executing any subsequent programs without a full reset.
+//    Unlike CUDA where an assertion failure only corrupts the user's host
+//    driver context (cudaErrorAssert) leaving the underlying GPU silicon
+//    healthy for subsequent processes, a TPU shalt_err is a bare-metal machine
+//    halt on the physical core that wedges lockstep pod execution and requires
+//    a hardware or partition reset. In PyTorch, assertion failures must produce
+//    standard catchable `RuntimeError` exceptions while keeping the TPU device
+//    context intact.
+// 2. StableHLO limitations: Standard StableHLO has no dynamic runtime assert op
+//    lowering for TPU—`@shape_assertion` is strictly a compile-time static
+//    shape refinement pass that requires static integer operands and is erased
+//    before code generation.
+// 3. Void return signature: `aten::_assert_async` returns void, producing no
+//    downstream consumer tensors in the computation graph.
+//
+// In TorchTPU, non-blocking asynchronous assertion checking is achieved via an
+// asynchronous host worker:
+// 1. Validating that the condition is a single-element scalar tensor on the
+//    host.
+// 2. Checking if any previous assertion has already failed via
+//    HasStickyError().
+// 3. Materializing the condition tensor's TPU buffer and scheduling an
+//    asynchronous DtoH transfer and condition check onto a dedicated single-
+//    threaded background worker.
+// 4. If the condition evaluates to false, latching an error into the global
+//    sticky error state (SetStickyError).
+// 5. Subsequent op dispatches (via DispatchOp) and explicit device/stream syncs
+//    (via SyncAndCheckStickyError) detect the sticky error and raise a C++
+//    exception into PyTorch.
+
+// aten::_assert_async(Tensor self) -> ()
+void AtenAssertAsync(const at::Tensor& self) {
+  AtenAssertAsyncMsg(self, "assertion failed");
+}
+
+// aten::_assert_async.msg(Tensor self, str assert_msg) -> ()
 void AtenAssertAsyncMsg(const at::Tensor& self, std::string_view assert_msg) {
   TT_KERNEL(
-      OpName::kAssertAsyncMsg, param_keys,
+      OpName::kAssertAsyncMsg, _,
       (self, IgnoreInCacheKey(assert_msg, "message does not affect TPU graph")),
       {
-        auto op_builder =
-            [](mlir::MlirOp input_op) -> absl::StatusOr<mlir::MlirOp> {
-          return input_op;
-        };
-
-        TT_ASSIGN_OR_THROW(auto out_dtype,
-                           ConvertTo<mlir::ElementType>(self.scalar_type()));
-
-        auto status_or_buf =
-            DispatchOp<1>(op_builder, self,
-                          /*options=*/
-                          {.out_dtype = out_dtype,
-                           .out_dims = self.sizes(),
-                           .op_param_cache_keys = std::move(param_keys)});
-
-        TT_THROW_IF_ERROR(status_or_buf.status());
+        // Fail fast if a previous assertion has already set a sticky error.
+        if (ABSL_PREDICT_FALSE(HasStickyError())) {
+          TT_THROW_IF_ERROR(GetStickyError());
+        }
+        ValidateAssertionInput(self);
+        ScheduleAsyncAssertionCheck(self, assert_msg);
       });
 }
 
