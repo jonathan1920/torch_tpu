@@ -75,6 +75,7 @@ _HF_BERT_BASE_BENCHMARK_NAME = "hf_bert_base"
 _HF_T5_BASE_BENCHMARK_NAME = "hf_t5_base"
 _HF_BART_BASE_BENCHMARK_NAME = "hf_bart_base"
 _HF_STARCODER2_3B_BENCHMARK_NAME = "hf_starcoder2_3b"
+_HF_MUSE_GLIMMER_30B_BENCHMARK_NAME = "hf_muse_glimmer_30b"
 
 
 class BenchmarkTest(test_utils.BenchmarkTest):
@@ -1919,6 +1920,40 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(
         config, _HF_NEMOTRON_3_NANO_30B_BENCHMARK_NAME
+    )
+
+  # ============================================================================
+  # 11. Muse Architecture Family
+  # ============================================================================
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([common.RunMode.COMPILED])
+  )
+  def test_muse_glimmer_30b_forward(self, run_mode):
+    """Tests forward pass of Muse-Glimmer-30B model."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="meta-models/Muse-Glimmer-30B",
+            sequence_length=8192,
+            batch_size=1,
+            custom_kwargs={
+                "num_hidden_layers": 2,
+                "vision_num_hidden_layers": 2,
+                "precompute_attention_mask": True,
+            },
+        ),
+        model_and_input_factory=model_utils.muse_glimmer_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(
+        config, _HF_MUSE_GLIMMER_30B_BENCHMARK_NAME
     )
 
 

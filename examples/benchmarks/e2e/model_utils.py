@@ -2889,3 +2889,130 @@ def gemma4_custom_standalone_model_builder(
 
   example_inputs = _generate_inputs(bs, seq_len, _create_input)
   return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
+def muse_glimmer_model_builder(
+    model_and_input_args: Any,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    is_training: bool = False,
+) -> ModelAndInput:
+  """Builder for the Muse-Glimmer-30B model benchmark.
+
+  Defaults to a small configuration (2 text layers, 2 vision layers)
+  for fast iteration and testing. For the full 30B config, pass
+  custom_kwargs with:
+    num_hidden_layers=52
+    vision_num_hidden_layers=50
+
+  Args:
+    model_and_input_args: The model and input args.
+    device: Target torch device.
+    weights_dtype: Data type for weights (e.g. torch.bfloat16).
+    is_training: Whether the model is constructed for training or inference.
+
+  Returns:
+    ModelAndInput containing the model and example inputs.
+  """
+  custom_kwargs = getattr(model_and_input_args, "custom_kwargs", {}) or {}
+  # For the full 30B Muse-Glimmer model, set num_hidden_layers to 52.
+  num_hidden_layers = custom_kwargs.get("num_hidden_layers", 2)
+  # For the full 30B Muse-Glimmer model, set vision_num_hidden_layers to 50.
+  vision_num_hidden_layers = custom_kwargs.get("vision_num_hidden_layers", 2)
+  hidden_size = custom_kwargs.get("hidden_size", 6656)
+  intermediate_size = custom_kwargs.get("intermediate_size", 19968)
+  num_attention_heads = custom_kwargs.get("num_attention_heads", 32)
+  num_key_value_heads = custom_kwargs.get("num_key_value_heads", 2)
+  vocab_size = custom_kwargs.get("vocab_size", 202048)
+
+  text_config = transformers.MuseGlimmerTextConfig(
+      vocab_size=vocab_size,
+      hidden_size=hidden_size,
+      intermediate_size=intermediate_size,
+      num_hidden_layers=num_hidden_layers,
+      num_attention_heads=num_attention_heads,
+      num_key_value_heads=num_key_value_heads,
+      head_dim=128,
+      hidden_activation="silu",
+      max_position_embeddings=131072,
+      rms_norm_eps=1e-5,
+      post_norm_eps=1e-8,
+      final_logit_softcapping=20.0,
+      qk_scale_factor=3.87,
+      output_multiplier=0.19611613513818404,
+      sliding_window=2048,
+      use_cache=False,
+  )
+  vision_config = transformers.MuseGlimmerVisionConfig(
+      num_hidden_layers=vision_num_hidden_layers,
+      hidden_size=1536,
+      intermediate_size=8960,
+      num_attention_heads=16,
+      patch_size=14,
+      hidden_act="gelu",
+  )
+  config = transformers.MuseGlimmerConfig(
+      text_config=text_config,
+      vision_config=vision_config,
+      out_hidden_size=6144,
+      projector_hidden_size=4096,
+      projector_hidden_act="gelu",
+  )
+
+  torch.manual_seed(1234)
+  try:
+    with torch.device(device):
+      model = transformers.MuseGlimmerForConditionalGeneration(config).to(
+          dtype=weights_dtype
+      )
+  except Exception:
+    model = (
+        transformers.MuseGlimmerForConditionalGeneration(config)
+        .to(dtype=weights_dtype)
+        .to(device)
+    )
+  tie_model_weights(model)
+
+  if is_training:
+    model.train()
+  else:
+    model.eval()
+
+  bs = model_and_input_args.batch_size or 1
+  seq_len = model_and_input_args.sequence_length or 8192
+  max_text_token_id = min(config.image_token_id, config.video_token_id)
+  precompute_attention_mask = custom_kwargs.get(
+      "precompute_attention_mask", False
+  )
+
+  def _create_input(b: int, s: int):
+    torch.manual_seed(1234)
+    input_ids = torch.randint(
+        low=0,
+        high=max_text_token_id,
+        size=(b, s),
+        dtype=torch.int64,
+        device=device,
+    )
+    inp = {
+        "input_ids": input_ids,
+    }
+    if is_training:
+      labels = torch.randint(
+          low=0,
+          high=max_text_token_id,
+          size=(b, s),
+          dtype=torch.int64,
+          device=device,
+      )
+      inp["labels"] = labels
+    if precompute_attention_mask:
+      attention_mask = _precompute_attention_mask(
+          config, {"input_ids": input_ids}, device, weights_dtype
+      )
+      device_utils.synchronize(device.type, attention_mask)
+      inp["attention_mask"] = attention_mask
+    return inp
+
+  example_inputs = _generate_inputs(bs, seq_len, _create_input)
+  return ModelAndInput(model=model, example_inputs=example_inputs)
