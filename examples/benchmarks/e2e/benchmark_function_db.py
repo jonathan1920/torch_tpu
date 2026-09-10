@@ -377,10 +377,17 @@ def get_train_factory(
 ) -> Callable[..., Any]:
   """Returns a training step runner factory for the given run mode."""
   if run_mode == common.RunMode.COMPILED:
+    # Layer benchmarks (simple_train_factory) evaluate pure FWD + BWD without
+    # an optimizer, while model benchmarks use ReferenceAdamw.
+    optim = (
+        None
+        if eager_fact == simple_train_factory
+        else optimizers.ReferenceAdamw()
+    )
     return functools.partial(
         functional_train_factory,
         grad_accumulation_steps=1,
-        optimizer=optimizers.ReferenceAdamw(),
+        optimizer=optim,
     )
   if eager_fact == simple_train_factory:
     return eager_fact

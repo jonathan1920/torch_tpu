@@ -205,12 +205,12 @@ def _run_torchax_forward_pass(
 
   # Warmup
   warmup_timings = np.zeros(
-      pt_benchmark_utils.MIN_WARMUP_STEPS.value, dtype=np.float64
+      pt_benchmark_utils.MAX_WARMUP_STEPS.value, dtype=np.float64
   )
   with pt_benchmark_utils.XprofContext(
       "warmup_run", enable_xprof
   ) as warmup_run_context:
-    for i in range(pt_benchmark_utils.MIN_WARMUP_STEPS.value):
+    for i in range(pt_benchmark_utils.MAX_WARMUP_STEPS.value):
       with xprof_adapter.TraceMe("Warmup", step_num=i):
         step_start = time.perf_counter()
         out = runnable_model(weights, buffers, inputs)
@@ -271,10 +271,69 @@ def _run_torchax_forward_pass(
   )
 
 
+def _extract_loss_from_output(out: Any) -> torch.Tensor:
+  """Extracts scalar mean loss from functional model output.
+
+  Standardizes disparate output formats (e.g. ModelBenchmarkOutput, Hugging Face
+  models returning .loss or .logits, dictionaries, tuples, or raw tensors) into
+  a
+  scalar mean loss for consistent differentiation across layer benchmarks.
+  """
+  if isinstance(out, ModelBenchmarkOutput):
+    if out.return_type == ModelBenchmarkOutputType.LOSS:
+      return out.data
+    out = out.data
+
+  if hasattr(out, "loss") and out.loss is not None:
+    return out.loss
+  if isinstance(out, dict) and "loss" in out:
+    return out["loss"]
+  if hasattr(out, "logits") and out.logits is not None:
+    return torch.mean(out.logits)
+  if hasattr(out, "sample") and out.sample is not None:
+    return torch.mean(out.sample)
+  if isinstance(out, (tuple, list)):
+    return torch.mean(out[0])
+  if torch.is_tensor(out):
+    return torch.mean(out)
+
+  flat_out, _ = jax.tree_util.tree_flatten(out)
+  for item in flat_out:
+    if torch.is_tensor(item):
+      return torch.mean(item)
+
+  raise TypeError(f"cannot extract loss from output of type {type(out)}")
+
+
+def _get_optax_optimizer(
+    optim_type: str,
+    lr: float = 1e-3,
+    weight_decay: float = 0.01,
+) -> optax.GradientTransformation:
+  """Returns an Optax optimizer corresponding to the requested type."""
+  if optim_type in ("adamw", "tpu_adamw"):
+    return optax.adamw(
+        learning_rate=lr,
+        b1=0.9,
+        b2=0.999,
+        eps=1e-8,
+        weight_decay=weight_decay,
+    )
+  elif optim_type == "adam":
+    return optax.adam(
+        learning_rate=lr,
+        b1=0.9,
+        b2=0.999,
+        eps=1e-8,
+    )
+  else:
+    raise ValueError(f"Unsupported optimizer type: {optim_type}")
+
+
 def _run_torchax_backward_pass(
     model_jittable: torchax.interop.JittableModule,
     inputs: Any,
-    run_mode: pt_common.RunMode,
+    config: pt_performance_utils.PerformanceBenchmarkConfig,
     enable_xprof: bool,
 ) -> metrics_lib.PerformanceMetrics:
   """Runs the backward pass benchmark for a TorchAx model."""
@@ -285,67 +344,89 @@ def _run_torchax_backward_pass(
   }
   buffers = model_jittable.buffers
 
-  # Generate dummy labels
-  with torch.no_grad():
-    out = _call_functional_model(model_jittable, weights, buffers, inputs)
-  output_data = out.data[0] if isinstance(out.data, tuple) else out.data
-  if isinstance(output_data, dict):
-    labels = {
-        k: torch.rand_like(v, device="jax") for k, v in output_data.items()
-    }
-  else:
-    labels = torch.rand_like(output_data, device="jax")
+  is_layer_benchmark = (
+      config.benchmark_category == pt_benchmark_utils.BenchmarkCategory.ML_LAYER
+  )
 
-  def loss_fn(outputs, labels):
-    if isinstance(outputs, ModelBenchmarkOutput):
-      if outputs.return_type == ModelBenchmarkOutputType.LOSS:
-        return outputs.data
-      outputs_data = (
-          outputs.data[0] if isinstance(outputs.data, tuple) else outputs.data
+  if is_layer_benchmark or not weights:
+    # Layer benchmarks evaluate pure forward + reverse-mode backward without
+    # optimizer state updates or synthetic MSE labels, matching TorchTPU's
+    # SingleTraceTrainer(optimizer=None). Parameterless modules differentiate
+    # w.r.t. the inputs to benchmark their backward VJP.
+    def fwd_bwd_step(params, buffers, inputs):
+      diff_target = params if weights else inputs
+
+      def loss_fn(t):
+        p = t if weights else params
+        inp = inputs if weights else t
+        out = _call_functional_model(model_jittable, p, buffers, inp)
+        return _extract_loss_from_output(out)
+
+      grad_fn = torchax.interop.jax_value_and_grad(loss_fn)
+      loss, grads = grad_fn(diff_target)
+      return loss, grads
+
+    if pt_common.is_torch_compile(config.run_mode):
+      runnable_step_no_opt = torchax.interop.jax_jit(fwd_bwd_step)
+    else:
+      runnable_step_no_opt = fwd_bwd_step
+
+    def train_step_call():
+      loss, grads = runnable_step_no_opt(weights, buffers, inputs)
+      _sync_jax_device(loss)
+      _sync_jax_device(grads)
+
+  else:
+    # Model benchmarks evaluate unified Forward + Backward + Optimizer step,
+    # matching TorchTPU's SingleTraceTrainer with ReferenceAdamw.
+    optax_optimizer = _get_optax_optimizer(config.optim)
+    opt_state = torchax.interop.call_jax(optax_optimizer.init, weights)
+
+    def fwd_bwd_opt_step(params, buffers, opt_state, inputs):
+      def loss_fn(p):
+        out = _call_functional_model(model_jittable, p, buffers, inputs)
+        return _extract_loss_from_output(out)
+
+      grad_fn = torchax.interop.jax_value_and_grad(loss_fn)
+      loss, grads = grad_fn(params)
+      opt_res = torchax.interop.call_jax(
+          optax_optimizer.update, grads, opt_state, params
       )
-      if isinstance(outputs_data, dict):
-        # Accumulate MSE for all discovered tensor components.
-        total_loss = 0.0
-        for k, v in outputs_data.items():
-          if k in labels:
-            total_loss = total_loss + torch.mean((v - labels[k]) ** 2)
-        return total_loss
-      return torch.mean((outputs_data - labels) ** 2)
-    outputs_data = outputs[0] if isinstance(outputs, tuple) else outputs
-    return torch.mean((outputs_data - labels) ** 2)
+      updates, new_opt_state = opt_res  # pyrefly: ignore[not-iterable]
+      new_params = torchax.interop.call_jax(
+          optax.apply_updates, params, updates
+      )
+      return loss, new_params, new_opt_state
 
-  optimizer = optax.adam(0.1)
-  opt_state = torchax.interop.call_jax(optimizer.init, weights)
+    if pt_common.is_torch_compile(config.run_mode):
+      runnable_step_with_opt = torchax.interop.jax_jit(
+          fwd_bwd_opt_step, kwargs_for_jax_jit={"donate_argnums": (0, 2)}
+      )
+    else:
+      runnable_step_with_opt = fwd_bwd_opt_step
 
-  def model_fn(params, buffers, inputs):
-    return _call_functional_model(model_jittable, params, buffers, inputs)
-
-  train_step = torchax.train.make_train_step(model_fn, loss_fn, optimizer)
-
-  if pt_common.is_torch_compile(run_mode):
-    runnable_step = torchax.interop.jax_jit(
-        train_step, kwargs_for_jax_jit={"donate_argnums": (0, 2)}
-    )
-  else:
-    runnable_step = train_step
+    def train_step_call():
+      nonlocal weights, opt_state
+      loss, weights, opt_state = runnable_step_with_opt(
+          weights, buffers, opt_state, inputs
+      )
+      _sync_jax_device(loss)
+      _sync_jax_device(weights)
+      _sync_jax_device(opt_state)
 
   e2e_start = time.perf_counter()
 
   # Warmup
   warmup_timings = np.zeros(
-      pt_benchmark_utils.MIN_WARMUP_STEPS.value, dtype=np.float64
+      pt_benchmark_utils.MAX_WARMUP_STEPS.value, dtype=np.float64
   )
   with pt_benchmark_utils.XprofContext(
       "warmup_run", enable_xprof
   ) as warmup_run_context:
-    for i in range(pt_benchmark_utils.MIN_WARMUP_STEPS.value):
+    for i in range(pt_benchmark_utils.MAX_WARMUP_STEPS.value):
       with xprof_adapter.TraceMe("Warmup", step_num=i):
         step_start = time.perf_counter()
-        loss, weights, opt_state = runnable_step(
-            weights, buffers, opt_state, inputs, labels
-        )
-        _sync_jax_device(loss)
-        _sync_jax_device(weights)
+        train_step_call()
         warmup_timings[i] = time.perf_counter() - step_start
 
   first_step_time = warmup_timings[0] if len(warmup_timings) > 0 else 0.0
@@ -365,11 +446,7 @@ def _run_torchax_backward_pass(
     for i in range(pt_benchmark_utils.POST_WARMUP_STEPS.value):
       with xprof_adapter.TraceMe("Train", step_num=i):
         step_start = time.perf_counter()
-        loss, weights, opt_state = runnable_step(
-            weights, buffers, opt_state, inputs, labels
-        )
-        _sync_jax_device(loss)
-        _sync_jax_device(weights)
+        train_step_call()
         eval_timings[i] = time.perf_counter() - step_start
 
   post_warmup_run_session_xprof_url = None
@@ -377,6 +454,14 @@ def _run_torchax_backward_pass(
     post_warmup_run_session_xprof_url = (
         f"http://xprof/?session_id={post_warmup_run_context.session_id}"
     )
+
+  if not is_layer_benchmark and weights:
+    for k, new_w in weights.items():
+      if k in model_jittable.params:
+        if isinstance(model_jittable.params[k], torch.nn.Parameter):
+          model_jittable.params[k].data = new_w
+        else:
+          model_jittable.params[k] = new_w
 
   _, avg_device_time = _get_device_timings(
       enable_xprof, post_warmup_run_context.session_id
@@ -516,7 +601,7 @@ def run_benchmark(
   try:
     if config.is_training:
       result = _run_torchax_backward_pass(
-          model_jittable, inputs, config.run_mode, enable_xprof
+          model_jittable, inputs, config, enable_xprof
       )
     else:
       result = _run_torchax_forward_pass(

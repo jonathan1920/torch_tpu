@@ -129,7 +129,7 @@ class SingleTraceTrainer:
   def __init__(
       self,
       model: torch.nn.Module,
-      optimizer: Any,
+      optimizer: Any = None,
       compile_fn: Callable[..., Any] | None = None,
   ):
     """Initializes the SingleTraceTrainer."""
@@ -157,7 +157,12 @@ class SingleTraceTrainer:
       self._key_map[safe_name] = name
       self.buffers[safe_name] = buf.detach()
 
-    self.param_group = self.optimizer.init_param_group(initial_params)
+    if self.optimizer is not None:
+      self.param_group = self.optimizer.init_param_group(initial_params)
+    else:
+      # Without an optimizer, store raw parameter tensors directly in the
+      # param_group container for pure forward + backward execution.
+      self.param_group = initial_params
 
   # Update state in this container and in user model.
   # Not technically required for params; all of the optimizers internalize an
@@ -173,7 +178,12 @@ class SingleTraceTrainer:
   @property
   def params(self) -> dict[str, torch.Tensor]:
     """Returns parameters with their original names."""
-    return {self._key_map[k]: v for k, v in self.param_group.params.items()}
+    p = (
+        self.param_group.params
+        if hasattr(self.param_group, "params")
+        else self.param_group
+    )
+    return {self._key_map[k]: v for k, v in p.items()}
 
   @property
   def bufs(self) -> dict[str, torch.Tensor]:
@@ -208,20 +218,35 @@ class SingleTraceTrainer:
       p_group, bufs, inps = structured_args[:3]
       tgts = structured_args[-1] if example_targets is not None else None
 
-      bound_loss = functools.partial(
-          _compute_loss,
-          self.model,
-          self._key_map,
-          inputs=inps,
-          targets=tgts,
-      )
+      params_to_diff = p_group.params if hasattr(p_group, "params") else p_group
+      diff_target = params_to_diff if params_to_diff else inps
+
+      def bound_loss(target, bufs_arg):
+        p = target if params_to_diff else {}
+        inp = inps if params_to_diff else target
+        return _compute_loss(
+            self.model,
+            self._key_map,
+            params=p,
+            buffers=bufs_arg,
+            inputs=inp,
+            targets=tgts,
+        )
 
       grads, (loss, updated_bufs) = func.grad_and_value(
           bound_loss, has_aux=True, argnums=0
-      )(p_group.params, bufs)
-      new_p_group = self.optimizer(p_group, grads)
+      )(diff_target, bufs)
 
-      flat_outputs, _ = _pytree.tree_flatten((loss, new_p_group, updated_bufs))
+      if self.optimizer is not None:
+        new_p_group = self.optimizer(p_group, grads)
+        flat_outputs, _ = _pytree.tree_flatten(
+            (loss, new_p_group, updated_bufs)
+        )
+      else:
+        # Without an optimizer, surface gradients as explicit graph outputs.
+        # This prevents compiler dead-code elimination (DCE) from optimizing
+        # away the backward pass and ensures gradients can be synchronized.
+        flat_outputs, _ = _pytree.tree_flatten((loss, grads, updated_bufs))
       return tuple(flat_outputs)
 
     unified_graph = make_fx(
@@ -237,9 +262,22 @@ class SingleTraceTrainer:
     # Build a template to capture output structure (`TreeSpec`) for
     # restoring backend flat results.
     dummy_loss = torch.tensor(0.0)
-    _, out_spec = _pytree.tree_flatten(
-        (dummy_loss, self.param_group, self.buffers)
-    )
+    if self.optimizer is not None:
+      _, out_spec = _pytree.tree_flatten(
+          (dummy_loss, self.param_group, self.buffers)
+      )
+    else:
+      # Construct dummy gradients matching the output structure: input tree
+      # for parameterless modules, or parameter dictionary for parameterized ones.
+      if not self.param_group:
+        dummy_grads = _pytree.tree_map(
+            lambda _: torch.tensor(0.0), example_inputs
+        )
+      else:
+        dummy_grads = {k: torch.tensor(0.0) for k in self.param_group.keys()}
+      _, out_spec = _pytree.tree_flatten(
+          (dummy_loss, dummy_grads, self.buffers)
+      )
 
     # Stateful wrapper returned to user; handles flattening, running compiled
     # graph, and state updates.
@@ -257,11 +295,22 @@ class SingleTraceTrainer:
       result = compiled_step(*flat_inputs)
 
       assert out_spec is not None
-      loss, new_param_group, updated_bufs = _pytree.tree_unflatten(
-          result, out_spec
-      )
-
-      self._update(new_param_group, updated_bufs)
+      if self.optimizer is not None:
+        loss, new_param_group, updated_bufs = _pytree.tree_unflatten(
+            result, out_spec
+        )
+        self._update(new_param_group, updated_bufs)
+      else:
+        loss, grads, updated_bufs = _pytree.tree_unflatten(result, out_spec)
+        self.buffers = updated_bufs
+        self.model.load_state_dict(self.bufs, strict=False)
+        # Populate param.grad so callers (e.g. benchmark synchronization harness)
+        # can eagerly synchronize device execution on parameter gradients.
+        if isinstance(grads, dict):
+          for name, param in self.model.named_parameters():
+            safe_name = name.replace(".", "_")
+            if safe_name in grads:
+              param.grad = grads[safe_name]
 
       return loss
 
