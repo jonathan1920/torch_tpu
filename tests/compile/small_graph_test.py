@@ -184,6 +184,32 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     ]
     self._run_and_compare(simple, inputs_val)
 
+  @absltest.skip("b/546708345")
+  def test_cpu_tensor_copy_to_tpu(self):
+    def fn(x):
+      cpu_tensor = torch.zeros((1, 10), dtype=x.dtype)
+      tpu_tensor = cpu_tensor.to(x.device)
+      return x + tpu_tensor
+
+    x = torch.randn(1, 10, dtype=torch.float32)
+    self._run_and_compare(fn, [x])
+
+  @absltest.skip("b/546708345")
+  def test_swin_cpu_attention_mask_pattern(self):
+    def fn(x):
+      mask = torch.zeros((1, 4, 4, 1), dtype=x.dtype)
+      mask[:, :2, :2, :] = 1.0
+      mask = mask.view(-1, 16)
+      attn_mask = mask.unsqueeze(1) - mask.unsqueeze(2)
+      attn_mask = attn_mask.masked_fill(attn_mask != 0, -100.0).masked_fill(
+          attn_mask == 0, 0.0
+      )
+      attn_mask = attn_mask.to(x.device)
+      return x + attn_mask
+
+    x = torch.randn(1, 16, 16, dtype=torch.float32)
+    self._run_and_compare(fn, [x])
+
   def test_scaled_mm_v2_standard(self):
     old_precision = torch.get_float32_matmul_precision()
     torch.set_float32_matmul_precision("highest")
