@@ -79,6 +79,7 @@ enum class OpName {
   kAtan2Out,
   kAtanOut,
   kAtanhOut,
+  kAvgPool1d,
   kAvgPool2dBackwardGradInput,
   kAvgPool2dOut,
   kAvgPool3dBackwardGradInput,

@@ -36,6 +36,7 @@
 #include "csrc/common/utils.h"
 #include "csrc/eager/device_buffer.h"
 #include "csrc/eager/op_dispatcher.h"
+#include "csrc/eager/tensor_to_buffer.h"
 #include "csrc/ops/macros/kernel.h"
 #include "csrc/ops/op_builder_utils.h"
 #include "csrc/ops/op_names.h"
@@ -556,6 +557,46 @@ absl::StatusOr<at::Tensor> BuildAvgPoolBackwardGradInputNd(
                                       {grad_output, self}, grad_input,
                                       std::move(options)));
   return grad_input;
+}
+
+at::Tensor AtenAvgPool1d(const at::Tensor& self, at::IntArrayRef kernel_size,
+                         at::IntArrayRef stride, at::IntArrayRef padding,
+                         bool ceil_mode, bool count_include_pad) {
+  TT_KERNEL(
+      OpName::kAvgPool1d, param_keys,
+      (self, kernel_size, stride, padding, ceil_mode, count_include_pad), {
+        TT_CHECK_THROW(
+            self.numel() == 0 || self.scalar_type() != at::ScalarType::Long,
+            error::kPythonNotImplementedError)
+            << "not implemented for "
+            << torch_tpu::ToString(self.scalar_type());
+        TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Short &&
+                           self.scalar_type() != at::ScalarType::Int &&
+                           self.scalar_type() != at::ScalarType::Char &&
+                           self.scalar_type() != at::ScalarType::Byte &&
+                           self.scalar_type() != at::ScalarType::ComplexFloat &&
+                           self.scalar_type() != at::ScalarType::Bool,
+                       error::kInvalidArgument)
+            << "expected input dtype to be none of (bool, uint8, int8, "
+               "int16, int32, complex64), got "
+            << torch_tpu::ToString(self.scalar_type());
+
+        TT_ASSIGN_OR_THROW(
+            const Dimensions output_size,
+            GetPoolingOutputSize(self.sizes(), kernel_size, stride, padding,
+                                 at::IntArrayRef({1}), ceil_mode,
+                                 /*spatial_dim_count=*/1));
+        TT_ASSIGN_OR_THROW(const auto out_type,
+                           ConvertTo<mlir::ElementType>(self.scalar_type()));
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            BuildAvgPoolNd(self, kernel_size, stride, padding, ceil_mode,
+                           count_include_pad,
+                           /*divisor_override=*/std::nullopt, out_type,
+                           output_size, /*spatial_dim_count=*/1,
+                           std::move(param_keys)));
+        return MakeTensor(std::move(result_buf));
+      });
 }
 
 at::Tensor& AtenAvgPool2dOut(const at::Tensor& self,

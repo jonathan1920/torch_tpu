@@ -427,6 +427,9 @@ REGISTRATION_OVERRIDES = frozenset([
     '_thnn_fused_gru_cell.out',
     '_thnn_fused_lstm_cell.out',
     '_to_copy',
+    # avg_pool1d is registered to provide a direct 1D pooling lowering on TPU,
+    # overriding the default PyTorch decomposition.
+    'avg_pool1d',
     'convolution',
     'convolution.out',
     'convolution_backward',

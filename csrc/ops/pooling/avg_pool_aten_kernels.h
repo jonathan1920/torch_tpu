@@ -48,6 +48,10 @@ absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
     std::optional<int64_t> divisor_override, at::Tensor& out,
     int64_t spatial_dim_count, OpParamCacheKeys param_keys);
 
+at::Tensor AtenAvgPool1d(const at::Tensor& self, at::IntArrayRef kernel_size,
+                         at::IntArrayRef stride, at::IntArrayRef padding,
+                         bool ceil_mode, bool count_include_pad);
+
 at::Tensor& AtenAvgPool2dOut(const at::Tensor& self,
                              at::IntArrayRef kernel_size,
                              at::IntArrayRef stride, at::IntArrayRef padding,

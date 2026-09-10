@@ -94,6 +94,7 @@ torch_tpu_cc_library(
         "//csrc/common:utils",
         "//csrc/eager:device_buffer",
         "//csrc/eager:op_dispatcher",
+        "//csrc/eager:tensor_to_buffer",
         "//csrc/ops:op_builder_utils",
         "//csrc/ops:op_names",
         "//csrc/ops/macros:kernel",

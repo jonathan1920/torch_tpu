@@ -3659,7 +3659,62 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.nn.functional.avg_pool2d(t_int32, kernel_size=3)
 
+  def test_avg_pool1d_unsupported_dtypes(self):
+    if et.is_on_gpu():
+      self.skipTest("GPU behavior difference")
+    t_bool = torch.zeros((1, 1, 4), device=et.device(), dtype=torch.bool)
+    t_complex = torch.zeros(
+        (1, 1, 4), device=et.device(), dtype=torch.complex64
+    )
+    t_uint8 = torch.zeros((1, 1, 4), device=et.device(), dtype=torch.uint8)
+    t_int8 = torch.zeros((1, 1, 4), device=et.device(), dtype=torch.int8)
+    t_int16 = torch.zeros((1, 1, 4), device=et.device(), dtype=torch.int16)
+    t_int32 = torch.zeros((1, 1, 4), device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""avg_pool1d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, complex64), got bool""",
+    ):
+      torch.nn.functional.avg_pool1d(t_bool, kernel_size=3)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""avg_pool1d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, complex64), got complex64""",
+    ):
+      torch.nn.functional.avg_pool1d(t_complex, kernel_size=3)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""avg_pool1d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, complex64), got uint8""",
+    ):
+      torch.nn.functional.avg_pool1d(t_uint8, kernel_size=3)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""avg_pool1d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, complex64), got int8""",
+    ):
+      torch.nn.functional.avg_pool1d(t_int8, kernel_size=3)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""avg_pool1d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, complex64), got int16""",
+    ):
+      torch.nn.functional.avg_pool1d(t_int16, kernel_size=3)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""avg_pool1d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, complex64), got int32""",
+    ):
+      torch.nn.functional.avg_pool1d(t_int32, kernel_size=3)
+
   @parameterized.named_parameters(
+      dict(
+          testcase_name="avg_pool1d",
+          op=torch.nn.functional.avg_pool1d,
+          shape=(1, 1, 4),
+          op_name="avg_pool1d",
+          gpu_op_name="avg_pool2d_out_cuda_frame",
+      ),
       dict(
           testcase_name="avg_pool2d",
           op=torch.nn.functional.avg_pool2d,
