@@ -141,6 +141,19 @@ class ModuleRegistryTest(seed_test_utils.RepeatableTest):
 
     self.assertEqual(out.shape, expected_output_shape)
 
+  def test_torchvision_get_module_spec_pretrained(self):
+    module_spec = self.module_registry.get_module_spec(
+        "torchvision", "resnet50", load_weights=True
+    )
+    model = module_spec.module_factory()
+    args, _ = module_spec.sample_inputs_factory()
+    expected_output_shape = (args[0].shape[0], 1000)
+    model.eval()
+
+    out = model(*args)
+
+    self.assertEqual(out.shape, expected_output_shape)
+
   def test_timm_get_module_spec(self):
     module_spec = self.module_registry.get_module_spec(
         "timm", "mobilenetv3_small_050"

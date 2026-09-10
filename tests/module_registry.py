@@ -777,9 +777,10 @@ class TorchvisionProvider(BaseProvider):
   ) -> ModuleSpec:
     if modify_config_hook is not None:
       raise ValueError("modify_config_hook is not supported for torchvision.")
-    if load_weights:
-      raise NotImplementedError(
-          "Loading pretrained weights not yet implemented."
+    if load_weights and not self.has_cache_dir:
+      raise ValueError(
+          f"load_weights cannot be set to True for {name} when no cache"
+          " directory is available."
       )
     default_shape = (1, 3, 224, 224)
 
@@ -794,7 +795,39 @@ class TorchvisionProvider(BaseProvider):
           {},
       )
 
-    def _model_factory():
+    def _module_factory():
+      if load_weights and self._base_path:
+        local_checkpoint = None
+        local_dir = self._base_path / name
+
+        if local_dir.exists() and local_dir.is_dir():
+          for p in local_dir.iterdir():
+            if p.suffix in (".pt", ".pth", ".bin", ".safetensors"):
+              local_checkpoint = p
+              break
+
+        if local_checkpoint and local_checkpoint.exists():
+          try:
+            model = torchvision.models.get_model(
+                name, weights=None, weights_backbone=None
+            )
+          except TypeError:
+            model = torchvision.models.get_model(name, weights=None)
+
+          with local_checkpoint.open("rb") as f:
+            if local_checkpoint.suffix == ".safetensors":
+              state_dict = safetensors_torch.load(f.read())
+            else:
+              state_dict = torch.load(f, map_location="cpu")
+          model.load_state_dict(state_dict)
+          return model
+        else:
+          raise ValueError(
+              f"Cannot load weights for {name} because checkpoint is missing"
+              f" at {self._base_path / name}."
+          )
+
+      # If weights are not loaded, instantiate model with random weights
       try:
         return torchvision.models.get_model(
             name, weights=None, weights_backbone=None
@@ -803,7 +836,7 @@ class TorchvisionProvider(BaseProvider):
         return torchvision.models.get_model(name, weights=None)
 
     return ModuleSpec(
-        _model_factory,
+        _module_factory,
         _torchvision_input_factory,
         modality=Modality.VISION,
     )
