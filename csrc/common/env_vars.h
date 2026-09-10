@@ -193,8 +193,14 @@ inline constexpr auto kEnvVarToStage =
         {kAcceleratorTypeEnvVar, SymbolStage::InternalImplementation()},
         {kAllowMultipleLibtpuLoadEnvVar, SymbolStage::InternalImplementation()},
         {kCloudTpuTaskIdEnvVar, SymbolStage::InternalImplementation()},
-        {kLibtpuInitArgsEnvVar, std::nullopt},
-        {kLocalRankEnvVar, std::nullopt},
+        // Marked as Stable because it is an established XLA/PJRT runtime
+        // configuration knob widely used by production workloads. The TorchTPU
+        // team is committed to honor this env var.
+        {kLibtpuInitArgsEnvVar, SymbolStage::Stable()},
+        // Marked as Stable because it is an established distributed launcher
+        // environment variable widely used by production workloads. The
+        // TorchTPU team is committed to honor this env var.
+        {kLocalRankEnvVar, SymbolStage::Stable()},
         {kMasterAddrEnvVar, std::nullopt},
         {kMasterPortEnvVar, std::nullopt},
         {kNprocEnvVar, std::nullopt},
