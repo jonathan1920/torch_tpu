@@ -218,7 +218,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     def fn(val):
       return val + 1.0
 
-    gm = make_fx(fn)(x)
+    gm = make_fx(fn, tracing_mode='fake')(x)
     compiler_instance = compiler.StaticCompiler()
     executable = compiler_instance(gm, [x])
 

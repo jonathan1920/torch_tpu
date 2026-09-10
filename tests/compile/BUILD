@@ -98,6 +98,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "activation_checkpointing_test",
+    timeout = "long",
     srcs = ["activation_checkpointing_test.py"],
     oss_presubmit_tpu_generation = tpu_gen(
         "v7",
@@ -118,7 +119,9 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "activation_checkpointing_mem_test",
+    timeout = "long",
     srcs = ["activation_checkpointing_mem_test.py"],
+    nopresubmit_oss = "timeout",
     oss_presubmit_tpu_generation = tpu_gen(
         "v7",
         reason = "Offload heavy TorchDynamo/Inductor compilation suites to TPU v7",
@@ -445,6 +448,20 @@ torch_tpu_py_test(
         "//tests:seed_test_utils",
         "//torch_tpu",
         "//torch_tpu/_internal/compile/fx_passes:sink_get_attr_constants",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "reassociate_norm_weights_test",
+    srcs = ["reassociate_norm_weights_test.py"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//tests:seed_test_utils",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile/fx_passes:reassociate_norm_weights",
+        "//torch_tpu/_internal/utils:test_utils",
     ],
 )
 

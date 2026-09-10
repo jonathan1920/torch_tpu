@@ -36,6 +36,7 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/compile/fx_passes:fold_gqa",
         "//torch_tpu/_internal/compile/fx_passes:mark_activation_checkpoints",
         "//torch_tpu/_internal/compile/fx_passes:mark_embedded_constants",
+        "//torch_tpu/_internal/compile/fx_passes:reassociate_norm_weights",
         "//torch_tpu/_internal/export",
     ],
 )
@@ -53,6 +54,7 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/compile/fx_passes:force_collectives_output",
         "//torch_tpu/_internal/compile/fx_passes:mark_embedded_constants",
         "//torch_tpu/_internal/compile/fx_passes:propagate_symints",
+        "//torch_tpu/_internal/compile/fx_passes:reassociate_norm_weights",
         "//torch_tpu/_internal/compile/fx_passes:reorder_symints",
         "//torch_tpu/_internal/compile/fx_passes:sink_get_attr_constants",
         "//torch_tpu/_internal/distributed:collective_ops",
