@@ -259,9 +259,9 @@ Value ClampLogits(ImplicitLocOpBuilder& b, Value input) {
   return arith::MaximumFOp::create(b, input, min_value_broadcast);
 }
 
-scf::IfOp CreateCausalIfOp(ImplicitLocOpBuilder& b, Value row_idx,
-                           Value col_idx, int64_t row_block_size,
-                           int64_t col_block_size) {
+Value CreateBelowOrOnDiagCondition(ImplicitLocOpBuilder& b, Value row_idx,
+                                   Value col_idx, int64_t row_block_size,
+                                   int64_t col_block_size) {
   auto row_size_value =
       arith::ConstantOp::create(b, b.getI32IntegerAttr(row_block_size));
   auto col_size_value =
@@ -274,9 +274,14 @@ scf::IfOp CreateCausalIfOp(ImplicitLocOpBuilder& b, Value row_idx,
 
   Value rhs = arith::MulIOp::create(b, col_idx, col_size_value);
 
-  Value cond =
-      arith::CmpIOp::create(b, arith::CmpIPredicate::sge, lhs_minus_1, rhs);
+  return arith::CmpIOp::create(b, arith::CmpIPredicate::sge, lhs_minus_1, rhs);
+}
 
+scf::IfOp CreateCausalIfOp(ImplicitLocOpBuilder& b, Value row_idx,
+                           Value col_idx, int64_t row_block_size,
+                           int64_t col_block_size) {
+  Value cond = CreateBelowOrOnDiagCondition(b, row_idx, col_idx, row_block_size,
+                                            col_block_size);
   return scf::IfOp::create(b, cond, /*withElse=*/false);
 }
 
@@ -427,17 +432,9 @@ DictionaryAttr CreateSymbolTransformIndicesAttr(
 KVWindowMaps CreateKVWindowMaps(OpBuilder& builder, func::FuncOp fn,
                                 const FlashAttnConfig& config,
                                 const Tiling& tiling) {
-  return CreateKVWindowMaps(builder, fn, config.num_heads, config.kv_num_heads,
-                            tiling.kt, config.qk_head_dim, config.vo_head_dim);
-}
-
-KVWindowMaps CreateKVWindowMaps(OpBuilder& builder, func::FuncOp fn,
-                                int64_t num_heads, int64_t kv_num_heads,
-                                int64_t kt, int64_t qk_head_dim,
-                                int64_t vo_head_dim) {
-  ABSL_DCHECK_GT(num_heads, 0);
-  ABSL_DCHECK_GT(kv_num_heads, 0);
-  ABSL_DCHECK_EQ(num_heads % kv_num_heads, 0);
+  ABSL_DCHECK_GT(config.num_heads, 0);
+  ABSL_DCHECK_GT(config.kv_num_heads, 0);
+  ABSL_DCHECK_EQ(config.num_heads % config.kv_num_heads, 0);
 
   // GQA: Mosaic's AffineMap doesn't support FloorDiv, so we use a transform
   // function.
@@ -457,24 +454,35 @@ KVWindowMaps CreateKVWindowMaps(OpBuilder& builder, func::FuncOp fn,
         func::FuncOp::create(builder, loc, "kv_transform_indices", fn_type);
     kv_transform_fn.setPrivate();
     Block* entry = kv_transform_fn.addEntryBlock();
-    OpBuilder fn_b = OpBuilder::atBlockBegin(entry);
+    ImplicitLocOpBuilder fn_b = ImplicitLocOpBuilder::atBlockBegin(loc, entry);
 
     Value batch = entry->getArgument(0);
     Value head = entry->getArgument(1);
+    Value q_tile = entry->getArgument(2);
     Value kv_tile = entry->getArgument(3);
-    int64_t head_group_size = num_heads / kv_num_heads;
+    int64_t head_group_size = config.num_heads / config.kv_num_heads;
     Value group_size = arith::ConstantOp::create(
-        fn_b, loc, fn_b.getI32IntegerAttr(head_group_size));
-    Value kv_head = arith::DivSIOp::create(fn_b, loc, head, group_size);
-    Value c0 = arith::ConstantOp::create(fn_b, loc, fn_b.getI32IntegerAttr(0));
-    func::ReturnOp::create(fn_b, loc, ValueRange{batch, kv_head, kv_tile, c0});
+        fn_b, fn_b.getI32IntegerAttr(head_group_size));
+    Value kv_head = arith::DivSIOp::create(fn_b, head, group_size);
+    Value c0 = arith::ConstantOp::create(fn_b, fn_b.getI32IntegerAttr(0));
+
+    Value next_kv_tile = kv_tile;
+    if (config.is_causal) {
+      // If the kv block is skipped, prefetch the next valid kv block, i.e. the
+      // 0th one to be used for the next block_q rows.
+      Value cond = CreateBelowOrOnDiagCondition(fn_b, q_tile, kv_tile,
+                                                tiling.qt, tiling.kt);
+      next_kv_tile = arith::SelectOp::create(fn_b, cond, kv_tile, c0);
+    }
+
+    func::ReturnOp::create(fn_b, ValueRange{batch, kv_head, next_kv_tile, c0});
   }
 
   DictionaryAttr k_map = CreateSymbolTransformIndicesAttr(
-      builder, "kv_transform_indices", {1, 1, kt, qk_head_dim});
+      builder, "kv_transform_indices", {1, 1, tiling.kt, config.qk_head_dim});
 
   DictionaryAttr v_map = CreateSymbolTransformIndicesAttr(
-      builder, "kv_transform_indices", {1, 1, kt, vo_head_dim});
+      builder, "kv_transform_indices", {1, 1, tiling.kt, config.vo_head_dim});
 
   return {k_map, v_map};
 }

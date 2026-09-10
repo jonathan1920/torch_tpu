@@ -54,11 +54,6 @@ KVWindowMaps CreateKVWindowMaps(OpBuilder& builder, func::FuncOp fn,
                                 const FlashAttnConfig& config,
                                 const Tiling& tiling);
 
-KVWindowMaps CreateKVWindowMaps(OpBuilder& builder, func::FuncOp fn,
-                                int64_t num_heads, int64_t kv_num_heads,
-                                int64_t kt, int64_t qk_head_dim,
-                                int64_t vo_head_dim);
-
 // Load a 2D tile from the given argument.
 TypedValue<VectorType> LoadTile(ImplicitLocOpBuilder& b, Value arg);
 // Store a 2D tile to the given argument.
@@ -88,6 +83,12 @@ Value ReduceBroadcastLane(ImplicitLocOpBuilder& b, Value input,
 
 // Clamp the input logits to a minimum value.
 Value ClampLogits(ImplicitLocOpBuilder& b, Value input);
+
+// Returns an i1 condition indicating whether the tile at (row_idx, col_idx)
+// is below or on the diagonal (i.e. intersects the causal mask).
+Value CreateBelowOrOnDiagCondition(ImplicitLocOpBuilder& b, Value row_idx,
+                                   Value col_idx, int64_t row_block_size,
+                                   int64_t col_block_size);
 
 // Create an scf.IfOp where the then block will be executed when
 // row_idx >= col_idx.
