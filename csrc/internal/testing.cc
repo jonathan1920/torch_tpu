@@ -73,28 +73,35 @@ void ThrowTtErrorIndexError() {
       << "throwing index error";
 }
 
+// Test struct used by pybind_error_utils_test to verify correct forwarding of
+// Python API binding.
+struct TestMembersClass {
+  int read_only_field = 100;
+  int read_write_field = 42;
+};
+
 }  // namespace
 
 // Internal testing utilities.
-PYBIND11_MODULE(testing, m) {
-  auto mod_with_error_handling = PyBindWrapWithErrorHandling(m);
-
+TT_PYBIND11_MODULE(testing, m) {
   // Python bindings for testing PyBindWrapWithErrorHandling.
   //
   // These bindings throw errors on different contexts, making sure we are
   // showing the correct prefix on error messages.
   //
   // See: torch_tpu/tests/pybind_error_utils_test.py
-  mod_with_error_handling.def("throw_tterror_in_free_function",
-                              &ThrowTtErrorInFreeFunction);
-  mod_with_error_handling.def("throw_tterror_index_error",
-                              &ThrowTtErrorIndexError);
+  m.def("throw_tterror_in_free_function", &ThrowTtErrorInFreeFunction);
+  m.def("throw_tterror_index_error", &ThrowTtErrorIndexError);
 
-  py::class_<TestErrorClass> py_test_class(m, "TestErrorClass");
-  PyBindWrapWithErrorHandling(py_test_class)
+  PyBindClass<TestErrorClass>(m, "TestErrorClass")
       .def(py::init<>())
       .def("throw_tterror_in_member_function",
            [](TestErrorClass& self) { self.ThrowTtErrorInMemberFunction(); });
+
+  PyBindClass<TestMembersClass>(m, "TestMembersClass")
+      .def(py::init<>())
+      .def_readonly("read_only_field", &TestMembersClass::read_only_field)
+      .def_readwrite("read_write_field", &TestMembersClass::read_write_field);
 
   // Forces DynamicDispatchOp() to fail with the given message for ops whose
   // base name matches `op_base_name`. If `op_base_name` is empty, no op is
@@ -102,23 +109,19 @@ PYBIND11_MODULE(testing, m) {
   //
   // This is NOT accumulative. If you call this multiple times, only the last
   // call will take effect.
-  mod_with_error_handling.def("set_op_dispatch_failure",
-                              internal::SetOpDispatchFailure,  //
-                              py::arg("op_base_name"),
-                              py::arg("failure_message"));
-  mod_with_error_handling.def("reset_eager_state", ResetEagerState,
-                              "Resets the eager mode maintained state.");
-  mod_with_error_handling.def(
-      "set_init_default_generator_failure",
-      PySetInitDefaultGeneratorFailureForTesting, py::arg("failure_message"),
-      "Forces InitDefaultGenerator to fail with the given message.");
-  mod_with_error_handling.def(
-      "reset_default_device_generators",
-      PyResetDefaultDeviceGeneratorsForTesting,
-      "Resets the default device generators singleton state.");
-  mod_with_error_handling.def(
-      "get_memory_kind", PyGetMemoryKind, py::arg("tensor"),
-      "Returns the memory space kind of the given tensor's buffer.");
+  m.def("set_op_dispatch_failure",
+        internal::SetOpDispatchFailure,  //
+        py::arg("op_base_name"), py::arg("failure_message"));
+  m.def("reset_eager_state", ResetEagerState,
+        "Resets the eager mode maintained state.");
+  m.def("set_init_default_generator_failure",
+        PySetInitDefaultGeneratorFailureForTesting, py::arg("failure_message"),
+        "Forces InitDefaultGenerator to fail with the given message.");
+  m.def("reset_default_device_generators",
+        PyResetDefaultDeviceGeneratorsForTesting,
+        "Resets the default device generators singleton state.");
+  m.def("get_memory_kind", PyGetMemoryKind, py::arg("tensor"),
+        "Returns the memory space kind of the given tensor's buffer.");
 }
 
 }  // namespace torch_tpu

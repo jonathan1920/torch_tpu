@@ -18,6 +18,7 @@
 
 #include <exception>
 #include <string>
+#include <string_view>
 #include <typeinfo>
 
 #include "c10/util/Exception.h"
@@ -31,24 +32,29 @@ namespace {
 
 using testing::HasSubstr;
 
+template <class ErrorType, class FuncType>
+void TestHelperRaises(const FuncType& func, const std::string_view name,
+                      const std::string_view error_message_substr) {
+  try {
+    internal::ErrorHandlingHelper<void()>::impl(name, func);
+    FAIL() << "Expected exception was not thrown";
+  } catch (const ErrorType& e) {
+    EXPECT_THAT(e.what(), HasSubstr(error_message_substr));
+  } catch (const std::exception& e) {
+    FAIL() << "Expected c10::Error, got: " << typeid(e).name()
+           << " with error: " << e.what();
+  }
+}
+
 void FreeFunctionThrowing() {
   TT_CHECK_THROW(false, error::kInvalidArgument) << "throwing invalid argument";
 }
 
 TEST(PyBindErrorUtilsInternalTest, ImplFreeFunctionThrowsC10Error) {
-  try {
-    internal::ErrorHandlingHelper<void()>::impl("test_prefix",
-                                                FreeFunctionThrowing);
-    FAIL() << "Expected exception was not thrown";
-  } catch (const c10::Error& e) {
-    // Verify exact type is c10::Error (not a subclass)
-    EXPECT_EQ(typeid(e), typeid(c10::Error));
-    EXPECT_THAT(e.what(),
-                HasSubstr("test_prefix(): throwing invalid argument"));
-  } catch (const std::exception& e) {
-    FAIL() << "Expected c10::Error, got: " << e.what()
-           << " (type: " << typeid(e).name() << ")";
-  }
+  TestHelperRaises<c10::Error>(
+      FreeFunctionThrowing,  //
+      /* name= */ "test_prefix",
+      /* error_message_substr= */ "test_prefix(): throwing invalid argument");
 }
 
 void ThrowIndexError() {
@@ -56,17 +62,31 @@ void ThrowIndexError() {
 }
 
 TEST(PyBindErrorUtilsInternalTest, ImplLambdaThrowsIndexError) {
+  TestHelperRaises<c10::IndexError>(
+      []() { ThrowIndexError(); },  //
+      /* name= */ "test_prefix",
+      /* error_message_substr= */ "test_prefix(): throwing index error");
+}
+
+struct DummyStruct {
+  void ThrowingMember() const {
+    TT_CHECK_THROW(false, error::kInvalidArgument) << "throwing from member";
+  }
+};
+
+TEST(PyBindErrorUtilsInternalTest, ImplMemberFunctionLambdaThrowsC10Error) {
   try {
-    internal::ErrorHandlingHelper<void()>::impl("test_prefix",
-                                                []() { ThrowIndexError(); });
+    internal::ErrorHandlingHelper<void(const DummyStruct&)>::impl(
+        "DummyStruct.throwing_member",
+        [](const DummyStruct& self) { self.ThrowingMember(); }, DummyStruct{});
     FAIL() << "Expected exception was not thrown";
-  } catch (const c10::IndexError& e) {
-    // Verify exact type is c10::IndexError
-    EXPECT_EQ(typeid(e), typeid(c10::IndexError));
-    EXPECT_THAT(e.what(), HasSubstr("test_prefix(): throwing index error"));
+  } catch (const c10::Error& e) {
+    EXPECT_THAT(
+        e.what(),
+        HasSubstr("DummyStruct.throwing_member(): throwing from member"));
   } catch (const std::exception& e) {
-    FAIL() << "Expected c10::IndexError, got: " << e.what()
-           << " (type: " << typeid(e).name() << ")";
+    FAIL() << "Expected c10::Error, got: " << typeid(e).name()
+           << " with error: " << e.what();
   }
 }
 

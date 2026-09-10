@@ -3793,5 +3793,43 @@ module {
       )
 
 
+class PyBindErrorUtilsErrorsTest(et.TpuOnlyErrorTestBase):
+
+  @et.why_tpu_only("Testing PyBind error translation on TPU.")
+  def test_free_function_translation(self):
+    # kInvalidArgument should translate to RuntimeError (c10::Error)
+    # And the message should contain the calling API prefix:
+    # "throw_tterror_in_free_function():"
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""throw_tterror_in_free_function(): throwing invalid argument""",
+        message_reviewed_by="wan",
+    ):
+      tt_testing.throw_tterror_in_free_function()
+
+  @et.why_tpu_only("Testing PyBind error translation on TPU.")
+  def test_index_error_translation(self):
+    # kPythonIndexError should translate to IndexError (c10::IndexError)
+    with et.assert_raises_message(
+        IndexError,
+        tpu="""throw_tterror_index_error(): throwing index error""",
+        message_reviewed_by="wan",
+    ):
+      tt_testing.throw_tterror_index_error()
+
+  @et.why_tpu_only("Testing PyBind error translation on TPU.")
+  def test_class_method_translation(self):
+    # custom name "TestErrorClass.throw_tterror_in_member_function" should be
+    # prepended
+    obj = tt_testing.TestErrorClass()
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""TestErrorClass.throw_tterror_in_member_function(): class throwing invalid argument""",
+        message_reviewed_by="wan",
+    ):
+      obj.throw_tterror_in_member_function()
+
+
 if __name__ == "__main__":
   absltest.main()

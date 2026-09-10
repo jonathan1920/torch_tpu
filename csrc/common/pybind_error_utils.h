@@ -62,7 +62,7 @@ struct ErrorHandlingHelper<Ret(Args...)> {
   // Captures the Python API name, and calls the `TranslateToC10ErrorAndThrow()`
   // function.
   //
-  // In theory, this we could inline this function onto `wrap()` definition.
+  // In theory, we could inline this function into `wrap()` definition.
   // However, we split it so that we can test it separately.
   template <typename F>
   static Ret impl(const std::string_view api_name, const F& f, Args... args) {
@@ -90,13 +90,26 @@ struct ErrorHandlingHelper<Ret(Args...)> {
   }
 };
 
+// Unified helper that extracts function signature traits using PyTorch's
+// c10::guts::infer_function_traits and wraps the callable with error handling.
+template <typename F>
+auto WrapWithErrorHandling(const std::string_view api_name, const F& f) {
+  using InferredTraits = typename c10::guts::infer_function_traits<F>::type;
+  using FuncType = typename InferredTraits::func_type;
+  return ErrorHandlingHelper<FuncType>::wrap(api_name, f);
+}
+
 // Wrapper around pybind11 objects to automatically wrap `def()` calls with
 // error handling.
 //
 // This should not be used directly. Use the `PyBindWrapWithErrorHandling()`
 // function below, instead.
 template <typename PyBindType>
-class PyBindErrorHandlingWrapper {
+class  //
+    [[deprecated(
+        "TODO(b/556294340): use the newer abstractions PyBindModule and "
+        "PyBindClass.")]]  //
+    PyBindErrorHandlingWrapper {
   static_assert(std::is_same_v<PyBindType, pybind11::module_> ||
                     internal::IsPyBindClass<PyBindType>::value,
                 "PyBindErrorHandlingWrapper can only wrap pybind11::module_ "
@@ -138,17 +151,13 @@ class PyBindErrorHandlingWrapper {
   template <typename F, typename... Extra>
   PyBindErrorHandlingWrapper& def(const char* name, const F& f,
                                   const Extra&... extra) {
-    using InferredTraits = c10::guts::infer_function_traits<F>::type;
-    using FuncType = typename InferredTraits::func_type;
-
     // API name. Either of:
     //   - <class-name>.<name>
     //   - <name>
     const std::string api_name = absl::StrCat(prefix_, name);
 
     // Actually registers the API into the wrapped object.
-    wrapped_.def(name, ErrorHandlingHelper<FuncType>::wrap(api_name, f),
-                 extra...);
+    wrapped_.def(name, internal::WrapWithErrorHandling(api_name, f), extra...);
     return *this;
   }
 
@@ -177,6 +186,170 @@ internal::PyBindErrorHandlingWrapper<T> PyBindWrapWithErrorHandling(
     T& wrapped) {
   return internal::PyBindErrorHandlingWrapper<T>(wrapped);
 }
+
+// Wrapper around pybind11::module_ to automatically wrap `def()` calls with
+// error handling.
+class PyBindModule {
+ public:
+  explicit PyBindModule(pybind11::module_ wrapped) : wrapped_(wrapped) {}
+
+  // Registers the Python API `name` to the function `f` wrapped with TorchTPU
+  // guidelines conforming error handling.
+  template <typename F, typename... Extra>
+  PyBindModule& def(const char* name, const F& f, const Extra&... extra) {
+    wrapped_.def(name, internal::WrapWithErrorHandling(name, f), extra...);
+    return *this;
+  }
+
+  // Creates and returns a new submodule wrapped in a `PyBindModule`.
+  template <typename... Extra>
+  PyBindModule def_submodule(const char* name, const Extra&... extra) {
+    return PyBindModule(wrapped_.def_submodule(name, extra...));
+  }
+
+  // Imports an existing Python module and wraps it in a `PyBindModule`.
+  static PyBindModule Import(const char* name) {
+    return PyBindModule(pybind11::module_::import(name));
+  }
+
+  auto doc() { return wrapped_.doc(); }
+  auto attr(const char* name) { return wrapped_.attr(name); }
+
+  friend pybind11::handle GetPyBindHandle(const PyBindModule& m);
+
+ private:
+  pybind11::module_ wrapped_;
+};
+
+// Returns the underlying pybind11 handle from a `PyBindModule` instance.
+//
+// Its use should be avoided whenever possible, and only used when interfacing
+// with pybind11 APIs that require the raw handle (such as `pybind11::enum_`).
+inline pybind11::handle GetPyBindHandle(const PyBindModule& m) {
+  return m.wrapped_;
+}
+
+// Wrapper around pybind11::class_<T, Options...> to automatically wrap `def()`
+// calls with error handling.
+template <typename T, typename... Options>
+class PyBindClass {
+ public:
+  using RawClass = pybind11::class_<T, Options...>;
+
+  template <typename... Extra>
+  PyBindClass(PyBindModule& m, const char* name, const Extra&... extra)
+      : wrapped_(GetPyBindHandle(m), name, extra...) {
+    auto class_name = wrapped_.attr("__name__").template cast<std::string>();
+    ABSL_CHECK(!class_name.empty());  // CRASH_OK
+    prefix_ = absl::StrCat(class_name, ".");
+  }
+
+  // Overload for init or other non-named defs (e.g., py::init with py::arg):
+  // forwards directly.
+  template <
+      typename Init, typename... Extra,
+      typename = std::enable_if_t<!std::is_convertible_v<Init, const char*>>>
+  PyBindClass& def(Init&& init, Extra&&... extra) {
+    wrapped_.def(std::forward<Init>(init), std::forward<Extra>(extra)...);
+    return *this;
+  }
+
+  // Registers the Python API `name` to the function `f` wrapped with TorchTPU
+  // guidelines conforming error handling.
+  template <typename F, typename... Extra>
+  PyBindClass& def(const char* name, const F& f, const Extra&... extra) {
+    const std::string api_name = absl::StrCat(prefix_, name);
+    wrapped_.def(name, internal::WrapWithErrorHandling(api_name, f), extra...);
+    return *this;
+  }
+
+  // Forwards `def_readonly()` to the wrapped `pybind11::class_` without
+  // wrapping it with error handling.
+  //
+  // If TorchTPU guidelines conforming error handling is needed, consider
+  // changing this into a read-only property.
+  template <typename... Args>
+  PyBindClass& def_readonly(Args&&... args) {
+    wrapped_.def_readonly(std::forward<Args>(args)...);
+    return *this;
+  }
+
+  // Forwards `def_readwrite()` to the wrapped `pybind11::class_` without
+  // wrapping it with error handling.
+  //
+  // If TorchTPU guidelines conforming error handling is needed, consider
+  // changing this into a property.
+  template <typename... Args>
+  PyBindClass& def_readwrite(Args&&... args) {
+    wrapped_.def_readwrite(std::forward<Args>(args)...);
+    return *this;
+  }
+
+  // Registers a read-only property `name` using getter function `f` wrapped
+  // with TorchTPU guidelines conforming error handling.
+  template <typename Getter, typename... Extra>
+  PyBindClass& def_property_readonly(const char* name, const Getter& f,
+                                     const Extra&... extra) {
+    const std::string api_name = absl::StrCat(prefix_, name);
+    wrapped_.def_property_readonly(
+        name, internal::WrapWithErrorHandling(api_name, f), extra...);
+    return *this;
+  }
+
+  // Registers a read-write property `name` using `getter` and `setter` wrapped
+  // with TorchTPU guidelines conforming error handling.
+  template <typename Getter, typename Setter, typename... Extra>
+  PyBindClass& def_property(const char* name, const Getter& getter,
+                            const Setter& setter, const Extra&... extra) {
+    const std::string api_name = absl::StrCat(prefix_, name);
+    wrapped_.def_property(
+        name, internal::WrapWithErrorHandling(api_name, getter),
+        internal::WrapWithErrorHandling(api_name, setter), extra...);
+    return *this;
+  }
+
+ private:
+  RawClass wrapped_;
+  std::string prefix_;
+};
+
+// Defines a Python module whose module parameter is automatically wrapped with
+// TorchTPU error handling.
+//
+// Inside the module definition, `variable` is an instance of
+// `torch_tpu::PyBindModule&`. Calling `variable.def(...)` automatically
+// attaches TorchTPU error handling.
+//
+// Example usage:
+//
+//   TT_PYBIND11_MODULE(my_module, m) {
+//     m.def("my_func", &MyFunc);
+//   }
+//
+// Expands to:
+//
+//   static void TorchTpuPyBindInitModule_my_module(
+//       ::torch_tpu::PyBindModule& m);
+//
+//   PYBIND11_MODULE(my_module, raw_my_module) {
+//     ::torch_tpu::PyBindModule m_my_module(raw_my_module);
+//     TorchTpuPyBindInitModule_my_module(m_my_module);
+//   }
+//
+//   void TorchTpuPyBindInitModule_my_module(
+//       ::torch_tpu::PyBindModule& m) {
+//     m.def("my_func", &MyFunc);
+//   }
+#define TT_PYBIND11_MODULE(name, variable)          \
+  static void TorchTpuPyBindInitModule_##name(      \
+      ::torch_tpu::PyBindModule& variable);         \
+                                                    \
+  PYBIND11_MODULE(name, raw_##name) {               \
+    ::torch_tpu::PyBindModule m_##name(raw_##name); \
+    TorchTpuPyBindInitModule_##name(m_##name);      \
+  }                                                 \
+                                                    \
+  void TorchTpuPyBindInitModule_##name(::torch_tpu::PyBindModule& variable)
 
 }  // namespace torch_tpu
 

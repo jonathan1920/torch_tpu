@@ -20,35 +20,26 @@ from torch_tpu._internal import testing
 from tests import seed_test_utils
 
 
-class PyBindErrorUtilsErrorsTest(seed_test_utils.RepeatableTest):
+class PyBindErrorUtilsTest(seed_test_utils.RepeatableTest):
 
-  def test_free_function_translation(self):
-    # kInvalidArgument should translate to RuntimeError (c10::Error)
-    # And the message should contain the calling API prefix:
-    # "throw_tterror_in_free_function():"
-    with self.assertRaisesRegex(
-        RuntimeError,
-        r"throw_tterror_in_free_function\(\):.*throwing invalid argument",
-    ):
-      testing.throw_tterror_in_free_function()
+  def test_field_read(self):
+    obj = testing.TestMembersClass()
+    self.assertEqual(obj.read_only_field, 100)
+    self.assertEqual(obj.read_write_field, 42)
 
-  def test_index_error_translation(self):
-    # kPythonIndexError should translate to IndexError (c10::IndexError)
-    with self.assertRaisesRegex(
-        IndexError, r"throw_tterror_index_error\(\):.*throwing index error"
-    ):
-      testing.throw_tterror_index_error()
+  def test_field_write(self):
+    obj = testing.TestMembersClass()
+    self.assertEqual(obj.read_write_field, 42)
+    obj.read_write_field = 99
+    self.assertEqual(obj.read_write_field, 99)
 
-  def test_class_method_translation(self):
-    obj = testing.TestErrorClass()
-    # custom name "TestErrorClass.throw_tterror_in_member_function" should be
-    # prepended
-    with self.assertRaisesRegex(
-        RuntimeError,
-        r"TestErrorClass\.throw_tterror_in_member_function\(\):.*class throwing"
-        r" invalid argument",
+  def test_write_readonly_field(self):
+    obj = testing.TestMembersClass()
+
+    with self.assertRaises(  # ASSERT_RAISES_OK=Testing the pybind11 wrapper.
+        AttributeError
     ):
-      obj.throw_tterror_in_member_function()
+      obj.read_only_field = 99
 
 
 if __name__ == "__main__":
