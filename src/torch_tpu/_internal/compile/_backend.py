@@ -649,7 +649,7 @@ class TpuBackend:
     compiled_artifacts: list[compiler.CompiledArtifact] = []
 
     if serializable:
-      fw_compiler = SerializableAOTDispatchCompiler(
+      fw_compiler = SerializableAOTDispatchCompiler(  # pyrefly: ignore[bad-specialization]
           output_code_ty=compiler.CompiledArtifact,
           compiler_fn=functools.partial(  # pyrefly: ignore[bad-specialization]
               self._compile_graph_module,
