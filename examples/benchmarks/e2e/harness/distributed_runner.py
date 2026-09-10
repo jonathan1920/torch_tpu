@@ -12,11 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Production worker runner for multi-host performance benchmarks on Borg."""
+"""Standalone production worker runner for distributed performance benchmarks.
+
+Supports both single-node multi-device (CUDA/TPU) and multi-node multi-host
+Borg executions.
+"""
 
 import enum
 import gc
+import glob
 import os
+import shutil
 from typing import Sequence
 
 from absl import app
@@ -29,10 +35,13 @@ from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e.harness import compile as compile_lib
 from examples.benchmarks.e2e.harness import context as context_lib
 from examples.benchmarks.e2e.harness import discovery as discovery_lib
+from examples.benchmarks.e2e.harness import export as export_lib
 
 # Unused import required to register MLCompass and runner flags with absl.
 from examples.benchmarks.e2e.harness import flags as _  # pylint: disable=unused-import  # noqa: F401
+from examples.benchmarks.e2e.harness import flags as flags_lib
 from examples.benchmarks.e2e.harness import measure as measure_lib
+from examples.benchmarks.e2e.harness import metrics as metrics_lib
 from examples.benchmarks.e2e.harness import mode as mode_lib
 from examples.benchmarks.e2e.harness import models
 from examples.benchmarks.e2e.harness import registry as registry_lib
@@ -45,6 +54,8 @@ from tests.distributed import distributed_utils
 
 discovery_lib.import_submodules(models)
 discovery_lib.import_submodules(steps)
+
+_FRAMEWORK = mode_lib.Framework.TORCH
 
 
 class BarrierPolicy(enum.Enum):
@@ -61,9 +72,9 @@ def resolve_benchmark_targets(
 
   Args:
     test_filter: Space-delimited target filter string. Each token must be an
-      explicit spec name with run mode suffix (e.g.,
-      'llama_8b_inference_eager_default'). If None or empty, returns all specs
-      across all modes.
+      explicit target name with run mode suffix (e.g.
+      'llama_8b_inference_eager_default'). If None or empty, returns all
+      registered targets across all modes.
 
   Returns:
     List of (BenchmarkSpec, RunMode) tuples to execute.
@@ -76,8 +87,8 @@ def resolve_benchmark_targets(
   if not test_filter:
     return list(target_map.values())
 
-  tokens = dict.fromkeys(test_filter.split())
-  if invalid := tokens.keys() - target_map.keys():
+  tokens = test_filter.split()
+  if invalid := set(tokens) - target_map.keys():
     raise ValueError(
         f"Could not resolve benchmark target(s): {sorted(invalid)}. "
         f"Valid targets are: {sorted(target_map)}"
@@ -86,23 +97,21 @@ def resolve_benchmark_targets(
   return [target_map[token] for token in tokens]
 
 
-def _cleanup_multihost_worker_state(
+def _cleanup_distributed_worker_state(
     rank: int,
+    target: target_lib.Target | None = None,
     barrier_policy: BarrierPolicy = BarrierPolicy.SYNCHRONIZE,
 ) -> None:
-  """Flushes TPU caches and tears down model parallel & process groups.
+  """Flushes TPU/CUDA caches and tears down model parallel & process groups.
 
   Args:
     rank: Distributed rank index of current worker.
+    target: Target runtime specification.
     barrier_policy: Barrier policy before process group destruction. Setting to
       BarrierPolicy.SKIP prevents barrier timeouts/deadlocks when unwinding from
       an unhandled exception on one or more ranks.
   """
   logging.info("Rank %s starting inter-test state cleanup...", rank)
-  tt_testing.reset_eager_state()
-  torch.compiler.reset()
-  gc.collect()
-
   try:
     if fairscale_init.model_parallel_is_initialized():
       fairscale_init.destroy_model_parallel()
@@ -119,7 +128,43 @@ def _cleanup_multihost_worker_state(
         logging.warning("Barrier failed during cleanup on rank %s: %s", rank, e)
     torch.distributed.destroy_process_group()
     logging.info("Rank %s process group destroyed.", rank)
+
+  tt_testing.reset_eager_state()
+  torch.compiler.reset()
+
+  if target is not None:
+    if target.device_kind == target_lib.DeviceKind.TPU and hasattr(
+        torch, "tpu"
+    ):
+      torch.tpu._clear_cache()
+    elif (
+        target.device_kind == target_lib.DeviceKind.CUDA
+        and torch.cuda.is_available()
+    ):
+      torch.cuda.empty_cache()
+
+  gc.collect()
   logging.info("Rank %s inter-test state cleanup completed.", rank)
+
+
+def _export_benchmark_result(
+    spec: registry_lib.BenchmarkSpec,
+    platform: target_lib.Platform,
+    mode: common.RunMode,
+    succeeded: bool,
+    metrics: metrics_lib.PerformanceMetrics,
+) -> None:
+  """Exports benchmark outcome and metrics to output storage."""
+  export_lib.export(
+      export_lib.BenchmarkData(
+          spec_name=spec.name,
+          platform=platform,
+          framework=_FRAMEWORK,
+          run_mode=mode,
+          succeeded=succeeded,
+          metrics=metrics,
+      )
+  )
 
 
 def _run_single_target_task(
@@ -136,17 +181,31 @@ def _run_single_target_task(
   spec = registry_lib.REGISTRY[spec_name]
   mode = common.RunMode(mode_value)
 
-  # Setup Target for benchmark execution and cleanup
-  target = target_lib.make_target(platform, dtype=spec.dtype)
-
-  try:
+  if mode.value in spec.skipped_run_modes:
     logging.info(
-        "Rank %s initializing process group for %s (%s)...",
-        rank,
+        "Skipping benchmark %s on mode %s (skipped_run_modes)",
         spec.name,
         mode.value,
     )
-    torch.distributed.init_process_group(backend="tpu_dist")
+    return
+
+  # Setup Target for benchmark execution and cleanup
+  target = target_lib.make_target(platform, dtype=spec.dtype)
+  backend = (
+      "nccl" if target.device_kind == target_lib.DeviceKind.CUDA else "tpu_dist"
+  )
+  if target.device_kind == target_lib.DeviceKind.CUDA:
+    torch.cuda.set_device(int(os.environ.get("LOCAL_RANK", "0")))
+
+  try:
+    logging.info(
+        "Rank %s initializing process group for %s (%s) with backend %s...",
+        rank,
+        spec.name,
+        mode.value,
+        backend,
+    )
+    torch.distributed.init_process_group(backend=backend)
     logging.info("Rank %s process group initialized.", rank)
 
     logging.info(
@@ -164,9 +223,9 @@ def _run_single_target_task(
 
     # Harness setup
     device_ops = torch_device_ops.TorchDeviceOps(target)
-    run_scope_str = os.environ.get("RUN_SCOPE", context_lib.RunScope.FULL.value)
-    run_scope = context_lib.RunScope(run_scope_str.lower())
-    ctx = context_lib.Context(target=target, run_scope=run_scope)
+    ctx = context_lib.Context(
+        target=target, run_scope=context_lib.RUN_SCOPE.value
+    )
 
     with mode_lib.run_mode_context(mode, target):
       # Build run step
@@ -184,29 +243,85 @@ def _run_single_target_task(
 
       # Measure
       logging.info("Rank %s calling measure...", rank)
-      # TODO: b/543140638 - Add a synchronization barrier inside the
-      # measurement path (between warmup and post-warmup timed runs) to ensure
-      # all ranks enter the timed loop simultaneously without desynchronized
-      # waiting overhead.
-      metrics = measure_lib.measure(stepper, device_ops, name=spec.name)
-      logging.info("Rank %s measure returned.", rank)
-      logging.info("Metrics for %s: %s", spec.name, metrics)
+      metrics = measure_lib.measure(
+          stepper,
+          device_ops,
+          name=f"{spec.name}_{mode.value}",
+          enable_xprof=flags_lib.ENABLE_XPROF.value,
+      )
+      logging.info(
+          "Metrics for %s_%s on rank %s: %s",
+          spec.name,
+          mode.value,
+          rank,
+          metrics,
+      )
+
+    # Only rank 0 validates and exports results to persistent storage
+    # (MLCompass / Sponge) to avoid duplicate entries and write collisions
+    # across distributed workers.
+    if rank == 0:
+      if (
+          metrics.e2e_wall_time_seconds <= 0.0
+          or metrics.first_step_time_seconds <= 0.0
+      ):
+        raise AssertionError(
+            f"Invalid metrics measured on rank {rank}: {metrics}"
+        )
+      _export_benchmark_result(
+          spec, target.platform, mode, succeeded=True, metrics=metrics
+      )
 
   except target_lib.UnsupportedBenchmark as e:
     logging.info("Skipping unsupported benchmark on rank %s: %s", rank, e)
   except Exception as e:
     exception_raised = True
-    logging.error("FATAL WORKER ERROR: %s: %s", type(e).__name__, e)
+    logging.error("FATAL DISTRIBUTED WORKER ERROR: %s: %s", type(e).__name__, e)
+    # Only rank 0 reports failure status to persistent storage to prevent
+    # duplicate failure records across worker processes.
+    if rank == 0:
+      _export_benchmark_result(
+          spec,
+          target.platform,
+          mode,
+          succeeded=False,
+          metrics=metrics_lib.PerformanceMetrics(),
+      )
     raise
   finally:
     barrier_policy = (
         BarrierPolicy.SKIP if exception_raised else BarrierPolicy.SYNCHRONIZE
     )
-    _cleanup_multihost_worker_state(rank, barrier_policy=barrier_policy)
+    _cleanup_distributed_worker_state(
+        rank, target=target, barrier_policy=barrier_policy
+    )
+
+
+def _clear_persistent_compilation_caches() -> None:
+  """Clears shared-memory and on-disk compilation caches between benchmark runs.
+
+  Ensures each distributed benchmark target measures true cold compilation
+  latency without being polluted by cached graph artifacts or compiled binaries
+  from preceding targets.
+  """
+  # 1. Clear TorchTPU Tier-2 host-local shared memory compilation cache.
+  shutil.rmtree("/dev/shm/torch_tpu_cache", ignore_errors=True)
+
+  # 2. Clear PyTorch Inductor and compile on-disk caches.
+  cache_patterns = [
+      "/tmp/torchinductor*",
+      "/tmp/torch_compile*",
+  ]
+  if custom_inductor_cache := os.environ.get("TORCHINDUCTOR_CACHE_DIR"):
+    shutil.rmtree(custom_inductor_cache, ignore_errors=True)
+
+  for pattern in cache_patterns:
+    for p in glob.glob(pattern):
+      shutil.rmtree(p, ignore_errors=True)
 
 
 def main(argv: Sequence[str]) -> None:
-  """Main entry point for discovering and executing multi-host benchmarks."""
+  """Main entry point for discovering and executing distributed benchmarks."""
   if len(argv) > 1:
     raise app.UsageError("Too many command-line arguments.")
 
@@ -221,8 +336,10 @@ def main(argv: Sequence[str]) -> None:
   nnodes = topology.nnodes
   local_nproc = topology.nprocs_per_node
 
-  if nnodes <= 1 and platform != target_lib.Platform.CPU:
-    logging.warning("Running on a single-node platform: %s", platform)
+  if nnodes <= 1 and local_nproc <= 1 and platform != target_lib.Platform.CPU:
+    logging.warning(
+        "Running on a single-node single-process platform: %s", platform
+    )
 
   test_filter = os.environ.get("TESTBRIDGE_TEST_ONLY")
   targets_to_run = resolve_benchmark_targets(test_filter)
@@ -250,6 +367,9 @@ def main(argv: Sequence[str]) -> None:
         len(targets_to_run),
         target_name,
     )
+    # Evict shared-memory and on-disk compilation caches between targets so each
+    # target measures true cold compilation latency.
+    _clear_persistent_compilation_caches()
     distributed_utils.dist_run(
         local_nproc,
         _run_single_target_task,

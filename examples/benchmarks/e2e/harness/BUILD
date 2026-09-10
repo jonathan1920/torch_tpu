@@ -228,15 +228,17 @@ genmpm(
 )
 
 torch_tpu_py_library(
-    name = "multihost_runner_lib",
+    name = "distributed_runner_lib",
     testonly = 1,
-    srcs = ["multihost_runner.py"],
+    srcs = ["distributed_runner.py"],
     deps = [
         ":compile",
         ":context",
         ":discovery",
+        ":export",
         ":flags",
         ":measure",
+        ":metrics",
         ":mode",
         ":registry",
         ":step_lib",
@@ -257,18 +259,33 @@ torch_tpu_py_library(
 )
 
 pytype_strict_binary(
-    name = "multihost_runner_bin",
+    name = "distributed_runner",
     testonly = 1,
-    srcs = ["multihost_runner.py"],
-    main = "multihost_runner.py",
+    srcs = ["distributed_runner.py"],
+    data = [
+        "//examples/huggingface_transformers:model_configs_data",
+    ],
     deps = [
-        ":multihost_runner_lib",
+        ":distributed_runner_lib",
     ],
 )
 
 alias(
-    name = "multihost_runner",
-    actual = ":multihost_runner_bin",
+    name = "distributed_runner_bin",
+    actual = ":distributed_runner",
+)
+
+pkg_binary_with_runfiles(
+    name = "distributed_runner_with_runfiles",
+    testonly = 1,
+    binary = ":distributed_runner",
+)
+
+genmpm(
+    name = "distributed_runner_mpm",
+    testonly = 1,
+    temporal = True,
+    deps = [":distributed_runner_with_runfiles"],
 )
 
 torch_tpu_package_end()

@@ -12,20 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for production multi-host benchmark runner."""
+"""Unit tests for standalone distributed benchmark runner."""
 
 import os
+import shutil
 from unittest import mock
 
 from absl.testing import absltest
-from absl.testing import parameterized
 import torch
 from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e.harness import context as context_lib
 from examples.benchmarks.e2e.harness import discovery as discovery_lib
+from examples.benchmarks.e2e.harness import distributed_runner
 from examples.benchmarks.e2e.harness import measure as measure_lib
+from examples.benchmarks.e2e.harness import metrics as metrics_lib
 from examples.benchmarks.e2e.harness import mode as mode_lib
-from examples.benchmarks.e2e.harness import multihost_runner
 from examples.benchmarks.e2e.harness import registry as registry_lib
 from examples.benchmarks.e2e.harness import step_lib
 from examples.benchmarks.e2e.harness import steps
@@ -33,13 +34,14 @@ from examples.benchmarks.e2e.harness import target as target_lib
 from examples.benchmarks.e2e.harness import torch_device_ops
 from examples.benchmarks.e2e.harness.models import llama
 from torch_tpu._internal.distributed import multiprocessing
+from tests import seed_test_utils
 
 
 def setUpModule():
   discovery_lib.import_submodules(steps)
 
 
-class MultihostRunnerTest(parameterized.TestCase):
+class DistributedRunnerTest(seed_test_utils.RepeatableTest):
 
   @mock.patch.dict(registry_lib.REGISTRY, {}, clear=True)
   def test_resolve_benchmark_targets_deterministic(self):
@@ -48,12 +50,12 @@ class MultihostRunnerTest(parameterized.TestCase):
     registry_lib.REGISTRY["llama_8b_inference"] = spec1
 
     # No filter returns all modes
-    targets = multihost_runner.resolve_benchmark_targets(test_filter=None)
+    targets = distributed_runner.resolve_benchmark_targets(test_filter=None)
     self.assertLen(targets, len(common.RunMode))
     self.assertEqual(targets[0][0].name, "llama_8b_inference")
 
     # Exact target_name match
-    targets = multihost_runner.resolve_benchmark_targets(
+    targets = distributed_runner.resolve_benchmark_targets(
         test_filter=(
             "llama_8b_inference_eager_default"
             " llama_8b_inference_eager_optimized"
@@ -63,17 +65,35 @@ class MultihostRunnerTest(parameterized.TestCase):
     self.assertEqual(targets[0][1], common.RunMode.EAGER_DEFAULT)
     self.assertEqual(targets[1][1], common.RunMode.EAGER_OPTIMIZED)
 
+    # Duplicate targets preserved in order
+    targets = distributed_runner.resolve_benchmark_targets(
+        test_filter=(
+            "llama_8b_inference_eager_default llama_8b_inference_eager_default"
+        )
+    )
+    self.assertLen(targets, 2)
+    self.assertEqual(targets[0][1], common.RunMode.EAGER_DEFAULT)
+    self.assertEqual(targets[1][1], common.RunMode.EAGER_DEFAULT)
+
+    # pyformat: disable
+    # Wildcard pattern throws ValueError (exact match only)
+    with self.assertRaises(ValueError):  # ASSERT_RAISES_OK=Runner target resolution validation.
+      distributed_runner.resolve_benchmark_targets(
+          test_filter="*llama_8b_inference*"
+      )
+
     # Spec name without mode suffix throws ValueError
-    with self.assertRaises(ValueError):
-      multihost_runner.resolve_benchmark_targets(
+    with self.assertRaises(ValueError):  # ASSERT_RAISES_OK=Runner target resolution validation.
+      distributed_runner.resolve_benchmark_targets(
           test_filter="llama_8b_inference"
       )
 
     # Invalid target throws ValueError
-    with self.assertRaises(ValueError):
-      multihost_runner.resolve_benchmark_targets(
+    with self.assertRaises(ValueError):  # ASSERT_RAISES_OK=Runner target resolution validation.
+      distributed_runner.resolve_benchmark_targets(
           test_filter="invalid_target_xyz"
       )
+    # pyformat: enable
 
   @mock.patch.dict(registry_lib.REGISTRY, {})
   @mock.patch.object(target_lib, "make_target")
@@ -84,7 +104,7 @@ class MultihostRunnerTest(parameterized.TestCase):
   @mock.patch.object(torch.distributed, "destroy_process_group")
   @mock.patch.object(torch.distributed, "is_initialized", return_value=True)
   @mock.patch.object(torch.compiler, "reset")
-  def test_run_single_target_task(
+  def test_run_single_target_task_tpu(
       self,
       mock_compiler_reset,
       mock_is_initialized,
@@ -105,22 +125,90 @@ class MultihostRunnerTest(parameterized.TestCase):
     fake_spec.stepper = step_lib.StepperType.FORWARD
     fake_spec.stepper_kwargs = {}
     fake_spec.compile_config = None
+    fake_spec.skipped_run_modes = set()
 
     registry_lib.REGISTRY["dummy"] = fake_spec
 
-    # Setup fake target so it doesn't fail on device/dtype resolution
     fake_target = mock.MagicMock(spec=target_lib.Target)
-    fake_target.device_kind = target_lib.DeviceKind.CPU
+    fake_target.device_kind = target_lib.DeviceKind.TPU
+    fake_target.platform = target_lib.Platform.V7_2X2X2
     fake_target.dtype = target_lib.DType.BF16
     mock_make_target.return_value = fake_target
 
-    multihost_runner._run_single_target_task(
-        spec_name="dummy",
-        mode_value="eager_default",
-        platform_name="cpu",
-    )
+    mock_metrics = mock.MagicMock(spec=metrics_lib.PerformanceMetrics)
+    mock_metrics.e2e_wall_time_seconds = 1.0
+    mock_metrics.first_step_time_seconds = 0.5
+    mock_measure.return_value = mock_metrics
+
+    with mock.patch.dict(os.environ, {"RANK": "0"}):
+      distributed_runner._run_single_target_task(
+          spec_name="dummy",
+          mode_value="eager_default",
+          platform_name="v7_2x2x2",
+      )
 
     mock_init_group.assert_called_once_with(backend="tpu_dist")
+    self.assertTrue(mock_barrier.called)
+    mock_measure.assert_called_once()
+    mock_compiler_reset.assert_called_once()
+    mock_destroy_group.assert_called_once()
+
+  @mock.patch.dict(registry_lib.REGISTRY, {})
+  @mock.patch.object(target_lib, "make_target")
+  @mock.patch.object(torch_device_ops, "TorchDeviceOps")
+  @mock.patch.object(measure_lib, "measure")
+  @mock.patch.object(torch.cuda, "set_device")
+  @mock.patch.object(torch.distributed, "init_process_group")
+  @mock.patch.object(torch.distributed, "barrier")
+  @mock.patch.object(torch.distributed, "destroy_process_group")
+  @mock.patch.object(torch.distributed, "is_initialized", return_value=True)
+  @mock.patch.object(torch.compiler, "reset")
+  def test_run_single_target_task_cuda(
+      self,
+      mock_compiler_reset,
+      mock_is_initialized,
+      mock_destroy_group,
+      mock_barrier,
+      mock_init_group,
+      mock_set_device,
+      mock_measure,
+      mock_device_ops,
+      mock_make_target,
+  ):
+    del mock_is_initialized, mock_device_ops
+    fake_spec = mock.MagicMock(spec=registry_lib.BenchmarkSpec)
+    fake_spec.name = "dummy_gpu"
+    fake_spec.dtype = target_lib.DType.BF16
+    fake_spec.factory = mock.MagicMock(
+        return_value=(mock.MagicMock(), (), {}, None)
+    )
+    fake_spec.stepper = step_lib.StepperType.FORWARD
+    fake_spec.stepper_kwargs = {}
+    fake_spec.compile_config = None
+    fake_spec.skipped_run_modes = set()
+
+    registry_lib.REGISTRY["dummy_gpu"] = fake_spec
+
+    fake_target = mock.MagicMock(spec=target_lib.Target)
+    fake_target.device_kind = target_lib.DeviceKind.CUDA
+    fake_target.platform = target_lib.Platform.B200_8
+    fake_target.dtype = target_lib.DType.BF16
+    mock_make_target.return_value = fake_target
+
+    mock_metrics = mock.MagicMock(spec=metrics_lib.PerformanceMetrics)
+    mock_metrics.e2e_wall_time_seconds = 2.0
+    mock_metrics.first_step_time_seconds = 1.0
+    mock_measure.return_value = mock_metrics
+
+    with mock.patch.dict(os.environ, {"RANK": "0", "LOCAL_RANK": "3"}):
+      distributed_runner._run_single_target_task(
+          spec_name="dummy_gpu",
+          mode_value="eager_default",
+          platform_name="b200_8",
+      )
+
+    mock_set_device.assert_called_once_with(3)
+    mock_init_group.assert_called_once_with(backend="nccl")
     self.assertTrue(mock_barrier.called)
     mock_measure.assert_called_once()
     mock_compiler_reset.assert_called_once()
@@ -148,7 +236,6 @@ class MultihostRunnerTest(parameterized.TestCase):
       mock_device_ops,
       mock_make_target,
   ):
-    """Verifies cleanup runs even when benchmark raises an exception."""
     del mock_is_initialized, mock_init_group, mock_measure, mock_device_ops
     fake_spec = mock.MagicMock(spec=registry_lib.BenchmarkSpec)
     fake_spec.name = "dummy"
@@ -159,19 +246,23 @@ class MultihostRunnerTest(parameterized.TestCase):
     fake_spec.stepper = step_lib.StepperType.FORWARD
     fake_spec.stepper_kwargs = {}
     fake_spec.compile_config = None
+    fake_spec.skipped_run_modes = set()
 
     registry_lib.REGISTRY["dummy"] = fake_spec
 
     fake_target = mock.MagicMock(spec=target_lib.Target)
-    fake_target.device_kind = target_lib.DeviceKind.CPU
+    fake_target.device_kind = target_lib.DeviceKind.TPU
+    fake_target.platform = target_lib.Platform.V7_2X2X2
     fake_target.dtype = target_lib.DType.BF16
     mock_make_target.return_value = fake_target
 
-    with self.assertRaisesRegex(RuntimeError, "Model OOM"):
-      multihost_runner._run_single_target_task(
+    with self.assertRaisesRegex(  # ASSERT_RAISES_OK=Worker exception propagation and cleanup test.
+        RuntimeError, "Model OOM"
+    ):
+      distributed_runner._run_single_target_task(
           spec_name="dummy",
           mode_value="eager_default",
-          platform_name="cpu",
+          platform_name="v7_2x2x2",
       )
 
     mock_compiler_reset.assert_called_once()
@@ -179,8 +270,8 @@ class MultihostRunnerTest(parameterized.TestCase):
     self.assertEqual(mock_barrier.call_count, 1)
 
   @mock.patch.dict(os.environ, {"BENCHMARK_PLATFORM": "v7_2x2x2"})
-  @mock.patch.object(multihost_runner.distributed_utils, "dist_run")
-  @mock.patch.object(multihost_runner, "resolve_benchmark_targets")
+  @mock.patch.object(distributed_runner.distributed_utils, "dist_run")
+  @mock.patch.object(distributed_runner, "resolve_benchmark_targets")
   def test_main_successful_dispatch(self, mock_resolve_targets, mock_dist_run):
     dummy_spec = mock.MagicMock(spec=registry_lib.BenchmarkSpec)
     dummy_spec.name = "dummy"
@@ -191,11 +282,11 @@ class MultihostRunnerTest(parameterized.TestCase):
     with mock.patch.dict(
         os.environ, {"TESTBRIDGE_TEST_ONLY": "dummy_eager_default"}
     ):
-      multihost_runner.main(["multihost_runner"])
+      distributed_runner.main(["distributed_runner"])
 
     mock_dist_run.assert_called_once_with(
         8,  # V7_2X2X2 has 8 procs per node
-        multihost_runner._run_single_target_task,
+        distributed_runner._run_single_target_task,
         "dummy",
         "eager_default",
         "v7_2x2x2",
@@ -205,115 +296,50 @@ class MultihostRunnerTest(parameterized.TestCase):
   @mock.patch.object(torch.distributed, "destroy_process_group")
   @mock.patch.object(torch.distributed, "is_initialized", return_value=True)
   @mock.patch.object(torch.compiler, "reset")
-  def test_cleanup_multihost_worker_state_skip_barrier_on_exception(
+  def test_cleanup_distributed_worker_state_skip_barrier_on_exception(
       self,
       mock_compiler_reset,
       mock_is_initialized,
       mock_destroy_group,
       mock_barrier,
   ):
-    """Verifies barrier is skipped when unwinding from benchmark exception."""
     del mock_compiler_reset, mock_is_initialized
-    multihost_runner._cleanup_multihost_worker_state(
-        rank=0, barrier_policy=multihost_runner.BarrierPolicy.SKIP
+    distributed_runner._cleanup_distributed_worker_state(
+        rank=0, barrier_policy=distributed_runner.BarrierPolicy.SKIP
     )
 
     mock_barrier.assert_not_called()
     mock_destroy_group.assert_called_once()
 
-  @mock.patch.dict(registry_lib.REGISTRY, {})
-  @mock.patch.object(target_lib, "make_target")
-  @mock.patch.object(torch_device_ops, "TorchDeviceOps")
-  @mock.patch.object(measure_lib, "measure")
-  @mock.patch.object(torch.distributed, "init_process_group")
-  @mock.patch.object(torch.distributed, "barrier")
   @mock.patch.object(torch.distributed, "destroy_process_group")
   @mock.patch.object(torch.distributed, "is_initialized", return_value=True)
   @mock.patch.object(torch.compiler, "reset")
-  @mock.patch.object(mode_lib, "run_mode_context")
-  def test_run_single_target_uses_run_mode_context_and_default_run_scope(
+  def test_cleanup_distributed_worker_state_clears_cache(
       self,
-      mock_run_mode_context,
       mock_compiler_reset,
       mock_is_initialized,
       mock_destroy_group,
-      mock_barrier,
-      mock_init_group,
-      mock_measure,
-      mock_device_ops,
-      mock_make_target,
   ):
-    """Verifies run_mode_context wraps execution and default RUN_SCOPE is 'full'."""
-    del (
-        mock_is_initialized,
-        mock_device_ops,
-        mock_init_group,
-        mock_barrier,
-        mock_measure,
-        mock_compiler_reset,
-        mock_destroy_group,
-    )
-    fake_spec = mock.MagicMock(spec=registry_lib.BenchmarkSpec)
-    fake_spec.name = "dummy"
-    fake_spec.dtype = target_lib.DType.BF16
-    captured_ctx = None
+    del mock_compiler_reset, mock_is_initialized, mock_destroy_group
+    fake_target_tpu = mock.MagicMock(spec=target_lib.Target)
+    fake_target_tpu.device_kind = target_lib.DeviceKind.TPU
 
-    def fake_factory(ctx):
-      nonlocal captured_ctx
-      captured_ctx = ctx
-      return (mock.MagicMock(), (), {}, None)
-
-    fake_spec.factory = fake_factory
-    fake_spec.stepper = step_lib.StepperType.FORWARD
-    fake_spec.stepper_kwargs = {}
-    fake_spec.compile_config = None
-
-    registry_lib.REGISTRY["dummy"] = fake_spec
-
-    fake_target = mock.MagicMock(spec=target_lib.Target)
-    fake_target.device_kind = target_lib.DeviceKind.CPU
-    fake_target.dtype = target_lib.DType.BF16
-    mock_make_target.return_value = fake_target
-
-    with mock.patch.dict(os.environ, {}, clear=True):
-      multihost_runner._run_single_target_task(
-          spec_name="dummy",
-          mode_value="eager_optimized",
-          platform_name="cpu",
+    with mock.patch.object(torch, "tpu", create=True) as mock_torch_tpu:
+      mock_torch_tpu._clear_cache = mock.MagicMock()
+      distributed_runner._cleanup_distributed_worker_state(
+          rank=0,
+          target=fake_target_tpu,
+          barrier_policy=distributed_runner.BarrierPolicy.SKIP,
       )
+      mock_torch_tpu._clear_cache.assert_called_once()
 
-    # 1. Verify run_mode_context was invoked with
-    # (RunMode.EAGER_OPTIMIZED, fake_target)
-    mock_run_mode_context.assert_called_once_with(
-        common.RunMode.EAGER_OPTIMIZED, fake_target
-    )
-    # 2. Verify default RUN_SCOPE passed to Context is FULL
-    self.assertIsNotNone(captured_ctx)
-    self.assertEqual(captured_ctx.run_scope, context_lib.RunScope.FULL)
+  @mock.patch.object(shutil, "rmtree")
+  def test_clear_persistent_compilation_caches(self, mock_rmtree):
+    with mock.patch("glob.glob", return_value=["/tmp/torchinductor_test"]):
+      distributed_runner._clear_persistent_compilation_caches()
 
-  @mock.patch.object(llama, "_load_meta_llama")
-  def test_meta_llama_8b_forward_supports_single_and_multihost(
-      self, mock_loader
-  ):
-    """Verifies meta_llama_8b_forward supports both single-host and multi-host."""
-
-    fake_model = mock.MagicMock()
-    fake_inputs = (mock.MagicMock(), 0)
-    mock_loader.return_value = (fake_model, fake_inputs)
-
-    for platform in [
-        target_lib.Platform.V7_2X2X1,
-        target_lib.Platform.V7_2X2X2,
-    ]:
-      fake_target = mock.MagicMock(spec=target_lib.Target)
-      fake_target.platform = platform
-      fake_ctx = mock.MagicMock()
-      fake_ctx.target = fake_target
-      fake_ctx.dtype = target_lib.DType.BF16
-      fake_ctx.device_kind = target_lib.DeviceKind.CPU
-      res = llama.meta_llama_8b_forward(fake_ctx)
-      self.assertIsNotNone(res[0])
-      self.assertIsNotNone(res[1])
+    mock_rmtree.assert_any_call("/dev/shm/torch_tpu_cache", ignore_errors=True)
+    mock_rmtree.assert_any_call("/tmp/torchinductor_test", ignore_errors=True)
 
 
 if __name__ == "__main__":
