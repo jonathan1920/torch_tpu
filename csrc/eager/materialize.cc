@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <string_view>
@@ -56,6 +57,7 @@
 #include "csrc/eager/device_buffer.h"
 #include "csrc/eager/eager_mode.h"
 #include "csrc/eager/events_queue.h"
+#include "csrc/eager/materialization_heuristics.h"
 #include "csrc/eager/materialize_common.h"
 #include "csrc/eager/split_traversal.h"
 #include "csrc/eager/structured_log_buffer.h"
@@ -100,9 +102,23 @@ using MaterializationKind =
 
 // Common properties for all materialization tasks.
 struct MaterializationTaskCommon {
-  MaterializationMode materialization_mode = MaterializationMode::kSplitGraph;
+  MaterializationMode materialization_mode;
   MaterializationReason reason;
+  CompilationMode compilation_mode;
   CompilationSpec compilation_spec;
+  std::optional<CompilationSpec> fast_runtime_compilation_spec;
+
+  MaterializationTaskCommon(MaterializationReason reason,
+                            MaterializationMode materialization_mode)
+      : materialization_mode(materialization_mode),
+        reason(reason),
+        compilation_mode(GetCompilationMode(GetEagerMode())),
+        compilation_spec(GetCompilationSpec(compilation_mode)) {
+    if (compilation_mode == CompilationMode::kFastCompile) {
+      fast_runtime_compilation_spec =
+          GetCompilationSpec(CompilationMode::kFastRuntime);
+    }
+  }
 };
 
 struct MaterializationTask {
@@ -147,6 +163,33 @@ struct MaterializationStages {
   absl::Status first_error = absl::OkStatus();
 };
 
+// Returns the appropriate CompilationSpec for a split traversal.
+// If the global compilation mode is already FastRuntime (O2), we retain it.
+// Otherwise, if any deferred op in the traversal is an eligible convolution
+// that benefits from O2, we selectively promote it to FastRuntime.
+CompilationSpec GetCompilationSpecForTraversal(
+    const MaterializationTaskCommon& common, const Traversal& traversal) {
+  if (common.compilation_mode == CompilationMode::kFastRuntime) {
+    return common.compilation_spec.Copy();
+  }
+
+  const auto& execution_order = traversal.execution_order();
+  const bool has_fast_runtime_conv =
+      std::any_of(execution_order.begin(), execution_order.end(),
+                  [](const SharedDeviceBufferList& node) {
+                    const auto deferred_op = node->deferred_op();
+                    return deferred_op != nullptr &&
+                           IsFastRuntimeConvolutionCandidate(*deferred_op);
+                  });
+
+  if (has_fast_runtime_conv &&
+      common.fast_runtime_compilation_spec.has_value()) {
+    return common.fast_runtime_compilation_spec->Copy();
+  }
+
+  return common.compilation_spec.Copy();
+}
+
 // Converts a sequence of Traversals to a sequence of ExecutionTasks.
 // If materialization_mode is kSplitGraph, then there may be more returned
 // tasks than there were original traversals; otherwise, there will be exactly
@@ -190,9 +233,11 @@ MaterializationStages ApplySplitMode(
 
   result.execution_tasks.reserve(traversals.size());
   for (auto& split_traversal : traversals) {
+    CompilationSpec compilation_spec =
+        GetCompilationSpecForTraversal(common, *split_traversal);
     auto execution_task_or = ExecutionTask::FromTraversalWithLogging(
-        std::move(split_traversal), mlir_context,
-        common.compilation_spec.Copy(), common.reason);
+        std::move(split_traversal), mlir_context, std::move(compilation_spec),
+        common.reason);
     if (execution_task_or.ok()) {
       result.execution_tasks.push_back(std::move(*execution_task_or));
     } else if (result.first_error.ok()) {
@@ -320,7 +365,7 @@ class MaterializationWorker {
     ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing " << nodes.size()
                  << " nodes for materialization";
     auto [promise, future] = xla::MakePromise<void>();
-    const CompilationMode compilation_mode = GetCompilationMode(GetEagerMode());
+    MaterializationTaskCommon common(reason, materialization_mode);
 
     absl::MutexLock lock(materialize_mu_);
     // Check shutdown state after acquiring the lock to avoid a time-of-check/
@@ -339,12 +384,7 @@ class MaterializationWorker {
                 .nodes_to_materialize = std::move(nodes),
                 .completion_promise = std::move(promise),
             },
-        .common =
-            MaterializationTaskCommon{
-                .materialization_mode = materialization_mode,
-                .reason = reason,
-                .compilation_spec = GetCompilationSpec(compilation_mode),
-            },
+        .common = std::move(common),
     });
     return future;
   }
@@ -355,7 +395,7 @@ class MaterializationWorker {
     ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing stream " << stream_id
                  << " on device " << device_index << " for materialization";
     auto [promise, future] = xla::MakePromise<std::shared_ptr<EventSnapshot>>();
-    const CompilationMode compilation_mode = GetCompilationMode(GetEagerMode());
+    MaterializationTaskCommon common(reason, materialization_mode);
 
     absl::MutexLock lock(materialize_mu_);
     // Check shutdown state after acquiring the lock to avoid a time-of-check/
@@ -375,12 +415,7 @@ class MaterializationWorker {
                 .stream_id = stream_id,
                 .completion_promise = std::move(promise),
             },
-        .common =
-            MaterializationTaskCommon{
-                .materialization_mode = materialization_mode,
-                .reason = reason,
-                .compilation_spec = GetCompilationSpec(compilation_mode),
-            },
+        .common = std::move(common),
     });
     return future;
   }
@@ -392,7 +427,7 @@ class MaterializationWorker {
                  << " for materialization";
     auto [promise, future] =
         xla::MakePromise<std::vector<std::shared_ptr<EventSnapshot>>>();
-    const CompilationMode compilation_mode = GetCompilationMode(GetEagerMode());
+    MaterializationTaskCommon common(reason, materialization_mode);
 
     absl::MutexLock lock(materialize_mu_);
     // Check shutdown state after acquiring the lock to avoid a time-of-check/
@@ -411,12 +446,7 @@ class MaterializationWorker {
                 .device_index = device_index,
                 .completion_promise = std::move(promise),
             },
-        .common =
-            MaterializationTaskCommon{
-                .materialization_mode = materialization_mode,
-                .reason = reason,
-                .compilation_spec = GetCompilationSpec(compilation_mode),
-            },
+        .common = std::move(common),
     });
     return future;
   }

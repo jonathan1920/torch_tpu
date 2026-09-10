@@ -132,6 +132,27 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_test(
+    name = "materialization_heuristics_test",
+    srcs = ["materialization_heuristics_test.cc"],
+    deps = [
+        ":device_buffer",
+        ":materialization_heuristics",
+        "//csrc/common:cache_key",
+        "//csrc/common:dimension_types",
+        "//csrc/common:oss_test_main",
+        "//csrc/common:shape",
+        "//csrc/common:status_test_utils",
+        "//csrc/ops:op_builder_utils",
+        "//csrc/ops:op_names",
+        "//csrc/ops:python_context",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
+torch_tpu_cc_test(
     name = "shutdown_test",
     srcs = ["shutdown_test.cc"],
     exec_properties = {
@@ -364,6 +385,7 @@ torch_tpu_cc_library(
         ":device_buffer",
         ":eager_mode",
         ":events_queue",
+        ":materialization_heuristics",
         ":materialize_common",
         ":split_traversal",
         ":structured_log_buffer",
@@ -393,6 +415,22 @@ torch_tpu_cc_library(
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:future",
         "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "materialization_heuristics",
+    srcs = [
+        "materialization_heuristics.cc",
+    ],
+    hdrs = [
+        "materialization_heuristics.h",
+    ],
+    deps = [
+        ":device_buffer",
+        "//csrc/common:shape",
+        "//csrc/ops:op_names",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
