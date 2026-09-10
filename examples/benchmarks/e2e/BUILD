@@ -534,14 +534,12 @@ torch_tpu_py_test(
     name = "single_trace_trainer_adapter_test",
     srcs = ["single_trace_trainer_adapter_test.py"],
     main = "single_trace_trainer_adapter_test.py",
-    nobuild_oss = "slow example",
     nopresubmit = "slow example",
+    notest_oss = "slow example",
     tags = [
         "requires-accel-hbm",
         "requires-net:external",
-        "requires-tpu",
         "requires-tpu-v5lite",
-        "wheel_test_excluded",
     ],
     deps = [
         ":single_trace_trainer_adapter",
