@@ -1275,6 +1275,31 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     # y should still be accessible
     y.cpu()
 
+  def test_static_compiler_buffer_donation_changes_cache_key(self):
+    def simple_fn(x, y):
+      return x - y, x * 3
+
+    x = torch.randn(3, 5, device=self.device)
+    y = torch.randn(3, 5, device=self.device)
+    gm = make_fx(simple_fn)(x, y)
+    comp = StaticCompiler()
+
+    for donated_first in (False, True):
+      with self.subTest(donated_first=donated_first):
+        torch.tpu._clear_cache()
+        initial_hits = torch.tpu._get_cache_hits()
+
+        for donate_x in (donated_first, not donated_first):
+          comp(
+              gm,
+              [x, y],
+              donated_inputs=[0] if donate_x else [],
+          )
+        self.assertEqual(torch.tpu._get_cache_hits(), initial_hits)
+
+        comp(gm, [x, y], donated_inputs=[0] if donated_first else [])
+        self.assertEqual(torch.tpu._get_cache_hits(), initial_hits + 1)
+
   def test_static_compiler_auto_buffer_donation_with_mutable_custom_op(self):
     @torch.library.custom_op(
         'custom_tpu_test::table_update', mutates_args={'table'}

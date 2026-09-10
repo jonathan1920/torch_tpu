@@ -162,6 +162,52 @@ TEST_F(TraversalTest, ReadableStringComplexGraph) {
             "return %3\n");
 }
 
+TEST_F(TraversalTest, TopLevelDonationChangesCacheKey) {
+  TT_ASSERT_OK_AND_ASSIGN(
+      std::vector<DeviceBufferRef> refs_a,
+      DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder, {},
+                                       OpParamCacheKeys::Empty(), {shape_}));
+  DeviceBufferRef ref_a = refs_a[0];
+  TT_ASSERT_OK_AND_ASSIGN(
+      std::vector<DeviceBufferRef> refs_b,
+      DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder, {},
+                                       OpParamCacheKeys::Empty(), {shape_}));
+  DeviceBufferRef ref_b = refs_b[0];
+  TT_ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_c,
+                          DeviceBufferList::CreateDeferred(
+                              OpName::kAdd, DummyBuilder, {ref_a, ref_b},
+                              OpParamCacheKeys::Empty(), {shape_}));
+  TT_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Traversal> traversal,
+      Traversal::Create({refs_c[0]}, {ref_a.device_buffer_list().get(),
+                                      ref_b.device_buffer_list().get()}));
+
+  const CompileOptionsKey kCompileOptionsKey(0);
+  const CompilationCacheKey no_donation = traversal->GetCacheKey(
+      kCompileOptionsKey, /*argument_layouts=*/{}, /*donated_inputs=*/{});
+  const CompilationCacheKey donate_0 = traversal->GetCacheKey(
+      kCompileOptionsKey, /*argument_layouts=*/{}, /*donated_inputs=*/{0});
+  const CompilationCacheKey donate_1 = traversal->GetCacheKey(
+      kCompileOptionsKey, /*argument_layouts=*/{}, /*donated_inputs=*/{1});
+  const CompilationCacheKey donate_0_1 = traversal->GetCacheKey(
+      kCompileOptionsKey, /*argument_layouts=*/{}, /*donated_inputs=*/{0, 1});
+
+  EXPECT_NE(no_donation, donate_0);
+  EXPECT_NE(donate_0, donate_1);
+  EXPECT_EQ(donate_0_1, traversal->GetCacheKey(kCompileOptionsKey,
+                                               /*argument_layouts=*/{},
+                                               /*donated_inputs=*/{1, 0, 1}));
+
+  EXPECT_EQ(no_donation.CompactFormat(),
+            "c111837714da5d00_0d51927151d176ea_0000000000000000");
+  EXPECT_EQ(donate_0.CompactFormat(),
+            "f696a73c2abe5a40_0d51927151d176ea_0000000000000000");
+  EXPECT_EQ(donate_1.CompactFormat(),
+            "1d516e396e48000c_0d51927151d176ea_0000000000000000");
+  EXPECT_EQ(donate_0_1.CompactFormat(),
+            "6edccdc229483441_0d51927151d176ea_0000000000000000");
+}
+
 TEST_F(TraversalTest, ReadableStringWithTraceback) {
   auto traceback = std::make_shared<PythonTraceback>();
   traceback->frames.push_back({"/path/to/user_code.py", "my_function", 42});
@@ -253,11 +299,13 @@ TEST_F(TraversalTest, CompileAnnotatesArgumentLayoutsWithTilingAndCaching) {
 
   CustomLayout different_tile_layout{.minor_to_major = {1, 0}, .tiles = {{16}}};
   CompilationCacheKey key_untiled = tr->GetCacheKey(
-      CompileOptionsKey(12345), {CustomLayout{.minor_to_major = {1, 0}}});
-  CompilationCacheKey key_tiled8 =
-      tr->GetCacheKey(CompileOptionsKey(12345), {tiled_layout});
+      CompileOptionsKey(12345), {CustomLayout{.minor_to_major = {1, 0}}},
+      /*donated_inputs=*/{});
+  CompilationCacheKey key_tiled8 = tr->GetCacheKey(
+      CompileOptionsKey(12345), {tiled_layout}, /*donated_inputs=*/{});
   CompilationCacheKey key_tiled16 =
-      tr->GetCacheKey(CompileOptionsKey(12345), {different_tile_layout});
+      tr->GetCacheKey(CompileOptionsKey(12345), {different_tile_layout},
+                      /*donated_inputs=*/{});
   EXPECT_NE(key_untiled, key_tiled8);
   EXPECT_NE(key_tiled8, key_tiled16);
 }
