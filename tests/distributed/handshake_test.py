@@ -26,6 +26,7 @@ from absl.testing import parameterized
 import portpicker
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from torch.testing._internal.distributed import fake_pg
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.distributed import handshake
 from torch_tpu._internal.distributed import multiprocessing
@@ -705,8 +706,8 @@ def test_wrapper(
     Result of calling `target_fn(*args, **kwargs)`.
   """
   dist.init_process_group(
-      backend="gloo",
-      init_method="env://",
+      backend="fake",
+      store=fake_pg.FakeStore(),
       rank=int(os.environ.get("RANK", "0")),
       world_size=int(os.environ.get("WORLD_SIZE", "1")),
   )
