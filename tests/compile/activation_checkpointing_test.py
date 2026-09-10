@@ -14,7 +14,7 @@
 
 from absl.testing import absltest
 import torch
-from torch_tpu._internal import compile as compile_lib
+from torch_tpu._internal.compile.debug import TpuCompileDebug
 from tests import seed_test_utils
 
 
@@ -39,8 +39,12 @@ class ActivationCheckpointingTest(seed_test_utils.RepeatableTest):
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, capturable=True)
     criterion = torch.nn.MSELoss()
-    tpu_backend = compile_lib.TpuBackend(debug=True)
-    compiled = torch.compile(model, backend=tpu_backend)
+    debugs: list[TpuCompileDebug] = []
+    compiled = torch.compile(
+        model,
+        backend="tpu",
+        options={"serializable": False, "debug_callback": debugs.append},
+    )
 
     input_tensor = torch.arange(50, dtype=torch.float32, device=device).reshape(
         10, 5
@@ -53,9 +57,10 @@ class ActivationCheckpointingTest(seed_test_utils.RepeatableTest):
     loss.backward()
     optimizer.step()
 
-    self.assertLen(tpu_backend._compiled_executables, 2)
-    fwd_mlir = tpu_backend._compiled_executables[0].mlir_texts[0]
-    bwd_mlir = tpu_backend._compiled_executables[1].mlir_texts[0]
+    self.assertLen(debugs, 1)
+    self.assertLen(debugs[0].compiled_executables, 2)
+    fwd_mlir = debugs[0].stablehlo_forward_text[0]
+    bwd_mlir = debugs[0].stablehlo_backward_text[0]
 
     self.assertNotIn(
         "stablehlo.optimization_barrier",

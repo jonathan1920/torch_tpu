@@ -82,17 +82,18 @@ class FunctionTest(seed_test_utils.RepeatableTest):
       self,
       func,
       inputs: List[torch.Tensor],
-      debug: bool = True,
-  ) -> compile_lib.TpuBackend:
+      serializable: bool = False,
+  ) -> List[compile_lib.TpuCompileDebug]:
     """Runs the given function on CPU, TPU eager mode, and TPU compiled mode and compares the results.
 
     Args:
       func: The function to test.
       inputs: A list of tensor inputs for the function.
-      debug: Whether to enable debug mode for the TPU backend.
+      serializable: Controls caching behavior. Use False to force the compiler
+        to generate fresh code.
 
     Returns:
-      The TPU backend in case we need to run more test on it.
+      The list of debug objects captured during compilation.
     """
     # CPU
     result_cpu = func(*inputs)
@@ -115,8 +116,15 @@ class FunctionTest(seed_test_utils.RepeatableTest):
       raise ValueError(f"Unsupported result type: {type(result_cpu)}")
 
     # TPU compiled
-    tpu_backend = compile_lib.TpuBackend(debug=debug)
-    compiled = torch.compile(func, backend=tpu_backend)
+    debugs: list[compile_lib.TpuCompileDebug] = []
+    compiled = torch.compile(
+        func,
+        backend="tpu",
+        options={
+            "serializable": serializable,
+            "debug_callback": debugs.append,
+        },
+    )
     tpu_compiled_result = _backend.to_device(compiled(*inputs_tpu), "cpu")
     if isinstance(result_cpu, torch.Tensor):
       assert isinstance(tpu_compiled_result, torch.Tensor)
@@ -132,7 +140,7 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     else:
       raise ValueError(f"Unsupported result type: {type(result_cpu)}")
 
-    return tpu_backend._compiled_executables
+    return debugs
 
   @mock.patch.object(compiler, "trace_structured", autospec=True)
   def test_trace_structured_called(self, mock_trace_structured):
@@ -375,7 +383,7 @@ class FunctionTest(seed_test_utils.RepeatableTest):
       return c_copy + x
 
     x = torch.tensor([1, 2, 3, 4, 5], device=torch.device("tpu"))
-    self._run_and_compare(simple, [x], debug=True)
+    self._run_and_compare(simple, [x], serializable=False)
 
   def test_simple_handle_input_flip(self):
     # Without CL/794139909, the eager model will follow the invoke order
@@ -417,7 +425,11 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     # gets in the way.
     input_a = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]).to(torch.device("tpu"))
     input_b = torch.tensor([0.5, 0.4, 0.3, 0.2, 0.1]).to(torch.device("tpu"))
-    compiled = torch.compile(func, backend=compile_lib.TpuBackend())
+    compiled = torch.compile(
+        func,
+        backend="tpu",
+        options={"serializable": False},
+    )
     res_a = compiled(input_a, input_a).to("cpu")
     res_ab = compiled(input_a, input_b).to("cpu")
     utils.assert_close(res_a.sum(), res_ab.sum(), rtol=1e-3, atol=1e-5)
@@ -442,12 +454,15 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     self.assertLen(v, 2)
 
     # debug mode enabled so expect graphs to be set and in plaintext
-    self.assertIn("torch.ops.aten.abs", v[0].graph_module_debug_strs[0])
-    self.assertIn("stablehlo.abs", v[0].mlir_texts[0])
+    self.assertIn("torch.ops.aten.abs", v[0].post_autograd_fx_forward_code[0])
+    self.assertIn("stablehlo.abs", v[0].stablehlo_forward_text[0])
     self.assertNotEqual(
-        v[0].graph_module_debug_strs[0], v[1].graph_module_debug_strs[0]
+        v[0].post_autograd_fx_forward_code[0],
+        v[1].post_autograd_fx_forward_code[0],
     )
-    self.assertNotEqual(v[0].mlir_texts[0], v[1].mlir_texts[0])
+    self.assertNotEqual(
+        v[0].stablehlo_forward_text[0], v[1].stablehlo_forward_text[0]
+    )
 
   def test_hlo_naming_with_custom_name_options(self):
     def func(a, b):
@@ -455,16 +470,29 @@ class FunctionTest(seed_test_utils.RepeatableTest):
 
     a = torch.tensor([1.0, 2.0, 3.0], device="tpu", requires_grad=True)
     b = torch.tensor([4.0, 5.0, 6.0], device="tpu", requires_grad=True)
-    tpu_backend = compile_lib.TpuBackend(debug=True)
+    debugs: list[compile_lib.TpuCompileDebug] = []
     compiled = torch.compile(
-        func, backend=tpu_backend, options={"name": "custom_opt"}
+        func,
+        backend="tpu",
+        options={
+            "name": "custom_opt",
+            "serializable": False,
+            "debug_callback": debugs.append,
+        },
     )
     out = compiled(a, b)
     out.backward()
-    execs = tpu_backend._compiled_executables
-    self.assertGreaterEqual(len(execs), 2)
-    self.assertRegex(execs[0].mlir_texts[0], r"module\s+@custom_opt_split0_fwd")
-    self.assertRegex(execs[1].mlir_texts[0], r"module\s+@custom_opt_split1_bwd")
+    self.assertLen(debugs, 1)
+    self.assertNotEmpty(debugs[0].stablehlo_forward_text)
+    self.assertNotEmpty(debugs[0].stablehlo_backward_text)
+    self.assertRegex(
+        debugs[0].stablehlo_forward_text[0],
+        r"module\s+@custom_opt_split\d+_fwd",
+    )
+    self.assertRegex(
+        debugs[0].stablehlo_backward_text[0],
+        r"module\s+@custom_opt_split\d+_bwd",
+    )
 
   def test_hlo_naming_with_graph_break_custom_name(self):
     def func(a, b):
@@ -478,15 +506,24 @@ class FunctionTest(seed_test_utils.RepeatableTest):
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6], device="tpu"),
     ]
 
-    tpu_backend = compile_lib.TpuBackend(debug=True)
+    debugs: list[compile_lib.TpuCompileDebug] = []
     compiled = torch.compile(
-        func, backend=tpu_backend, options={"name": "gb_test"}
+        func,
+        backend="tpu",
+        options={
+            "name": "gb_test",
+            "serializable": False,
+            "debug_callback": debugs.append,
+        },
     )
     _ = compiled(*inputs_val)
-    execs = tpu_backend._compiled_executables
-    self.assertLen(execs, 2)
-    self.assertRegex(execs[0].mlir_texts[0], r"module\s+@gb_test_split0_fwd")
-    self.assertRegex(execs[1].mlir_texts[0], r"module\s+@gb_test_split1_fwd")
+    self.assertLen(debugs, 2)
+    self.assertRegex(
+        debugs[0].stablehlo_forward_text[0], r"module\s+@gb_test_split\d+_fwd"
+    )
+    self.assertRegex(
+        debugs[1].stablehlo_forward_text[0], r"module\s+@gb_test_split\d+_fwd"
+    )
 
   def test_default_behavior_without_name(self):
     def func(a, b):
@@ -533,22 +570,29 @@ class FunctionTest(seed_test_utils.RepeatableTest):
 
         a = torch.tensor([1.0, 2.0, 3.0], device="tpu", requires_grad=True)
         b = torch.tensor([4.0, 5.0, 6.0], device="tpu", requires_grad=True)
-        tpu_backend = compile_lib.TpuBackend(debug=True)
+        debugs: list[compile_lib.TpuCompileDebug] = []
         compiled = torch.compile(
-            func, backend=tpu_backend, options={"name": raw_name}
+            func,
+            backend="tpu",
+            options={
+                "name": raw_name,
+                "serializable": False,
+                "debug_callback": debugs.append,
+            },
         )
         out = compiled(a, b)
         out.backward()
         self.assertEqual(out.item(), 32.0)
-        execs = tpu_backend._compiled_executables
-        self.assertGreaterEqual(len(execs), 2)
+        self.assertLen(debugs, 1)
+        self.assertNotEmpty(debugs[0].stablehlo_forward_text)
+        self.assertNotEmpty(debugs[0].stablehlo_backward_text)
         self.assertRegex(
-            execs[0].mlir_texts[0],
-            rf'module\s+@"?{re.escape(expected_clean)}_split0_fwd',
+            debugs[0].stablehlo_forward_text[0],
+            rf'module\s+@"?{re.escape(expected_clean)}_split\d+_fwd',
         )
         self.assertRegex(
-            execs[1].mlir_texts[0],
-            rf'module\s+@"?{re.escape(expected_clean)}_split1_bwd',
+            debugs[0].stablehlo_backward_text[0],
+            rf'module\s+@"?{re.escape(expected_clean)}_split\d+_bwd',
         )
 
   def test_hlo_naming_with_empty_name(self):
@@ -559,13 +603,21 @@ class FunctionTest(seed_test_utils.RepeatableTest):
 
     a = torch.tensor([1.0, 2.0, 3.0], device="tpu")
     b = torch.tensor([4.0, 5.0, 6.0], device="tpu")
-    tpu_backend = compile_lib.TpuBackend(debug=True)
-    compiled = torch.compile(func, backend=tpu_backend, options={"name": ""})
+    debugs: list[compile_lib.TpuCompileDebug] = []
+    compiled = torch.compile(
+        func,
+        backend="tpu",
+        options={
+            "name": "",
+            "serializable": False,
+            "debug_callback": debugs.append,
+        },
+    )
     out = compiled(a, b)
     self.assertEqual(out.item(), 32.0)
-    execs = tpu_backend._compiled_executables
-    self.assertNotEmpty(execs)
-    self.assertRegex(execs[0].mlir_texts[0], r"module\s+@tt_jit")
+    self.assertLen(debugs, 1)
+    self.assertNotEmpty(debugs[0].stablehlo_forward_text)
+    self.assertRegex(debugs[0].stablehlo_forward_text[0], r"module\s+@tt_jit")
 
   def test_data_dependent_dynamic_op(self):
     """Test that a dynamo will break on data dependent ops.
@@ -630,8 +682,12 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     device = torch.device("tpu")
     input_1 = torch.arange(2, device=device).view(1, 2)
 
-    backend = _backend.TpuBackend()
-    compiled = torch.compile(simple, dynamic=False, backend=backend)
+    compiled = torch.compile(
+        simple,
+        dynamic=False,
+        backend="tpu",
+        options={"serializable": False},
+    )
     actual = compiled(input_1).cpu()
     expected = torch.tensor([[0.0, 0.3]], device="cpu")
     utils.assert_close(actual, expected)
@@ -747,8 +803,12 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     utils.assert_close(tpu_eager_result.to("cpu"), cpu_eager_result)
 
     # Compiled mode will compile only the part after the inputs_val
-    tpu_backend = compile_lib.TpuBackend(debug=True)
-    compiled = torch.compile(func, backend=tpu_backend)
+    debugs = []
+    compiled = torch.compile(
+        func,
+        backend="tpu",
+        options={"serializable": False, "debug_callback": debugs.append},
+    )
     compiled_result = compiled(x_tpu, y_tpu)
     utils.assert_close(compiled_result.to("cpu"), cpu_eager_result)
 
@@ -767,17 +827,19 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     ]
     reexecuted_result = compiled(*input_nondeferred)
     utils.assert_close(reexecuted_result.to("cpu"), cpu_eager_result)
-    v = tpu_backend._compiled_executables
-    self.assertLen(v, 1)
-    self.assertIn("torch.ops.aten.ones_like", v[0].graph_module_debug_strs[0])
-    self.assertIn("stablehlo.multiply", v[0].mlir_texts[0])
+    self.assertLen(debugs, 1)
+    self.assertIn(
+        "torch.ops.aten.ones_like",
+        debugs[0].post_autograd_fx_forward_code[0],
+    )
+    self.assertIn("stablehlo.multiply", debugs[0].stablehlo_forward_text[0])
 
   def test_embedded_non_scalar_tensor(self):
     def simple(x):
       return torch.tensor([1, 2, 3, 4, 5], device=x.device) + x
 
     x = torch.tensor([1, 2, 3, 4, 5], device=torch.device("tpu"))
-    self._run_and_compare(simple, [x], debug=True)
+    self._run_and_compare(simple, [x], serializable=False)
 
   def test_embedded_scalar_tensor_constants(self):
     # Need to explicitly specify device to get eager eval result
@@ -801,8 +863,11 @@ class FunctionTest(seed_test_utils.RepeatableTest):
 
     args = [torch.tensor([4.0, 5.0]), torch.tensor([10.0, 11.0])]
     args_tpu = _backend.to_device(args, torch.device("tpu"))
-    tpu_backend = compile_lib.TpuBackend(debug=True)
-    compiled = torch.compile(inplace_add, backend=tpu_backend)
+    compiled = torch.compile(
+        inplace_add,
+        backend="tpu",
+        options={"serializable": False},
+    )
     result_tpu = compiled(*args_tpu).to("cpu")
     utils.assert_close(result_tpu, torch.tensor([11.0, 12.0]))
     x_tpu_cpu = args_tpu[0].to("cpu")
@@ -834,7 +899,11 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     scale = 3
 
     x_tpu = x.to(torch.device("tpu"))
-    compiled = torch.compile(model, backend="tpu")
+    compiled = torch.compile(
+        model,
+        backend="tpu",
+        options={"serializable": False},
+    )
     result_tpu = compiled(x_tpu, scale).cpu()
 
     utils.assert_close(result_tpu, x * scale)
@@ -850,8 +919,11 @@ class FunctionTest(seed_test_utils.RepeatableTest):
       value_range = torch.arange(0, 9, device=device)
       return value_range[i]
 
-    tpu_backend = compile_lib.TpuBackend(debug=True)
-    compiled = torch.compile(func_with_int_put, backend=tpu_backend)
+    compiled = torch.compile(
+        func_with_int_put,
+        backend="tpu",
+        options={"serializable": False},
+    )
     result_tpu = compiled(3, torch.device("tpu")).to("cpu")
     self.assertEqual(result_tpu, 3)
 
@@ -933,8 +1005,11 @@ class FunctionTest(seed_test_utils.RepeatableTest):
       # be non-contiguous, and the flattening view() will fail.
       return x.t().view(-1)
 
-    tpu_backend = compile_lib.TpuBackend(debug=True)
-    compiled = torch.compile(expects_transposed_input, backend=tpu_backend)
+    compiled = torch.compile(
+        expects_transposed_input,
+        backend="tpu",
+        options={"serializable": False},
+    )
 
     x = torch.arange(6).reshape(2, 3).to(torch.device("tpu"))
     x_t = x.t()
@@ -950,9 +1025,10 @@ class FunctionTest(seed_test_utils.RepeatableTest):
       # Returns every odd-offset element of the input.
       return x.view(-1, 2).t()[1]
 
-    tpu_backend = compile_lib.TpuBackend(debug=True)
     compiled = torch.compile(
-        returns_non_overlapping_output, backend=tpu_backend
+        returns_non_overlapping_output,
+        backend="tpu",
+        options={"serializable": False},
     )
 
     x = torch.arange(6).to(torch.device("tpu"))
@@ -977,8 +1053,11 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     def returns_broadcast_output(x):
       return x.expand(2, *x.shape)
 
-    tpu_backend = compile_lib.TpuBackend(debug=True)
-    compiled = torch.compile(returns_broadcast_output, backend=tpu_backend)
+    compiled = torch.compile(
+        returns_broadcast_output,
+        backend="tpu",
+        options={"serializable": False},
+    )
 
     x = torch.arange(6).to(torch.device("tpu"))
 
@@ -1002,8 +1081,11 @@ class FunctionTest(seed_test_utils.RepeatableTest):
     def returns_overlapping_output(x):
       return x.as_strided(size=(2, 4), stride=(1, 1), storage_offset=1)
 
-    tpu_backend = compile_lib.TpuBackend(debug=True)
-    compiled = torch.compile(returns_overlapping_output, backend=tpu_backend)
+    compiled = torch.compile(
+        returns_overlapping_output,
+        backend="tpu",
+        options={"serializable": False},
+    )
 
     x = torch.arange(6).to(torch.device("tpu"))
 
@@ -1092,17 +1174,21 @@ class ModuleTest(seed_test_utils.RepeatableTest):
     os.environ["TORCH_LOGS"] = "+dynamo"
 
   def _run_and_compare(
-      self, module_class, inputs: List[torch.Tensor], debug: bool = True
-  ) -> compile_lib.TpuBackend:
-    """Runs the given function on CPU, TPU eager mode, and TPU compiled mode and compares the results.
+      self,
+      module_class,
+      inputs: List[torch.Tensor],
+      serializable: bool = False,
+  ) -> List[compile_lib.TpuCompileDebug]:
+    """Runs module on CPU, TPU eager mode, and TPU compiled mode.
 
     Args:
       module_class: The module to test.
       inputs: A list of tensor inputs for the function.
-      debug: Whether to enable debug mode for the TPU backend.
+      serializable: Controls caching behavior. Use False to force the compiler
+        to generate fresh code.
 
     Returns:
-      The TPU backend in case we need to run more test on it.
+      The list of debug objects captured during compilation.
     """
 
     m_cpu = module_class()
@@ -1120,12 +1206,19 @@ class ModuleTest(seed_test_utils.RepeatableTest):
     m_tpu.load_state_dict(m_cpu.state_dict())
     m_tpu.to("tpu")
 
-    tpu_backend = compile_lib.TpuBackend(debug=debug)
-    compiled = torch.compile(m_tpu, backend=tpu_backend)
+    debugs: list[compile_lib.TpuCompileDebug] = []
+    compiled = torch.compile(
+        m_tpu,
+        backend="tpu",
+        options={
+            "serializable": serializable,
+            "debug_callback": debugs.append,
+        },
+    )
     tpu_results = _backend.to_device(compiled(*inputs_tpu), "cpu")
 
     utils.assert_close(tpu_results, cpu_results, rtol=1e-3, atol=1e-5)
-    return tpu_backend._compiled_executables
+    return debugs
 
   def test_simple_module_compile(self):
     # The if case trigger a graph break, so tpu_backend will generate two graphs
@@ -1149,8 +1242,8 @@ class ModuleTest(seed_test_utils.RepeatableTest):
     )
     v = self._run_and_compare(SimpleModule, inputs)
     self.assertLen(v, 1)
-    self.assertIn("stablehlo.multiply", v[0].mlir_texts[0])
-    self.assertIn("def forward(self,", v[0].graph_module_debug_strs[0])
+    self.assertIn("stablehlo.multiply", v[0].stablehlo_forward_text[0])
+    self.assertIn("def forward(self,", v[0].post_autograd_fx_forward_code[0])
 
   def test_module_with_constants(self):
     class ModuleWithConstants(torch.nn.Module):
@@ -1265,8 +1358,11 @@ class ModuleTest(seed_test_utils.RepeatableTest):
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-1, capturable=True)
     criterion = torch.nn.MSELoss()
 
-    tpu_backend = compile_lib.TpuBackend(debug=True)
-    compiled = torch.compile(model, backend=tpu_backend)
+    compiled = torch.compile(
+        model,
+        backend="tpu",
+        options={"serializable": False},
+    )
 
     input_tensor = torch.arange(50, dtype=torch.float32, device=device).reshape(
         10, 5
@@ -1321,8 +1417,11 @@ class ModuleTest(seed_test_utils.RepeatableTest):
     inputs_tpu = _backend.to_device(inputs, torch.device("tpu"))
     m_tpu = torch.nn.CTCLoss().to("tpu")
 
-    tpu_backend = compile_lib.TpuBackend(debug=True)
-    compiled = torch.compile(m_tpu, backend=tpu_backend)
+    compiled = torch.compile(
+        m_tpu,
+        backend="tpu",
+        options={"serializable": False},
+    )
     tpu_compiled_result = _backend.to_device(compiled(*inputs_tpu), "cpu")
     utils.assert_close(tpu_compiled_result, cpu_result, rtol=1e-2, atol=2e-2)
 
@@ -1469,7 +1568,13 @@ class NoOutputGraphTest(seed_test_utils.RepeatableTest):
       x.sum()  # computed but discarded: graph has an input, no output tensor
       return None
 
-    compiled = torch.compile(f, backend="tpu", fullgraph=True, dynamic=False)
+    compiled = torch.compile(
+        f,
+        backend="tpu",
+        options={"serializable": False},
+        fullgraph=True,
+        dynamic=False,
+    )
     x = torch.randn(4).to("tpu")
     # Before the fix this aborted the process inside traverse_and_compile.
     self.assertIsNone(compiled(x))

@@ -17,7 +17,7 @@ from absl.testing import parameterized
 import torch
 from torch._higher_order_ops import scan
 import torch.utils._pytree as pytree
-from torch_tpu._internal.compile import _backend
+from torch_tpu._internal.compile.debug import TpuCompileDebug
 from torch_tpu._internal.utils import test_utils as utils
 from tests import oss_utils
 from tests import seed_test_utils
@@ -30,12 +30,15 @@ def _compile_and_run(fn, *args, **kwargs):
 
 def _compile_and_get_stablehlo(model, *args):
   torch.compiler.reset()
-  backend = _backend.TpuBackend(debug=True)
-  compiled = torch.compile(model, backend=backend, dynamic=False)
+  debugs: list[TpuCompileDebug] = []
+  compiled = torch.compile(
+      model,
+      backend="tpu",
+      dynamic=False,
+      options={"serializable": False, "debug_callback": debugs.append},
+  )
   compiled(*args)  # Trigger compilation + lowering
-  texts = []
-  for executable in backend._compiled_executables:
-    texts.extend(executable.mlir_texts)
+  texts = [text for debug in debugs for text in debug.stablehlo_forward_text]
 
   if not texts:
     raise AssertionError("no StableHLO captured")

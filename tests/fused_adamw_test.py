@@ -546,9 +546,13 @@ class FusedAdamWTest(TorchTpuVsCpuTestBase):
 
   def test_fused_adamw_buffer_donation(self):
     """Tests MLIR buffer donation annotations and runtime buffer invalidation."""
-    tpu_backend = tpu_compile.TpuBackend(debug=True)
+    debugs: list[tpu_compile.TpuCompileDebug] = []
 
-    @torch.compile(fullgraph=True, dynamic=False, backend=tpu_backend)
+    @torch.compile(
+        fullgraph=True,
+        backend="tpu",
+        options={"serializable": False, "debug_callback": debugs.append},
+    )
     def step_fn(params, grads, exp_avgs, exp_avg_sqs, state_steps, lr):
       torch.ops.aten._fused_adamw_.default(
           params,
@@ -576,9 +580,10 @@ class FusedAdamWTest(TorchTpuVsCpuTestBase):
 
     step_fn([p], [g], [ea], [eas], [step], 0.001)
 
-    executables = tpu_backend._compiled_executables
+    self.assertLen(debugs, 1)
+    executables = debugs[0].compiled_executables
     self.assertLen(executables, 1)
-    self.assertIn("jax.buffer_donor", executables[0].mlir_text)
+    self.assertIn("jax.buffer_donor", debugs[0].stablehlo_forward_text[0])
 
     self.assertIsNotNone(p.cpu())
 

@@ -28,6 +28,7 @@ from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.compiler import StaticCompiler
+from torch_tpu._internal.compile.debug import TpuCompileDebug
 from torch_tpu._internal.device_utils import annotations
 from torch_tpu._internal.utils import test_utils as utils
 from tests import oss_utils
@@ -1247,15 +1248,15 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
 
     gm = make_fx(simple_fn)(x, y)
 
-    comp = StaticCompiler(debug=True)
+    debug: TpuCompileDebug = TpuCompileDebug()
+    comp = StaticCompiler(debug=debug)
 
     donated_inputs = [0]
     compiled_executable = comp(gm, [x, y], donated_inputs=donated_inputs)
 
     self.assertIsNotNone(compiled_executable)
-    self.assertTrue(hasattr(compiled_executable, 'mlir_text'))
-
-    self.assertIn('jax.buffer_donor = true', compiled_executable.mlir_text)
+    self.assertLen(debug.stablehlo_forward_text, 1)
+    self.assertIn('jax.buffer_donor = true', debug.stablehlo_forward_text[0])
 
     x_cpu = x.cpu().clone()
     y_cpu = y.cpu().clone()
@@ -1319,15 +1320,16 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     grad = torch.randn(4, 8, device=self.device)
 
     gm = make_fx(model_fn)(table, grad)
-    comp = StaticCompiler(debug=True)
+    debug: TpuCompileDebug = TpuCompileDebug()
+    comp = StaticCompiler(debug=debug)
     compiled_executable = comp(gm, [table, grad], donated_inputs=[0])
 
     self.assertIsNotNone(compiled_executable)
-    self.assertTrue(hasattr(compiled_executable, 'mlir_text'))
-    self.assertIn('jax.buffer_donor = true', compiled_executable.mlir_text)
+    self.assertLen(debug.stablehlo_forward_text, 1)
+    self.assertIn('jax.buffer_donor = true', debug.stablehlo_forward_text[0])
 
     # Verify no clones of table are present
-    self.assertNotIn('aten.clone', compiled_executable.graph_module_debug_str)
+    self.assertNotIn('aten.clone', str(gm.code))
 
   def test_static_compiler_clone_preserved_when_mutated_tensor_read_downstream(
       self,
@@ -1360,7 +1362,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     grad = torch.randn(4, 8, device=self.device)
 
     gm = make_fx(model_fn)(table, grad)
-    comp = StaticCompiler(debug=True)
+    comp = StaticCompiler()
     compiled_executable = comp(gm, [table, grad])
 
     self.assertIsNotNone(compiled_executable)
@@ -1402,12 +1404,14 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     pure_y = torch.randn(4, 8, device=self.device)
 
     gm = make_fx(model_fn)(table, pure_x, pure_y)
-    comp = StaticCompiler(debug=True)
+    debug: TpuCompileDebug = TpuCompileDebug()
+    comp = StaticCompiler(debug=debug)
     compiled_executable = comp(gm, [table, pure_x, pure_y], donated_inputs=[0])
 
     self.assertIsNotNone(compiled_executable)
-    self.assertIn('jax.buffer_donor = true', compiled_executable.mlir_text)
-    self.assertNotIn('aten.clone', compiled_executable.graph_module_debug_str)
+    self.assertLen(debug.stablehlo_forward_text, 1)
+    self.assertIn('jax.buffer_donor = true', debug.stablehlo_forward_text[0])
+    self.assertNotIn('aten.clone', str(gm.code))
 
     table_cpu = table.cpu().clone()
     pure_x_cpu = pure_x.cpu().clone()
@@ -1467,12 +1471,14 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     g2 = torch.randn(4, 8, device=self.device)
 
     gm = make_fx(model_fn)(t1, t2, g1, g2)
-    comp = StaticCompiler(debug=True)
+    debug: TpuCompileDebug = TpuCompileDebug()
+    comp = StaticCompiler(debug=debug)
     compiled_executable = comp(gm, [t1, t2, g1, g2], donated_inputs=[0, 1])
 
     self.assertIsNotNone(compiled_executable)
-    self.assertIn('jax.buffer_donor = true', compiled_executable.mlir_text)
-    self.assertNotIn('aten.clone', compiled_executable.graph_module_debug_str)
+    self.assertLen(debug.stablehlo_forward_text, 1)
+    self.assertIn('jax.buffer_donor = true', debug.stablehlo_forward_text[0])
+    self.assertNotIn('aten.clone', str(gm.code))
 
     t1_cpu = t1.cpu().clone()
     t2_cpu = t2.cpu().clone()
@@ -1524,12 +1530,14 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     grad = torch.randn(4, 8, device=self.device)
 
     gm = make_fx(model_fn)(table, state, grad)
-    comp = StaticCompiler(debug=True)
+    debug: TpuCompileDebug = TpuCompileDebug()
+    comp = StaticCompiler(debug=debug)
     compiled_executable = comp(gm, [table, state, grad], donated_inputs=[0, 1])
 
     self.assertIsNotNone(compiled_executable)
-    self.assertIn('jax.buffer_donor = true', compiled_executable.mlir_text)
-    self.assertNotIn('aten.clone', compiled_executable.graph_module_debug_str)
+    self.assertLen(debug.stablehlo_forward_text, 1)
+    self.assertIn('jax.buffer_donor = true', debug.stablehlo_forward_text[0])
+    self.assertNotIn('aten.clone', str(gm.code))
 
     table_cpu = table.cpu().clone()
     state_cpu = state.cpu().clone()
@@ -1567,11 +1575,13 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     y = torch.randn(4, 8, device=self.device)
 
     gm = make_fx(model_fn)(x, y)
-    comp = StaticCompiler(debug=True)
+    debug: TpuCompileDebug = TpuCompileDebug()
+    comp = StaticCompiler(debug=debug)
     compiled_executable = comp(gm, [x, y], donated_inputs=[])
 
     self.assertIsNotNone(compiled_executable)
-    self.assertNotIn('jax.buffer_donor = true', compiled_executable.mlir_text)
+    self.assertLen(debug.stablehlo_forward_text, 1)
+    self.assertNotIn('jax.buffer_donor = true', debug.stablehlo_forward_text[0])
 
     x_cpu = x.cpu().clone()
     y_cpu = y.cpu().clone()
@@ -1620,12 +1630,14 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     scale = torch.randn(4, 8, device=self.device)
 
     gm = make_fx(model_fn)(t, g, scale)
-    comp = StaticCompiler(debug=True)
+    debug: TpuCompileDebug = TpuCompileDebug()
+    comp = StaticCompiler(debug=debug)
     compiled_executable = comp(gm, [t, g, scale], donated_inputs=[0])
 
     self.assertIsNotNone(compiled_executable)
-    self.assertIn('jax.buffer_donor = true', compiled_executable.mlir_text)
-    self.assertNotIn('aten.clone', compiled_executable.graph_module_debug_str)
+    self.assertLen(debug.stablehlo_forward_text, 1)
+    self.assertIn('jax.buffer_donor = true', debug.stablehlo_forward_text[0])
+    self.assertNotIn('aten.clone', str(gm.code))
 
     t_cpu = t.cpu().clone()
     g_cpu = g.cpu().clone()
@@ -1649,12 +1661,14 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     c = torch.randn(8, 8, device=self.device)
 
     gm = make_fx(model_fn)(a, b, c)
-    comp = StaticCompiler(debug=True)
+    debug: TpuCompileDebug = TpuCompileDebug()
+    comp = StaticCompiler(debug=debug)
     compiled_executable = comp(gm, [a, b, c])
 
     self.assertIsNotNone(compiled_executable)
-    self.assertNotIn('jax.buffer_donor = true', compiled_executable.mlir_text)
-    self.assertNotIn('aten.clone', compiled_executable.graph_module_debug_str)
+    self.assertLen(debug.stablehlo_forward_text, 1)
+    self.assertNotIn('jax.buffer_donor = true', debug.stablehlo_forward_text[0])
+    self.assertNotIn('aten.clone', str(gm.code))
 
     expected = (a.cpu() * b.cpu()) + c.cpu()
     res = compiled_executable(a, b, c)
@@ -1681,7 +1695,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     grad = torch.randn(4, 8, device=self.device)
 
     gm = make_fx(model_fn)(table, grad)
-    comp = StaticCompiler(async_compile=True, debug=True)
+    comp = StaticCompiler(async_compile=True)
     async_artifact = comp(gm, [table, grad], donated_inputs=[0])
 
     self.assertIsInstance(async_artifact, compiler.AsyncCompiledArtifact)

@@ -21,7 +21,7 @@ import torch
 from torch.utils import _pytree
 from torch.utils import checkpoint
 from torch_tpu._internal import env
-from torch_tpu._internal.compile import _backend
+from torch_tpu._internal.compile.debug import TpuCompileDebug
 from torch_tpu._internal.utils import test_utils as utils
 from tests import seed_test_utils
 
@@ -272,7 +272,7 @@ class RandomOpsTest(seed_test_utils.RepeatableTest):
     self.assert_random_outputs(runner, generator=gen)
 
   def test_no_rng_state_update_compile(self):
-    backend = _backend.TpuBackend(debug=True)
+    debugs: list[TpuCompileDebug] = []
 
     class MyModule(torch.nn.Module):
 
@@ -281,13 +281,18 @@ class RandomOpsTest(seed_test_utils.RepeatableTest):
 
     device = torch.accelerator.current_accelerator()
     module = MyModule().to(device)
-    compiled_module = torch.compile(module, backend=backend)
+    compiled_module = torch.compile(
+        module,
+        backend="tpu",
+        options={"serializable": False, "debug_callback": debugs.append},
+    )
 
     x = torch.zeros(2, 5, device=device)
     compiled_module(x)
 
-    self.assertNotEmpty(backend._compiled_executables)
-    for executable in backend._compiled_executables:
+    self.assertLen(debugs, 1)
+    self.assertNotEmpty(debugs[0].compiled_executables)
+    for executable in debugs[0].compiled_executables:
       self.assertFalse(executable.updates_default_generator_state())
 
   def test_eager_vs_compile_numerics(self):
