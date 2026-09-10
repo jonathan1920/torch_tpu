@@ -1140,6 +1140,185 @@ class DynamicSliceTest(seed_test_utils.RepeatableTest):
       utils.assert_close(out, expected)
 
 
+class DynamicDropoutTest(seed_test_utils.RepeatableTest):
+
+  def setUp(self):
+    super().setUp()
+    if not torch.accelerator.is_available():
+      self.skipTest("TPU accelerator not available in this test environment.")
+    tt_testing.reset_eager_state()
+    self.device = torch.accelerator.current_accelerator()
+
+  def test_dropout_dynamic_shape(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.nn.functional.dropout(x, p=0.4, training=True)
+
+    model = Model().to(self.device)
+    compiled = torch.compile(
+        model, backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    for dim_size in [4, 8, 12]:
+      x = torch.randn(dim_size, 16, dtype=torch.float32, device=self.device)
+      torch._dynamo.mark_dynamic(x, 0, min=2, max=32)
+
+      out = compiled(x)
+      self.assertEqual(out.shape, (dim_size, 16))
+      scale = 1.0 / (1.0 - 0.4)
+      mask = out != 0
+      utils.assert_close(out[mask], (x * scale)[mask])
+
+  def test_native_dropout_dynamic_shape(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.ops.aten.native_dropout(x, 0.5, True)
+
+    model = Model().to(self.device)
+    compiled = torch.compile(
+        model, backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    for dim_size in [6, 10]:
+      x = torch.randn(dim_size, 8, dtype=torch.float32, device=self.device)
+      torch._dynamo.mark_dynamic(x, 0, min=2, max=32)
+
+      out, mask = compiled(x)
+      self.assertEqual(out.shape, (dim_size, 8))
+      self.assertEqual(mask.shape, (dim_size, 8))
+      self.assertEqual(mask.dtype, torch.bool)
+
+  def test_native_dropout_backward_dynamic_shape(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, grad_output, mask):
+        return torch.ops.aten.native_dropout_backward(grad_output, mask, 2.0)
+
+    model = Model().to(self.device)
+    compiled = torch.compile(
+        model, backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    for dim_size in [4, 12]:
+      grad = torch.randn(dim_size, 16, dtype=torch.float32, device=self.device)
+      mask = torch.randint(
+          0, 2, (dim_size, 16), dtype=torch.bool, device=self.device
+      )
+      torch._dynamo.mark_dynamic(grad, 0, min=2, max=32)
+      torch._dynamo.mark_dynamic(mask, 0, min=2, max=32)
+
+      out = compiled(grad, mask)
+      expected = model(grad, mask)
+      utils.assert_close(out, expected)
+
+  def test_dropout_train_backward_dynamic_shape(self):
+    class Model(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.dropout = torch.nn.Dropout(p=0.3)
+
+      def forward(self, x):
+        return self.dropout(x)
+
+    model = Model().to(self.device).train()
+    compiled = torch.compile(
+        model, backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    for dim_size in [4, 8, 12]:
+      x = torch.randn(
+          dim_size,
+          16,
+          dtype=torch.float32,
+          device=self.device,
+          requires_grad=True,
+      )
+      torch._dynamo.mark_dynamic(x, 0, min=2, max=32)
+
+      out = compiled(x)
+      self.assertEqual(out.shape, (dim_size, 16))
+      loss = out.sum()
+      loss.backward()
+      self.assertIsNotNone(x.grad)
+      self.assertEqual(x.grad.shape, (dim_size, 16))
+
+  def test_dropout_dynamic_shape_dtypes(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.nn.functional.dropout(x, p=0.25, training=True)
+
+    model = Model().to(self.device)
+    compiled = torch.compile(
+        model, backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    for dtype in [torch.bfloat16, torch.float16, torch.float64]:
+      x = torch.randn(6, 12, dtype=dtype, device=self.device)
+      torch._dynamo.mark_dynamic(x, 0, min=2, max=32)
+
+      out = compiled(x)
+      self.assertEqual(out.shape, (6, 12))
+      self.assertEqual(out.dtype, dtype)
+
+  def test_dropout_dynamic_shape_eval_and_zero_p(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x, p, train):
+        return torch.ops.aten.native_dropout(x, p, train)
+
+    model = Model().to(self.device)
+    compiled = torch.compile(
+        model, backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x = torch.randn(4, 16, dtype=torch.float32, device=self.device)
+    torch._dynamo.mark_dynamic(x, 0, min=2, max=32)
+
+    # eval mode
+    out, mask = compiled(x, 0.5, False)
+    self.assertEqual(out.shape, (4, 16))
+    utils.assert_close(out, x)
+    self.assertTrue(mask.all().item())
+
+    # p = 0.0
+    out, mask = compiled(x, 0.0, True)
+    self.assertEqual(out.shape, (4, 16))
+    utils.assert_close(out, x)
+    self.assertTrue(mask.all().item())
+
+    # p = 1.0
+    out, mask = compiled(x, 1.0, True)
+    self.assertEqual(out.shape, (4, 16))
+    utils.assert_close(out, torch.zeros_like(x))
+    self.assertFalse(mask.any().item())
+
+  def test_dropout_multiple_dynamic_dims(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.nn.functional.dropout(x, p=0.3, training=True)
+
+    model = Model().to(self.device)
+    compiled = torch.compile(
+        model, backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    for b, s in [(2, 8), (4, 16), (3, 12)]:
+      x = torch.randn(b, s, 32, dtype=torch.float32, device=self.device)
+      torch._dynamo.mark_dynamic(x, 0, min=1, max=8)
+      torch._dynamo.mark_dynamic(x, 1, min=2, max=32)
+
+      out = compiled(x)
+      self.assertEqual(out.shape, (b, s, 32))
+      scale = 1.0 / (1.0 - 0.3)
+      mask = out != 0
+      utils.assert_close(out[mask], (x * scale)[mask])
+
+
 class DynamicErrorHandlingTest(seed_test_utils.RepeatableTest):
 
   def test_mlir_lowering_failure_raises_not_implemented_error(self):

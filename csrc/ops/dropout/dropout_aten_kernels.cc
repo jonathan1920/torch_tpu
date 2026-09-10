@@ -24,8 +24,6 @@
 #include "ATen/Context.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Generator.h"
-#include "ATen/ops/ones_like.h"
-#include "ATen/ops/zeros_like.h"
 #include "absl/status/statusor.h"
 #include "c10/core/ScalarType.h"
 #include "c10/util/Optional.h"
@@ -81,16 +79,46 @@ std::tuple<at::Tensor, at::Tensor> AtenDropoutCommonImpl(
       << "expected input to be floating point or complex, got "
       << input.scalar_type();
 
-  if (p <= 0.0 || !train) {
-    return {input, at::ones_like(input, input.options().dtype(at::kBool))};
-  }
-  if (p >= 1.0) {
-    return {at::zeros_like(input),
-            at::zeros_like(input, input.options().dtype(at::kBool))};
-  }
-
   TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                      ConvertTo<mlir::ElementType>(input.scalar_type()));
+
+  if (p <= 0.0 || !train) {
+    auto op_builder =
+        [](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<2>> {
+      auto& builder = input.getBuilder();
+      auto mask_op =
+          MakeConstantLike(input, true, builder.getOpBuilder().getI1Type());
+      return {{input, mask_op}};
+    };
+    TT_ASSIGN_OR_THROW(
+        auto results,
+        (DispatchOp<1, 2>(
+            std::move(op_builder), input,
+            {.out_dtypes = {output_dtype, mlir::ElementType::PRED},
+             .out_dims_list = {input.sizes(), input.sizes()},
+             .op_param_cache_keys = std::move(param_keys)})));
+    return {MakeTensor(std::move(results[0])),
+            MakeTensor(std::move(results[1]))};
+  }
+  if (p >= 1.0) {
+    auto op_builder =
+        [](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<2>> {
+      auto& builder = input.getBuilder();
+      auto zero_const = MakeConstantLike(input, 0.0);
+      auto mask_op =
+          MakeConstantLike(input, false, builder.getOpBuilder().getI1Type());
+      return {{zero_const, mask_op}};
+    };
+    TT_ASSIGN_OR_THROW(
+        auto results,
+        (DispatchOp<1, 2>(
+            std::move(op_builder), input,
+            {.out_dtypes = {output_dtype, mlir::ElementType::PRED},
+             .out_dims_list = {input.sizes(), input.sizes()},
+             .op_param_cache_keys = std::move(param_keys)})));
+    return {MakeTensor(std::move(results[0])),
+            MakeTensor(std::move(results[1]))};
+  }
 
   const int64_t num_elements = input.numel();
   const int64_t bit_width = TorchEquivalentBitwidth(output_dtype);

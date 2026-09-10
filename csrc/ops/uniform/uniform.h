@@ -18,10 +18,12 @@
 #define TORCH_TPU_CSRC_OPS_UNIFORM_UNIFORM_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "csrc/ops/op_builder_utils.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -34,6 +36,11 @@ absl::StatusOr<MlirOpResults<1>> BuildUniformShlo(mlir::MlirOp rng_input_state,
                                                   double from, double to,
                                                   llvm::ArrayRef<int64_t> sizes,
                                                   mlir::ElementType mlir_type);
+
+absl::StatusOr<MlirOpResults<1>> BuildUniformShlo(
+    mlir::MlirOp rng_input_state, double from, double to,
+    mlir::RankedTensorType output_tensor_type,
+    std::optional<mlir::MlirOp> shape_reference = std::nullopt);
 
 }  // namespace torch_tpu
 

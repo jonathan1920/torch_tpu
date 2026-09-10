@@ -437,6 +437,66 @@ absl::StatusOr<mlir::MlirOp> MakeConstantLike(mlir::MlirOp input,
   return mlir::chlo::ConstantLike(input, attr);
 }
 
+RngBitGeneratorResults RngBitGeneratorLike(
+    mlir::MlirOp rng_input_state, mlir::RankedTensorType output_type,
+    mlir::stablehlo::RngAlgorithmAttr rng_alg,
+    std::optional<mlir::MlirOp> shape_reference) {
+  auto& builder = rng_input_state.getBuilder();
+  auto& op_builder = builder.getOpBuilder();
+  const mlir::RankedTensorType rng_input_state_type =
+      GetTensorTypeOrDie(rng_input_state);
+
+  if (output_type.hasStaticShape()) {
+    auto rng_bits_op = mlir::stablehlo::RngBitGeneratorOp::create(
+        op_builder, rng_input_state.getValue().getLoc(), rng_input_state_type,
+        output_type, rng_alg, rng_input_state.getValue());
+    return {mlir::MlirOp(builder, rng_bits_op.getOutputState()),
+            mlir::MlirOp(builder, rng_bits_op.getOutput())};
+  }
+
+  // Bounded dynamic shape case.
+  // stablehlo.rng_bit_generator requires a statically shaped tensor result.
+  // We generate random bits using the static upper-bound shape, and slice
+  // bounded dimensions to runtime sizes via SetDimensionSize.
+  ABSL_CHECK(shape_reference.has_value())  // CRASH_OK=internal invariant.
+      << "shape_reference is required for dynamic output_type in "
+         "RngBitGeneratorLike";
+
+  mlir::stablehlo::Dimensions dims = GetDimensions(*shape_reference);
+  ABSL_CHECK_EQ(  // CRASH_OK=internal invariant.
+      output_type.getRank(), static_cast<int64_t>(dims.size()))
+      << "rank mismatch between output_type (" << output_type.getRank()
+      << ") and shape_reference (" << dims.size() << ")";
+
+  llvm::SmallVector<int64_t> static_shape;
+  static_shape.reserve(dims.size());
+  for (const auto& dim_info : dims) {
+    static_shape.push_back(dim_info.size);
+  }
+
+  mlir::RankedTensorType static_rng_bits_type =
+      mlir::RankedTensorType::get(static_shape, output_type.getElementType());
+
+  auto rng_bits_op = mlir::stablehlo::RngBitGeneratorOp::create(
+      op_builder, rng_input_state.getValue().getLoc(), rng_input_state_type,
+      static_rng_bits_type, rng_alg, rng_input_state.getValue());
+
+  mlir::MlirOp rng_output_state =
+      mlir::MlirOp(builder, rng_bits_op.getOutputState());
+  mlir::MlirOp current_op = mlir::MlirOp(builder, rng_bits_op.getOutput());
+
+  for (const auto& dim_info : dims) {
+    if (!dim_info.boundOp.has_value()) continue;
+
+    auto runtime_dim_size = mlir::stablehlo::GetDimensionSize(
+        *shape_reference, dim_info.boundOpDim);
+    current_op = mlir::stablehlo::SetDimensionSize(current_op, runtime_dim_size,
+                                                   dim_info.boundOpDim);
+  }
+
+  return {rng_output_state, current_op};
+}
+
 absl::StatusOr<mlir::MlirOp> BroadcastIfNeeded(
     mlir::MlirOp input, absl::Span<const int64_t> shape) {
   ABSL_VLOG(1) << "[BroadcastIfNeeded] input: " << input.ToString()

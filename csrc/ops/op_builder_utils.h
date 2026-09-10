@@ -55,6 +55,7 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -397,6 +398,31 @@ template <typename T>
 // shape of the input tensor.
 absl::StatusOr<mlir::MlirOp> MakeConstantLike(mlir::MlirOp input,
                                               const at::Scalar& value);
+
+struct RngBitGeneratorResults {
+  mlir::MlirOp output_state;
+  mlir::MlirOp output;
+};
+
+// Generates random bits with static or bounded dynamic shapes.
+//
+// If output_type has a static shape, generates bits directly via
+// stablehlo.rng_bit_generator.
+// If output_type has a bounded dynamic shape, generates bits using the static
+// upper-bound shape and dynamically slices bounded dimensions to runtime
+// logical sizes using shape_reference.
+//
+// Parameters:
+//   rng_input_state: Initial state tensor for the RNG.
+//   output_type: RankedTensorType specifying the desired output shape and
+//                integer element type.
+//   rng_alg: RngAlgorithmAttr (e.g. DEFAULT or PHILOX).
+//   shape_reference: Required for dynamic shapes; reference tensor from which
+//                    runtime dimension sizes are extracted.
+RngBitGeneratorResults RngBitGeneratorLike(
+    mlir::MlirOp rng_input_state, mlir::RankedTensorType output_type,
+    mlir::stablehlo::RngAlgorithmAttr rng_alg,
+    std::optional<mlir::MlirOp> shape_reference = std::nullopt);
 
 // Returns an mlir::MlirOp representing the number of elements in the input
 // tensor with the given element type, only counting the dimensions specified.

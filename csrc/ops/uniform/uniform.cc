@@ -17,6 +17,7 @@
 #include "csrc/ops/uniform/uniform.h"
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "csrc/common/error_utils.h"
@@ -45,6 +46,7 @@ absl::StatusOr<mlir::MlirOp> BitsToUniform(mlir::MlirOp random_bits,
   mlir::MlirOp clear_exponent_mask;
   mlir::MlirOp set_exp_to_bias_mask;
   mlir::RankedTensorType random_bits_as_float_type;
+  mlir::RankedTensorType random_bits_type = GetTensorTypeOrDie(random_bits);
   mlir::RankedTensorType from_type = GetTensorTypeOrDie(from);
   // Dispatch on element type rather than bit width (bf16 and f16 are both
   // 16-bit but have different layouts).
@@ -54,22 +56,23 @@ absl::StatusOr<mlir::MlirOp> BitsToUniform(mlir::MlirOp random_bits,
         MakeConstantLike(random_bits, 0x000F'FFFF'FFFF'FFFFUL);
     set_exp_to_bias_mask =
         MakeConstantLike(random_bits, 0x3FF0'0000'0000'0000UL);
-    random_bits_as_float_type = from_type.clone(op_builder.getF64Type());
+    random_bits_as_float_type = random_bits_type.clone(op_builder.getF64Type());
   } else if (from_elem_type.isF32()) {
     // f32: 8 exp, 23 mantissa, bias=127
     clear_exponent_mask = MakeConstantLike(random_bits, 0x007F'FFFFUL);
     set_exp_to_bias_mask = MakeConstantLike(random_bits, 0x3F80'0000UL);
-    random_bits_as_float_type = from_type.clone(op_builder.getF32Type());
+    random_bits_as_float_type = random_bits_type.clone(op_builder.getF32Type());
   } else if (from_elem_type.isBF16()) {
     // bf16: 8 exp, 7 mantissa, bias=127
     clear_exponent_mask = MakeConstantLike(random_bits, 0x007FU);
     set_exp_to_bias_mask = MakeConstantLike(random_bits, 0x3F80U);
-    random_bits_as_float_type = from_type.clone(op_builder.getBF16Type());
+    random_bits_as_float_type =
+        random_bits_type.clone(op_builder.getBF16Type());
   } else if (from_elem_type.isF16()) {
     // f16: 5 exp, 10 mantissa, bias=15
     clear_exponent_mask = MakeConstantLike(random_bits, 0x03FFU);
     set_exp_to_bias_mask = MakeConstantLike(random_bits, 0x3C00U);
-    random_bits_as_float_type = from_type.clone(op_builder.getF16Type());
+    random_bits_as_float_type = random_bits_type.clone(op_builder.getF16Type());
   } else {
     return TT_ERROR(error::kInvalidArgument)
            << "unsupported float type for uniform";
@@ -91,47 +94,58 @@ absl::StatusOr<mlir::MlirOp> BitsToUniform(mlir::MlirOp random_bits,
   // Interpret as floats
   random_between_one_and_two = stablehlo::BitcastConvert(
       random_bits_as_float_type, random_between_one_and_two);
+  mlir::RankedTensorType target_float_type =
+      random_bits_type.clone(from_elem_type);
   random_between_one_and_two =
-      stablehlo::Convert(from_type, random_between_one_and_two);
+      stablehlo::Convert(target_float_type, random_between_one_and_two);
   // Subtract 1.0
   mlir::MlirOp one_const = MakeConstantLike(random_between_one_and_two, 1.0);
   mlir::MlirOp random_between_zero_and_one =
       stablehlo::Subtract(random_between_one_and_two, one_const);
   // Scale to [from, to)
-  auto diff_op = stablehlo::Subtract(to, from);
-  auto scaled_op = stablehlo::Mul(diff_op, random_between_zero_and_one);
-  return stablehlo::Add(from, scaled_op);
+  TT_ASSIGN_OR_RETURN((auto [to_bcast, from_bcast]),
+                      ApplyBroadcastIfNeeded(to, from));
+  auto diff_op = stablehlo::Subtract(to_bcast, from_bcast);
+  TT_ASSIGN_OR_RETURN(
+      (auto [diff_bcast, rand_bcast]),
+      ApplyBroadcastIfNeeded(diff_op, random_between_zero_and_one));
+  auto scaled_op = stablehlo::Mul(diff_bcast, rand_bcast);
+  TT_ASSIGN_OR_RETURN((auto [from_final, scaled_final]),
+                      ApplyBroadcastIfNeeded(from_bcast, scaled_op));
+  return stablehlo::Add(from_final, scaled_final);
+}
+
+absl::StatusOr<MlirOpResults<1>> BuildUniformShlo(
+    mlir::MlirOp rng_input_state, const double from, const double to,
+    mlir::RankedTensorType output_tensor_type,
+    std::optional<mlir::MlirOp> shape_reference) {
+  auto& builder = rng_input_state.getBuilder();
+  auto& op_builder = builder.getOpBuilder();
+
+  auto elem_type = output_tensor_type.getElementType();
+  int64_t bit_width = elem_type.getIntOrFloatBitWidth();
+  const mlir::stablehlo::RngAlgorithmAttr rng_alg =
+      stablehlo::RngAlgorithmAttr::get(op_builder.getContext(),
+                                       stablehlo::RngAlgorithm::DEFAULT);
+
+  mlir::RankedTensorType rng_bits_type =
+      output_tensor_type.clone(op_builder.getIntegerType(bit_width,
+                                                         /*isSigned=*/false));
+  auto [rng_output_state, rng_bits] = RngBitGeneratorLike(
+      rng_input_state, rng_bits_type, rng_alg, shape_reference);
+
+  mlir::MlirOp from_op = MakeConstantLike(rng_bits, from, elem_type);
+  mlir::MlirOp to_op = MakeConstantLike(rng_bits, to, elem_type);
+  return BitsToUniform(rng_bits, from_op, to_op);
 }
 
 absl::StatusOr<MlirOpResults<1>> BuildUniformShlo(
     mlir::MlirOp rng_input_state, const double from, const double to,
     const llvm::ArrayRef<int64_t> sizes, const mlir::ElementType mlir_type) {
-  const mlir::RankedTensorType rng_input_state_type =
-      GetTensorTypeOrDie(rng_input_state);
   auto& builder = rng_input_state.getBuilder();
-  auto& op_builder = builder.getOpBuilder();
   mlir::RankedTensorType output_tensor_type =
       makeTensorType(builder.getContext(), sizes, mlir_type);
-  mlir::MlirOp from_op = MakeConstant(builder, from, output_tensor_type);
-  mlir::MlirOp to_op = MakeConstant(builder, to, output_tensor_type);
-  int64_t bit_width =
-      output_tensor_type.getElementType().getIntOrFloatBitWidth();
-  mlir::RankedTensorType rng_bits_type =
-      output_tensor_type.clone(op_builder.getIntegerType(bit_width,
-                                                         /*isSigned=*/false));
-  const mlir::stablehlo::RngAlgorithmAttr rng_alg =
-      stablehlo::RngAlgorithmAttr::get(op_builder.getContext(),
-                                       stablehlo::RngAlgorithm::DEFAULT);
-  auto rng_bits_op = stablehlo::RngBitGeneratorOp::create(
-      op_builder, rng_input_state.getValue().getLoc(), rng_input_state_type,
-      rng_bits_type, rng_alg, rng_input_state.getValue());
-
-  mlir::MlirOp rng_output_state =
-      mlir::MlirOp(builder, rng_bits_op.getOutputState());
-  mlir::MlirOp rng_output_op = mlir::MlirOp(builder, rng_bits_op.getOutput());
-  TT_ASSIGN_OR_RETURN(auto result,
-                      BitsToUniform(rng_output_op, from_op, to_op));
-  return result;
+  return BuildUniformShlo(rng_input_state, from, to, output_tensor_type);
 }
 
 }  // namespace torch_tpu

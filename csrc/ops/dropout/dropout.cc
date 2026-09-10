@@ -24,8 +24,8 @@
 #include "csrc/ops/uniform/uniform.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
+#include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
@@ -36,13 +36,31 @@ absl::StatusOr<MlirOpResults<2>> BuildDropoutTrainShlo(
     mlir::MlirOp rng_input_state, mlir::MlirOp input, double p) {
   ABSL_VLOG(1) << "[BuildDropoutTrainShlo] input: "
                << mlir::debugString(input.getValue()) << ", p: " << p;
-  ABSL_CHECK(p > 0 && p < 1.0)  // CRASH_OK=Caller validates p.
-      << "expected p to be in the exclusive range (0, 1), got " << p;
+  ABSL_CHECK(p >= 0.0 && p <= 1.0)  // CRASH_OK=Caller validates p.
+      << "expected p to be in the range [0, 1], got " << p;
+
+  auto& builder = input.getBuilder();
+  auto& op_builder = builder.getOpBuilder();
+
+  if (p <= 0.0) {
+    auto mask_op = MakeConstantLike(input, true, op_builder.getI1Type());
+    return {{input, mask_op}};
+  }
+  if (p >= 1.0) {
+    auto zero_const = MakeConstantLike(input, 0.0);
+    auto mask_op = MakeConstantLike(input, false, op_builder.getI1Type());
+    return {{zero_const, mask_op}};
+  }
+
   mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
+  mlir::RankedTensorType rand_type = input_type;
+  if (auto complex_type =
+          mlir::dyn_cast<mlir::ComplexType>(input_type.getElementType())) {
+    rand_type = input_type.clone(complex_type.getElementType());
+  }
   TT_ASSIGN_OR_RETURN(
-      auto rand_op,
-      BuildUniformShlo(rng_input_state, /*from=*/0.0, /*to=*/1.0,
-                       input_type.getShape(), GetElementTypeOrDie(input)));
+      auto rand_op, BuildUniformShlo(rng_input_state, /*from=*/0.0, /*to=*/1.0,
+                                     rand_type, input));
 
   auto p_const = MakeConstantLike(rand_op, p);
   auto mask_op = mlir::stablehlo::Compare(
@@ -50,8 +68,6 @@ absl::StatusOr<MlirOpResults<2>> BuildDropoutTrainShlo(
   auto zero_const = MakeConstantLike(input, 0.0);
   auto masked_input_op = mlir::stablehlo::Select(mask_op, input, zero_const);
 
-  // p is guaranteed to be between 0 and 1 exclusive
-  // via early returns in the caller for p == 0 and p >= 1.
   double scale = 1.0 / (1.0 - p);
   auto scale_const = MakeConstantLike(input, scale);
   auto output = mlir::stablehlo::Mul(masked_input_op, scale_const);
@@ -78,8 +94,12 @@ absl::StatusOr<MlirOpResults<1>> BuildDropoutBackwardShlo(
                                                       op_builder.getF32Type());
   }
 
-  auto zero_const = MakeConstantLike(grad_output, 0.0);
-  auto masked_grad_op = mlir::stablehlo::Select(mask, grad_output, zero_const);
+  TT_ASSIGN_OR_RETURN((auto [grad_output_bcst, mask_bcst]),
+                      ApplyBroadcastIfNeeded(grad_output, mask));
+
+  auto zero_const = MakeConstantLike(grad_output_bcst, 0.0);
+  auto masked_grad_op =
+      mlir::stablehlo::Select(mask_bcst, grad_output_bcst, zero_const);
   auto scale_const = MakeConstantLike(masked_grad_op, scale);
   return mlir::stablehlo::Mul(masked_grad_op, scale_const);
 }
