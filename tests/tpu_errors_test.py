@@ -1862,6 +1862,8 @@ module {
 
   @et.why_tpu_only("Testing TPU device generator initialization failure.")
   def test_default_generator_init_failure(self):
+    gen_prop = torch.tpu.__tt_api_stages__["default_generators"].value
+    gen_prop._cached_tuple = None
     tt_testing.reset_default_device_generators()
     tt_testing.set_init_default_generator_failure("Simulated init failure")
     try:
@@ -1880,6 +1882,7 @@ module {
     finally:
       tt_testing.set_init_default_generator_failure("")
       tt_testing.reset_default_device_generators()
+      gen_prop._cached_tuple = None
 
   @et.why_tpu_only(
       "GPU AdamW error handling differences for mismatched list sizes."
