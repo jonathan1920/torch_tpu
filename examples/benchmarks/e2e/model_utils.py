@@ -33,6 +33,7 @@ import torch.distributed.tensor as dt
 from torch.nn import parallel
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import device_utils
+from examples.benchmarks.e2e import mamba3
 from examples.benchmarks.e2e import ragged_moe
 from tests import module_registry
 import transformers
@@ -2183,6 +2184,37 @@ def ml_layer_model_builder(
         return self.m(hidden_states)
 
     model = NemotronHMamba2BlockWrapper(model).to(dtype=weights_dtype)
+
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            bs, seq, kwargs["hidden_size"], dtype=weights_dtype, device=device
+        ),
+    )
+
+  elif model_name in ("Mamba3Layer", "Mamba3"):
+    model = mamba3.Mamba3(
+        d_model=kwargs["hidden_size"],
+        d_state=kwargs.get("state_size", 128),
+        expand=kwargs.get("expand", 2),
+        headdim=kwargs.get("head_dim", 64),
+        ngroups=kwargs.get("n_groups", 1),
+        rope_fraction=kwargs.get("rope_fraction", 0.5),
+        is_mimo=kwargs.get("is_mimo", False),
+        mimo_rank=kwargs.get("mimo_rank", 4),
+    )
+
+    class Mamba3LayerWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, hidden_states):
+        return self.m(hidden_states)
+
+    model = Mamba3LayerWrapper(model).to(dtype=weights_dtype)
 
     example_inputs = _generate_inputs(
         batch_size,

@@ -82,6 +82,7 @@ _SORT_LAYER_BENCHMARK_NAME = "sort"
 _LSTM_LAYER_BENCHMARK_NAME = "lstm"
 
 _GRU_LAYER_BENCHMARK_NAME = "gru"
+_MAMBA3_LAYER_BENCHMARK_NAME = "mamba3"
 
 
 _DYNAMIC_SKIPS = {
@@ -1742,6 +1743,48 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
     self.run_performance_benchmark_test(
         config, _GRU_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          _ALL_RUN_MODES, (True, False), layer_configs.MAMBA3_LAYER_CONFIGS
+      )
+  )
+  def test_mamba3(
+      self,
+      run_mode,
+      is_training,
+      layer_config: layer_configs.Mamba3LayerConfig,
+  ):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Mamba3Layer",
+            batch_size=layer_config.batch_size,
+            sequence_length=layer_config.seq_len,
+            custom_kwargs={
+                "hidden_size": layer_config.hidden_size,
+                "state_size": layer_config.state_size,
+                "expand": layer_config.expand,
+                "num_heads": layer_config.num_heads,
+                "head_dim": layer_config.head_dim,
+                "n_groups": layer_config.n_groups,
+                "rope_fraction": layer_config.rope_fraction,
+                "is_mimo": layer_config.is_mimo,
+                "mimo_rank": layer_config.mimo_rank,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _MAMBA3_LAYER_BENCHMARK_NAME, microbenchmark_name
     )
 
 

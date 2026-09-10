@@ -1455,6 +1455,38 @@ NEMOTRON_H_MAMBA2_BLOCK_CONFIGS = (
 
 
 @dataclasses.dataclass
+class Mamba3LayerConfig:
+  batch_size: int
+  seq_len: int
+  hidden_size: int
+  state_size: int = 128
+  expand: int = 2
+  num_heads: int = 128
+  head_dim: int = 64
+  n_groups: int = 1
+  rope_fraction: float = 0.5
+  is_mimo: bool = False
+  mimo_rank: int = 4
+
+
+MAMBA3_LAYER_CONFIGS = (
+    Mamba3LayerConfig(
+        batch_size=1,
+        seq_len=128,
+        hidden_size=256,
+        num_heads=8,
+    ),
+    Mamba3LayerConfig(
+        batch_size=8,
+        seq_len=1024,
+        hidden_size=2048,
+        num_heads=64,
+        n_groups=8,
+    ),
+)
+
+
+@dataclasses.dataclass
 class SliceScatterConfig:
   input_shape: tuple[int, ...]
   src_shape: tuple[int, ...]

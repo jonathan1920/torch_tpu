@@ -569,6 +569,7 @@ torch_tpu_py_library(
     deps = [
         ":benchmark_utils",
         ":device_utils",
+        ":mamba3",
         ":ragged_moe",
         "//examples/gemma4:model",
         "//shims/torch:pytorch",
@@ -659,6 +660,27 @@ torch_tpu_py_test(
     deps = [
         ":model_utils",
         "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//src/torch_tpu",
+        "//tests:seed_test_utils",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "mamba3",
+    srcs = ["mamba3.py"],
+    deps = [
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "mamba3_test",
+    srcs = ["mamba3_test.py"],
+    deps = [
+        ":mamba3",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//src/torch_tpu",
         "//tests:seed_test_utils",
