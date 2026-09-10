@@ -30,7 +30,6 @@ class DynamicViewTest(seed_test_utils.RepeatableTest):
     tt_testing.reset_eager_state()
     self.device = torch.accelerator.current_accelerator()
 
-  @absltest.skip("Dynamic view as input not supported")
   def test_static_size_dynamic_stride_input(self):
     class SlidingWindowCacheUpdate(torch.nn.Module):
 
@@ -55,7 +54,7 @@ class DynamicViewTest(seed_test_utils.RepeatableTest):
     )
 
     with torch.no_grad():
-      # 1. Prefill (seq_len = 256 >= sliding_window 128):
+      # Prefill (seq_len = 256 >= sliding_window 128):
       # Model returns past_k_1 of length sliding_window - 1 = 127.
       new_k_prefill_cpu = torch.arange(
           16 * 8 * 256 * 8, dtype=torch.int32
@@ -65,7 +64,7 @@ class DynamicViewTest(seed_test_utils.RepeatableTest):
       past_k_1_tpu = compiled_model(new_k_prefill_tpu, None)
       utils.assert_close(past_k_1_tpu.cpu(), past_k_1_cpu)
 
-      # 2. Decode Step 1 (past_k length 127 -> full_k length 128 -> past_k_2 length 127):
+      # Decode Step 1 (past_k length 127 -> full_k length 128 -> past_k_2 length 127):
       # Compiles static decode frame for past_k size 127.
       new_k_token_1_cpu = torch.arange(
           16 * 8 * 1 * 8, dtype=torch.int32
@@ -75,7 +74,7 @@ class DynamicViewTest(seed_test_utils.RepeatableTest):
       past_k_2_tpu = compiled_model(new_k_token_1_tpu, past_k_1_tpu)
       utils.assert_close(past_k_2_tpu.cpu(), past_k_2_cpu)
 
-      # 3. Decode Step 2 (past_k length 127 -> full_k length 128 -> dynamic frame):
+      # Decode Step 2 (past_k length 127 -> full_k length 128 -> dynamic frame):
       # past_k_2 was produced by model's slice from dynamic full_k_1.
       # When past_k_2 enters compiled_model as an input argument:
       #   - Size is static: torch.Size([16, 8, 127, 8]) (because length is always 127)
@@ -88,7 +87,19 @@ class DynamicViewTest(seed_test_utils.RepeatableTest):
       past_k_3_tpu = compiled_model(new_k_token_2_tpu, past_k_2_tpu)
       utils.assert_close(past_k_3_tpu.cpu(), past_k_3_cpu)
 
-  @absltest.skip("Dynamic view as input not supported")
+      # Decode Step 3 (past_k length 127 -> full_k length 128 -> dynamic frame):
+      # past_k_2 was produced by model's slice from dynamic full_k_1.
+      # When past_k_2 enters compiled_model as an input argument:
+      #   - Size is static: torch.Size([16, 8, 127, 8]) (because length is always 127)
+      #   - Stride is dynamic: (8*s0, s0, 8, 1) (inherited from the dynamic full_k buffer)
+      new_k_token_3_cpu = torch.arange(
+          16 * 8 * 1 * 8, dtype=torch.int32
+      ).reshape(16, 8, 1, 8)
+      new_k_token_3_tpu = new_k_token_3_cpu.to(self.device)
+      past_k_4_cpu = model_cpu(new_k_token_3_cpu, past_k_3_cpu)
+      past_k_4_tpu = compiled_model(new_k_token_3_tpu, past_k_3_tpu)
+      utils.assert_close(past_k_4_tpu.cpu(), past_k_4_cpu)
+
   def test_dynamic_size_dynamic_stride_input(self):
     class DynamicViewModule(torch.nn.Module):
 

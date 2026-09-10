@@ -24,8 +24,10 @@ from torch._logging import LazyString
 from torch.fx.passes.graph_transform_observer import GraphTransformObserver
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.compile.dynamic import view_decomposition as decompose
 from torch_tpu._internal.compile.dynamic import view_ops_passes
 from torch_tpu._internal.compile.dynamic.graph_transformations import apply_dynamism_transformations
+from torch_tpu._internal.compile.dynamic.graph_transformations import apply_input_view_transformations
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
 
 
@@ -201,12 +203,14 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
       default_executable: Any,
       default_layout_key: tuple[tuple[int, ...], ...],
       dynamic_outputs: Sequence[bool],
+      view_arg_indices: set[int] | None = None,
   ):
     self.static_compiler = static_compiler
     self.graph_module = graph_module
     self.example_inputs = example_inputs
     self.sym_shape_manager = sym_shape_manager
     self.is_fwd = is_fwd
+    self._view_arg_indices = view_arg_indices or set()
 
     # Cache for compiled executables: layout_key -> executable.
     self.model_executables: dict[tuple[tuple[int, ...], ...], Any] = {
@@ -459,6 +463,14 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
       # Since we compile it at compile time, it is guaranteed to be in cache.
       return self.model_executables[()](list(args))
 
+    # Resolve base tensor for arguments that were decomposed views at compile time.
+    if self._view_arg_indices:
+      args_list = list(args)
+      for idx in self._view_arg_indices:
+        if idx < len(args_list) and isinstance(args_list[idx], torch.Tensor):
+          args_list[idx] = decompose.get_base_tensor(args_list[idx])
+      args = tuple(args_list)
+
     tensor_args, tensor_info = self._get_pad_subgraph_inputs(args)
 
     # Run pad subgraph first (no model_executable needed)
@@ -587,6 +599,28 @@ class DynamicCompiler(compiler.Compiler):
         LazyString(graph_module.print_readable),
     )
 
+    logging.debug(
+        "[DynamicTpuBackend] Example inputs: %s",
+        example_inputs,
+    )
+
+    # Handle dynamic view placeholders.
+    view_arg_indices, updated_inputs = apply_input_view_transformations(
+        graph_module, example_inputs
+    )
+    if updated_inputs is not None:
+      example_inputs = updated_inputs
+
+    logging.debug(
+        "[DynamicTpuBackend] After view decomposition, FX Graph: %s",
+        LazyString(graph_module.print_readable),
+    )
+
+    logging.debug(
+        "[DynamicTpuBackend] After view decomposition, example inputs: %s",
+        example_inputs,
+    )
+
     # Create a SymInt shape manager.
     sym_shape_manager = SymShapeManager(graph_module, example_inputs)
 
@@ -667,4 +701,5 @@ class DynamicCompiler(compiler.Compiler):
         default_executable=default_executable,
         default_layout_key=default_layout_key,
         dynamic_outputs=dynamic_outputs,
+        view_arg_indices=view_arg_indices,
     )

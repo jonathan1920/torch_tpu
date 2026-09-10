@@ -20,9 +20,11 @@ import operator
 import re
 from typing import Any
 import torch
+from torch._inductor.utils import InputType
 from torch.fx.passes import graph_transform_observer
 from torch.fx.passes import tools_common
 from torch.utils import _pytree
+from torch_tpu._internal.compile.dynamic import dynamic_view_pass
 from torch_tpu._internal.compile.dynamic import generative_ops_pass
 from torch_tpu._internal.compile.dynamic import sym_utils
 from torch_tpu._internal.compile.dynamic import symbol_bounds
@@ -305,6 +307,44 @@ class DetectSymIntUsagesPass:
           unhandled_usages.append((node, arg))
 
     return unhandled_usages
+
+
+def apply_input_view_transformations(
+    graph_module: torch.fx.GraphModule,
+    example_inputs: Sequence[InputType],
+) -> tuple[set[int], Sequence[InputType]]:
+  """Decomposes non-contiguous dynamic view input placeholders into contiguous base buffers.
+
+  Args:
+    graph_module: The FX graph module to transform.
+    example_inputs: Example inputs for the graph module.
+
+  Returns:
+    A tuple of (view_arg_indices, updated_example_inputs), where
+    view_arg_indices is a set of argument indices for input placeholders that
+    were decomposed, and updated_example_inputs is a sequence of example inputs
+    with decomposed view tensors replaced by their base shapes.
+  """
+  # Fetch original placeholders once in argument order
+  original_placeholders = list(
+      graph_module.graph.find_nodes(op="placeholder", sort=True)
+  )
+
+  input_dynamic_view_p = dynamic_view_pass.InputDynamicViewPass(
+      original_placeholders, example_inputs
+  )
+  GraphTransformObserver(graph_module, "input_dynamic_view_pass").apply_gm_pass(
+      input_dynamic_view_p
+  )
+
+  tools_common.stable_topological_sort(graph_module)
+  graph_module.graph.lint()
+  graph_module.recompile()
+
+  return (
+      input_dynamic_view_p.view_arg_indices,
+      input_dynamic_view_p.updated_example_inputs,
+  )
 
 
 def apply_dynamism_transformations(

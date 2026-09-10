@@ -100,6 +100,7 @@ torch_tpu_py_library(
         "graph_transformations.py",
     ],
     deps = [
+        ":dynamic_view_pass",
         ":generative_ops_pass",
         ":sym_shape_manager",
         ":sym_utils",
@@ -122,6 +123,18 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "dynamic_view_pass",
+    srcs = [
+        "dynamic_view_pass.py",
+    ],
+    deps = [
+        ":view_decomposition",
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
     name = "dynamic_compiler",
     srcs = [
         "dynamic_compiler.py",
@@ -133,6 +146,7 @@ torch_tpu_py_library(
     deps = [
         ":graph_transformations",
         ":sym_shape_manager",
+        ":view_decomposition",
         ":view_ops_passes",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
