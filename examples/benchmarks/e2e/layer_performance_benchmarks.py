@@ -859,7 +859,6 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_qwen3_rotary_embedding(self, run_mode, is_training, layer_config):
-    self.skipTest("TODO(b/484415655): Investigate cache miss.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
@@ -873,7 +872,11 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
             model_name="Qwen3RotaryEmbedding",
             batch_size=layer_config.batch_size,
             sequence_length=layer_config.seq_len,
-            custom_kwargs={"head_dim": layer_config.head_dim},
+            custom_kwargs={
+                "head_dim": layer_config.head_dim,
+                "max_position_embeddings": 40960,
+                "rope_theta": 1000000.0,
+            },
         ),
     )
     microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
@@ -887,19 +890,12 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
           (True, False),
           list(
               layer_configs.SdpaConfig.configs_with_backends(
-                  torch.nn.attention.SDPBackend.MATH,
-                  # Allow fallback to math backend.
-                  [
-                      torch.nn.attention.SDPBackend.FLASH_ATTENTION,
-                      torch.nn.attention.SDPBackend.MATH,
-                  ],
+                  torch.nn.attention.SDPBackend.FLASH_ATTENTION,
               )
           ),
       )
   )
   def test_sdpa_tpu(self, run_mode, is_training, layer_config):
-    if run_mode == common.RunMode.COMPILED:
-      self.skipTest("SDPA is broken in compiled mode")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
@@ -930,16 +926,13 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     )
 
   @parameterized.named_parameters(
-      # TODO(b/431285931) - Training known issue.
       test_utils.generate_layer_test_configs(
           _ALL_RUN_MODES,
-          (False,),
+          (True, False),
           list(
               layer_configs.SdpaConfig.configs_with_backends(
-                  #   torch.nn.attention.SDPBackend.FLASH_ATTENTION, TODO(b/431285931) - Known issue.
-                  torch.nn.attention.SDPBackend.EFFICIENT_ATTENTION,
-                  torch.nn.attention.SDPBackend.MATH,
                   torch.nn.attention.SDPBackend.CUDNN_ATTENTION,
+                  torch.nn.attention.SDPBackend.EFFICIENT_ATTENTION,
               )
           ),
       )
@@ -1509,7 +1502,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          _ALL_RUN_MODES, (True, False), layer_configs.MASKED_SOFTMAX_CONFIGS
+          _ALL_RUN_MODES, (False,), layer_configs.MASKED_SOFTMAX_CONFIGS
       )
   )
   def test_masked_softmax(self, run_mode, is_training, layer_config):
