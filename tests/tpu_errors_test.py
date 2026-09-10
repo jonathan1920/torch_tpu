@@ -2797,6 +2797,48 @@ module {
     ):
       torch.ops.tpu.sparse_gather_backward(grad_output, indices, grad_operand)
 
+  @et.why_tpu_only("Custom op sparse_iota is TPU only.")
+  def test_sparse_iota_invalid_row_pointers_dim(self):
+    device = et.device()
+    row_pointers_2d = torch.tensor([[0, 8]], dtype=torch.int32, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_iota(): expected row_pointers to be a 1D tensor, got a 2D tensor of shape [1, 2]""",
+    ):
+      torch.ops.tpu.sparse_iota(row_pointers_2d, 2048, 256)
+
+  @et.why_tpu_only("Custom op sparse_iota is TPU only.")
+  def test_sparse_iota_invalid_row_pointers_dtype(self):
+    device = et.device()
+    row_pointers_float = torch.tensor(
+        [0, 8], dtype=torch.float32, device=device
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_iota(): expected row_pointers dtype to be torch.int32, got Float""",
+    ):
+      torch.ops.tpu.sparse_iota(row_pointers_float, 2048, 256)
+
+  @et.why_tpu_only("Custom op sparse_iota is TPU only.")
+  def test_sparse_iota_invalid_max_non_zeroes(self):
+    device = et.device()
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_iota(): expected max_non_zeroes to be positive, got 0""",
+    ):
+      torch.ops.tpu.sparse_iota(row_pointers, 0, 256)
+
+  @et.why_tpu_only("Custom op sparse_iota is TPU only.")
+  def test_sparse_iota_invalid_max_non_zeroes_per_row(self):
+    device = et.device()
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""sparse_iota(): expected max_non_zeroes_per_row to be positive, got 0""",
+    ):
+      torch.ops.tpu.sparse_iota(row_pointers, 2048, 0)
+
   @et.why_tpu_only("TPU-specific C++ kernel argument validation")
   def test_scaled_mm_v2_invalid_contraction_dim_size(self):
     (

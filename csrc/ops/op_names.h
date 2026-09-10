@@ -702,6 +702,7 @@ enum class OpName {
   kSparseDenseMatmulGradWithSgd,
   kSparseGather,
   kSparseGatherBackward,
+  kSparseIota,
   kSplitWithSizesCopyOut,
   kSqrtOut,
   kStdCorrection,
@@ -805,6 +806,7 @@ inline std::ostream& operator<<(std::ostream& os, const OpName op_name) {
     case OpName::kSparseDenseMatmulGradWithAdam:
     case OpName::kSparseDenseMatmulGradWithSgd:
     case OpName::kSparseGather:
+    case OpName::kSparseIota:
       return true;
     default:
       return false;

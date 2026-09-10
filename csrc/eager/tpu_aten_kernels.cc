@@ -38,6 +38,7 @@
 #include "ATen/ops/result_type.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
+#include "c10/core/ScalarType.h"
 #include "c10/util/Exception.h"
 #include "csrc/common/error_utils.h"
 #include "csrc/common/to_string.h"
@@ -91,6 +92,7 @@
 #include "csrc/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_adam_aten_kernels.h"
 #include "csrc/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_sgd_aten_kernels.h"
 #include "csrc/ops/experimental/sparse_gather/sparse_gather_aten_kernels.h"
+#include "csrc/ops/experimental/sparse_iota/sparse_iota_aten_kernels.h"
 #include "csrc/ops/exponential/exponential_aten_kernels.h"
 #include "csrc/ops/eye/eye_aten_kernels.h"
 #include "csrc/ops/fake_quantize/fake_quantize_aten_kernels.h"
@@ -1290,6 +1292,9 @@ TORCH_LIBRARY(tpu, m) {
   m.def(
       "sparse_gather_backward(Tensor grad_output, Tensor indices, Tensor "
       "grad_operand) -> Tensor");
+  m.def(
+      "sparse_iota(Tensor row_pointers, int max_non_zeroes, int "
+      "max_non_zeroes_per_row) -> Tensor");
 }
 
 // Registers meta implementations for torch.ops.tpu ops.
@@ -1342,6 +1347,15 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
       +[](const at::Tensor& /*grad_output*/, const at::Tensor& /*indices*/,
           const at::Tensor& grad_operand) -> at::Tensor {
         return at::empty_like(grad_operand);
+      });
+  ImplExperimental<OpName::kSparseIota>(
+      m,
+      +[](const at::Tensor& row_pointers, int64_t max_non_zeroes,
+          int64_t max_non_zeroes_per_row) -> at::Tensor {
+        TT_THROW_IF_ERROR(ValidateSparseIotaInputs(row_pointers, max_non_zeroes,
+                                                   max_non_zeroes_per_row));
+        return at::empty({max_non_zeroes},
+                         row_pointers.options().dtype(at::kInt));
       });
   ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
       m,
@@ -1459,6 +1473,7 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
       m, AtenSparseDenseMatmulGradWithAdam);
   ImplExperimental<OpName::kSparseGather>(m, AtenSparseGather);
   ImplExperimental<OpName::kSparseGatherBackward>(m, AtenSparseGatherBackward);
+  ImplExperimental<OpName::kSparseIota>(m, AtenSparseIota);
 }
 
 // Registers custom autograd for torch.ops.tpu ops.

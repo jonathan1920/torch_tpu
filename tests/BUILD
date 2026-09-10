@@ -931,6 +931,29 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "sparse_iota_test",
+    srcs = ["sparse_iota_test.py"],
+    main = "sparse_iota_test.py",
+    notap = "Requires SparseCore accelerator",
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Requires SparseCore accelerator",
+    ),
+    tags = [
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/device:_device_ops_backend",
+        "@pypi//numpy",
+    ],
+)
+
+torch_tpu_py_test(
     name = "eager_device_assignment_test",
     srcs = ["eager_device_assignment_test.py"],
     main = "eager_device_assignment_test.py",

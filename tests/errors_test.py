@@ -12213,6 +12213,40 @@ class MaskedSoftmaxErrorTest(et.ErrorTestBase):
     ):
       torch.ops.tpu.sparse_gather(row_pointers, indices_wrong_len, operand, 8)
 
+  def test_sparse_iota_meta_invalid_row_pointers_dim(self):
+    row_pointers_2d = torch.tensor([[0, 8]], dtype=torch.int32, device="meta")
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""expected row_pointers to be a 1D tensor, got a 2D tensor of shape [1, 2]""",
+    ):
+      torch.ops.tpu.sparse_iota(row_pointers_2d, 2048, 256)
+
+  def test_sparse_iota_meta_invalid_row_pointers_dtype(self):
+    row_pointers_float = torch.tensor(
+        [0, 8], dtype=torch.float32, device="meta"
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""expected row_pointers dtype to be torch.int32, got Float""",
+    ):
+      torch.ops.tpu.sparse_iota(row_pointers_float, 2048, 256)
+
+  def test_sparse_iota_meta_invalid_max_non_zeroes(self):
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device="meta")
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""expected max_non_zeroes to be positive, got 0""",
+    ):
+      torch.ops.tpu.sparse_iota(row_pointers, 0, 256)
+
+  def test_sparse_iota_meta_invalid_max_non_zeroes_per_row(self):
+    row_pointers = torch.tensor([0, 8], dtype=torch.int32, device="meta")
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""expected max_non_zeroes_per_row to be positive, got 0""",
+    ):
+      torch.ops.tpu.sparse_iota(row_pointers, 2048, 0)
+
   def test_pow_unsupported_dtypes(self):
     """Tests that pow with unsupported bool tensor inputs fails with expected error."""
     base = torch.tensor([True, False], dtype=torch.bool, device=et.device())
