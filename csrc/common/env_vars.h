@@ -88,6 +88,10 @@ inline constexpr char kTorchTpuInternalDisableInplaceBufferDonationEnvVar[] =
 // be overridden by setting this env var to "0".
 inline constexpr char kTorchTpuInternalEnableDebugChecksEnvVar[] =
     "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS";
+// If set to "0" or "false", disables reassociating normalization weights.
+// Default is "true".
+inline constexpr char kTorchTpuInternalEnableReassociateNormWeightsEnvVar[] =
+    "TORCH_TPU_INTERNAL_ENABLE_REASSOCIATE_NORM_WEIGHTS";
 // Specifies the internal handshake stage mode.
 // Supported modes: OFF, COMPILE_STAGE, DISPATCH_STAGE.
 // Default is OFF.
@@ -212,6 +216,8 @@ inline constexpr auto kEnvVarToStage =
         {kTorchTpuInternalDetectRepeatedOpsEnvVar, std::nullopt},
         {kTorchTpuInternalDisableInplaceBufferDonationEnvVar, std::nullopt},
         {kTorchTpuInternalEnableDebugChecksEnvVar, std::nullopt},
+        {kTorchTpuInternalEnableReassociateNormWeightsEnvVar,
+         SymbolStage::InternalApi()},
         {kTorchTpuInternalHandshakeStageEnvVar, SymbolStage::InternalApi()},
         {kTorchTpuInternalMaterializeCollectiveTensorsEnvVar, std::nullopt},
         {kTorchTpuInternalSplitRngStateUpdate, std::nullopt},

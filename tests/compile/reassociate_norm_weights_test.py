@@ -14,6 +14,8 @@
 
 """Tests for reassociate_norm_weights FX pass."""
 
+from unittest import mock
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch
@@ -1265,8 +1267,8 @@ class ReassociateNormWeightsTest(seed_test_utils.RepeatableTest):
     self.assertEqual(out_bf16.args[0], new_add)
     self.assertEqual(out_f32.args[0], new_add)
 
-  def test_flag_disabled_is_noop(self):
-    """Verifies that setting flag to False disables pass transformations."""
+  def test_disabled_by_env_var(self):
+    """Verifies graph is untouched when TORCH_TPU_INTERNAL_ENABLE_REASSOCIATE_NORM_WEIGHTS=0."""
     graph = Graph()
     p_x = graph.placeholder("norm_x")
     p_x.meta["val"] = torch.empty((4, 256), dtype=torch.float32)
@@ -1283,12 +1285,12 @@ class ReassociateNormWeightsTest(seed_test_utils.RepeatableTest):
     gm = GraphModule(torch.nn.Module(), graph)
 
     orig_nodes = list(gm.graph.nodes)
-    flag_name = reassociate_norm_weights._ENABLE_REASSOCIATE_NORM_WEIGHTS.name
-    absltest.flags.FLAGS[flag_name].value = False
-    try:
+    with mock.patch.object(
+        reassociate_norm_weights,
+        "_is_reassociate_norm_weights_enabled",
+        return_value=False,
+    ):
       reassociate_norm_weights.apply(gm)
-    finally:
-      absltest.flags.FLAGS[flag_name].value = True
 
     self.assertEqual(list(gm.graph.nodes), orig_nodes)
 

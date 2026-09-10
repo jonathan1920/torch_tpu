@@ -32,15 +32,14 @@ precision internally.
 
 from typing import Any
 
-from absl import flags
 import torch
 import torch.fx
+from torch_tpu._internal.compile import tpu_torch_compile
 
-_ENABLE_REASSOCIATE_NORM_WEIGHTS = flags.DEFINE_bool(
-    "torch_tpu_internal_enable_reassociate_norm_weights",
-    True,
-    "Whether to apply the reassociate_norm_weights pass.",
-)
+
+def _is_reassociate_norm_weights_enabled() -> bool:
+  """Returns whether the pass is enabled via environment variable."""
+  return tpu_torch_compile.get_reassociate_norm_weights_env_value()
 
 
 def _normalize_gm_and_graph(
@@ -273,7 +272,7 @@ def apply(gm_or_graph: torch.fx.GraphModule | torch.fx.Graph) -> None:
   Args:
     gm_or_graph: The FX GraphModule or Graph to transform.
   """
-  if not _ENABLE_REASSOCIATE_NORM_WEIGHTS.value:
+  if not _is_reassociate_norm_weights_enabled():
     return
 
   gm, graph = _normalize_gm_and_graph(gm_or_graph)

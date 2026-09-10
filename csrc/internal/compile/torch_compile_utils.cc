@@ -32,4 +32,15 @@ bool PyGetMaterializeCollectiveTensorsEnvVarOnce() {
   return env_value;
 }
 
+bool PyGetReassociateNormWeightsEnvVarOnce() {
+  static const bool env_value = []() {
+    const auto& raw_env_value =
+        GetEnvOnce<kTorchTpuInternalEnableReassociateNormWeightsEnvVar>();
+    return !raw_env_value.has_value() ||
+           (*raw_env_value != "0" &&
+            !absl::EqualsIgnoreCase(*raw_env_value, "false"));
+  }();
+  return env_value;
+}
+
 }  // namespace torch_tpu
