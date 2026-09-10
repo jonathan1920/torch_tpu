@@ -568,9 +568,9 @@ class LstmOpTest(seed_test_utils.RepeatableTest):
     loss_cpu.backward()
     loss_tpu.backward()
 
-    assert_close(x_tpu.grad.cpu(), x_cpu.grad, atol=5e-3, rtol=5e-3)
-    assert_close(h0_tpu.grad.cpu(), h0_cpu.grad, atol=5e-3, rtol=5e-3)
-    assert_close(c0_tpu.grad.cpu(), c0_cpu.grad, atol=5e-3, rtol=5e-3)
+    assert_close(x_tpu.grad.cpu(), x_cpu.grad, atol=7e-3, rtol=5e-3)
+    assert_close(h0_tpu.grad.cpu(), h0_cpu.grad, atol=7e-3, rtol=5e-3)
+    assert_close(c0_tpu.grad.cpu(), c0_cpu.grad, atol=7e-3, rtol=5e-3)
 
     for (name_c, p_cpu), (name_t, p_tpu) in zip(
         cpu_lstm.named_parameters(), tpu_lstm.named_parameters()

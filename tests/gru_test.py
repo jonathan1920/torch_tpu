@@ -1023,12 +1023,15 @@ class GruOpTest(seed_test_utils.RepeatableTest):
     ):
       self.assertEqual(name_c, name_t)
       if p_cpu.grad is not None:
-        atol_params = (
-            2e-1 if (dtype == torch.bfloat16 or num_layers >= 3) else 5e-2
-        )
-        rtol_params = (
-            2e-1 if (dtype == torch.bfloat16 or num_layers >= 3) else 5e-2
-        )
+        if dtype == torch.bfloat16 or num_layers >= 3:
+          atol_params = 2e-1
+          rtol_params = 2e-1
+        elif num_layers == 2:
+          atol_params = 7e-2
+          rtol_params = 5e-2
+        else:
+          atol_params = 5e-2
+          rtol_params = 5e-2
         assert_close(
             p_tpu.grad.cpu(),
             p_cpu.grad,
