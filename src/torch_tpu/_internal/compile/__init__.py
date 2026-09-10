@@ -57,6 +57,11 @@ if hasattr(aot_utils, "register_graphsafe_rng_device_type"):
 # pylint: disable=protected-access
 if hasattr(torch._dynamo.config, "trace_autograd_ops"):
   torch._dynamo.config.trace_autograd_ops = True
+# Disables PyTorch Dynamo's default graph break on RNN, LSTM, and GRU modules,
+# allowing Dynamo to trace recurrent layers into aten::lstm and aten::gru nodes
+# for lowering to TorchTPU's StableHLO kernels.
+if hasattr(torch._dynamo.config, "allow_rnn"):
+  torch._dynamo.config.allow_rnn = True
 # pylint: enable=protected-access
 
 

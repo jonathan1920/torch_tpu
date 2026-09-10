@@ -52,6 +52,11 @@ _torch_compile = torch.compile
 if not hasattr(torch.backends, "tpu"):
   torch.backends.tpu = _tpu_backend_config._TpuBackendConfig()  # pyrefly: ignore[missing-attribute]
 
+# Enable tracing through recurrent layers (RNN, LSTM, GRU) in Dynamo to avoid
+# graph breaks and leverage TorchTPU's fused StableHLO kernels.
+if hasattr(torch._dynamo.config, "allow_rnn"):
+  torch._dynamo.config.allow_rnn = True
+
 
 def _get_default_backend_impl(example_inputs) -> backend_registry.CompilerFn:
   """Checks for TPU and returns the appropriate backend function.
