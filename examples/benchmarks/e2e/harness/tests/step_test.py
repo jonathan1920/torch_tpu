@@ -455,6 +455,109 @@ class StepperTypeTest(seed_test_utils.RepeatableTest):
     self.assertGreaterEqual(m.post_warmup_step_time_seconds, 0.0)
     self.assertGreater(m.e2e_wall_time_seconds, 0.0)
 
+  def test_decode_safe_get_helper(self):
+    # Object with first attribute present
+    class ConfigA:
+      num_attention_heads = 8
+      n_head = 4
+
+    self.assertEqual(
+        decode._safe_get(ConfigA(), "num_attention_heads", "n_head"), 8
+    )
+
+    # Object with only second attribute present
+    class ConfigB:
+      n_head = 4
+
+    self.assertEqual(
+        decode._safe_get(ConfigB(), "num_attention_heads", "n_head"), 4
+    )
+
+    # Dict object
+    dict_cfg = {"num_heads": 6}
+    self.assertEqual(
+        decode._safe_get(dict_cfg, "num_attention_heads", "num_heads"), 6
+    )
+
+    # Missing attributes or None object
+    self.assertIsNone(decode._safe_get(ConfigB(), "nonexistent"))
+    self.assertIsNone(decode._safe_get(None, "foo", "bar"))
+
+  def test_decode_stepper_config_aliases(self):
+    ops = self._ops()
+
+    # 1. Config with n_head / n_embd (GPT-2 style)
+    cfg_gpt2 = transformers.GPT2Config(
+        vocab_size=16,
+        n_head=4,
+        n_embd=64,
+        n_layer=2,
+    )
+    model_gpt2 = mock.MagicMock(config=cfg_gpt2, dtype=torch.bfloat16)
+    x = torch.randint(0, 16, (2, 8), device=ops.device)
+
+    stepper_gpt2 = decode.DecodeStepper(output_tokens=4, dynamism=True)
+    stepper_gpt2.init_with_benchmark_args(model_gpt2, (), {"input_ids": x})
+    self.assertEqual(stepper_gpt2.num_heads, 4)
+    self.assertEqual(stepper_gpt2.head_dim, 16)  # 64 // 4
+
+    # 2. Config with num_heads / d_model / d_kv (T5 / other style)
+    cfg_t5 = transformers.T5Config(
+        vocab_size=16,
+        num_heads=8,
+        d_model=128,
+        d_kv=32,
+        num_layers=2,
+    )
+    model_t5 = mock.MagicMock(config=cfg_t5, dtype=torch.float32)
+    stepper_t5 = decode.DecodeStepper(output_tokens=4, dynamism=True)
+    stepper_t5.init_with_benchmark_args(model_t5, (), {"input_ids": x})
+    self.assertEqual(stepper_t5.num_heads, 8)
+    self.assertEqual(stepper_t5.head_dim, 32)
+
+    # 3. Multimodal / nested text_config (object and dict)
+    nested_text_cfg = transformers.LlamaConfig(
+        vocab_size=16,
+        num_attention_heads=16,
+        num_key_value_heads=4,
+        hidden_size=1024,
+        num_hidden_layers=2,
+    )
+    nested_text_cfg.head_dim = 64
+    root_cfg = mock.MagicMock(text_config=nested_text_cfg)
+    root_cfg.get_text_config = mock.MagicMock(return_value=nested_text_cfg)
+    model_multimodal = mock.MagicMock(config=root_cfg, dtype=torch.bfloat16)
+    stepper_mm = decode.DecodeStepper(output_tokens=4, dynamism=True)
+    stepper_mm.init_with_benchmark_args(model_multimodal, (), {"input_ids": x})
+    self.assertEqual(stepper_mm.num_heads, 4)
+    self.assertEqual(stepper_mm.head_dim, 64)
+
+    # 4. Multimodal with dictionary text_config
+    dict_text_cfg = {
+        "num_attention_heads": 8,
+        "num_key_value_heads": 2,
+        "head_dim": 32,
+        "hidden_size": 512,
+    }
+    root_dict_cfg = transformers.PretrainedConfig(num_hidden_layers=2)
+    root_dict_cfg.text_config = dict_text_cfg
+    root_dict_cfg.get_text_config = mock.MagicMock(
+        return_value=transformers.PretrainedConfig(num_hidden_layers=2)
+    )
+    model_dict = mock.MagicMock(config=root_dict_cfg, dtype=torch.bfloat16)
+    stepper_dict = decode.DecodeStepper(output_tokens=4, dynamism=True)
+    stepper_dict.init_with_benchmark_args(model_dict, (), {"input_ids": x})
+    self.assertEqual(stepper_dict.num_heads, 2)
+    self.assertEqual(stepper_dict.head_dim, 32)
+
+    # 5. Fallback defaults when all config attributes are absent
+    empty_cfg = transformers.PretrainedConfig(num_hidden_layers=1)
+    model_empty = mock.MagicMock(config=empty_cfg, dtype=torch.bfloat16)
+    stepper_empty = decode.DecodeStepper(output_tokens=4, dynamism=True)
+    stepper_empty.init_with_benchmark_args(model_empty, (), {"input_ids": x})
+    self.assertEqual(stepper_empty.num_heads, 1)
+    self.assertEqual(stepper_empty.head_dim, 1)
+
 
 if __name__ == "__main__":
   absltest.main()

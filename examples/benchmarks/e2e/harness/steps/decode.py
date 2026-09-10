@@ -21,6 +21,17 @@ from examples.benchmarks.e2e.harness.steps import common
 from transformers import cache_utils
 
 
+def _safe_get(obj: Any, *attr_names: str) -> Any:
+  """Safely retrieves the first non-None attribute or dict key from obj."""
+  if obj is None:
+    return None
+  for name in attr_names:
+    val = obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+    if val is not None:
+      return val
+  return None
+
+
 class DecodeStepper(common.BaseStepper):
 
   def __init__(self, output_tokens: int = 16, dynamism: bool = False):
@@ -51,33 +62,19 @@ class DecodeStepper(common.BaseStepper):
     self.prompt_len = self.input_ids.shape[1]
 
     model_config = getattr(self._model, "config")  # pytype: disable=attribute-error
-    cfg = getattr(model_config, "text_config", None) or model_config
+    cfg = _safe_get(model_config, "text_config") or model_config
 
     num_attn_heads = (
-        getattr(cfg, "num_attention_heads", None)
-        or getattr(cfg, "n_head", None)
-        or getattr(cfg, "num_heads", None)
-        or 1
+        _safe_get(cfg, "num_attention_heads", "n_head", "num_heads") or 1
     )
-    hidden_size = (
-        getattr(cfg, "hidden_size", None)
-        or getattr(cfg, "n_embd", None)
-        or getattr(cfg, "d_model", None)
-        or 0
-    )
-    head_dim = (
-        getattr(cfg, "head_dim", None)
-        or getattr(cfg, "head_size", None)
-        or getattr(cfg, "d_kv", None)
-    )
+    hidden_size = _safe_get(cfg, "hidden_size", "n_embd", "d_model") or 0
+    head_dim = _safe_get(cfg, "head_dim", "head_size", "d_kv")
     if head_dim is None and num_attn_heads > 0:
       head_dim = hidden_size // num_attn_heads
     self.head_dim = head_dim or 1
 
-    num_heads = (
-        getattr(cfg, "num_key_value_heads", None)
-        or getattr(cfg, "num_kv_heads", None)
-        or getattr(cfg, "n_head_kv", None)
+    num_heads = _safe_get(
+        cfg, "num_key_value_heads", "num_kv_heads", "n_head_kv"
     )
     if num_heads is None:
       num_heads = num_attn_heads
