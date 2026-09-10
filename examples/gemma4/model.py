@@ -369,6 +369,14 @@ class Gemma4Attention(nn.Module):
           attn_mask = swa_mask
         is_causal = False
 
+      # PyTorch SDPA on CUDA expects float attention mask dtype to match query_states.
+      if (
+          attn_mask is not None
+          and attn_mask.dtype != torch.bool
+          and attn_mask.dtype != query_states.dtype
+      ):
+        attn_mask = attn_mask.to(query_states.dtype)
+
       attn_output = F.scaled_dot_product_attention(
           query_states,
           key_states,

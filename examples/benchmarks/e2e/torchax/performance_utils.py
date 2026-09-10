@@ -21,6 +21,7 @@ from typing import Any
 
 from absl import logging
 import jax
+from jax import numpy as jnp
 import numpy as np
 import optax
 import torch
@@ -48,6 +49,38 @@ def _patched_to_copy(self, the_tensor, new_dtype, new_device):
 
 
 torchax.tensor.Environment._to_copy = _patched_to_copy
+# Disable torch._check() in Hugging Face transformers to prevent calling .item()
+# on symbolic/traced tensors during JAX JIT compilation in TorchAX.
+os.environ["TRANSFORMERS_DISABLE_TORCH_CHECK"] = "1"
+
+
+# Register aten::_is_all_true and aten::_is_any_true lowering using JAX jnp.all/jnp.any
+# required by multimodal models (e.g. LLaVA) during TorchAX tracing.
+def _aten_is_all_true(self):
+  return jnp.all(self)
+
+
+def _aten_is_any_true(self):
+  return jnp.any(self)
+
+
+_ops_reg = getattr(torchax.tensor, "ops_registry", None)
+if _ops_reg is not None:
+  for _op_target in [
+      getattr(torch.ops.aten, "_is_all_true", None),
+      getattr(getattr(torch.ops.aten, "_is_all_true", None), "default", None),
+  ]:
+    if _op_target is not None:
+      _ops_reg.register_torch_dispatch_op(_op_target, _aten_is_all_true)
+
+  for _op_target in [
+      getattr(torch.ops.aten, "_is_any_true", None),
+      getattr(getattr(torch.ops.aten, "_is_any_true", None), "default", None),
+  ]:
+    if _op_target is not None:
+      _ops_reg.register_torch_dispatch_op(_op_target, _aten_is_any_true)
+
+torchax.default_env().load_ops()
 
 log_utils.log_to_stderr()
 

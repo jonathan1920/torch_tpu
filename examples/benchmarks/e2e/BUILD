@@ -154,6 +154,7 @@ torch_tpu_py_test(
     linking_mode = "static",
     main = "model_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
+    notest_oss = "Benchmarks have a separate workflow.",
     shard_count = 50,
     strict = True,
     tags = if_oss(

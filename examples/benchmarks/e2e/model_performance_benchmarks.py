@@ -377,8 +377,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gemma_4_26b_a4b_ragged_moe_12_layers_forward(self, run_mode):
     """Tests the forward pass of Gemma-4-26B-A4B (12 Layers) with Ragged MoE."""
+    # Ragged MoE custom kernel is not currently lowered/supported in TorchAX.
     if self._is_torchax_backend():
-      self.skipTest("TorchAX does not support distributed tests yet.")
+      self.skipTest("Not supported on TorchAX: ragged MoE kernel")
 
     def modify_config_hook(config):
       if hasattr(config, "text_config"):
@@ -594,9 +595,12 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       self.skipTest(
           "Gemma 4 custom standalone SWA is not supported on TorchAX."
       )
+    # Enabled on B200_1 after resolving PyTorch SDPA attention mask float
+    # dtype mismatch with query_states in gemma4/model.py.
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.INTERNAL_MODEL,
         run_mode=run_mode,
@@ -640,8 +644,18 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_llava_7b_forward(self, run_mode):
     """Tests the forward pass of LLaVA-1.5-7B."""
-    # FIXME: LLaVA requires multi-modal input dictionary key mapping (pixel_values and image_position_ids).
-    self.skipTest("LLaVA requires specialized multimodal input builder.")
+
+    # LLaVA-1.5-7B has an embedding table resized to 32,064 tokens in its checkpoint.
+    # Setting vocab_size >= 32064 prevents out-of-bounds indices during the CUDA
+    # vectorized gather embedding kernel.
+    def modify_llava_config(config):
+      if hasattr(config, "text_config"):
+        config.text_config.vocab_size = max(
+            getattr(config.text_config, "vocab_size", 32000), 32064
+        )
+      config.vocab_size = max(getattr(config, "vocab_size", 32000), 32064)
+      return config
+
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
@@ -652,8 +666,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="liuhaotian/llava-v1.5-7b",
-            sequence_length=512,
+            sequence_length=1024,
             batch_size=1,
+            custom_kwargs={"modify_config_hook": modify_llava_config},
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         eval_factory=benchmark_function_db.huggingface_eval_factory,
@@ -663,8 +678,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_clip_base_forward(self, run_mode):
     """Tests the forward pass of CLIP-ViT-Base."""
-    # FIXME: CLIP dual-encoder architecture requires both text (input_ids) and vision (pixel_values) inputs.
-    self.skipTest("CLIP requires dual-modality (text+vision) input generator.")
+    # Dual-modality model using text and pixel_values vision inputs.
+    # sequence_length is set to 77 to match CLIP's maximum positional embedding context.
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
@@ -675,7 +690,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="openai/clip-vit-base-patch16",
-            sequence_length=512,
+            sequence_length=77,
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
@@ -707,8 +722,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_siglip_base_forward(self, run_mode):
     """Tests the forward pass of SigLIP-Base."""
-    # FIXME: SigLIP vision-language model requires pixel_values tensor input.
-    self.skipTest("SigLIP requires vision pixel_values input generator.")
+    # Dual-modality model using text and pixel_values vision inputs.
+    # sequence_length is set to 64 to match SigLIP's text positional embedding context.
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
@@ -719,7 +734,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="google/siglip-base-patch16-224",
-            sequence_length=512,
+            sequence_length=64,
             batch_size=1,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
@@ -772,8 +787,15 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_swin_base_forward(self, run_mode):
     """Tests the forward pass of Swin-Base."""
-    # TODO: b/546708345 - Re-enable once the bug is fixed.
-    if run_mode == common.RunMode.COMPILED:
+    # TODO: b/546708345 - Re-enable on TPU once the bug is fixed.
+    # b/546708345: Swin uses CPU tensors in window attention indexing which crashes
+    # the native TorchTPU compiler. CUDA Inductor (GPU) and JAX (TorchAX) compile
+    # and run cleanly, so the compile skip is strictly scoped to TorchTPU on TPU.
+    if (
+        common.PLATFORM.value == common.Platform.GFC_1X1X1
+        and run_mode == common.RunMode.COMPILED
+        and not self._is_torchax_backend()
+    ):
       self.skipTest(
           "Swin Transformer uses cpu tensors for some operations which crashes"
           " torchtpu compile."
@@ -799,8 +821,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_segformer_b2_forward(self, run_mode):
     """Tests the forward pass of SegFormer-B2."""
-    # FIXME: SegFormer vision encoder requires pixel_values image tensor input.
-    self.skipTest("SegFormer requires vision pixel_values input generator.")
+    # SegFormer vision encoder uses pixel_values image tensor inputs generated
+    # by huggingface_llm_model_builder.
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
@@ -845,8 +867,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_whisper_base_forward(self, run_mode):
     """Tests the forward pass of Whisper-Base."""
-    # FIXME: Whisper speech-to-text encoder requires input_features audio spectrogram input.
-    self.skipTest("Whisper requires audio input_features generator.")
+    # Whisper speech-to-text encoder requires audio spectrogram features (input_features)
+    # constructed via whisper_model_builder with batch_size=16 and sequence_length=448.
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
@@ -857,10 +879,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="openai/whisper-base",
-            sequence_length=512,
-            batch_size=1,
+            sequence_length=448,
+            batch_size=16,
         ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        model_and_input_factory=model_utils.whisper_model_builder,
         eval_factory=benchmark_function_db.huggingface_eval_factory,
     )
     self.run_performance_benchmark_test(config, _HF_WHISPER_BASE_BENCHMARK_NAME)
@@ -1018,9 +1040,12 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       self.skipTest(
           "Gemma 4 custom standalone SWA is not supported on TorchAX."
       )
+    # Enabled on B200_1 after resolving PyTorch SDPA attention mask float
+    # dtype mismatch with query_states in gemma4/model.py.
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.INTERNAL_MODEL,
         run_mode=run_mode,
@@ -1328,8 +1353,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gpt_oss_20b_train(self, run_mode):
     """Tests the train pass of GPT-OSS-20B."""
-    # TODO(b/510886286): Reenable after fix.
-    self.skipTest("Assert async not supported yet.")
+    # Training pass enabled on TPU and GPU following the _assert_async stub in CL 912363687.
+    # Skipped on TorchAX due to missing grouped_mm op lowering.
     if self._is_torchax_backend():
       self.skipTest("Missing grouped_mm op for torchax backend.")
 
@@ -1386,8 +1411,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gpt_oss_120b_4_layers_train(self, run_mode):
     """Tests the train pass of GPT-OSS-20B."""
-    # TODO(b/510886286): Reenable after fix.
-    self.skipTest("Assert async not supported yet.")
+    # Training pass enabled on TPU and GPU following the _assert_async stub in CL 912363687.
+    # Skipped on TorchAX due to missing grouped_mm op lowering.
     if self._is_torchax_backend():
       self.skipTest("Missing grouped_mm op for torchax backend.")
 
@@ -1796,8 +1821,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_detr_resnet_50_forward(self, run_mode):
     """Tests the forward pass of DETR ResNet-50."""
-    if self._is_torchax_backend():
-      self.skipTest("Not supported on TorchAX")
+    # DETR ResNet-50 is supported and verified on TorchTPU, TorchAX, and GPU B200.
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
