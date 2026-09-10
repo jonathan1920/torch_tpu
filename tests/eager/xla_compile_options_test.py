@@ -34,7 +34,7 @@ class XlaCompileOptionsTest(
   def setUp(self):
     # Pop any env vars that affect global eager mode default.
     # See go/tt-knobs#eager-mode.
-    os.environ.pop("TPU_LAUNCH_BLOCKING", None)
+    os.environ.pop("TORCH_TPU_LAUNCH_BLOCKING", None)
     os.environ.pop("TORCH_TPU_DEFER_AND_FUSE", None)
 
     if "TEST_UNDECLARED_OUTPUTS_DIR" not in os.environ:
