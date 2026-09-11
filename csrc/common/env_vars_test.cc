@@ -16,6 +16,7 @@
 
 #include "csrc/common/env_vars.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -75,13 +76,13 @@ TEST(EnvVarsTest, Tier2CompilationCacheWarnsOnce) {
   EXPECT_TRUE(warnings.messages().empty());
 
   // First call should trigger the warning.
-  GetEnvOnce<kTorchTpuTier2CompilationCacheEnvVar>();
+  EXPECT_TRUE(GetEnvOnce<kTorchTpuTier2CompilationCacheEnvVar>().has_value());
   EXPECT_THAT(warnings.messages(),
               ElementsAre(ContainsRegex(
                   "TORCH_TPU_TIER2_COMPILATION_CACHE .* experimental")));
 
   // Second call should NOT trigger another warning.
-  GetEnvOnce<kTorchTpuTier2CompilationCacheEnvVar>();
+  EXPECT_TRUE(GetEnvOnce<kTorchTpuTier2CompilationCacheEnvVar>().has_value());
   EXPECT_EQ(warnings.messages().size(), 1);
 }
 
@@ -91,11 +92,37 @@ TEST(EnvVarsTest, InternalDisableInplaceBufferDonationNoWarning) {
   WarningCapture warnings;
   EXPECT_TRUE(warnings.messages().empty());
 
-  const auto& val =
-      GetEnvOnce<kTorchTpuInternalDisableInplaceBufferDonationEnvVar>();
+  const auto val =
+      GetBooleanEnvOnce<kTorchTpuInternalDisableInplaceBufferDonationEnvVar>();
   EXPECT_TRUE(val.has_value());
-  EXPECT_EQ(*val, "1");
+  EXPECT_TRUE(*val);
   EXPECT_TRUE(warnings.messages().empty());
+}
+
+TEST(EnvVarsTest, GetBooleanEnvOnceUnsetReturnsNullopt) {
+  unsetenv(kTorchTpuInternalSplitRngStateUpdate);
+  EXPECT_EQ(GetBooleanEnvOnce<kTorchTpuInternalSplitRngStateUpdate>(),
+            std::nullopt);
+}
+
+TEST(EnvVarsTest, GetBooleanEnvOnceParsesFalseFromZero) {
+  setenv(kTpuDeferAndFuse, "0", 1);
+  EXPECT_EQ(GetBooleanEnvOnce<kTpuDeferAndFuse>(), false);
+}
+
+TEST(EnvVarsTest, GetBooleanEnvOnceParsesTrueFromString) {
+  setenv(kTpuLaunchBlocking, "true", 1);
+  EXPECT_EQ(GetBooleanEnvOnce<kTpuLaunchBlocking>(), true);
+}
+
+TEST(EnvVarsTest, GetBooleanEnvOnceParsesFalseFromString) {
+  setenv(kTorchTpuDeferAndFuseEnvVar, "false", 1);
+  EXPECT_EQ(GetBooleanEnvOnce<kTorchTpuDeferAndFuseEnvVar>(), false);
+}
+
+TEST(EnvVarsTest, GetBooleanEnvOnceReturnsNulloptOnInvalidValue) {
+  setenv(kTorchTpuLaunchBlockingEnvVar, "invalid_boolean", 1);
+  EXPECT_EQ(GetBooleanEnvOnce<kTorchTpuLaunchBlockingEnvVar>(), std::nullopt);
 }
 
 }  // namespace
