@@ -41,6 +41,18 @@ _REQUIRES_GPU_SM90 = "requires-gpu-sm90"
 # TODO: change this back to 16 after the OSS v5 worker pool is back to normal.
 _OSS_SAMPLE_LIMIT = "--max_samples_per_op_dtype=5"
 
+# Knob for controlling how many tests to include in the OSS presubmit build.
+# Set this to True to skip less important tests in OSS presubmit (they
+# will still run in postsubmit).
+_OSS_PRESUBMIT_OVERLOADED = False
+
+# This can be used as the value for the nopresubmit_oss parameter in
+# torch_tpu_*_test to skip the test in OSS presubmit if and only if
+# the OSS presubmit is overloaded.
+_WHEN_OSS_PRESUBMIT_OVERLOADED = (
+    "This test is lower-priority and thus skipped in presubmit." if _OSS_PRESUBMIT_OVERLOADED else None
+)
+
 torch_tpu_py_library(
     name = "oss_utils",
     testonly = True,
@@ -361,6 +373,8 @@ torch_tpu_py_test(
         ["--max_samples_per_op_dtype=20"],
     ),
     main = "ops_test.py",
+    # Skip this in OSS presubmit when it's overloaded.
+    nopresubmit_oss = _WHEN_OSS_PRESUBMIT_OVERLOADED,
     run_on_accelerators = [
         "requires-tpu-v6e",
         "requires-tpu-v5lite",
@@ -598,6 +612,8 @@ torch_tpu_py_test(
         "ops_test_gpu_golden2.gz",
     ],
     main = "ops_test.py",
+    # Skip this in OSS presubmit when it's overloaded.
+    nopresubmit_oss = _WHEN_OSS_PRESUBMIT_OVERLOADED,
     run_on_accelerators = [
         "requires-tpu-v6e",
         "requires-tpu-v5lite",
@@ -636,6 +652,8 @@ torch_tpu_py_test(
         "ops_test_gpu_golden2.gz",
     ],
     main = "ops_test.py",
+    # Skip this in OSS presubmit when it's overloaded.
+    nopresubmit_oss = _WHEN_OSS_PRESUBMIT_OVERLOADED,
     run_on_accelerators = [
         "requires-tpu-v6e",
         "requires-tpu-v5lite",
@@ -678,6 +696,8 @@ torch_tpu_py_test(
         "ops_test_gpu_golden2.gz",
     ],
     main = "ops_test.py",
+    # Skip this in OSS presubmit when it's overloaded.
+    nopresubmit_oss = _WHEN_OSS_PRESUBMIT_OVERLOADED,
     run_on_accelerators = [
         "requires-tpu-v6e",
         "requires-tpu-v5lite",
