@@ -207,7 +207,11 @@ inline constexpr auto kEnvVarToStage =
         {kLocalRankEnvVar, SymbolStage::Stable()},
         {kMasterAddrEnvVar, std::nullopt},
         {kMasterPortEnvVar, std::nullopt},
-        {kNprocEnvVar, std::nullopt},
+        // Marked as Internal because it is an internal build/test runner
+        // environment variable used to adjust compilation thread concurrency,
+        // controlling TorchTPU internal behavior rather than serving as a
+        // public API contract.
+        {kNprocEnvVar, SymbolStage::InternalApi()},
         {kRankEnvVar, std::nullopt},
         {kTmpdirEnvVar, SymbolStage::Stable()},
         {kTorchShowCppStacktracesEnvVar, SymbolStage::Experimental()},
