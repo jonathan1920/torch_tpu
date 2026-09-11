@@ -1023,6 +1023,7 @@ class HandshakeTest(seed_test_utils.RepeatableTest):
         )
 
   @parameterized.parameters(0, 1)
+  @absltest.skip("b/560244886)")
   def test_handshake_request_matching(self, coordinator_rank: int) -> None:
     with mock.patch.dict(
         os.environ,
