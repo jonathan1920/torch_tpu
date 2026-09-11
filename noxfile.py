@@ -120,6 +120,13 @@ def test_ci_tools(session: nox.Session) -> None:
       "ci/tools/test_check_directory_layout.py",
       external=True,
   )
+  session.run(
+      "python3",
+      "-m",
+      "unittest",
+      "ci/tools/list_ci_tests_test.py",
+      external=True,
+  )
 
 
 # Use venv_backend="none" to allow running the script directly in the host.

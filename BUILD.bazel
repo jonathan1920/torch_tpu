@@ -28,7 +28,10 @@ package(
     default_visibility = PACKAGE_DEFAULT_VISIBILITY,
 )
 
-exports_files(["README.md"])
+exports_files([
+    ".bazelrc",
+    "README.md",
+])
 
 alias(
     name = "license",
