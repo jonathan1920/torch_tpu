@@ -1080,6 +1080,16 @@ def _is_diffusion(
 def _is_multimodal(
     model_type: str, arch_name: str, has_text_cfg: bool, has_vision_cfg: bool
 ) -> bool:
+  if any(
+      k in arch_name
+      for k in (
+          "imageclassification",
+          "imagesegmentation",
+          "depthestimation",
+          "objectdetection",
+      )
+  ):
+    return False
   return (
       any(k in model_type for k in _MULTIMODAL_MODEL_TYPES)
       or "clip" in arch_name
@@ -1113,6 +1123,7 @@ def _is_vision(
       or "resnet" in arch_name
       or "dinov2" in arch_name
       or "convnext" in arch_name
+      or "depth" in arch_name
       or (has_image_size and not has_vocab_size)
   )
 
@@ -1178,6 +1189,10 @@ def _determine_modality(config: Any) -> Modality:
       has_image_size = (
           config.get("image_size") is not None
           or config.get("num_channels") is not None
+          or _get_config_attr(
+              _get_config_attr(config, "backbone_config"), "image_size"
+          )
+          is not None
       )
       has_vocab_size = config.get("vocab_size") is not None
     else:
@@ -1191,6 +1206,10 @@ def _determine_modality(config: Any) -> Modality:
       has_image_size = (
           getattr(config, "image_size", None) is not None
           or getattr(config, "num_channels", None) is not None
+          or _get_config_attr(
+              _get_config_attr(config, "backbone_config"), "image_size"
+          )
+          is not None
       )
       has_vocab_size = getattr(config, "vocab_size", None) is not None
   else:
@@ -1206,6 +1225,13 @@ def _determine_modality(config: Any) -> Modality:
       or base_name.endswith(("-text", "_text"))
   ) and not has_vision_cfg:
     return Modality.TEXT
+
+  if (
+      arch_name.endswith(("visionmodel", "vision_model"))
+      or model_type.endswith(("_vision_model", "_vision"))
+      or base_name.endswith(("-vision", "_vision"))
+  ) and not has_text_cfg:
+    return Modality.VISION
 
   if _is_diffusion(model_type, class_name, arch_name, model_name):
     return Modality.DIFFUSION
@@ -1229,8 +1255,10 @@ def _determine_modality(config: Any) -> Modality:
 
 def _parse_image_size(config: Any, default_size: int = 224) -> int:
   """Extracts image_size as an integer from config or vision_config or encoder."""
-  vision_config = _get_config_attr(config, "vision_config") or _get_config_attr(
-      config, "encoder"
+  vision_config = (
+      _get_config_attr(config, "vision_config")
+      or _get_config_attr(config, "encoder")
+      or _get_config_attr(config, "backbone_config")
   )
   raw_val = _get_config_attr(vision_config, "image_size")
   if isinstance(raw_val, (list, tuple)) and raw_val:
@@ -1247,8 +1275,10 @@ def _parse_image_size(config: Any, default_size: int = 224) -> int:
 
 def _get_num_channels(config: Any, default_channels: int = 3) -> int:
   """Extracts num_channels from config or vision_config or encoder."""
-  vision_config = _get_config_attr(config, "vision_config") or _get_config_attr(
-      config, "encoder"
+  vision_config = (
+      _get_config_attr(config, "vision_config")
+      or _get_config_attr(config, "encoder")
+      or _get_config_attr(config, "backbone_config")
   )
   val = _safe_int(
       _get_config_attr(vision_config, "num_channels"), default=None, min_val=1

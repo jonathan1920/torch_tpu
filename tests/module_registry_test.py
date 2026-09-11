@@ -1320,6 +1320,65 @@ class ModuleRegistryTest(seed_test_utils.RepeatableTest):
         module_registry._extract_diffusers_subfolder_candidates({}), []
     )
 
+  def test_determine_modality_vision_and_multimodal(self):
+    self.assertEqual(
+        module_registry._determine_modality({
+            "model_type": "clip_vision_model",
+        }),
+        module_registry.Modality.VISION,
+    )
+    self.assertEqual(
+        module_registry._determine_modality({
+            "model_type": "siglip",
+            "architectures": ["SiglipForImageClassification"],
+            "text_config": {},
+            "vision_config": {"image_size": 224},
+        }),
+        module_registry.Modality.VISION,
+    )
+    self.assertEqual(
+        module_registry._determine_modality({
+            "model_type": "chmv2",
+            "architectures": ["CHMv2ForDepthEstimation"],
+            "backbone_config": {"image_size": 224},
+        }),
+        module_registry.Modality.VISION,
+    )
+    # Config object with dict backbone_config
+    cfg_obj = mock.MagicMock(
+        _class_name="",
+        _name_or_path="",
+        model_type="chmv2",
+        architectures=["CHMv2ForDepthEstimation"],
+        is_encoder_decoder=False,
+        text_config=None,
+        vision_config=None,
+        image_size=None,
+        num_channels=None,
+        backbone_config={"image_size": 224},
+        vocab_size=None,
+    )
+    self.assertEqual(
+        module_registry._determine_modality(cfg_obj),
+        module_registry.Modality.VISION,
+    )
+    self.assertEqual(
+        module_registry._determine_modality({
+            "model_type": "clip",
+            "text_config": {},
+            "vision_config": {},
+        }),
+        module_registry.Modality.MULTIMODAL,
+    )
+    # Multimodal architecture with 'Image' in name should remain MULTIMODAL
+    self.assertEqual(
+        module_registry._determine_modality({
+            "model_type": "blip",
+            "architectures": ["BlipForImageTextRetrieval"],
+        }),
+        module_registry.Modality.MULTIMODAL,
+    )
+
 
 if __name__ == "__main__":
   absltest.main()
