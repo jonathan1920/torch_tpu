@@ -10384,30 +10384,32 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase):
   def _embedding_dense_backward(
       self, scale_grad_by_freq: bool, padding_idx: int
   ):
-    grad_output = torch.randn(4, 2)
-    indices = torch.tensor([0, 1, 0, 2])
-    num_weights = 5
-    self.assert_close_tpu_vs_cpu(
-        lambda device: torch.ops.aten.embedding_dense_backward(
-            grad_output.to(device),
-            indices.to(device),
-            num_weights,
-            padding_idx,
-            scale_grad_by_freq,
-        ),
-    )
+    for dtype in [torch.float32, torch.bfloat16, torch.float16]:
+      with self.subTest(dtype=dtype):
+        grad_output = torch.randn(4, 2, dtype=dtype)
+        indices = torch.tensor([0, 1, 0, 2])
+        num_weights = 5
+        self.assert_close_tpu_vs_cpu(
+            lambda device: torch.ops.aten.embedding_dense_backward(
+                grad_output.to(device),
+                indices.to(device),
+                num_weights,
+                padding_idx,
+                scale_grad_by_freq,
+            ),
+        )
 
-    grad_output_3d = torch.randn(2, 2, 2)
-    indices_3d = torch.tensor([[0, 1], [0, 2]])
-    self.assert_close_tpu_vs_cpu(
-        lambda device: torch.ops.aten.embedding_dense_backward(
-            grad_output_3d.to(device),
-            indices_3d.to(device),
-            num_weights,
-            padding_idx,
-            scale_grad_by_freq,
-        ),
-    )
+        grad_output_3d = torch.randn(2, 2, 2, dtype=dtype)
+        indices_3d = torch.tensor([[0, 1], [0, 2]])
+        self.assert_close_tpu_vs_cpu(
+            lambda device: torch.ops.aten.embedding_dense_backward(
+                grad_output_3d.to(device),
+                indices_3d.to(device),
+                num_weights,
+                padding_idx,
+                scale_grad_by_freq,
+            ),
+        )
 
   def test_signbit_float_zeros(self):
     t = torch.tensor([-float("inf"), -1.0, -0.0, 0.0, 1.0, float("inf")])
