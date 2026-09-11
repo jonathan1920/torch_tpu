@@ -32,6 +32,11 @@ namespace torch_tpu {
 // Default is true.
 [[nodiscard]] bool PyGetMaterializeCollectiveTensorsEnvVarOnce();
 
+// Returns whether to enable reassociating normalization weights.
+//
+// Default is true.
+[[nodiscard]] bool PyGetReassociateNormWeightsEnvVarOnce();
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_CSRC_INTERNAL_COMPILE_TORCH_COMPILE_UTILS_H_

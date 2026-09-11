@@ -1439,6 +1439,10 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       "get_materialize_collective_tensors_env_value",
       PyGetMaterializeCollectiveTensorsEnvVarOnce,
       "Returns whether to materialize collective tensors.");
+  mod_with_error_handling.def(
+      "get_reassociate_norm_weights_env_value",
+      PyGetReassociateNormWeightsEnvVarOnce,
+      "Returns whether to reassociate normalization weights.");
 
   py::enum_<HandshakeStage>(m, "HandshakeStage")
       .value("OFF", HandshakeStage::kOff)
