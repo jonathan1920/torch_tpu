@@ -1167,8 +1167,10 @@ class DynamicDropoutTest(seed_test_utils.RepeatableTest):
       out = compiled(x)
       self.assertEqual(out.shape, (dim_size, 16))
       scale = 1.0 / (1.0 - 0.4)
-      mask = out != 0
-      utils.assert_close(out[mask], (x * scale)[mask])
+      out_cpu = out.cpu()
+      x_cpu = x.cpu()
+      mask = out_cpu != 0
+      utils.assert_close(out_cpu[mask], (x_cpu * scale)[mask])
 
   def test_native_dropout_dynamic_shape(self):
     class Model(torch.nn.Module):
@@ -1315,8 +1317,10 @@ class DynamicDropoutTest(seed_test_utils.RepeatableTest):
       out = compiled(x)
       self.assertEqual(out.shape, (b, s, 32))
       scale = 1.0 / (1.0 - 0.3)
-      mask = out != 0
-      utils.assert_close(out[mask], (x * scale)[mask])
+      out_cpu = out.cpu()
+      x_cpu = x.cpu()
+      mask = out_cpu != 0
+      utils.assert_close(out_cpu[mask], (x_cpu * scale)[mask])
 
 
 class DynamicErrorHandlingTest(seed_test_utils.RepeatableTest):
