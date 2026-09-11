@@ -20,7 +20,6 @@ from absl.testing import absltest
 import torch
 from torch import distributed as dist
 import torch.multiprocessing as mp
-from torch_tpu._internal import compile as tt_compile
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import test_utils as utils
 from torch_tpu._internal.distributed import multiprocessing
@@ -64,8 +63,9 @@ def run_ragged_dot_local_test(compile_test: bool = False) -> None:
     return torch.ops.tpu.ragged_dot(x, w, gs)
 
   if compile_test:
-    backend = tt_compile.TpuBackend()
-    compiled_op = torch.compile(op_fn, backend=backend)
+    compiled_op = torch.compile(
+        op_fn, backend="tpu", options={"serializable": False}
+    )
     out = compiled_op(h, weights, group_sizes)
   else:
     out = op_fn(h, weights, group_sizes)

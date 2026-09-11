@@ -46,7 +46,7 @@ class BackendSerializationTest(seed_test_utils.RepeatableTest):
     inputs_tpu = _backend.to_device(inputs, torch.device("tpu"))
     gm = dynamo_graph_capture_for_export(f)(*inputs_tpu)
 
-    backend = _backend.TpuBackend(enable_serialization=True)
+    backend = _backend.TpuBackend()
     compiled_fn = backend(gm, inputs_tpu)
 
     result = compiled_fn(*inputs_tpu)
@@ -97,8 +97,7 @@ class BackendSerializationTest(seed_test_utils.RepeatableTest):
     return dict(counters["aot_autograd"])
 
   def test_registered_backend_uses_aot_autograd_cache(self):
-    registered_backend = registry.lookup_backend("tpu")
-    self.assertTrue(getattr(registered_backend, "_enable_serialization", False))
+    self.assertIsNotNone(registry.lookup_backend("tpu"))
 
     with tempfile.TemporaryDirectory() as cache_dir:
       with temporary_cache_dir(cache_dir):
@@ -126,7 +125,7 @@ class BackendSerializationTest(seed_test_utils.RepeatableTest):
     )
     gm = dynamo_graph_capture_for_export(inplace_update)(*inputs_tpu)
 
-    backend = _backend.TpuBackend(enable_serialization=True)
+    backend = _backend.TpuBackend()
     compiled_fn = backend(gm, inputs_tpu)
 
     x = torch.randn(4, 4).to(torch.device("tpu"))
@@ -151,7 +150,7 @@ class BackendSerializationTest(seed_test_utils.RepeatableTest):
     def simple(x):
       return (x * 2,)
 
-    backend = _backend.TpuBackend(enable_serialization=True)
+    backend = _backend.TpuBackend()
 
     x_small = torch.randn(4, 4).to(torch.device("tpu"))
     gm_small = dynamo_graph_capture_for_export(simple)(x_small)
@@ -270,7 +269,7 @@ class BackendSerializationTest(seed_test_utils.RepeatableTest):
 
     x = torch.randn(4, 4).to(torch.device("tpu"))
     gm = dynamo_graph_capture_for_export(simple)(x)
-    backend = _backend.TpuBackend(enable_serialization=True)
+    backend = _backend.TpuBackend()
     compiled_fn = backend(gm, [x])
 
     entry = compiled_fn.serialize()

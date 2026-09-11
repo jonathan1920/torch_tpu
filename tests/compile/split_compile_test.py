@@ -115,7 +115,7 @@ class SplitCompileTest(seed_test_utils.RepeatableTest):
     graph.output((add_node, p_weight))
     gm = torch.fx.GraphModule(torch.nn.Module(), graph)
 
-    base_compiler = compiler.StaticCompiler(debug=True)
+    base_compiler = compiler.StaticCompiler()
     split_comp = split_compiler.SplitCompiler(base_compiler)
 
     weight = torch.ones((2, 2), device="tpu")

@@ -17,7 +17,6 @@ import queue
 
 from absl.testing import absltest
 import torch
-from torch_tpu._internal import compile as compile_lib
 from torch_tpu._internal.distributed import multiprocessing
 from tests import seed_test_utils
 
@@ -52,12 +51,15 @@ class LargeCheckpointedModel(torch.nn.Module):
 
 def run_and_measure(use_ac):
   device = torch.device("tpu")
-  tpu_backend = compile_lib.TpuBackend(debug=True)
   model = LargeCheckpointedModel().to(device)
   model.train()
   optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, capturable=True)
   criterion = torch.nn.MSELoss()
-  compiled = torch.compile(model, backend=tpu_backend)
+  compiled = torch.compile(
+      model,
+      backend="tpu",
+      options={"serializable": False},
+  )
 
   input_tensor = torch.randn(32, 512, 1024, device=device)
   target = torch.randn(32, 512, 1024, device=device)

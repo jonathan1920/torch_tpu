@@ -25,7 +25,6 @@ from absl import logging
 from absl.testing import absltest
 import torch
 import torch._inductor.config as inductor_config
-from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.utils import log_utils
@@ -135,7 +134,10 @@ def torch_compile_model(model):
     model = torch.compile(model)
   elif _DEVICE.value in ("tpu", "xla_cuda"):
     model = torch.compile(
-        model, dynamic=False, backend=torch_tpu_compile.TpuBackend()
+        model,
+        dynamic=False,
+        backend="tpu",
+        options={"serializable": False},
     )
   return model
 
@@ -144,13 +146,18 @@ def get_optimizer_step_fn(optimizer):
   if _DEVICE.value == "cuda":
     backend = "inductor"
   elif _DEVICE.value in ("tpu", "xla_cuda"):
-    backend = torch_tpu_compile.TpuBackend(debug=True)
+    backend = "tpu"
   else:
     raise ValueError(f"Unsupported device: {_DEVICE.value}")
 
   should_compile_optim = _COMPILE_OPTIM.value and _USE_TORCH_COMPILE.value
+  options = {"serializable": False} if backend == "tpu" else None
 
-  @torch.compile(backend=backend, disable=not should_compile_optim)
+  @torch.compile(
+      backend=backend,
+      disable=not should_compile_optim,
+      options=options,
+  )
   def step_fn():
     optimizer.step()
 

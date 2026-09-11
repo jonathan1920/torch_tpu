@@ -21,7 +21,6 @@ import torch
 from torch import distributed as dist
 import torch.distributed.tensor as dt
 import torch.multiprocessing as mp
-from torch_tpu._internal import compile as tt_compile
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import test_utils as utils
 from torch_tpu._internal.distributed import multiprocessing
@@ -71,8 +70,9 @@ def _replicate_tensor(
   local_tensor = torch.ones(*local_shape, dtype=torch.float32, device="tpu")
 
   if compiled:
-    backend = tt_compile.TpuBackend(debug=True)
-    func = torch.compile(shard_and_redistribute, backend=backend)
+    func = torch.compile(
+        shard_and_redistribute, backend="tpu", options={"serializable": False}
+    )
   else:
     func = shard_and_redistribute
 
