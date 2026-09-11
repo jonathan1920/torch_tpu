@@ -10702,6 +10702,88 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase):
 
     self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
 
+  def test_layer_norm_zero_variance(self):
+    """Verifies that constant inputs (zero variance) do not produce NaN."""
+    torch.manual_seed(42)
+    x = torch.full((2, 3, 16), 5.0, dtype=torch.float32)
+    weight = torch.randn(16, dtype=torch.float32)
+    bias = torch.randn(16, dtype=torch.float32)
+
+    def fn(device):
+      return torch.ops.aten.native_layer_norm(
+          x.to(device), [16], weight.to(device), bias.to(device), 1e-5
+      )
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
+  def test_layer_norm_large_mean(self):
+    """Verifies numerical stability when mean is large relative to variance."""
+    torch.manual_seed(42)
+    x = 100.0 + torch.randn(2, 4, 32, dtype=torch.float32)
+
+    def fn(device):
+      return torch.ops.aten.native_layer_norm(
+          x.to(device), [32], None, None, 1e-5
+      )
+
+    # Two-moment variance calculation (E[x^2] - E[x]^2) on TPU vs Welford on CPU
+    # has expected floating point round-off differences when mean is large.
+    self.assert_close_tpu_vs_cpu(fn, rtol=2e-3, atol=5e-3)
+
+  def test_layer_norm_single_element_normalized_shape(self):
+    """Verifies layer_norm when the normalized dimension size is 1."""
+    torch.manual_seed(42)
+    x = torch.randn(3, 4, 1, dtype=torch.float32)
+
+    def fn(device):
+      return torch.ops.aten.native_layer_norm(
+          x.to(device), [1], None, None, 1e-5
+      )
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
+  def test_layer_norm_zero_sized_batch(self):
+    """Verifies layer_norm with a zero-sized non-reduction dimension."""
+    x = torch.empty(0, 16, dtype=torch.float32)
+
+    def fn(device):
+      return torch.ops.aten.native_layer_norm(
+          x.to(device), [16], None, None, 1e-5
+      )
+
+    self.assert_close_tpu_vs_cpu(fn)
+
+  def test_layer_norm_non_contiguous(self):
+    """Verifies layer_norm with transposed non-contiguous inputs."""
+    torch.manual_seed(42)
+    x = torch.randn(2, 16, 8, dtype=torch.float32)
+
+    def fn(device):
+      x_transposed = x.to(device).transpose(1, 2)
+      return torch.ops.aten.native_layer_norm(
+          x_transposed, [16], None, None, 1e-5
+      )
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
+  @parameterized.parameters(
+      (True, False),  # weight only
+      (False, True),  # bias only
+  )
+  def test_layer_norm_partial_affine(self, has_weight, has_bias):
+    """Verifies layer_norm with only weight or only bias provided."""
+    torch.manual_seed(42)
+    x = torch.randn(2, 4, 8, dtype=torch.float32)
+    weight = torch.randn(8, dtype=torch.float32) if has_weight else None
+    bias = torch.randn(8, dtype=torch.float32) if has_bias else None
+
+    def fn(device):
+      w = weight.to(device) if weight is not None else None
+      b = bias.to(device) if bias is not None else None
+      return torch.ops.aten.native_layer_norm(x.to(device), [8], w, b, 1e-5)
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
   def test_max_pool2d_with_indices(self):
     """Tests nn.functional.max_pool2d_float32_sample54."""
     device = torch.device("tpu")
