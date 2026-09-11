@@ -664,8 +664,7 @@ class HandshakeServerClientBackendTest(seed_test_utils.RepeatableTest):
     """Tests communication between _ZMQServer and _ZMQClient with various address formats including IPv6."""
     port = portpicker.pick_unused_port()
     server = _ZMQServer(port=port)
-    with mock.patch.dict(os.environ, {"MASTER_ADDR": master_addr}):
-      client = _ZMQClient(port=port)
+    client = _ZMQClient(port=port, master_addr=master_addr)
 
     req = _make_request(rank=1, participating_ranks=[0, 1])
     client.send(req)
@@ -684,9 +683,9 @@ class HandshakeServerClientBackendTest(seed_test_utils.RepeatableTest):
       resp = client.recv()
       self.assertTrue(resp.success)
     finally:
-      loop.close()
       client.close()
       server.close()
+      loop.close()
 
 
 def test_wrapper(

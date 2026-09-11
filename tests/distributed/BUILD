@@ -861,9 +861,7 @@ torch_tpu_py_test(
     srcs = ["handshake_test.py"],
     shard_count = 8,
     tags = [
-        "noasan",  # TODO(b/497035517)
-        "nomsan",  # TODO(b/497035517)
-        "notsan",  # TODO(b/497035517)
+        "requires-mem:28g",
     ],
     deps = [
         ":distributed_utils",

@@ -1257,6 +1257,7 @@ class _ZMQClient:
       port: int,
       send_timeout_s: int | None = None,
       recv_timeout_s: int | None = None,
+      master_addr: str | None = None,
   ) -> None:
     """Initializes _ZMQClient and connects the DEALER socket.
 
@@ -1268,6 +1269,8 @@ class _ZMQClient:
       recv_timeout_s: Optional maximum duration in seconds for receive
         operations. If None, the receive timeout is not set on the socket (PyZMQ
         default is no timeout).
+      master_addr: Optional coordinator server address or hostname. If None,
+        defaults to the `MASTER_ADDR` environment variable or 'localhost'.
 
     Raises:
       ValueError: If `port` is invalid or if `send_timeout_s` /
@@ -1275,7 +1278,11 @@ class _ZMQClient:
     """
     _validate_port_number(port)
     self._port = port
-    self._master_addr = os.environ.get("MASTER_ADDR", "localhost")
+    self._master_addr = (
+        master_addr
+        if master_addr is not None
+        else os.environ.get("MASTER_ADDR", "localhost")
+    )
 
     self._context = zmq.Context()  # pyrefly: ignore[missing-attribute]
     self._socket = self._context.socket(zmq.DEALER)
