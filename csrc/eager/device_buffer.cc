@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -58,6 +59,13 @@
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
+
+bool IsPinnedHostBuffer(const xla::PjRtBuffer* absl_nullable buffer) {
+  if (buffer == nullptr || buffer->memory_space() == nullptr) {
+    return false;
+  }
+  return buffer->memory_space()->kind() == "pinned_host";
+}
 
 DeviceBufferList::Data::Data(bool placeholder)
     : placeholder_(placeholder), materialization_pending_(!placeholder) {
@@ -437,11 +445,15 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
 }
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreatePlaceholder(
-    Dimensions dimensions, mlir::ElementType element_type) {
+    Dimensions dimensions, mlir::ElementType element_type,
+    bool is_pinned_host) {
   TT_RETURN_IF_ERROR(ValidateTensorByteSize(dimensions, element_type));
   // Can't use make_shared because the constructor is private.
   auto device_buffer = std::shared_ptr<DeviceBufferList>(new DeviceBufferList(
       std::move(dimensions), element_type, /*placeholder=*/true));
+  if (is_pinned_host) {
+    device_buffer->set_is_pinned_host();
+  }
   return DeviceBufferRef(std::move(device_buffer), 0);
 }
 
@@ -604,6 +616,12 @@ absl::Span<const BoundedDynamicDimension> DeviceBufferList::dynamic_dimensions(
   return shapes_[index].dynamic_dimensions();
 }
 
+bool DeviceBufferList::is_pinned_host() const {
+  return is_pinned_host_->load();
+}
+
+void DeviceBufferList::set_is_pinned_host() { is_pinned_host_->store(true); }
+
 absl::StatusOr<DeviceBufferRef> DeviceBufferRef::Create(
     SharedDeviceBufferList device_buffer_list, int64_t index) {
   // Gracefully return an error on creation, but crash hard if the bounds check
@@ -641,6 +659,14 @@ absl::StatusOr<size_t> DeviceBufferRef::pjrt_buffer_size() const {
 
 [[nodiscard]] bool DeviceBufferRef::is_materialized() const {
   return device_buffer_list_->is_materialized();
+}
+
+bool DeviceBufferRef::is_pinned_host() const {
+  return device_buffer_list_->is_pinned_host();
+}
+
+void DeviceBufferRef::set_is_pinned_host() const {
+  device_buffer_list_->set_is_pinned_host();
 }
 
 [[nodiscard]] bool DeviceBufferRef::is_constant() const {

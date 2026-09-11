@@ -17,6 +17,7 @@
 #include "csrc/eager/materialize.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ATen/core/TensorBody.h"
@@ -45,7 +46,6 @@
 #include "csrc/ops/op_names.h"
 #include "csrc/ops/python_context.h"
 #include "csrc/pjrt/pjrt_state.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -237,6 +237,141 @@ TEST(MaterializeCommonTest, GetCompilationMode) {
             CompilationMode::kFastCompile);
   EXPECT_EQ(GetCompilationMode(EagerMode::kDeferNeverAndLaunchBlocking),
             CompilationMode::kFastCompile);
+}
+
+class PinnedHostPropagationTest : public testing::Test {
+ protected:
+  absl::StatusOr<DeviceBufferRef> CreateRoot() {
+    return CreateOp(OpName::kEmpty);
+  }
+
+  absl::StatusOr<DeviceBufferRef> CreateView(const DeviceBufferRef& input) {
+    return CreateOp(OpName::kView, {input});
+  }
+
+  absl::StatusOr<DeviceBufferRef> CreateComputeOp(
+      std::vector<DeviceBufferRef> inputs) {
+    return CreateOp(OpName::kAdd, std::move(inputs));
+  }
+
+ private:
+  absl::StatusOr<DeviceBufferRef> CreateOp(
+      OpName op_name, std::vector<DeviceBufferRef> inputs = {}) {
+    ScopedPythonContextCapturer capturer(op_name);
+    TT_ASSIGN_OR_RETURN(
+        const std::vector<DeviceBufferRef> refs,
+        DeviceBufferList::CreateDeferred(
+            op_name,
+            [](mlir::MlirBuilder&, absl::Span<mlir::MlirOp>) {
+              return DynamicMlirOpResults{};
+            },
+            std::move(inputs), OpParamCacheKeys::Empty(), {shape_}));
+    return refs[0];
+  }
+
+  const Shape shape_{Dimensions{10}, mlir::ElementType::F32};
+};
+
+// Connectivity graph:
+//
+//                 root (kEmpty)
+//               /      \
+//         (view)        (view)
+//           /              \
+//       view1              view2
+//          |               |
+//        (view)          (view)
+//          |               |
+//     view1_child     view2_child
+TEST_F(PinnedHostPropagationTest, TreeOfViews) {
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef root, CreateRoot());
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef view1, CreateView(root));
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef view1_child, CreateView(view1));
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef view2, CreateView(root));
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef view2_child, CreateView(view2));
+
+  EXPECT_FALSE(root.is_pinned_host());
+  EXPECT_FALSE(view1.is_pinned_host());
+  EXPECT_FALSE(view1_child.is_pinned_host());
+  EXPECT_FALSE(view2.is_pinned_host());
+  EXPECT_FALSE(view2_child.is_pinned_host());
+
+  // 1. Marking leaf view view1_child as pinned host propagates upstream to
+  // ancestors (view1, root) and dynamically to sibling views (view2,
+  // view2_child).
+  view1_child.set_is_pinned_host();
+
+  EXPECT_TRUE(view1_child.is_pinned_host());
+  EXPECT_TRUE(view1.is_pinned_host());
+  EXPECT_TRUE(root.is_pinned_host());
+  EXPECT_TRUE(view2.is_pinned_host());
+  EXPECT_TRUE(view2_child.is_pinned_host());
+
+  // 2. New views created from pinned buffers (root or sibling view) inherit the
+  // flag at creation.
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef new_view_from_root,
+                          CreateView(root));
+  EXPECT_TRUE(new_view_from_root.is_pinned_host());
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef new_view_from_view2,
+                          CreateView(view2));
+  EXPECT_TRUE(new_view_from_view2.is_pinned_host());
+}
+
+// Connectivity graph:
+//
+//                               root (kEmpty)
+//                             /   |    \       \
+//                       (view)  (view)  |     (kAdd)
+//                         /       |     |        \
+//                     view1     view2   |   root_compute_op
+//                       |         \     |
+//                     (kAdd)       \   /
+//                       |         (kAdd)
+//              view1_compute_op     |
+//                         multi_input_compute_op
+TEST_F(PinnedHostPropagationTest, ComputeOpIsolation) {
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef root, CreateRoot());
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef view1, CreateView(root));
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef view1_compute_op,
+                          CreateComputeOp({view1}));
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef view2, CreateView(root));
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef root_compute_op,
+                          CreateComputeOp({root}));
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef multi_input_compute_op,
+                          CreateComputeOp({root, view2}));
+
+  EXPECT_FALSE(root.is_pinned_host());
+  EXPECT_FALSE(view1.is_pinned_host());
+  EXPECT_FALSE(view1_compute_op.is_pinned_host());
+  EXPECT_FALSE(view2.is_pinned_host());
+  EXPECT_FALSE(root_compute_op.is_pinned_host());
+  EXPECT_FALSE(multi_input_compute_op.is_pinned_host());
+
+  // 1. Marking a non-metadata compute op (view1_compute_op) as pinned host
+  // marks itself, but does NOT propagate upstream to its parent view (view1) or
+  // root.
+  view1_compute_op.set_is_pinned_host();
+  EXPECT_TRUE(view1_compute_op.is_pinned_host());
+  EXPECT_FALSE(view1.is_pinned_host());
+  EXPECT_FALSE(root.is_pinned_host());
+
+  // 2. Marking view view1 as pinned host propagates upstream to root and
+  // sibling view view2, but does NOT propagate downstream to non-metadata
+  // compute ops (root_compute_op, multi_input_compute_op).
+  view1.set_is_pinned_host();
+  EXPECT_TRUE(view1.is_pinned_host());
+  EXPECT_TRUE(root.is_pinned_host());
+  EXPECT_TRUE(view2.is_pinned_host());
+  EXPECT_FALSE(root_compute_op.is_pinned_host());
+  EXPECT_FALSE(multi_input_compute_op.is_pinned_host());
+
+  // 3. New compute ops created from pinned buffers do not inherit the flag.
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef new_compute_op,
+                          CreateComputeOp({root}));
+  EXPECT_FALSE(new_compute_op.is_pinned_host());
+  TT_ASSERT_OK_AND_ASSIGN(const DeviceBufferRef new_multi_input_compute_op,
+                          CreateComputeOp({root, view2}));
+  EXPECT_FALSE(new_multi_input_compute_op.is_pinned_host());
 }
 
 }  // namespace

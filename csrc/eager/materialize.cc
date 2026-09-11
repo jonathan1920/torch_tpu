@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -36,6 +37,7 @@
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
@@ -313,6 +315,28 @@ MaterializationStages ProcessMaterializationTask(
   return ApplySplitMode(std::move(traversals), task.common, mlir_context);
 }
 
+absl::Status MarkPinnedHostOutputs(
+    absl::Span<const DeviceBufferRef> outputs,
+    const SharedLoadedExecutableWithMetadata& executable) {
+  TT_ASSIGN_OR_RETURN(
+      const auto output_memory_kinds,
+      executable->GetLoadedExecutable()->GetOutputMemoryKinds());
+
+  if (output_memory_kinds.empty()) {
+    return absl::OkStatus();
+  }
+
+  const auto& kinds = output_memory_kinds.front();
+  ABSL_DCHECK_EQ(outputs.size(), kinds.size());
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    if (kinds[i] == "pinned_host") {
+      outputs[i].set_is_pinned_host();
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 // Signals that a shutdown has been initiated.
 enum class ShutdownSentinel {};
 
@@ -466,6 +490,8 @@ class MaterializationWorker {
           DeviceBufferList::CreatePending(shape, device_index, stream_id));
       outputs.push_back(std::move(output_ref));
     }
+
+    TT_RETURN_IF_ERROR(MarkPinnedHostOutputs(outputs, executable));
     RecordBackgroundMaterialization(outputs);
 
     // Intentional copy on outputs; we need to both include them in the task

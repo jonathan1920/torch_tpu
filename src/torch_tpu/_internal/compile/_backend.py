@@ -36,6 +36,7 @@ import contextlib
 import dataclasses
 import functools
 import hashlib
+import operator
 import re
 import threading
 from typing import Any, TypeAlias, cast
@@ -139,6 +140,107 @@ def _raise_on_symint(
     )
 
   return _pytree.tree_map_only(torch.SymInt, _raise, x)
+
+
+def _is_ao_op(node: torch.fx.Node, op_name: str) -> bool:
+  """Returns whether `node` represents a torch.ops.ao.{op_name} operation."""
+  if node.op != "call_function":
+    return False
+
+  ao_op = getattr(getattr(torch.ops, "ao", None), op_name, None)
+  return (
+      ao_op is not None
+      and getattr(node.target, "_overloadpacket", node.target) == ao_op
+  )
+
+
+def _is_view_node(node: torch.fx.Node) -> bool:
+  """Returns whether `node` is an aliasing view or container unpack operation."""
+  if node.op != "call_function":
+    return False
+
+  is_container_unpack = node.target is operator.getitem
+  if is_container_unpack:
+    return True
+
+  is_view = getattr(node.target, "is_view", False)
+  if is_view:
+    return True
+
+  target_overload = getattr(node.target, "_overloadpacket", node.target)
+  is_unsafe_view = target_overload == getattr(
+      torch.ops.aten, "_unsafe_view", None
+  )
+  return is_unsafe_view
+
+
+def _extract_tensor_node(node: torch.fx.Node) -> torch.fx.Node | None:
+  """Extracts the input tensor node from positional args or kwargs."""
+  if node.args:
+    arg = node.args[0]
+    return arg if isinstance(arg, torch.fx.Node) else None
+
+  for key in ("tensor", "self", "input"):
+    val = node.kwargs.get(key)
+    if isinstance(val, torch.fx.Node):
+      return val
+
+  return None
+
+
+def _get_reload_source_placeholder(
+    node: torch.fx.Node | None,
+) -> torch.fx.Node | None:
+  """Unwraps views from a reload argument to find its source placeholder, if any."""
+  if node is None:
+    return None
+
+  visited = set()
+  current = node
+  while True:
+    if current in visited:
+      return None
+    visited.add(current)
+
+    if current.op == "placeholder":
+      return current
+
+    if _is_ao_op(current, "offload"):
+      return None
+
+    if _is_view_node(current):
+      next_node = _extract_tensor_node(current)
+      if next_node is None:
+        return None
+
+      current = next_node
+      continue
+
+    return None
+
+
+def _mark_pinned_host_inputs(
+    graph_module: torch.fx.GraphModule,
+    example_inputs: Sequence[Any],
+) -> None:
+  """Marks example inputs corresponding to offloaded activations."""
+  placeholders = []
+  reload_placeholders = set()
+  for node in graph_module.graph.nodes:
+    if node.op == "placeholder":
+      placeholders.append(node)
+    elif _is_ao_op(node, "reload"):
+      tensor_arg = _extract_tensor_node(node)
+      source_placeholder = _get_reload_source_placeholder(tensor_arg)
+      if source_placeholder is not None:
+        reload_placeholders.add(source_placeholder)
+
+  for node, example_input in zip(placeholders, example_inputs):
+    if isinstance(example_input, torch.Tensor) and (
+        compiler.is_pinned_host_tensor(example_input)
+        or node in reload_placeholders
+    ):
+      example_input._is_pinned_host = True
 
 
 @contextlib.contextmanager
@@ -771,6 +873,8 @@ class TpuBackend:
     Returns:
       A function that executes the compiled graph on the TPU.
     """
+    _mark_pinned_host_inputs(graph_module, example_inputs)
+
     fwd_or_bwd_str = "FORWARD" if is_fwd else "BACKWARD"
 
     _log_gm_and_inputs(
