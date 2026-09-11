@@ -15,6 +15,7 @@
 """Module to handle autoloading torch_tpu as torch.tpu."""
 
 import functools
+import importlib.metadata
 import os
 import sys
 import threading
@@ -110,26 +111,17 @@ def _default_tpu_compile(*args, **kwargs):
   return _torch_compile(*args, **kwargs)
 
 
-def _configure_native_scan_gate() -> None:
-  """Gates whether cumulative ops may emit the native scan emitter.
+def _set_libtpu_version() -> None:
+  """Passes the installed libtpu version to the C++ runtime."""
+  version = ""
+  try:
+    version = importlib.metadata.version("libtpu")
+  except importlib.metadata.PackageNotFoundError:
+    pass
 
-  Cumulative ops (cumsum/cumprod/cummax/cummin/logcumsumexp) lower to the native
-  scan emitter (chlo.ScanOp), which needs a libtpu new enough to compile it.
-  Internal builds always do; OSS pins a wheel that may not, so gate on the
-  libtpu version and fall back to the while-loop lowering otherwise
-  (b/529376045).
-
-  This runs in _init_device_impl() after libtpu.configure_library_path() has
-  already run in __init__.py, ensuring TPU_LIBRARY_PATH is set before importing
-  _internal.env.
-  """
   from torch_tpu._internal import env  # pylint: disable=g-import-not-at-top
-  from torch_tpu._internal import native_scan  # pylint: disable=g-import-not-at-top
 
-  env.set_native_scan_emitter_supported(
-      bool(env.IS_INTERNAL_TORCH_TPU)
-      or native_scan.libtpu_supports_native_scan()
-  )
+  env.set_libtpu_version(version)
 
 
 def _warn_if_unoptimized() -> None:
@@ -265,8 +257,8 @@ def _init_device_impl(device: str) -> torch.device:
   sys.modules["torch.tpu.profiler"] = profiler
   setattr(device_module, "profiler", profiler)
 
-  # Configure native scan gate for cumulative ops.
-  _configure_native_scan_gate()
+  # Pass installed libtpu version to C++ runtime if available.
+  _set_libtpu_version()
 
   # Warn if running with an unoptimized build.
   _warn_if_unoptimized()

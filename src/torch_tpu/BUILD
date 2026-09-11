@@ -66,7 +66,6 @@ torch_tpu_py_library(
         ":profiler",
         "//shims/torch:pytorch",
         "//src/torch_tpu/_internal:env",
-        "//src/torch_tpu/_internal:native_scan",
         "//src/torch_tpu/_internal/batch_transfer",  # buildcleaner: keep
         "//src/torch_tpu/_internal/compile",
         "//src/torch_tpu/_internal/compile:tpu_backend",

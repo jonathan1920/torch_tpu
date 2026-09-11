@@ -1,0 +1,106 @@
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "csrc/common/libtpu_version.h"
+
+#include <optional>
+
+#include "gtest/gtest.h"
+
+namespace torch_tpu {
+namespace {
+
+class LibtpuVersionTest : public testing::Test {
+ protected:
+  void SetUp() override { ResetLibtpuVersionForTesting(); }
+  void TearDown() override { ResetLibtpuVersionForTesting(); }
+};
+
+TEST_F(LibtpuVersionTest, InitialValueIsUnsetInFreshProcess) {
+  EXPECT_EQ(GetLibtpuVersion(), std::nullopt);
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.1.0"));
+}
+
+TEST_F(LibtpuVersionTest, SettingDifferentVersionFailsCheck) {
+  SetLibtpuVersion("0.1.0");
+  EXPECT_DEATH(SetLibtpuVersion("0.2.0"), "LibtpuVersion has already been set");
+}
+
+TEST_F(LibtpuVersionTest, SetAndGetVersion) {
+  SetLibtpuVersion("0.1.0");
+  EXPECT_EQ(GetLibtpuVersion(), "0.1.0");
+
+  // Re-setting to identical version should succeed.
+  SetLibtpuVersion("0.1.0");
+  EXPECT_EQ(GetLibtpuVersion(), "0.1.0");
+}
+
+TEST_F(LibtpuVersionTest, IsLibtpuVersionAtLeast) {
+  SetLibtpuVersion("0.1.0");
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.44"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.99"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.1.0"));
+  EXPECT_FALSE(IsLibtpuVersionAtLeast("0.1.1"));
+  EXPECT_FALSE(IsLibtpuVersionAtLeast("0.2.0"));
+}
+
+TEST_F(LibtpuVersionTest, PaddingZerosForFirstThreeComponents) {
+  SetLibtpuVersion("0.1");
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.1.0"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.1"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.99"));
+  EXPECT_FALSE(IsLibtpuVersionAtLeast("0.1.1"));
+
+  ResetLibtpuVersionForTesting();
+  SetLibtpuVersion("0.1.0");
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.1"));
+}
+
+TEST_F(LibtpuVersionTest, StableVersionPrecedenceOverNightly) {
+  // Stable 0.0.47 has precedence over 0.0.47 nightly pre-releases.
+  SetLibtpuVersion("0.0.47");
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.47.dev20260824+nightly"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.47"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.46"));
+  EXPECT_FALSE(IsLibtpuVersionAtLeast("0.0.48"));
+  EXPECT_FALSE(IsLibtpuVersionAtLeast("0.0.48.dev20260824+nightly"));
+
+  // Nightly 0.0.47 does not satisfy requirement for stable 0.0.47.
+  ResetLibtpuVersionForTesting();
+  SetLibtpuVersion("0.0.47.dev20260824+nightly");
+  EXPECT_FALSE(IsLibtpuVersionAtLeast("0.0.47"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.47.dev20260824+nightly"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.47.dev20260823+nightly"));
+  EXPECT_FALSE(IsLibtpuVersionAtLeast("0.0.47.dev20260825+nightly"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.46"));
+}
+
+TEST_F(LibtpuVersionTest, SetEmptyVersion) {
+  SetLibtpuVersion("");
+  EXPECT_EQ(GetLibtpuVersion(), "");
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.1.0"));
+}
+
+TEST_F(LibtpuVersionTest, ResetLibtpuVersionForTesting) {
+  SetLibtpuVersion("0.1.0");
+  EXPECT_EQ(GetLibtpuVersion(), "0.1.0");
+  ResetLibtpuVersionForTesting();
+  EXPECT_EQ(GetLibtpuVersion(), std::nullopt);
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.1.0"));
+}
+
+}  // namespace
+}  // namespace torch_tpu

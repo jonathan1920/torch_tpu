@@ -18,12 +18,13 @@
 
 #include <cstdint>
 #include <iterator>
+#include <string_view>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "csrc/common/error_utils.h"
-#include "csrc/common/native_scan_support.h"
+#include "csrc/common/libtpu_version.h"
 #include "csrc/ops/op_builder_utils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -43,6 +44,8 @@
 namespace torch_tpu {
 
 namespace {
+
+constexpr std::string_view kMinLibtpuVersionWithNativeScan = "0.0.44";
 
 mlir::Value GetScanDimSize(mlir::MlirBuilder& builder, mlir::MlirOp input,
                            const int64_t scan_dim) {
@@ -496,7 +499,8 @@ absl::StatusOr<DynamicMlirOpResults> BuildScanShlo(
   // to the while loop below when the compiler (libtpu) is too old to compile
   // the native scan emitter (b/529376045); the results are identical either
   // way.
-  if (options.is_associative && NativeScanEmitterSupported()) {
+  if (options.is_associative &&
+      IsLibtpuVersionAtLeast(kMinLibtpuVersionWithNativeScan)) {
     const ScanOptions emit_options = {.direction = options.direction,
                                       .should_squeeze = false,
                                       .is_associative = true};
@@ -564,7 +568,8 @@ absl::StatusOr<DynamicMlirOpResults> BuildScanShlo(
   // non-associative scans use the StableHLO while loop below. When the compiler
   // (libtpu) is too old to compile the native scan emitter, associative scans
   // also fall back to the while loop (b/529376045); the results are identical.
-  if (options.is_associative && NativeScanEmitterSupported()) {
+  if (options.is_associative &&
+      IsLibtpuVersionAtLeast(kMinLibtpuVersionWithNativeScan)) {
     return BuildAssociativeScanChlo(builder, scan_inputs, scan_dim,
                                     num_scan_inputs, carry_inits, output_inits,
                                     body_builder, options);

@@ -66,9 +66,25 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
-    name = "native_scan_support",
-    srcs = ["native_scan_support.cc"],
-    hdrs = ["native_scan_support.h"],
+    name = "libtpu_version",
+    srcs = ["libtpu_version.cc"],
+    hdrs = ["libtpu_version.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "libtpu_version_test",
+    srcs = ["libtpu_version_test.cc"],
+    deps = [
+        ":libtpu_version",
+        "//csrc/common:oss_test_main",
+    ],
 )
 
 torch_tpu_cc_library(

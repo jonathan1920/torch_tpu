@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "csrc/common/native_scan_support.h"
+#include "csrc/common/libtpu_version.h"
 #include "csrc/common/utils.h"
 #include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 
 namespace torch_tpu {
 
@@ -26,11 +27,8 @@ PYBIND11_MODULE(env, m) {
 #else
   m.attr("TORCH_TPU_IS_OPTIMIZED_BUILD") = false;
 #endif
-  // Gates whether cumulative ops emit the native scan emitter (chlo.ScanOp);
-  // set from Python at import time based on the libtpu version (b/529376045).
-  m.def("set_native_scan_emitter_supported", &SetNativeScanEmitterSupported,
-        pybind11::arg("supported"));
-  m.def("native_scan_emitter_supported", &NativeScanEmitterSupported);
+  m.def("set_libtpu_version", &SetLibtpuVersion, pybind11::arg("version"));
+  m.def("get_libtpu_version", &GetLibtpuVersion);
 }
 
 }  // namespace torch_tpu

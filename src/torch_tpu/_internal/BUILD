@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_library", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 licenses(["notice"])
@@ -30,7 +30,7 @@ pybind_extension(
     ],
     wrap_py_init = True,
     deps = [
-        "//csrc/common:native_scan_support",
+        "//csrc/common:libtpu_version",
         "//csrc/common:utils",
         "//shims/torch:torch_headers",
     ],
@@ -62,23 +62,6 @@ pybind_extension(
         "//shims/torch:torch_headers",
         "@com_google_absl//absl/flags:flag",
         "@xla//xla/pjrt:pjrt_client",
-    ],
-)
-
-torch_tpu_py_library(
-    name = "native_scan",
-    srcs = ["native_scan.py"],
-    visibility = ["//:__subpackages__"],
-)
-
-torch_tpu_py_test(
-    name = "native_scan_test",
-    srcs = ["native_scan_test.py"],
-    deps = [
-        ":native_scan",
-        "//shims/absl_py/testing:absltest",
-        "//src/torch_tpu",
-        "//tests:seed_test_utils",
     ],
 )
 

@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -33,7 +34,7 @@
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "csrc/common/error_utils.h"
-#include "csrc/common/native_scan_support.h"
+#include "csrc/common/libtpu_version.h"
 #include "csrc/common/status_test_utils.h"
 #include "csrc/ops/op_builder_utils.h"
 #include "csrc/ops/scan_builder.h"
@@ -421,8 +422,14 @@ TEST_P(ScanBuilderTest, StaticShape1D) {
 TEST_P(ScanBuilderTest, NativeScanUnsupportedFallsBackToWhileLoop) {
   // Restore the default (supported) even if an assertion below fails, so this
   // process-global gate never leaks into other tests.
-  const absl::Cleanup restore = [] { SetNativeScanEmitterSupported(true); };
-  SetNativeScanEmitterSupported(false);
+  const std::optional<std::string> original_version = GetLibtpuVersion();
+  const absl::Cleanup restore = [original_version] {
+    ResetLibtpuVersionForTesting();
+    if (original_version.has_value()) {
+      SetLibtpuVersion(*original_version);
+    }
+  };
+  SetLibtpuVersion("0.0.40");
 
   mlir::func::FunctionBuilder function_builder(module_builder(), "main");
   const mlir::Type i32 = op_builder().getI32Type();
