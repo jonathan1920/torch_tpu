@@ -10,9 +10,9 @@ a common set of guidelines. This document presents such guidelines.
 ## Principles
 
 This section contains the principles for defining APIs that affect TorchTPU's
-behavior. APIs defined in tests are not governed by these rules. While not all
-of our APIs follow these principles today, we shall follow them in new code and
-migrate the existing APIs to conform to them.
+behavior. APIs defined in tests, benchmarks, and examples are not governed by
+these rules. While not all of our APIs follow these principles today, we shall
+follow them in new code and migrate the existing APIs to conform to them.
 
 *   APIs can be either **global** (affecting the entire process) or **local**
     (affecting a region of a particular thread).
@@ -48,11 +48,14 @@ migrate the existing APIs to conform to them.
                 `INTERNAL_` part at that time.
             *   When the environment variable is set and the Python API is
                 called, the *latter* takes precedence.
-        *   Use **command-line flags** only for Google-internal knobs (e.g. it's
-            for Google internal experiments and shouldn't be exposed to even
-            power users), as there's no easy way to pass flags to TorchTPU in
-            OSS.
+        *   Use **C++ command-line flags** only for Google-internal knobs (e.g.
+            it's for Google internal experiments and shouldn't be exposed to
+            even power users), as there's no easy way to pass flags to TorchTPU
+            in OSS.
             *   All TorchTPU flag names should start with `torch_tpu_internal_`.
+        *   Do **NOT** use **Python command-line flags** (`flags.DEFINE_*`).
+            They cause client programs that don't parse flags to crash with a
+            "reading flag before flag parsing" error.
     *   Rules for **local** APIs:
         *   Local knobs should be implemented as Python **context managers**.
             Each context manager region governs the behavior of all enclosed
