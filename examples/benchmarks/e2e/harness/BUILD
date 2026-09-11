@@ -33,7 +33,7 @@ torch_tpu_py_library(
     srcs = ["base_test.py"],
     deps = [
         "//shims/absl_py/logging",
-        "//tests:seed_test_utils",
+        "//shims/absl_py/testing:absltest",
     ],
 )
 
