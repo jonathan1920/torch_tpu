@@ -176,6 +176,9 @@ torch_tpu_py_test(
         "--max_warmup_steps=1",
         "--post_warmup_steps=0",
     ],
+    data = [
+        "//examples/huggingface_transformers:model_configs_data",
+    ],
     env = {
         "BENCHMARK_PLATFORM": "v5e_1x1",
     },
@@ -245,7 +248,7 @@ torch_tpu_py_library(
         ":target",
         ":torch_device_ops",
         "//examples/benchmarks/e2e:common",
-        "//examples/benchmarks/e2e/harness/models",
+        "//examples/benchmarks/e2e/harness/distributed_models",
         "//examples/benchmarks/e2e/harness/steps",
         "//shims/absl_py:app",
         "//shims/absl_py/logging",
