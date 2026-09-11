@@ -88,6 +88,18 @@ static absl::StatusOr<DeviceBufferRef> RaggedAllToAllCommon(
     const at::Tensor& input_offsets, const at::Tensor& send_sizes,
     const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
     std::string_view process_group_name, OpParamCacheKeys& param_keys) {
+  TT_RET_CHECK(operand.dim() == output.dim(), error::kInvalidArgument)
+      << "expected operand and output to have the same number of dimensions, "
+      << "got " << operand.dim() << " and " << output.dim();
+  TT_RET_CHECK(operand.sizes().slice(1) == output.sizes().slice(1),
+               error::kInvalidArgument)
+      << "expected trailing dimensions of operand and output to match, got "
+      << operand.sizes() << " and " << output.sizes();
+  TT_RET_CHECK(operand.scalar_type() == output.scalar_type(),
+               error::kInvalidArgument)
+      << "expected operand and output to have the same dtype, got "
+      << operand.scalar_type() << " and " << output.scalar_type();
+
   at::ScalarType out_scalar_type = output.scalar_type();
   TT_ASSIGN_OR_RETURN(auto out_dtype,
                       ConvertTo<mlir::ElementType>(out_scalar_type));

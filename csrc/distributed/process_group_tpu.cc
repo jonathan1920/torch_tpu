@@ -382,7 +382,9 @@ struct RaggedAllToAllOffsets {
 //   (ICI) at sub-microsecond hardware speed.
 absl::StatusOr<std::vector<int32_t>> SynchronizeOutputOffsets(
     c10d::Store* store, int my_rank, uint64_t seq,
-    absl::Span<const int32_t> local_output_offsets) {
+    absl::Span<const int32_t> local_output_offsets,
+    absl::Span<const int32_t> send_sizes, absl::Span<const int32_t> recv_sizes,
+    int32_t input_buffer_size, int32_t output_buffer_size) {
   const size_t group_size = local_output_offsets.size();
   std::vector<int32_t> output_offsets_vec(group_size, 0);
   if (group_size <= 1) {
@@ -395,12 +397,20 @@ absl::StatusOr<std::vector<int32_t>> SynchronizeOutputOffsets(
   std::string key_prefix = absl::StrCat("alltoall_offsets:", seq, ":");
   std::string my_key = absl::StrCat(key_prefix, my_rank);
 
-  // 1. Publish local output offsets to c10d::Store.
-  std::vector<uint8_t> my_bytes(local_output_offsets.size() * sizeof(int32_t));
-  std::memcpy(my_bytes.data(), local_output_offsets.data(), my_bytes.size());
+  // 1. Publish local output offsets, recv_sizes, and buffer capacities to
+  // c10d::Store unconditionally first to prevent deadlocks in multiGet.
+  const size_t payload_ints = 2 * group_size + 2;
+  std::vector<int32_t> my_payload(payload_ints);
+  absl::c_copy(local_output_offsets, my_payload.begin());
+  absl::c_copy(recv_sizes, my_payload.begin() + group_size);
+  my_payload[2 * group_size] = input_buffer_size;
+  my_payload[2 * group_size + 1] = output_buffer_size;
+
+  std::vector<uint8_t> my_bytes(payload_ints * sizeof(int32_t));
+  std::memcpy(my_bytes.data(), my_payload.data(), my_bytes.size());
   store->set(my_key, my_bytes);
 
-  // 2. Fetch destination offsets from all peer ranks.
+  // 2. Fetch destination offsets and metadata from all peer ranks.
   std::vector<std::string> peer_keys;
   peer_keys.reserve(group_size);
   for (size_t peer = 0; peer < group_size; ++peer) {
@@ -413,18 +423,52 @@ absl::StatusOr<std::vector<int32_t>> SynchronizeOutputOffsets(
       << "expected " << group_size << " peer values, got "
       << peer_values.size();
 
-  // 3. Extract the destination offset on each peer rank where this rank's
-  // outgoing slice will be placed.
-  const size_t expected_payload_bytes = group_size * sizeof(int32_t);
+  // 3. Extract destination offsets, verify send/recv slice size agreement, and
+  // verify symmetric buffer capacities across all ranks.
+  const size_t expected_payload_bytes = payload_ints * sizeof(int32_t);
   for (size_t peer = 0; peer < group_size; ++peer) {
     const auto& peer_val = peer_values[peer];
     TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Peers always exchange fixed size
                    // payload.
         peer_val.size() == expected_payload_bytes, error::kInternal)
         << "peer " << peer << " payload size mismatch: " << peer_val.size();
-    const int32_t* peer_offsets =
+    const int32_t* peer_data =
         reinterpret_cast<const int32_t*>(peer_val.data());
-    output_offsets_vec[peer] = peer_offsets[my_rank];
+
+    // Verify symmetric buffer capacities across ranks to prevent RDMA address
+    // divergence on TPU hardware.
+    const int32_t peer_input_size = peer_data[2 * group_size];
+    TT_RET_CHECK(peer_input_size == input_buffer_size, error::kInvalidArgument)
+        << "asymmetric input buffer sizes across ranks are not supported on "
+           "TPU. "
+        << "Rank " << my_rank << " has input buffer size " << input_buffer_size
+        << ", but peer rank " << peer << " has input buffer size "
+        << peer_input_size
+        << ". All ranks must allocate symmetric input buffer "
+        << "capacities; use padding if necessary";
+
+    const int32_t peer_output_size = peer_data[2 * group_size + 1];
+    TT_RET_CHECK(peer_output_size == output_buffer_size,
+                 error::kInvalidArgument)
+        << "asymmetric output buffer sizes across ranks are not supported on "
+           "TPU. "
+        << "Rank " << my_rank << " has output buffer size "
+        << output_buffer_size << ", but peer rank " << peer
+        << " has output buffer size " << peer_output_size
+        << ". All ranks must allocate symmetric output buffer "
+        << "capacities; use padding if necessary";
+
+    // Verify pairwise communication contract: peer's expected receive size from
+    // my_rank must match what my_rank is sending to peer.
+    const int32_t peer_expected_recv = peer_data[group_size + my_rank];
+    TT_RET_CHECK(peer_expected_recv == send_sizes[peer],
+                 error::kInvalidArgument)
+        << "send and recv slice size mismatch between rank " << my_rank
+        << " and peer rank " << peer << ": rank " << my_rank << " sends "
+        << send_sizes[peer] << " elements, but peer rank " << peer
+        << " expects to receive " << peer_expected_recv;
+
+    output_offsets_vec[peer] = peer_data[my_rank];
   }
   return output_offsets_vec;
 }
@@ -435,8 +479,8 @@ absl::StatusOr<std::vector<int32_t>> SynchronizeOutputOffsets(
 // by the StableHLO ragged_all_to_all collective.
 absl::StatusOr<RaggedAllToAllOffsets> ComputeRaggedAllToAllOffsets(
     c10d::Store* store, int rank, uint64_t seq,
-    absl::Span<const int32_t> send_sizes,
-    absl::Span<const int32_t> recv_sizes) {
+    absl::Span<const int32_t> send_sizes, absl::Span<const int32_t> recv_sizes,
+    int32_t input_buffer_size, int32_t output_buffer_size) {
   const size_t group_size = send_sizes.size();
   RaggedAllToAllOffsets offsets{
       .input_offsets = std::vector<int32_t>(group_size, 0),
@@ -455,11 +499,13 @@ absl::StatusOr<RaggedAllToAllOffsets> ComputeRaggedAllToAllOffsets(
     local_output_offsets[i] = out_offset;
     out_offset += recv_sizes[i];
   }
+
   // Synchronize with all peer ranks to determine where outgoing slices land
-  // on remote destination buffers.
-  TT_ASSIGN_OR_RETURN(
-      offsets.output_offsets,
-      SynchronizeOutputOffsets(store, rank, seq, local_output_offsets));
+  // on remote destination buffers and verify symmetric buffer allocations.
+  TT_ASSIGN_OR_RETURN(offsets.output_offsets,
+                      SynchronizeOutputOffsets(
+                          store, rank, seq, local_output_offsets, send_sizes,
+                          recv_sizes, input_buffer_size, output_buffer_size));
   return offsets;
 }
 
@@ -1529,12 +1575,16 @@ absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseUnevenSplits(
                         : static_cast<int32_t>(output_split_sizes[i]);
   }
 
+  const int32_t input_buffer_size = static_cast<int32_t>(input.size(0));
+  const int32_t output_buffer_size = static_cast<int32_t>(output.size(0));
+
   // 3. Compute cumulative slice offsets and synchronize remote destination
   // output offsets across all ranks via c10d::Store.
-  TT_ASSIGN_OR_RETURN(auto offsets,
-                      ComputeRaggedAllToAllOffsets(store_.get(), getRank(),
-                                                   alltoall_seq_.fetch_add(1),
-                                                   send_sizes, recv_sizes));
+  TT_ASSIGN_OR_RETURN(
+      auto offsets,
+      ComputeRaggedAllToAllOffsets(
+          store_.get(), getRank(), alltoall_seq_.fetch_add(1), send_sizes,
+          recv_sizes, input_buffer_size, output_buffer_size));
 
   TT_ASSIGN_OR_RETURN(auto param_keys,
                       TT_MAKE_OP_PARAM_CACHE_KEYS(subgroup_device_ids_));
@@ -1625,20 +1675,25 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(
           // inside the op builder.
 
           // 1. Calculate local slice sizes and compute synchronized offsets.
+          int32_t total_input_size = 0;
+          int32_t total_output_size = 0;
           std::vector<int32_t> send_sizes(group_size);
           std::vector<int32_t> recv_sizes(group_size);
           for (size_t i = 0; i < group_size; ++i) {
             send_sizes[i] = static_cast<int32_t>(input_tensors[i].size(0));
             recv_sizes[i] = static_cast<int32_t>(output_tensors[i].size(0));
+            total_input_size += send_sizes[i];
+            total_output_size += recv_sizes[i];
           }
 
           // 2. Synchronize remote destination output offsets across all ranks
           // via c10d::Store.
           TT_ASSIGN_OR_THROW(
               auto offsets,
-              ComputeRaggedAllToAllOffsets(store_.get(), static_cast<int>(rank),
-                                           alltoall_seq_.fetch_add(1),
-                                           send_sizes, recv_sizes));
+              ComputeRaggedAllToAllOffsets(
+                  store_.get(), static_cast<int>(rank),
+                  alltoall_seq_.fetch_add(1), send_sizes, recv_sizes,
+                  total_input_size, total_output_size));
 
           // 3. Populate kernel parameter cache keys for graph compilation.
           TT_THROW_IF_ERROR(SetRaggedAllToAllParamKeys(param_keys, offsets));
