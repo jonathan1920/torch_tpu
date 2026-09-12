@@ -67,7 +67,9 @@ _SELECT_ADAPTIVE_POOL2D_TIMM_LAYER_BENCHMARK_NAME = (
 _ADAPTIVE_AVG_POOL2D_TIMM_LAYER_BENCHMARK_NAME = "adaptive_avg_pool2d_timm"
 _FLATTEN_TIMM_LAYER_BENCHMARK_NAME = "flatten_timm"
 _BOTTLENECK_TIMM_LAYER_BENCHMARK_NAME = "bottleneck_timm"
+_MAXPOOL1D_TIMM_LAYER_BENCHMARK_NAME = "maxpool1d_timm"
 _MAXPOOL2D_TIMM_LAYER_BENCHMARK_NAME = "maxpool2d_timm"
+_MAXPOOL3D_TIMM_LAYER_BENCHMARK_NAME = "maxpool3d_timm"
 _RELU_TIMM_LAYER_BENCHMARK_NAME = "relu_timm"
 _PRELU_BENCHMARK_NAME = "prelu"
 _FFT_LAYER_BENCHMARK_NAME = "fft"
@@ -157,7 +159,15 @@ _DYNAMIC_SKIPS = {
         "Spatial layer does not utilize sequence length dynamic parameters "
         "under our 1D dynamism model."
     ),
+    "maxpool1d_timm": (
+        "1D layer does not utilize sequence length dynamic parameters under "
+        "our 1D dynamism model."
+    ),
     "maxpool2d_timm": (
+        "Spatial layer does not utilize sequence length dynamic parameters "
+        "under our 1D dynamism model."
+    ),
+    "maxpool3d_timm": (
         "Spatial layer does not utilize sequence length dynamic parameters "
         "under our 1D dynamism model."
     ),
@@ -1252,12 +1262,48 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (common.RunMode.COMPILED,),
-          (False,),
+          (common.RunMode.EAGER_DEFAULT, common.RunMode.COMPILED),
+          (False, True),
+          layer_configs.MAXPOOL1D_TIMM_CONFIGS,
+      )
+  )
+  def test_maxpool1d_timm(self, run_mode, is_training, layer_config):
+    """Benchmarks 1D max pooling in eager and compiled eval and train modes."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.MaxPool1d",
+            batch_size=layer_config.batch_size,
+            custom_kwargs={
+                "channels": layer_config.channels,
+                "length": layer_config.length,
+                "kernel_size": layer_config.kernel_size,
+                "stride": layer_config.stride,
+                "padding": layer_config.padding,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _MAXPOOL1D_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (common.RunMode.EAGER_DEFAULT, common.RunMode.COMPILED),
+          (False, True),
           layer_configs.MAXPOOL2D_TIMM_CONFIGS,
       )
   )
   def test_maxpool2d_timm(self, run_mode, is_training, layer_config):
+    """Benchmarks 2D max pooling in eager and compiled eval and train modes."""
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             common.Platform.GFC_1X1X1,
@@ -1283,6 +1329,43 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
     self.run_performance_benchmark_test(
         config, _MAXPOOL2D_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (common.RunMode.EAGER_DEFAULT, common.RunMode.COMPILED),
+          (False, True),
+          layer_configs.MAXPOOL3D_TIMM_CONFIGS,
+      )
+  )
+  def test_maxpool3d_timm(self, run_mode, is_training, layer_config):
+    """Benchmarks 3D max pooling in eager and compiled eval and train modes."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.MaxPool3d",
+            batch_size=layer_config.batch_size,
+            custom_kwargs={
+                "channels": layer_config.channels,
+                "depth": layer_config.depth,
+                "height": layer_config.height,
+                "width": layer_config.width,
+                "kernel_size": layer_config.kernel_size,
+                "stride": layer_config.stride,
+                "padding": layer_config.padding,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _MAXPOOL3D_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
     )
 
   @parameterized.named_parameters(

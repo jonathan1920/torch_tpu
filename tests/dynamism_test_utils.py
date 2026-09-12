@@ -177,6 +177,7 @@ def verify_op_supports_dynamism(
       "nn.functional.hardswish",  # dynamic triage (adjust tolerance)
       "nn.functional.interpolate",  # gather with dynamic slice size
       "nn.functional.leaky_relu",  # dynamic triage (invalid result)
+      "nn.functional.max_pool1d",  # MLIR assertion failure (bounds length vs rank)
       "nn.functional.max_pool3d",  # crash (Aborted)
       "nn.functional.mse_loss",  # binop LHS / RHS mismatch
       "nn.functional.nll_loss",  # numerical mismatch or failure in some shards

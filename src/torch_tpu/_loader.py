@@ -147,6 +147,13 @@ def _patch_dtensor() -> None:
   from_local.patch_from_local()
 
 
+def _patch_max_pool() -> None:
+  """Patches PyTorch max pooling operations with TPU-optimized variants."""
+  from torch_tpu._internal.pooling import patch as pooling_patch  # pylint: disable=g-import-not-at-top
+
+  pooling_patch.patch_max_pool()
+
+
 def _init_device_impl(device: str) -> torch.device:
   """Initializes a lazy pytorch device.
 
@@ -272,6 +279,9 @@ def _init_device_impl(device: str) -> torch.device:
 
   # Override DTensor.from_local to warn when shape/stride are omitted.
   _patch_dtensor()
+
+  # Patch max pooling operations with TPU-optimized variants.
+  _patch_max_pool()
 
   # Monkey patch torch.set_float32_matmul_precision and
   # torch.get_float32_matmul_precision to maintain global precision state.

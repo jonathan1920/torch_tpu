@@ -1340,6 +1340,50 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
         )
     )
 
+  def test_max_pool1d_no_indices(self):
+    """Tests nn.functional.max_pool1d without indices."""
+    device = torch.device("tpu")
+    maxpool_input = torch.tensor(
+        [[
+            [-7.7435, -8.8254, 7.2097, 4.3371, 2.8040, -3.4491, 5.1234, -1.23],
+            [2.8523, -5.7473, 2.1480, -0.3480, 2.5668, -8.3042, 3.456, 0.789],
+        ]],
+        dtype=torch.float32,
+        device=device,
+    )
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.nn.functional.max_pool1d(
+            maxpool_input.to(device),
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            dilation=1,
+            ceil_mode=True,
+            return_indices=False,
+        )
+    )
+
+  def test_max_pool3d_no_indices(self):
+    """Tests nn.functional.max_pool3d without indices."""
+    maxpool_input = torch.randn(
+        (2, 3, 4, 6, 6),
+        dtype=torch.float32,
+        generator=torch.manual_seed(42),
+    )
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.nn.functional.max_pool3d(
+            maxpool_input.to(device),
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            dilation=1,
+            ceil_mode=True,
+            return_indices=False,
+        )
+    )
+
   def test_adaptive_max_pool2d(self):
     """Tests nn.functional.adaptive_max_pool2d and aten.adaptive_max_pool2d.out."""
     for shape, out_size in [
@@ -11189,6 +11233,74 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase):
           stride=(2, 1),
           padding=1,
           dilation=(1, 1),
+          ceil_mode=True,
+          return_indices=False,
+      )
+
+      loss = out.sum()
+      loss.backward()
+
+      return maxpool_input.grad
+
+    self.assert_close_tpu_vs_cpu(get_grad)
+
+  def test_max_pool1d_grad(self):
+    """Tests nn.functional.max_pool1d backward without indices."""
+
+    def get_grad(device):
+      maxpool_input = torch.tensor(
+          [[
+              [
+                  -7.7435,
+                  -8.8254,
+                  7.2097,
+                  4.3371,
+                  2.8040,
+                  -3.4491,
+                  5.1234,
+                  -1.23,
+              ],
+              [2.8523, -5.7473, 2.1480, -0.3480, 2.5668, -8.3042, 3.456, 0.789],
+          ]],
+          dtype=torch.float32,
+          device=device,
+          requires_grad=True,
+      )
+
+      out = torch.nn.functional.max_pool1d(
+          maxpool_input,
+          kernel_size=3,
+          stride=2,
+          padding=1,
+          dilation=1,
+          ceil_mode=True,
+          return_indices=False,
+      )
+
+      loss = out.sum()
+      loss.backward()
+
+      return maxpool_input.grad
+
+    self.assert_close_tpu_vs_cpu(get_grad)
+
+  def test_max_pool3d_grad(self):
+    """Tests nn.functional.max_pool3d backward without indices."""
+    input_data = torch.randn(
+        (2, 2, 4, 6, 6),
+        dtype=torch.float32,
+        generator=torch.manual_seed(42),
+    )
+
+    def get_grad(device):
+      maxpool_input = input_data.clone().to(device).requires_grad_(True)
+
+      out = torch.nn.functional.max_pool3d(
+          maxpool_input,
+          kernel_size=3,
+          stride=2,
+          padding=1,
+          dilation=1,
           ceil_mode=True,
           return_indices=False,
       )

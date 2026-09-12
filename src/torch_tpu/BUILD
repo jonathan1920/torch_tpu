@@ -83,6 +83,7 @@ torch_tpu_py_library(
         "//src/torch_tpu/_internal/distributed:from_local",
         "//src/torch_tpu/_internal/distributed:torchcomm_tpu",
         "//src/torch_tpu/_internal/distributed:tpu_distributed",
+        "//src/torch_tpu/_internal/pooling:patch",
         "//src/torch_tpu/_internal/precision:precision_impl",
         "//src/torch_tpu/_internal/profiler",
         "//src/torch_tpu/_internal/sync",
