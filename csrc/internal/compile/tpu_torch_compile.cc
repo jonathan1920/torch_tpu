@@ -204,8 +204,9 @@ at::Tensor PyMakePlaceholderLike(const at::Tensor& arg_tensor,
   } else {
     // Finally, we create a view of the base tensor with the same striding as
     // the original view, and preserve the requires_grad property.
-    view_tensor = base_tensor.as_strided(
-        arg_tensor.sizes(), arg_tensor.strides(), arg_tensor.storage_offset());
+    view_tensor =
+        base_tensor.as_strided(arg_tensor.sizes(), arg_tensor.strides(),
+                               arg_tensor.sym_storage_offset().expect_int());
   }
 
   if (arg_tensor.requires_grad()) {

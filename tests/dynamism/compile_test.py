@@ -400,6 +400,27 @@ class CompileTest(seed_test_utils.RepeatableTest):
     expected = x1.to("cpu").sum() + y1.to("cpu").sum()
     utils.assert_close(out1.to("cpu"), expected)
 
+  def test_static_tensor_with_has_symbolic_sizes_strides_set(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x, y):
+        torch._check(y.shape[0] == 4)
+        scale = y.shape[0]
+        return x * scale
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x = torch.ones((2, 2), dtype=torch.float32, device="tpu")
+    y = torch.ones((4, 2), dtype=torch.float32, device="tpu")
+    torch._dynamo.mark_dynamic(x, 0)
+    torch._dynamo.maybe_mark_dynamic(y, 0)
+
+    out = compiled(x, y)
+    expected = x.to("cpu") * 4
+    utils.assert_close(out, expected)
+
   def test_concat_attention(self):
     def decode_step(full_attention_cache, new_token_key):
       new_full = torch.cat([full_attention_cache, new_token_key], dim=-2)
