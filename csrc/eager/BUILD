@@ -245,6 +245,7 @@ torch_tpu_cc_library(
         "//csrc/common:dtype",
         "//csrc/common:error_utils",
         "//csrc/common:layout_utils",
+        "//csrc/common:libtpu_version",
         "//csrc/common:to_string",
         "//csrc/common:utils",
         "//csrc/ops:op_names",
