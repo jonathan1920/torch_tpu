@@ -21,6 +21,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 #include "absl/base/no_destructor.h"
 #include "absl/strings/numbers.h"
@@ -338,6 +339,32 @@ template <const char* name>
     TORCH_WARN_ONCE("expected environment variable ", name,
                     " to be a Boolean (e.g., '1', '0', 'true', 'false'), got '",
                     *env_var, "'");
+    return std::nullopt;
+  }();
+  return value;
+}
+
+// Returns the integer value of the environment variable with the given name, or
+// std::nullopt if it is not set or cannot be parsed as an integer.
+//
+// This function delegates to GetEnvOnce() to read the environment variable, and
+// then parses the string into an integer using absl::SimpleAtoi.
+template <typename IntType, const char* name>
+[[nodiscard]] std::optional<IntType> GetIntegerEnvOnce() {
+  static_assert(std::is_integral_v<IntType> && !std::is_same_v<IntType, bool>,
+                "IntType must be a non-boolean integral type.");
+  // Compute the value once and memoize it.
+  static const std::optional<IntType> value = []() -> std::optional<IntType> {
+    const auto& env_var = GetEnvOnce<name>();
+    if (!env_var.has_value()) {
+      return std::nullopt;
+    }
+    IntType result = 0;
+    if (absl::SimpleAtoi(*env_var, &result)) {
+      return result;
+    }
+    TORCH_WARN_ONCE("expected environment variable ", name,
+                    " to be an integer, got '", *env_var, "'");
     return std::nullopt;
   }();
   return value;

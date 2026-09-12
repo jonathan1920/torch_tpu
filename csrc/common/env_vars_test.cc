@@ -16,6 +16,7 @@
 
 #include "csrc/common/env_vars.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -123,6 +124,33 @@ TEST(EnvVarsTest, GetBooleanEnvOnceParsesFalseFromString) {
 TEST(EnvVarsTest, GetBooleanEnvOnceReturnsNulloptOnInvalidValue) {
   setenv(kTorchTpuLaunchBlockingEnvVar, "invalid_boolean", 1);
   EXPECT_EQ(GetBooleanEnvOnce<kTorchTpuLaunchBlockingEnvVar>(), std::nullopt);
+}
+
+TEST(EnvVarsTest, GetIntegerEnvOnceUnsetReturnsNullopt) {
+  unsetenv(kMasterPortEnvVar);
+  EXPECT_EQ((GetIntegerEnvOnce<int, kMasterPortEnvVar>()), std::nullopt);
+}
+
+TEST(EnvVarsTest, GetIntegerEnvOnceParsesValidInt) {
+  setenv(kLocalRankEnvVar, "42", 1);
+  EXPECT_EQ((GetIntegerEnvOnce<int, kLocalRankEnvVar>()), 42);
+}
+
+TEST(EnvVarsTest, GetIntegerEnvOnceParsesNegativeInt) {
+  setenv(kRankEnvVar, "-1", 1);
+  EXPECT_EQ((GetIntegerEnvOnce<int, kRankEnvVar>()), -1);
+}
+
+TEST(EnvVarsTest, GetIntegerEnvOnceParsesInt64) {
+  setenv(kTpuPremappedBufferSizeEnvVar, "10737418240", 1);
+  EXPECT_EQ((GetIntegerEnvOnce<int64_t, kTpuPremappedBufferSizeEnvVar>()),
+            10737418240LL);
+}
+
+TEST(EnvVarsTest, GetIntegerEnvOnceReturnsNulloptOnInvalidValue) {
+  setenv(kTorchTpuHandshakePortEnvVar, "invalid_int", 1);
+  EXPECT_EQ((GetIntegerEnvOnce<int, kTorchTpuHandshakePortEnvVar>()),
+            std::nullopt);
 }
 
 }  // namespace

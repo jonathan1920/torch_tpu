@@ -914,7 +914,6 @@ torch_tpu_cc_library(
         ":error_utils",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
     ],
 )
 
