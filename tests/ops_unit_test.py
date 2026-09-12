@@ -12340,6 +12340,56 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase):
       ).cpu()
       self.assertFalse(torch.isnan(result).any())
 
+  def test_scaled_dot_product_efficient_attention_compute_log_sumexp(self):
+    """Tests torch.ops.aten._scaled_dot_product_efficient_attention with compute_log_sumexp."""
+    batch_size, num_heads, seq_len, head_dim = 2, 4, 16, 32
+    device = torch.device("tpu")
+    q = torch.randn(
+        batch_size,
+        num_heads,
+        seq_len,
+        head_dim,
+        dtype=torch.bfloat16,
+        device=device,
+    )
+    k = torch.randn(
+        batch_size,
+        num_heads,
+        seq_len,
+        head_dim,
+        dtype=torch.bfloat16,
+        device=device,
+    )
+    v = torch.randn(
+        batch_size,
+        num_heads,
+        seq_len,
+        head_dim,
+        dtype=torch.bfloat16,
+        device=device,
+    )
+
+    # Test with compute_log_sumexp=True
+    out, lse, _, _ = torch.ops.aten._scaled_dot_product_efficient_attention(
+        q, k, v, None, True, 0.0, False
+    )
+    self.assertEqual(out.shape, q.shape)
+    self.assertEqual(lse.shape, (batch_size, num_heads, seq_len))
+    self.assertEqual(lse.dtype, torch.float32)
+    self.assertFalse(torch.isnan(out).any())
+    self.assertFalse(torch.isnan(lse).any())
+
+    # Test with compute_log_sumexp=False
+    out_no_lse, lse_empty, _, _ = (
+        torch.ops.aten._scaled_dot_product_efficient_attention(
+            q, k, v, None, False, 0.0, False
+        )
+    )
+    self.assertEqual(out_no_lse.shape, q.shape)
+    self.assertEqual(lse_empty.shape, (batch_size, num_heads, seq_len))
+    self.assertFalse(torch.isnan(out_no_lse).any())
+    utils.assert_close(out, out_no_lse, atol=1e-2, rtol=1e-2)
+
   def test_pointwise_op_dtype_promotion(self):
     """Ensure that pointwise ops promote as expected.
 
