@@ -3149,7 +3149,6 @@ class TestOps(op_testing.OpInfoTestBase):
                 torch.int8,
                 torch.int16,
                 torch.int32,
-                torch.int64,
             )
         ),
     )

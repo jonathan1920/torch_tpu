@@ -11027,32 +11027,43 @@ Device-side assertion tracking was not enabled by user.""",
       t = torch.ones(2, 2, device=et.device(), dtype=torch.complex64)
       torch.cummin(t, dim=1)
 
-  def test_logcumsumexp_with_unsupported_integer_dtype(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="int32",
+          dtype=torch.int32,
+          tpu_dtype="int32",
+          gpu_dtype="Int",
+      ),
+      dict(
+          testcase_name="bool",
+          dtype=torch.bool,
+          tpu_dtype="bool",
+          gpu_dtype="Bool",
+      ),
+      dict(
+          testcase_name="int64",
+          dtype=torch.int64,
+          tpu_dtype="int64",
+          gpu_dtype="Long",
+      ),
+  )
+  def test_logcumsumexp_with_unsupported_dtype(
+      self, dtype: torch.dtype, tpu_dtype: str, gpu_dtype: str
+  ):
     """Tests logcumsumexp rejects non-floating-point inputs.
 
     Only the functional path is exercised. The out= path decomposes through the
     functional _logcumsumexp under functionalization, so AtenLogcumsumexpOut's
     identical check is unreachable (marked ERROR_COV_INFEASIBLE in the kernel).
     """
-    t = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+    t = torch.ones(2, 2, device=et.device(), dtype=dtype)
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""logcumsumexp(): expected the input dtype to be floating point, got int32""",
-        gpu=""""logcumsumexp_cuda" not implemented for 'Int'""",
-        message_reviewed_by="wan",
+        tpu=f"""logcumsumexp(): expected the input dtype to be floating point, got {tpu_dtype}""",
+        gpu=f""""logcumsumexp_cuda" not implemented for '{gpu_dtype}'""",
+        message_reviewed_by="chizz",
     ):
       torch.logcumsumexp(t, dim=1)
-
-  def test_logcumsumexp_with_unsupported_bool_dtype(self):
-    """Tests logcumsumexp rejects bool inputs with expected error."""
-    t = torch.tensor([True, False], device=et.device(), dtype=torch.bool)
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""logcumsumexp(): expected the input dtype to be floating point, got bool""",
-        gpu=""""logcumsumexp_cuda" not implemented for 'Bool'""",
-        message_reviewed_by="adivinpatel",
-    ):
-      torch.logcumsumexp(t, dim=0)
 
   def test_unsafe_masked_index_error(self):
     with et.assert_raises_message(
