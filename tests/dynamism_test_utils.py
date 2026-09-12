@@ -142,7 +142,6 @@ def verify_op_supports_dynamism(
   """
 
   untriaged_ops_deny_list = [
-      "addcdiv",  # dynamic triage (invalid result)
       "bincount",  # MLIR assertion failure (bounds length vs rank)
       "clamp_min",  # dynamic triage (invalid result)
       "conj_physical",  # identity operation for i64 and f64 fails
@@ -214,6 +213,8 @@ def verify_op_supports_dynamism(
       "xlogy",  # dynamic triage (invalid result)
   ]
   op = op_info
+  if op.name == "addcdiv" and not utils.libtpu_at_least((0, 0, 47)):
+    return "addcdiv requires libtpu >= 0.0.47 for dynamism support."
   if op.name in untriaged_ops_deny_list:
     return f"Op {op.name} is not supported."
 

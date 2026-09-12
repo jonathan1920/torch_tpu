@@ -942,6 +942,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":oss_utils",
         ":quantize_utils",
         ":seed_test_utils",
         "//csrc/eager:tpu_aten_kernels",
@@ -952,6 +953,7 @@ torch_tpu_py_test(
         "//shims/torch:testing_internal",
         "//src/torch_tpu",
         "//src/torch_tpu/_internal/compile:tpu_torch_compile",
+        "//src/torch_tpu/_internal/dynamism",
         "//src/torch_tpu/_internal/execution_mode",
         "//src/torch_tpu/_internal/sync",
         "//src/torch_tpu/_internal/utils:test_utils",
@@ -1057,6 +1059,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":oss_utils",
         ":quantize_utils",
         ":seed_test_utils",
         "//csrc/eager:tpu_aten_kernels",
@@ -1067,6 +1070,7 @@ torch_tpu_py_test(
         "//shims/torch:testing_internal",
         "//src/torch_tpu",
         "//src/torch_tpu/_internal/compile:tpu_torch_compile",
+        "//src/torch_tpu/_internal/dynamism",
         "//src/torch_tpu/_internal/execution_mode",
         "//src/torch_tpu/_internal/sync",
         "//src/torch_tpu/_internal/utils:test_utils",
@@ -1094,6 +1098,7 @@ torch_tpu_py_test(
     deps = [
         ":op_testing",
         ":ops_test_data",
+        ":oss_utils",
         ":quantize_utils",
         ":seed_test_utils",
         "//csrc/eager:tpu_aten_kernels",
@@ -1104,6 +1109,7 @@ torch_tpu_py_test(
         "//shims/torch:testing_internal",
         "//src/torch_tpu",
         "//src/torch_tpu/_internal/compile:tpu_torch_compile",
+        "//src/torch_tpu/_internal/dynamism",
         "//src/torch_tpu/_internal/execution_mode",
         "//src/torch_tpu/_internal/sync",
         "//src/torch_tpu/_internal/utils:test_utils",

@@ -38,12 +38,14 @@ from absl.testing import parameterized
 from scipy import stats
 import torch
 from torch.testing._internal import common_methods_invocations
+from torch_tpu._internal import dynamism
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import test_utils as utils
 from tests import op_testing
 from tests import ops_test_data
+from tests import oss_utils
 from tests import quantize_utils
 from tests import seed_test_utils
 
@@ -92,6 +94,90 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
   If a bug is found that's not covered by do_test_op() in ops_test.py, please
   add it here.
   """
+
+  @parameterized.product(
+      dtype=[torch.float32, torch.float64],
+      op_fn=[
+          ("add", lambda s, t1, t2: torch.add(t1, t2)),
+          ("div", lambda s, t1, t2: torch.div(t1, t2)),
+          ("addcdiv", lambda s, t1, t2: torch.addcdiv(s, t1, t2, value=3.14)),
+          ("addcmul", lambda s, t1, t2: torch.addcmul(s, t1, t2, value=3.14)),
+      ],
+  )
+  @oss_utils.skip_if_cloud_and_libtpu_older_than("0.0.47")
+  def test_dynamic_float64_elementwise_and_fused_ops(self, dtype, op_fn):
+    """Tests dynamic shapes for float64 (and f32 baseline) ops.
+
+    Covers add, div, addcdiv, and addcmul ops (X64 split layout handling).
+    """
+    torch.manual_seed(42)
+
+    # Case 1: 2D tensors (2, 4) with dimension 0 dynamic
+    with self.subTest(op=op_fn[0], dtype=dtype, case="2x4_dim0_dynamic"):
+      s_tpu = torch.tensor(
+          [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]],
+          dtype=dtype,
+          device="tpu",
+      )
+      t1_tpu = torch.tensor(
+          [[2.0, 8.0, 1.0, 4.0], [1.0, 0.0, 3.0, 4.0]],
+          dtype=dtype,
+          device="tpu",
+      )
+      t2_tpu = torch.tensor(
+          [[1.0, 3.0, 3.0, 1.0], [1.0, 0.0, 0.0, 2.0]],
+          dtype=dtype,
+          device="tpu",
+      )
+
+      s_cpu = s_tpu.cpu()
+      t1_cpu = t1_tpu.cpu()
+      t2_cpu = t2_tpu.cpu()
+
+      dynamism.mark_dynamic(s_tpu, dimension=1, lower_bound=2, upper_bound=15)
+      dynamism.mark_dynamic(t1_tpu, dimension=1, lower_bound=2, upper_bound=15)
+      dynamism.mark_dynamic(t2_tpu, dimension=1, lower_bound=2, upper_bound=15)
+
+      out_tpu = op_fn[1](s_tpu, t1_tpu, t2_tpu)
+      out_cpu = op_fn[1](s_cpu, t1_cpu, t2_cpu)
+
+      utils.assert_close(actual=out_tpu.cpu(), expected=out_cpu)
+
+    # Case 2: Broadcast dynamic (5, 1) with static (1, 4) -> output (5, 4)
+    with self.subTest(op=op_fn[0], dtype=dtype, case="broadcast_5x1_with_1x4"):
+      s_tpu = torch.rand(5, 4, dtype=dtype, device="tpu") + 0.5
+      t1_tpu = torch.rand(5, 1, dtype=dtype, device="tpu") + 0.5
+      t2_tpu = torch.rand(1, 4, dtype=dtype, device="tpu") + 0.5
+
+      s_cpu = s_tpu.cpu()
+      t1_cpu = t1_tpu.cpu()
+      t2_cpu = t2_tpu.cpu()
+
+      dynamism.mark_dynamic(s_tpu, dimension=0, lower_bound=2, upper_bound=15)
+      dynamism.mark_dynamic(t1_tpu, dimension=0, lower_bound=2, upper_bound=15)
+
+      out_tpu = op_fn[1](s_tpu, t1_tpu, t2_tpu)
+      out_cpu = op_fn[1](s_cpu, t1_cpu, t2_cpu)
+
+      utils.assert_close(actual=out_tpu.cpu(), expected=out_cpu)
+
+    # Case 3: Broadcast dynamic (5, 1) with 1D static (4,) -> output (5, 4)
+    with self.subTest(op=op_fn[0], dtype=dtype, case="broadcast_5x1_with_1d_4"):
+      s_tpu = torch.rand(5, 4, dtype=dtype, device="tpu") + 0.5
+      t1_tpu = torch.rand(5, 1, dtype=dtype, device="tpu") + 0.5
+      t2_tpu = torch.rand(4, dtype=dtype, device="tpu") + 0.5
+
+      s_cpu = s_tpu.cpu()
+      t1_cpu = t1_tpu.cpu()
+      t2_cpu = t2_tpu.cpu()
+
+      dynamism.mark_dynamic(s_tpu, dimension=0, lower_bound=2, upper_bound=15)
+      dynamism.mark_dynamic(t1_tpu, dimension=0, lower_bound=2, upper_bound=15)
+
+      out_tpu = op_fn[1](s_tpu, t1_tpu, t2_tpu)
+      out_cpu = op_fn[1](s_cpu, t1_cpu, t2_cpu)
+
+      utils.assert_close(actual=out_tpu.cpu(), expected=out_cpu)
 
   def test_clone_inplace_mutation_preserves_original(self):
     """Verifies that an in-place mutation on a cloned tensor does not mutate or
