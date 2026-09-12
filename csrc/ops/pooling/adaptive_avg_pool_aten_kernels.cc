@@ -45,6 +45,7 @@
 #include "csrc/ops/op_names.h"
 #include "csrc/ops/pooling/avg_pool_aten_kernels.h"
 #include "csrc/ops/pooling/pooling.h"
+#include "csrc/ops/resize/resize_aten_kernels.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -665,6 +666,37 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
                                      at::Tensor& out) {
   TT_KERNEL(
       OpName::kAdaptiveAvgPool3dOut, param_keys, (self, output_size, out), {
+        const int64_t spatial_dim_count = 3;
+        auto num_dims = self.dim();
+
+        TT_CHECK_THROW(num_dims == spatial_dim_count + 1 ||
+                           num_dims == spatial_dim_count + 2,
+                       error::kInvalidArgument)
+            << "expected input to be a " << spatial_dim_count + 1 << "-D or "
+            << spatial_dim_count + 2 << "-D tensor, got " << num_dims
+            << "-D tensor";
+
+        // The output size is either a single integer or a triple-integer tuple
+        const int64_t out_d = output_size[0].expect_int();
+        int64_t out_h = out_d;
+        int64_t out_w = out_d;
+        if (output_size.size() > 1) {
+          out_h = output_size[1].expect_int();
+          out_w = output_size[2].expect_int();
+        }
+
+        SmallInt64Vector expected_out_shape = CopyIntVector(self.sizes());
+        expected_out_shape[num_dims - 3] = out_d;
+        expected_out_shape[num_dims - 2] = out_h;
+        expected_out_shape[num_dims - 1] = out_w;
+        if (out.sizes() != expected_out_shape) {
+          AtenResize_(out, expected_out_shape, std::nullopt);
+        }
+
+        if (out.numel() == 0) {
+          return out;
+        }
+
         TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool &&
                            self.scalar_type() != at::ScalarType::Byte &&
                            self.scalar_type() != at::ScalarType::Char &&
@@ -677,30 +709,12 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
                "int16, int32, int64, complex64), got "
             << torch_tpu::ToString(self.scalar_type());
 
-        const int64_t spatial_dim_count = 3;
-        auto num_dims = self.dim();
         TT_ASSIGN_OR_THROW(const auto output_dtype,
                            ConvertTo<mlir::ElementType>(out.scalar_type()));
-
-        TT_CHECK_THROW(num_dims == spatial_dim_count + 1 ||
-                           num_dims == spatial_dim_count + 2,
-                       error::kInvalidArgument)
-            << "expected input to be a " << spatial_dim_count + 1 << "-D or "
-            << spatial_dim_count + 2 << "-D tensor, got " << num_dims
-            << "-D tensor";
 
         const int64_t in_d = self.size(num_dims - 3);
         const int64_t in_h = self.size(num_dims - 2);
         const int64_t in_w = self.size(num_dims - 1);
-
-        // The output size is either a single integer or a triple-integer tuple
-        const int64_t out_d = output_size[0].expect_int();
-        int64_t out_h = out_d;
-        int64_t out_w = out_d;
-        if (output_size.size() > 1) {
-          out_h = output_size[1].expect_int();
-          out_w = output_size[2].expect_int();
-        }
 
         // If the input size is divisible by the output size, the adaptive pool
         // is mathematically equivalent to a standard average pool with:
@@ -758,7 +772,15 @@ at::Tensor AtenAdaptiveAvgPool3d(const at::Tensor& self,
             (self, IgnoreInCacheKey(output_size,
                                     "Delegates to AtenAdaptiveAvgPool3dOut")),
             {
+              const int64_t spatial_dim_count = 3;
               auto num_dims = self.dim();
+
+              TT_CHECK_THROW(num_dims == spatial_dim_count + 1 ||
+                                 num_dims == spatial_dim_count + 2,
+                             error::kInvalidArgument)
+                  << "expected input to be a " << spatial_dim_count + 1
+                  << "-D or " << spatial_dim_count + 2 << "-D tensor, got "
+                  << num_dims << "-D tensor";
 
               // The output size is either a single integer or a triple-integer
               // tuple

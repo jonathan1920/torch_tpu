@@ -7468,6 +7468,13 @@ Device-side assertion tracking was not enabled by user.""",
     ):
       torch.ops.aten.adaptive_avg_pool3d.out(inp, tuple(out.shape), out=out)
 
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_avg_pool3d(): expected input to be a 4-D or 5-D tensor, got 3-D tensor""",
+        gpu="""adaptive_avg_pool3d_cuda(): Expected 4D or 5D tensor, but got [10, 10, 10]""",
+    ):
+      torch.ops.aten.adaptive_avg_pool3d(inp, tuple(out.shape))
+
   def test_max_pool2d_with_indices_invalid_rank(self):
     inp = torch.ones(10, 10, device=et.device())
 
