@@ -1099,9 +1099,6 @@ ACCURACY_OVERRIDES_VS_GPU = {
     "nn.functional.group_norm": {
         torch.bfloat16: {"rtol": 3.3e-2, "atol": 8e-2},
     },
-    "nn.functional.hardsigmoid": {
-        torch.bfloat16: {"atol": 4.7e-3},
-    },
     "nn.functional.logsigmoid": {
         torch.float32: {"rtol": 3.2e-5},
     },
