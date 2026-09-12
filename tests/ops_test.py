@@ -1933,8 +1933,8 @@ class TestOps(op_testing.OpInfoTestBase):
         check_out_variant=False,
         # TODO: fix arange() succeeding for bool and complex types (it should
         # fail).
-        # TODO: fix arange() returning wrong results for uint8 and int64.
-        exclude_dtypes=(torch.bool, torch.uint8, torch.int64) + COMPLEX_DTYPES,
+        # TODO: fix arange() returning wrong results for uint8.
+        exclude_dtypes=(torch.bool, torch.uint8) + COMPLEX_DTYPES,
         # NOTE: the test sample contains torch.arange(5), which *should*
         # return a tensor on CPU. Therefore we don't check that the result
         # is on TPU.
