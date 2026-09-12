@@ -49,6 +49,14 @@ py_dist_info(
 )
 
 torch_tpu_py_library(
+    name = "pallas",
+    srcs = ["pallas.py"],
+    deps = [
+        "//src/torch_tpu/_internal/pallas:pallas_lib",
+    ],
+)
+
+torch_tpu_py_library(
     name = "profiler",
     srcs = ["profiler.py"],
     deps = [
@@ -63,6 +71,7 @@ torch_tpu_py_library(
         ":torch_tpu_dist_info",
     ],
     deps = [
+        ":pallas",
         ":profiler",
         "//shims/torch:pytorch",
         "//src/torch_tpu/_internal:env",
