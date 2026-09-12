@@ -10801,6 +10801,147 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase):
 
     self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
 
+  def test_rms_norm_no_weight(self):
+    """Tests nn.functional.rms_norm forward and backward without weight tensor."""
+
+    def fn(device):
+      x = torch.tensor(
+          [[0.5, -1.2, 2.3, -0.8], [1.1, 0.4, -1.5, 0.9]],
+          dtype=torch.float32,
+          device=device,
+      ).requires_grad_()
+      g = torch.ones_like(x)
+      out = torch.nn.functional.rms_norm(x, (4,), eps=1e-5)
+      out.backward(g)
+      return out, x.grad
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
+  def test_rms_norm_multidim_normalized_shape(self):
+    """Tests nn.functional.rms_norm with multi-dimensional normalized_shape."""
+
+    def fn(device):
+      x = (
+          torch.arange(24, dtype=torch.float32, device=device).reshape(3, 2, 4)
+          / 10.0
+      ).requires_grad_()
+      w = (
+          torch.arange(8, dtype=torch.float32, device=device).reshape(2, 4)
+          / 5.0
+      ).requires_grad_()
+      g = torch.ones_like(x)
+      out = torch.nn.functional.rms_norm(x, (2, 4), weight=w, eps=1e-5)
+      out.backward(g)
+      return out, x.grad, w.grad
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
+  def test_rms_norm_1d_input(self):
+    """Tests nn.functional.rms_norm when input rank equals normalized_shape rank."""
+
+    def fn(device):
+      x = (
+          torch.arange(8, dtype=torch.float32, device=device) / 4.0
+      ).requires_grad_()
+      w = (
+          torch.arange(8, dtype=torch.float32, device=device) / 8.0 + 1.0
+      ).requires_grad_()
+      g = torch.ones_like(x)
+      out = torch.nn.functional.rms_norm(x, (8,), weight=w, eps=1e-5)
+      out.backward(g)
+      return out, x.grad, w.grad
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
+  def test_rms_norm_zero_elements(self):
+    """Tests nn.functional.rms_norm edge case with empty zero-element input."""
+
+    def fn(device):
+      x = torch.empty(0, 8, dtype=torch.float32, device=device).requires_grad_()
+      w = torch.ones(8, dtype=torch.float32, device=device).requires_grad_()
+      g = torch.empty(0, 8, dtype=torch.float32, device=device)
+      out = torch.nn.functional.rms_norm(x, (8,), weight=w, eps=1e-5)
+      out.backward(g)
+      return out, x.grad, w.grad
+
+    self.assert_close_tpu_vs_cpu(fn)
+
+  def test_rms_norm_non_contiguous(self):
+    """Tests nn.functional.rms_norm with non-contiguous strided inputs."""
+
+    def fn(device):
+      x_base = (
+          torch.arange(32, dtype=torch.float32, device=device).reshape(4, 8)
+          / 10.0
+      ).requires_grad_()
+      w_base = (
+          torch.arange(8, dtype=torch.float32, device=device) / 4.0
+      ).requires_grad_()
+      x = x_base[:, ::2]
+      w = w_base[::2]
+      g = torch.ones_like(x)
+      out = torch.nn.functional.rms_norm(x, (4,), weight=w, eps=1e-5)
+      out.backward(g)
+      return out, x_base.grad, w_base.grad
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
+  def test_rms_norm_bfloat16(self):
+    """Tests nn.functional.rms_norm mixed-precision and upcasting with bfloat16."""
+
+    def fn(device):
+      x = (
+          torch.arange(32, dtype=torch.bfloat16, device=device).reshape(4, 8)
+          / 10.0
+      ).requires_grad_()
+      w = (
+          torch.arange(8, dtype=torch.bfloat16, device=device) / 4.0 + 0.5
+      ).requires_grad_()
+      g = torch.ones_like(x)
+      out = torch.nn.functional.rms_norm(x, (8,), weight=w, eps=1e-5)
+      out.backward(g)
+      return out, x.grad, w.grad
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-2, atol=1e-2)
+
+  def test_rms_norm_grad_input_only(self):
+    """Tests autograd backward when only input gradient is required."""
+
+    def fn(device):
+      x = (
+          torch.arange(16, dtype=torch.float32, device=device).reshape(4, 4)
+          / 5.0
+      ).requires_grad_()
+      w = (
+          torch.arange(4, dtype=torch.float32, device=device) / 2.0
+      ).requires_grad_(False)
+      g = torch.ones_like(x)
+      out = torch.nn.functional.rms_norm(x, (4,), weight=w, eps=1e-5)
+      out.backward(g)
+      self.assertIsNone(w.grad)
+      return out, x.grad
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
+  def test_rms_norm_grad_weight_only(self):
+    """Tests autograd backward when only weight gradient is required."""
+
+    def fn(device):
+      x = (
+          torch.arange(16, dtype=torch.float32, device=device).reshape(4, 4)
+          / 5.0
+      ).requires_grad_(False)
+      w = (
+          torch.arange(4, dtype=torch.float32, device=device) / 2.0
+      ).requires_grad_()
+      g = torch.ones_like(x)
+      out = torch.nn.functional.rms_norm(x, (4,), weight=w, eps=1e-5)
+      out.backward(g)
+      self.assertIsNone(x.grad)
+      return out, w.grad
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
   def test_max_pool2d_with_indices(self):
     """Tests nn.functional.max_pool2d_float32_sample54."""
     device = torch.device("tpu")

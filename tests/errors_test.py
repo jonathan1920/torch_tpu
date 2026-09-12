@@ -6544,6 +6544,90 @@ Supported combinations for non-constant padding:
     ):
       torch.nn.functional.rms_norm(inp, normalized_shape)
 
+  def test_rms_norm_backward_int(self):
+    inp = torch.ones(5, 5, device=et.device(), dtype=torch.int32)
+    normalized_shape = (5,)
+    grad = torch.randn(5, 5, device=et.device())
+    rstd = torch.randn(5, 1, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_rms_norm_backward(): expected the input dtype to be floating point, got int32""",
+        gpu=""""LayerNormBackwardKernelImpl" not implemented for 'Int'""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_rms_norm_backward(
+          grad,
+          inp,
+          normalized_shape,
+          rstd,
+          weight=None,
+          output_mask=[True, False],
+      )
+
+  def test_rms_norm_backward_bool(self):
+    inp = torch.ones(5, 5, device=et.device(), dtype=torch.bool)
+    normalized_shape = (5,)
+    grad = torch.randn(5, 5, device=et.device())
+    rstd = torch.randn(5, 1, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_rms_norm_backward(): expected the input dtype to be floating point, got bool""",
+        gpu=""""LayerNormBackwardKernelImpl" not implemented for 'Bool'""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_rms_norm_backward(
+          grad,
+          inp,
+          normalized_shape,
+          rstd,
+          weight=None,
+          output_mask=[True, False],
+      )
+
+  def test_rms_norm_backward_normalized_shape_empty(self):
+    inp = torch.ones(5, 5, device=et.device())
+    normalized_shape = []
+    grad = torch.randn(5, 5, device=et.device())
+    rstd = torch.randn(5, 1, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_rms_norm_backward(): the normalized shape must have >= 1 dimensions""",
+        gpu="""Expected normalized_shape to be at least 1-dimensional, i.e., containing at least one element, but got normalized_shape = []""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_rms_norm_backward(
+          grad,
+          inp,
+          normalized_shape,
+          rstd,
+          weight=None,
+          output_mask=[True, False],
+      )
+
+  def test_rms_norm_backward_normalized_shape_too_large(self):
+    inp = torch.ones(5, 5, device=et.device())
+    normalized_shape = (5, 3, 3)
+    grad = torch.randn(5, 5, device=et.device())
+    rstd = torch.randn(5, 1, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fused_rms_norm_backward(): expected the normalized shape to have <= 2 dimensions, got 3""",
+        gpu="""Given normalized_shape=[5, 3, 3], expected input with shape [*, 5, 3, 3], but got input of size[5, 5]""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._fused_rms_norm_backward(
+          grad,
+          inp,
+          normalized_shape,
+          rstd,
+          weight=None,
+          output_mask=[True, False],
+      )
+
   def test_hardswish_unsupported_dtype(self):
     t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
