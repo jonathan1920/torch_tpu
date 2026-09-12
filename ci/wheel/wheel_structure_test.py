@@ -24,6 +24,9 @@ versions. This test opens the built wheel (`WHEEL_PATH`) and asserts:
   * the shared base holds the XLA backend and defines no PyTorch symbols, so it
     is genuinely version-independent (it is the same file for every version);
   * no libtorch/libc10 is bundled (torch is resolved from the user's install);
+  * the tensor_buffer header tpu_sync's torch extension compiles against, and
+    the XLA commit it must share, ship under torch_tpu/include/, the header
+    behind its opt-in guard;
   * each per-version torch common exports the tensor_buffer API for external
     plugins.
 """
@@ -58,6 +61,16 @@ _TORCH_NAMESPACE_PREFIXES: Final[Sequence[str]] = ("c10::", "at::", "torch::")
 # nm types that are not strong-defined: undefined (U) or weak/absolute
 # (w/W/v/V). Only strong-defined symbols mean the code lives in the library.
 _NON_STRONG_TYPES: Final[Set[str]] = frozenset({"U", "w", "W", "v", "V"})
+
+# The tensor_buffer interface header tpu_sync's torch extension compiles
+# against, and the XLA revision it must be compiled with, both shipped under
+# torch_tpu/include/. The header refuses compilation unless the consumer
+# defines TORCH_TPU_USER_UNSUPPORTED_PRIVATE_HEADERS.
+_API_HEADER: Final[str] = "torch_tpu/include/csrc/api/tensor_buffer.h"
+_API_XLA_COMMIT: Final[str] = "torch_tpu/include/XLA_COMMIT"
+_API_HEADER_GUARD: Final[str] = (
+    "#ifndef TORCH_TPU_USER_UNSUPPORTED_PRIVATE_HEADERS"
+)
 
 # Each glue file is <module>_<major>_<minor>_<patch>.so (the nightly channel's
 # glue carries the release triple its snapshot leads up to, like any other);
@@ -182,6 +195,14 @@ class WheelStructureTest(absltest.TestCase):  # ABSLTEST_OK=Wheel test
           f"Missing per-version torch common for {version}; found"
           f" {torch_commons}",
       )
+
+  def test_tpu_sync_api_files_shipped(self):
+    self.assertIn(_API_HEADER, self._names)
+    self.assertIn(_API_XLA_COMMIT, self._names)
+    header = (self._wheel_root / _API_HEADER).read_text()
+    self.assertIn(_API_HEADER_GUARD, header.splitlines())
+    commit = (self._wheel_root / _API_XLA_COMMIT).read_text().strip()
+    self.assertRegex(commit, r"^[0-9a-f]{40}$")
 
   def test_torch_common_exports_tensor_buffer_api(self):
     versions = self._built_versions()

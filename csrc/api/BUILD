@@ -28,6 +28,13 @@ package(
     default_visibility = ["//:__subpackages__"],
 )
 
+# The wheel packaging rules ship this header under torch_tpu/include/ for
+# tpu_sync's torch extension.
+exports_files(
+    ["tensor_buffer.h"],
+    visibility = ["//:__subpackages__"],
+)
+
 torch_tpu_cc_library(
     name = "tensor_buffer",
     srcs = ["tensor_buffer.cc"],
