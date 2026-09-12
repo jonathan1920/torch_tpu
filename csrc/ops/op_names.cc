@@ -339,6 +339,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "elu_backward.grad_input";
     case OpName::kEluOut:
       return "elu.out";
+    case OpName::kEmbedding:
+      return "embedding";
     case OpName::kEmbeddingBag:
       return "_embedding_bag";
     case OpName::kEmbeddingBagBackward:
@@ -347,6 +349,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_embedding_bag_forward_only";
     case OpName::kEmbeddingDenseBackward:
       return "embedding_dense_backward";
+    case OpName::kEmbeddingOut:
+      return "embedding.out";
     case OpName::kEmbeddingRenorm_:
       return "embedding_renorm_";
     case OpName::kEmpty:

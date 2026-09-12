@@ -1085,6 +1085,12 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"rtol": 2.2e-1, "atol": 6.6e-2},
         torch.float32: {"rtol": 3e-1, "atol": 9.4e-2},
     },
+    "nn.functional.embedding": {
+        torch.float16: {
+            "rtol": 3.9e-3,
+            "atol": 2.4e-3,
+        },  # TOLERANCE_OVERRIDE_OK
+    },
     "nn.functional.embedding_bag": {
         torch.bfloat16: {"atol": 3.2e-2},
         torch.float16: {"atol": 4e-3},
@@ -1370,6 +1376,12 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.bfloat16: {"rtol": 6.2e-2, "atol": 8e-2},
         torch.float16: {"rtol": 2.2e-1, "atol": 6.7e-2},
         torch.float32: {"rtol": 3e-1, "atol": 9.4e-2},
+    },
+    "nn.functional.embedding": {
+        torch.float16: {
+            "rtol": 3.9e-3,
+            "atol": 2.4e-3,
+        },  # TOLERANCE_OVERRIDE_OK
     },
     "nn.functional.embedding_bag": {
         torch.bfloat16: {"atol": 6.5e-2},

@@ -1000,6 +1000,49 @@ Please use clone() or contiguous() to copy the tensor before writing""",
       ):
         torch.nn.functional.embedding_bag(indices, weight, offsets)
 
+  @et.why_tpu_only("Testing TPU AtenEmbedding kernel error validation.")
+  def test_embedding_errors(self):
+    with self.subTest("weight_dim"):
+      weight = torch.ones(10, device=et.device())
+      indices = torch.zeros(1, dtype=torch.int64, device=et.device())
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu="""embedding(): expected weight to be 2-D, got [10]""",
+          message_reviewed_by="wan",
+      ):
+        torch.ops.aten.embedding(weight, indices)
+
+    with self.subTest("indices_dtype"):
+      weight = torch.ones(10, 4, device=et.device())
+      indices = torch.zeros(1, dtype=torch.float32, device=et.device())
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu="""embedding(): expected indices to be int64 or int32, got float32""",
+          message_reviewed_by="wan",
+      ):
+        torch.ops.aten.embedding(weight, indices)
+
+    with self.subTest("sparse"):
+      weight = torch.ones(10, 4, device=et.device())
+      indices = torch.zeros(1, dtype=torch.int64, device=et.device())
+      with et.assert_raises_message(
+          NotImplementedError,
+          tpu="""embedding(): sparse is not yet supported""",
+          message_reviewed_by="wan",
+      ):
+        torch.ops.aten.embedding(weight, indices, -1, False, True)
+
+    with self.subTest("out_dtype"):
+      weight = torch.ones(10, 4, dtype=torch.float32, device=et.device())
+      indices = torch.zeros(1, dtype=torch.int64, device=et.device())
+      out = torch.empty(1, 4, dtype=torch.float64, device=et.device())
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu="""embedding(): expected out tensor to have dtype float32, got float64""",
+          message_reviewed_by="wan",
+      ):
+        torch.ops.aten.embedding.out(weight, indices, out=out)
+
   @et.why_tpu_only("TODO: investigate why this is TPU-only.")
   def test_grid_sampler_2d_invalid_interpolation_mode(self):
     inp = torch.ones(1, 1, 2, 2, device=et.device())

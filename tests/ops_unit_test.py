@@ -5735,7 +5735,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
       self.assertEqual(res.dtype, torch.float32)
 
   def test_embedding_scalar_index(self):
-    """Tests that embedding works with a scalar index."""
+    """Tests that embedding works with a scalar index in forward and backward."""
     with set_default_dtype(torch.float32):
       vocab_size = 3
       embedding_size = 7
@@ -5747,6 +5747,16 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
               to(embedding_table, device=device),
           )
       )
+
+      def compute_grad(device):
+        w = to(embedding_table.clone(), device=device).requires_grad_(True)
+        idx = to(index, device=device)
+        out = torch.nn.functional.embedding(idx, w)
+        loss = out.sum()
+        loss.backward()
+        return w.grad
+
+      self.assert_close_tpu_vs_cpu(compute_grad)
 
   def test_randn_scalar(self):
     with set_default_dtype(torch.float32):
@@ -5981,6 +5991,193 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
 
     fn(torch.device("tpu"))
     fn_1(torch.device("tpu"))
+
+  @parameterized.named_parameters(
+      ("float32", torch.float32),
+      ("bfloat16", torch.bfloat16),
+  )
+  def test_embedding_aten(self, dtype):
+    """Tests native aten.embedding forward and backward."""
+    vocab_size = 32
+    embedding_dim = 16
+    batch_size = 4
+    seq_len = 8
+
+    indices = torch.randint(0, vocab_size, size=(batch_size, seq_len))
+    weight = torch.randn(vocab_size, embedding_dim, dtype=dtype)
+
+    # Test direct aten.embedding forward
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten.embedding(
+            to(weight, device=device),
+            to(indices, device=device),
+        )
+    )
+
+    # Test backward gradient
+    def compute_grad(device):
+      w = to(weight.clone(), device=device).requires_grad_(True)
+      idx = to(indices, device=device)
+      out = torch.ops.aten.embedding(w, idx)
+      loss = out.sum()
+      loss.backward()
+      return w.grad
+
+    self.assert_close_tpu_vs_cpu(compute_grad)
+
+  @parameterized.named_parameters(
+      ("float32", torch.float32),
+      ("bfloat16", torch.bfloat16),
+  )
+  def test_embedding_out(self, dtype):
+    """Tests native aten.embedding.out with pre-allocated and resizing out tensor."""
+    vocab_size = 32
+    embedding_dim = 16
+    batch_size = 4
+    seq_len = 8
+
+    indices = torch.randint(0, vocab_size, size=(batch_size, seq_len))
+    weight = torch.randn(vocab_size, embedding_dim, dtype=dtype)
+
+    # 1. Matching pre-allocated out shape
+    def run_preallocated(device):
+      w = to(weight, device=device)
+      idx = to(indices, device=device)
+      out = torch.empty(
+          batch_size, seq_len, embedding_dim, dtype=dtype, device=device
+      )
+      res = torch.ops.aten.embedding.out(w, idx, out=out)
+      self.assertIs(res, out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(run_preallocated)
+
+    # 2. Differing / empty out shape requiring resize
+    def run_resize(device):
+      w = to(weight, device=device)
+      idx = to(indices, device=device)
+      out = torch.empty(0, dtype=dtype, device=device)
+      res = torch.ops.aten.embedding.out(w, idx, out=out)
+      self.assertIs(res, out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(run_resize)
+
+    # 3. 0-D scalar index with out tensor
+    scalar_idx = torch.tensor(3, dtype=torch.long)
+
+    def run_scalar(device):
+      w = to(weight, device=device)
+      idx = to(scalar_idx, device=device)
+      out = torch.empty(embedding_dim, dtype=dtype, device=device)
+      res = torch.ops.aten.embedding.out(w, idx, out=out)
+      self.assertIs(res, out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(run_scalar)
+
+  @parameterized.named_parameters(
+      ("1d_empty_indices", 16, (0,)),
+      ("2d_empty_indices", 16, (2, 0)),
+      ("0_row_weight", 0, (0,)),
+  )
+  def test_embedding_empty_tensors(self, vocab_size, indices_shape):
+    """Tests embedding with 0-element tensors in forward and backward."""
+    embedding_dim = 8
+    weight = torch.randn(vocab_size, embedding_dim)
+    indices = torch.empty(indices_shape, dtype=torch.long)
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten.embedding(
+            to(weight, device=device),
+            to(indices, device=device),
+        )
+    )
+
+    def compute_grad(device):
+      w = to(weight.clone(), device=device).requires_grad_(True)
+      idx = to(indices, device=device)
+      out = torch.ops.aten.embedding(w, idx)
+      out.backward(torch.zeros_like(out))
+      return w.grad
+
+    self.assert_close_tpu_vs_cpu(compute_grad)
+
+  @parameterized.named_parameters(
+      ("float32", torch.float32),
+      ("bfloat16", torch.bfloat16),
+  )
+  def test_embedding_duplicate_indices_and_options(self, dtype):
+    """Tests backward gradient accumulation with duplicate indices, padding_idx, and scale_grad_by_freq."""
+    vocab_size = 8
+    embedding_dim = 4
+    indices = torch.tensor([2, 5, 2, 2, 5, 0, 2, 5, 0, 2], dtype=torch.long)
+    weight = torch.randn(vocab_size, embedding_dim, dtype=dtype)
+
+    def compute_grad(device):
+      w = to(weight.clone(), device=device).requires_grad_(True)
+      idx = to(indices, device=device)
+      out = torch.ops.aten.embedding(
+          w, idx, padding_idx=0, scale_grad_by_freq=True
+      )
+      scale = torch.arange(
+          1, out.numel() + 1, device=device, dtype=dtype
+      ).view_as(out)
+      loss = (out * scale).sum()
+      loss.backward()
+      return w.grad
+
+    self.assert_close_tpu_vs_cpu(compute_grad)
+
+  def test_embedding_multidim_int32(self):
+    """Tests embedding with 3-D indices and int32 index dtype."""
+    vocab_size = 32
+    embedding_dim = 16
+    indices = torch.randint(0, vocab_size, size=(2, 3, 4), dtype=torch.int32)
+    weight = torch.randn(vocab_size, embedding_dim)
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten.embedding(
+            to(weight, device=device),
+            to(indices, device=device),
+        )
+    )
+
+    def compute_grad(device):
+      w = to(weight.clone(), device=device).requires_grad_(True)
+      idx = to(indices, device=device)
+      out = torch.ops.aten.embedding(w, idx)
+      loss = out.sum()
+      loss.backward()
+      return w.grad
+
+    self.assert_close_tpu_vs_cpu(compute_grad)
+
+  def test_embedding_non_contiguous(self):
+    """Tests embedding with non-contiguous weight and indices."""
+    vocab_size = 16
+    embedding_dim = 8
+    weight = torch.randn(vocab_size, embedding_dim * 2)[:, ::2]
+    self.assertFalse(weight.is_contiguous())
+    indices = torch.randint(0, vocab_size, size=(4, 6)).t()
+    self.assertFalse(indices.is_contiguous())
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten.embedding(
+            to(weight, device=device),
+            to(indices, device=device),
+        )
+    )
+
+    def compute_grad(device):
+      w = to(weight.clone(), device=device).requires_grad_(True)
+      idx = to(indices, device=device)
+      out = torch.ops.aten.embedding(w, idx)
+      loss = out.sum()
+      loss.backward()
+      return w.grad
+
+    self.assert_close_tpu_vs_cpu(compute_grad)
 
   def test_embedding_renorm(self):
     """Tests that embedding renorm works."""

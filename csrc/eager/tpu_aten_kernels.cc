@@ -468,10 +468,12 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kEfficientZeroTensor>(m, AtenEfficientZeroTensor);
   ImplStable<OpName::kEluBackwardGradInput>(m, AtenEluBackwardGradInput);
   ImplStable<OpName::kEluOut>(m, AtenEluOut);
+  ImplStable<OpName::kEmbedding>(m, AtenEmbedding);
   ImplStable<OpName::kEmbeddingBag>(m, AtenEmbeddingBag);
   ImplStable<OpName::kEmbeddingBagBackward>(m, AtenEmbeddingBagBackward);
   ImplStable<OpName::kEmbeddingBagForwardOnly>(m, AtenEmbeddingBagForwardOnly);
   ImplStable<OpName::kEmbeddingDenseBackward>(m, AtenEmbeddingDenseBackward);
+  ImplStable<OpName::kEmbeddingOut>(m, AtenEmbeddingOut);
   ImplStable<OpName::kEmbeddingRenorm_>(m, AtenEmbeddingRenorm_);
   ImplStable<OpName::kEmptyMemoryFormat>(m, AtenEmptyMemoryFormat);
   ImplStable<OpName::kEmptyStrided>(m, AtenEmptyStrided);
