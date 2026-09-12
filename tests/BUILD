@@ -69,11 +69,7 @@ torch_tpu_py_test(
     srcs = ["api_registry_test.py"],
     # Route to OSS TPU runners and exclude from OSS CPU runners
     # (running on CPU took 600+ sec due to emulated device init).
-    tags = if_oss([
-        "presubmit-v5",
-        "presubmit-v7",
-        "requires-tpu",
-    ]),
+    tags = if_oss(["requires-tpu-v5lite"]),
     deps = [
         ":seed_test_utils",
         "//shims/absl_py/testing:absltest",
