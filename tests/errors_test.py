@@ -4070,6 +4070,7 @@ Supported combinations for non-constant padding:
       ).backward(torch.randn(1, 6, 4, 4, 4, device=et.device()))
 
   def test_adaptive_avg_pool2d_unsupported_dtypes(self):
+    t_bool = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.bool)
     t_complex = torch.zeros(
         (1, 1, 4, 4), device=et.device(), dtype=torch.complex64
     )
@@ -4081,42 +4082,49 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (uint8, int8, int16, int32, int64, complex64), got complex64""",
+        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, int64, complex64), got bool""",
+        gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Bool'""",
+    ):
+      torch.nn.functional.adaptive_avg_pool2d(t_bool, output_size=2)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, int64, complex64), got complex64""",
         gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'ComplexFloat'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_complex, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (uint8, int8, int16, int32, int64, complex64), got uint8""",
+        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, int64, complex64), got uint8""",
         gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Byte'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_uint8, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (uint8, int8, int16, int32, int64, complex64), got int8""",
+        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, int64, complex64), got int8""",
         gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Char'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int8, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (uint8, int8, int16, int32, int64, complex64), got int16""",
+        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, int64, complex64), got int16""",
         gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Short'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int16, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (uint8, int8, int16, int32, int64, complex64), got int32""",
+        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, int64, complex64), got int32""",
         gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Int'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int32, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (uint8, int8, int16, int32, int64, complex64), got int64""",
+        tpu="""adaptive_avg_pool2d(): expected input dtype to be none of (bool, uint8, int8, int16, int32, int64, complex64), got int64""",
         gpu=""""adaptive_avg_pool2d_cuda" not implemented for 'Long'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int64, output_size=2)

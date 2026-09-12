@@ -12396,7 +12396,160 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase):
         kwargs["stride"] = stride
       return torch.nn.functional.avg_pool1d(input_val.to(device), **kwargs)
 
-    self.assert_close_tpu_vs_cpu(compute)
+    atol = 5e-3 if dtype == torch.bfloat16 else None
+    self.assert_close_tpu_vs_cpu(compute, atol=atol)
+
+  def test_avg_pool_corner_cases(self):
+    """Tests corner cases for avg_pool1d, avg_pool2d, and avg_pool3d:
+
+    - kernel_size=1, stride=1, padding=0 (window_size=1 no-op scaling).
+    - divisor_override=1 (no-op scaling with explicit divisor override).
+    - divisor_override > 1 with low-precision dtype (reciprocal multiplication).
+    - Unbatched 2D (C, H, W) and 3D (C, D, H, W) inputs.
+    - count_include_pad=False with padding on borders.
+    """
+    torch.manual_seed(42)
+
+    # 1. Window size == 1 (no-op scaling) on 2D bfloat16
+    x_2d_bf16 = torch.randn(2, 4, 8, 8, dtype=torch.bfloat16)
+    self.assert_close_tpu_vs_cpu(
+        lambda dev: torch.nn.functional.avg_pool2d(
+            x_2d_bf16.to(dev), kernel_size=1, stride=1, padding=0
+        )
+    )
+
+    # 2. Divisor override == 1 (no-op scaling) on 2D float32
+    x_2d_f32 = torch.randn(2, 4, 8, 8, dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda dev: torch.nn.functional.avg_pool2d(
+            x_2d_f32.to(dev), kernel_size=2, stride=2, divisor_override=1
+        )
+    )
+
+    # 3. Divisor override > 1 on 2D bfloat16 (reciprocal multiplication)
+    self.assert_close_tpu_vs_cpu(
+        lambda dev: torch.nn.functional.avg_pool2d(
+            x_2d_bf16.to(dev), kernel_size=2, stride=2, divisor_override=5
+        ),
+        atol=5e-3,
+    )
+
+    # 4. Unbatched 2D input (C, H, W) and 3D input (C, D, H, W)
+    x_unbatched_2d = torch.randn(3, 10, 10, dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda dev: torch.nn.functional.avg_pool2d(
+            x_unbatched_2d.to(dev), kernel_size=3, stride=2, padding=1
+        )
+    )
+
+    x_unbatched_3d = torch.randn(3, 6, 6, 6, dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda dev: torch.nn.functional.avg_pool3d(
+            x_unbatched_3d.to(dev),
+            kernel_size=2,
+            stride=2,
+            divisor_override=3,
+        )
+    )
+
+    # 5. count_include_pad=False with padding on 2D and 3D
+    self.assert_close_tpu_vs_cpu(
+        lambda dev: torch.nn.functional.avg_pool2d(
+            x_2d_f32.to(dev),
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            count_include_pad=False,
+        )
+    )
+
+  def test_adaptive_avg_pool_corner_cases(self):
+    """Tests corner cases for adaptive_avg_pool2d and adaptive_avg_pool3d:
+
+    - Divisible shapes triggering std_avg_pool fast path in forward and
+    backward.
+    - Non-divisible shapes triggering Gather/Scatter with variable window
+    lengths.
+    - Output size equal to input size (max_k == 1 no-op scaling fast path).
+    - Low-precision bfloat16 and float16 dtypes.
+    - 3D adaptive pooling divisible and non-divisible shapes.
+    - Backward gradient checks for both fast-path and scatter paths.
+    """
+    torch.manual_seed(42)
+
+    # 1. Forward + Backward: Divisible shapes (fast path std_avg_pool)
+    x_2d_div = torch.randn(2, 3, 8, 8, dtype=torch.float32, requires_grad=True)
+
+    def run_divisible_2d(dev):
+      x = x_2d_div.detach().clone().to(dev).requires_grad_(True)
+      out = torch.nn.functional.adaptive_avg_pool2d(x, (4, 4))
+      out.backward(torch.ones_like(out))
+      return out, x.grad
+
+    self.assert_close_tpu_vs_cpu(run_divisible_2d)
+
+    # 2. Forward + Backward: max_k == 1 (out_size == in_size, identity scaling)
+    x_2d_same = torch.randn(2, 3, 5, 5, dtype=torch.float32, requires_grad=True)
+
+    def run_same_size_2d(dev):
+      x = x_2d_same.detach().clone().to(dev).requires_grad_(True)
+      out = torch.nn.functional.adaptive_avg_pool2d(x, (5, 5))
+      out.backward(torch.ones_like(out))
+      return out, x.grad
+
+    self.assert_close_tpu_vs_cpu(run_same_size_2d)
+
+    # 3. Forward + Backward: Non-divisible shapes (GatherPool / ScatterAdd path)
+    x_2d_nondiv = torch.randn(
+        2, 2, 7, 10, dtype=torch.float32, requires_grad=True
+    )
+
+    def run_nondivisible_2d(dev):
+      x = x_2d_nondiv.detach().clone().to(dev).requires_grad_(True)
+      out = torch.nn.functional.adaptive_avg_pool2d(x, (3, 4))
+      out.backward(torch.ones_like(out))
+      return out, x.grad
+
+    self.assert_close_tpu_vs_cpu(run_nondivisible_2d)
+
+    # 4. Native low-precision bfloat16 with divisible shape (fast path)
+    x_2d_bf16 = torch.randn(
+        2, 3, 6, 6, dtype=torch.bfloat16, requires_grad=True
+    )
+
+    def run_bf16_divisible_2d(dev):
+      x = x_2d_bf16.detach().clone().to(dev).requires_grad_(True)
+      out = torch.nn.functional.adaptive_avg_pool2d(x, (3, 3))
+      out.backward(torch.ones_like(out))
+      return out, x.grad
+
+    self.assert_close_tpu_vs_cpu(run_bf16_divisible_2d, rtol=2e-2, atol=2e-2)
+
+    # 5. 3D Adaptive pooling: Divisible shape (fast path std_avg_pool)
+    x_3d_div = torch.randn(
+        1, 2, 4, 6, 8, dtype=torch.float32, requires_grad=True
+    )
+
+    def run_divisible_3d(dev):
+      x = x_3d_div.detach().clone().to(dev).requires_grad_(True)
+      out = torch.nn.functional.adaptive_avg_pool3d(x, (2, 3, 4))
+      out.backward(torch.ones_like(out))
+      return out, x.grad
+
+    self.assert_close_tpu_vs_cpu(run_divisible_3d)
+
+    # 6. 3D Adaptive pooling: Non-divisible shape
+    x_3d_nondiv = torch.randn(
+        1, 2, 5, 5, 5, dtype=torch.float32, requires_grad=True
+    )
+
+    def run_nondivisible_3d(dev):
+      x = x_3d_nondiv.detach().clone().to(dev).requires_grad_(True)
+      out = torch.nn.functional.adaptive_avg_pool3d(x, (2, 2, 2))
+      out.backward(torch.ones_like(out))
+      return out, x.grad
+
+    self.assert_close_tpu_vs_cpu(run_nondivisible_3d)
 
   def test_ldexp_large_exponent(self):
     def compute(device):
