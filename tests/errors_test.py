@@ -6516,14 +6516,30 @@ Supported combinations for non-constant padding:
     ):
       torch.nn.functional.rms_norm(inp, normalized_shape)
 
-  def test_rms_norm_bool(self):
-    inp = torch.ones(5, 5, device=et.device(), dtype=torch.bool)
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="bool",
+          dtype=torch.bool,
+          tpu_dtype="bool",
+          gpu_dtype="Bool",
+      ),
+      dict(
+          testcase_name="int64",
+          dtype=torch.int64,
+          tpu_dtype="int64",
+          gpu_dtype="Long",
+      ),
+  )
+  def test_rms_norm_unsupported_dtypes(
+      self, dtype: torch.dtype, tpu_dtype: str, gpu_dtype: str
+  ):
+    inp = torch.ones(5, 5, device=et.device(), dtype=dtype)
     normalized_shape = (5,)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""fused_rms_norm(): expected the input dtype to be floating point, got bool""",
-        gpu=""""LayerNormKernelImpl" not implemented for 'Bool'""",
+        tpu=f"""fused_rms_norm(): expected the input dtype to be floating point, got {tpu_dtype}""",
+        gpu=f""""LayerNormKernelImpl" not implemented for '{gpu_dtype}'""",
         message_reviewed_by="chizz",
     ):
       torch.nn.functional.rms_norm(inp, normalized_shape)
