@@ -38,9 +38,12 @@ import re
 import shutil
 import subprocess
 import sys
+from typing import Any
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree
+
+import yaml
 
 # Bazelisk release used when bootstrapping. Kept in sync with the version the
 # README tells contributors to install. Unlike a pinned Bazel version this is
@@ -253,6 +256,242 @@ class TestTarget:
 
   def __repr__(self) -> str:
     return f"<TestTarget {self.label} tags={sorted(self.tags)}>"
+
+
+class JobMachineInfo:
+  """Information about the machine type used to execute a CI job."""
+
+  def __init__(self, machine_type: str, runner: str = ""):
+    self.machine_type = machine_type or "Unknown"
+    self.runner = runner or ""
+
+  @property
+  def description(self) -> str:
+    """Returns formatted description, e.g. 'TPU v5e (linux-x86-ct5lp)'."""
+    if self.machine_type and self.runner and self.runner != "Unknown":
+      return f"{self.machine_type} ({self.runner})"
+    return self.machine_type or self.runner or "Unknown"
+
+  def __repr__(self) -> str:
+    return (
+        f"JobMachineInfo(machine_type={self.machine_type!r},"
+        f" runner={self.runner!r})"
+    )
+
+
+def decode_runner_machine_type(runner: str) -> str:
+  """Infers human-readable hardware machine type from runner label."""
+  r = runner.strip().lower()
+  if "gpu" in r or "h100" in r or "a100" in r:
+    return "GPU"
+  if "ct5lp" in r or "v5" in r:
+    return "TPU v5e"
+  if "ct6e" in r or "v6" in r:
+    return "TPU v6e"
+  if "tpu7x-56-1tpu" in r:
+    return "TPU v7x 1-Chip"
+  if "tpu7x" in r or "v7" in r:
+    return "TPU v7x"
+  if "n4" in r or "n2" in r or "cpu" in r:
+    return "CPU"
+  if "ubuntu" in r:
+    return "Ubuntu (GitHub-hosted)"
+  return "Unknown"
+
+
+def _resolve_machine_type(machine_type: str, name: str, runner: str) -> str:
+  """Resolves the machine type from metadata or infers from runner label.
+
+  Args:
+    machine_type: Machine type explicitly declared by the workflow definition
+      (e.g. 'TPU v6e'), or the empty string if it declares none.
+    name: Display name of the job or matrix entry (e.g. 'CPU'), or the empty
+      string if it has none.
+    runner: Runner label string (e.g. 'linux-x86-ct5lp-224-8tpu').
+
+  Returns:
+    The canonical human-readable machine type string (e.g. 'TPU v5e', 'CPU').
+  """
+  if machine_type:
+    return machine_type
+  if name.upper() == "CPU":
+    return name
+  return decode_runner_machine_type(runner)
+
+
+def get_workflows_dir(repo_root: pathlib.Path) -> pathlib.Path | None:
+  """Returns the .github/workflows directory, or None if it does not exist."""
+  workflows_dir = repo_root / ".github" / "workflows"
+  if workflows_dir.is_dir():
+    return workflows_dir
+  return None
+
+
+# Captures the Bazel config a `bazel test` step command selects, e.g.
+#   run: bazel test --config=ci_cpu //tests:ops_test
+# The workflows themselves are parsed as YAML, but a step's `run` value is an
+# opaque shell command, so pulling the flag back out of it still needs a regex.
+_BAZEL_TEST_CONFIG_RE = re.compile(
+    r"""
+    bazel\s+test\s+
+    [^\n]*?                    # Flags preceding --config on the command line.
+    --config=(?P<config>[a-zA-Z0-9_-]+)
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Matrix entry keys naming the Bazel config (== CI job) an entry selects. The
+# key varies across our workflows, and a single entry may set several of them,
+# e.g. a job that tests both the sources and the wheel built from them.
+_CONFIG_KEYS = (
+    "bazel_config",
+    "source_test_config",
+    "wheel_test_config",
+    "config",
+)
+
+# GitHub Actions only expands expressions at workflow run time, so a value
+# containing one is a template rather than a label we can report.
+_EXPRESSION_MARKER = "${{"
+
+
+def _load_workflow(path: pathlib.Path) -> dict[str, Any]:
+  """Loads a workflow file, returning an empty mapping if it is unusable."""
+  try:
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+  except (OSError, yaml.YAMLError):
+    return {}
+  return document if isinstance(document, dict) else {}
+
+
+def _get_jobs(workflow: Mapping[str, Any]) -> list[dict[str, Any]]:
+  """Returns the job definitions declared by a parsed workflow."""
+  jobs = workflow.get("jobs")
+  if not isinstance(jobs, dict):
+    return []
+  return [job for job in jobs.values() if isinstance(job, dict)]
+
+
+def _get_matrix_entries(job: Mapping[str, Any]) -> list[dict[str, Any]]:
+  """Returns every mapping-valued matrix entry declared by a job.
+
+  Our workflows spell the matrix either as a custom list of mappings (usually
+  `job_info`) or as the built-in `include` list, so every list-valued matrix
+  field is inspected rather than a fixed set of field names.
+
+  Args:
+    job: A single job definition taken from a workflow's `jobs` mapping.
+
+  Returns:
+    The matrix entries, in declaration order.
+  """
+  strategy = job.get("strategy")
+  if not isinstance(strategy, dict):
+    return []
+  matrix = strategy.get("matrix")
+  if not isinstance(matrix, dict):
+    return []
+  entries = []
+  for value in matrix.values():
+    if not isinstance(value, list):
+      continue
+    entries.extend(entry for entry in value if isinstance(entry, dict))
+  return entries
+
+
+def _get_literal(mapping: Mapping[str, Any], key: str) -> str:
+  """Returns mapping[key] if it is a literal string, or '' if it is not."""
+  value = mapping.get(key)
+  if not isinstance(value, str) or _EXPRESSION_MARKER in value:
+    return ""
+  return value.strip()
+
+
+def _get_job_runner(job: Mapping[str, Any]) -> str:
+  """Returns a concrete runner label for a job, or '' if it has none.
+
+  `runs-on` is usually a template referencing the matrix (e.g.
+  `${{ matrix.job_info.runner }}`), in which case the first runner pinned by a
+  matrix entry stands in for the job as a whole.
+
+  Args:
+    job: A single job definition taken from a workflow's `jobs` mapping.
+
+  Returns:
+    The runner label, or the empty string.
+  """
+  runner = _get_literal(job, "runs-on")
+  if runner:
+    return runner
+  for entry in _get_matrix_entries(job):
+    runner = _get_literal(entry, "runner")
+    if runner:
+      return runner
+  return ""
+
+
+def _get_step_configs(job: Mapping[str, Any]) -> list[str]:
+  """Returns the Bazel configs selected by the job's `run` step commands."""
+  steps = job.get("steps")
+  if not isinstance(steps, list):
+    return []
+  configs = []
+  for step in steps:
+    if not isinstance(step, dict):
+      continue
+    command = step.get("run")
+    if isinstance(command, str):
+      configs.extend(_BAZEL_TEST_CONFIG_RE.findall(command))
+  return configs
+
+
+def parse_workflow_machine_types(
+    workflows_dir: pathlib.Path | None,
+) -> dict[str, JobMachineInfo]:
+  """Parses CI job runner and machine type definitions from workflows.
+
+  Extracts the runner and machine type mapping directly from the actual CI
+  workflow definitions to guarantee the tool remains synchronized with CI.
+
+  Args:
+    workflows_dir: Path to the .github/workflows directory, if available.
+
+  Returns:
+    Dictionary mapping CI config name -> JobMachineInfo.
+  """
+  job_machines: dict[str, JobMachineInfo] = {}
+  if not workflows_dir or not workflows_dir.is_dir():
+    return job_machines
+
+  for wf_path in sorted(workflows_dir.glob("*.y*ml")):
+    jobs = _get_jobs(_load_workflow(wf_path))
+
+    # Matrix entries are authoritative: each one pairs a config with the exact
+    # runner that config is dispatched to.
+    for job in jobs:
+      for entry in _get_matrix_entries(job):
+        runner = _get_literal(entry, "runner")
+        machine_type = _resolve_machine_type(
+            _get_literal(entry, "machine_type"),
+            _get_literal(entry, "name"),
+            runner,
+        )
+        for key in _CONFIG_KEYS:
+          config = _get_literal(entry, key)
+          if config:
+            job_machines[config] = JobMachineInfo(machine_type, runner)
+
+    # A config hardcoded in a step command only tells us which job runs it, so
+    # it falls back to the job's runner and never overrides a matrix entry.
+    for job in jobs:
+      runner = _get_job_runner(job)
+      if not runner:
+        continue
+      machine_type = decode_runner_machine_type(runner)
+      for config in _get_step_configs(job):
+        job_machines.setdefault(config, JobMachineInfo(machine_type, runner))
+
+  return job_machines
 
 
 def _get_bazelisk_download_url(version: str = _BAZELISK_VERSION) -> str:
@@ -646,11 +885,16 @@ def map_test_to_jobs(
 
 def format_text_output(
     job_to_targets: Mapping[str, Sequence[TestTarget]],
+    job_machines: Mapping[str, JobMachineInfo] | None = None,
 ) -> str:
   """Formats test targets grouped by CI job in human-readable text."""
+  job_machines = job_machines or {}
   lines = []
   for job, targets in sorted(job_to_targets.items()):
-    lines.append(f"CI Job: {job} ({len(targets)} tests)")
+    machine_desc = ""
+    if job in job_machines:
+      machine_desc = f" [Machine: {job_machines[job].description}]"
+    lines.append(f"CI Job: {job}{machine_desc} ({len(targets)} tests)")
     if targets:
       for t in targets:
         lines.append(f"  {t.label}")
@@ -662,11 +906,29 @@ def format_text_output(
 
 def format_count_output(
     job_to_targets: Mapping[str, Sequence[TestTarget]],
+    job_machines: Mapping[str, JobMachineInfo] | None = None,
 ) -> str:
   """Formats test count summary grouped by CI job."""
-  lines = ["CI Job Test Counts:", "--------------------"]
+  job_machines = job_machines or {}
+  col1_width = max([len(j) for j in job_to_targets] + [len("CI Job Name")]) + 4
+  machine_descs = [
+      job_machines[j].description if j in job_machines else "Unknown"
+      for j in job_to_targets
+  ]
+  col2_width = max([len(m) for m in machine_descs] + [len("Machine Type")]) + 4
+  header = (
+      "CI Job Name".ljust(col1_width)
+      + "Machine Type".ljust(col2_width)
+      + "Test Count"
+  )
+  lines = [header, "-" * (col1_width + col2_width + 12)]
   for job, targets in sorted(job_to_targets.items()):
-    lines.append(f"{job:30} : {len(targets)} tests")
+    machine_desc = (
+        job_machines[job].description if job in job_machines else "Unknown"
+    )
+    lines.append(
+        f"{job.ljust(col1_width)}{machine_desc.ljust(col2_width)}{len(targets)}"
+    )
   return "\n".join(lines)
 
 
@@ -733,10 +995,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     return 1
 
+  workflows_dir = get_workflows_dir(repo_root)
+  job_machines = parse_workflow_machine_types(workflows_dir)
+
   if args.list_jobs:
     print(f"Available CI jobs from {bazelrc_path}:")
     for job, filters in sorted(ci_configs.items()):
-      print(f"  {job}: {','.join(filters)}")
+      machine_desc = ""
+      if job in job_machines:
+        machine_desc = f" [Machine: {job_machines[job].description}]"
+      print(f"  {job}{machine_desc}: {','.join(filters)}")
     return 0
 
   selected_jobs: list[str] | None = None
@@ -773,7 +1041,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"\nRuns in {len(matching_jobs)} CI job(s):")
     if matching_jobs:
       for j in sorted(matching_jobs):
-        print(f"  - {j}")
+        machine_desc = ""
+        if j in job_machines:
+          machine_desc = f" [{job_machines[j].description}]"
+        print(f"  - {j}{machine_desc}")
     else:
       print("  (None: excluded from all queried CI jobs)")
     return 0
@@ -781,9 +1052,9 @@ def main(argv: Sequence[str] | None = None) -> int:
   job_to_targets = map_jobs_to_tests(targets, ci_configs, selected_jobs)
 
   if args.format == "count":
-    print(format_count_output(job_to_targets))
+    print(format_count_output(job_to_targets, job_machines))
   else:
-    print(format_text_output(job_to_targets))
+    print(format_text_output(job_to_targets, job_machines))
 
   return 0
 

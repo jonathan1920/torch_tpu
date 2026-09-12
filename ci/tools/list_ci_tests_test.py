@@ -59,6 +59,23 @@ _SAMPLE_BAZEL_XML = textwrap.dedent("""\
     </query>
     """)
 
+_SAMPLE_WORKFLOW = textwrap.dedent("""\
+    jobs:
+      run_tests:
+        strategy:
+          matrix:
+            job_info:
+              - config: "ci_cpu"
+                runner: "linux-x86-n4-16"
+                machine_type: "CPU"
+              - config: "ci_cpu_presubmit"
+                runner: "linux-x86-n4-16"
+                machine_type: "CPU"
+              - config: "ci_tpu_v5"
+                runner: "linux-x86-ct5lp-224-8tpu"
+                machine_type: "TPU v5e"
+    """)
+
 
 class ListCiTestsTest(unittest.TestCase):  # UNITTEST_OK=testing tools
   """Test suite for OSS list_ci_tests."""
@@ -66,6 +83,11 @@ class ListCiTestsTest(unittest.TestCase):  # UNITTEST_OK=testing tools
   def setUp(self):
     super().setUp()
     self.repo_root = list_ci_tests.find_repo_root(pathlib.Path(__file__))
+
+  def _write_sample_workflow(self, root_path: pathlib.Path) -> None:
+    wf_dir = root_path / ".github" / "workflows"
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    (wf_dir / "presubmit.yml").write_text(_SAMPLE_WORKFLOW, encoding="utf-8")
 
   def test_get_bazelrc_path(self):
     """Verifies that .bazelrc is discovered correctly."""
@@ -363,14 +385,43 @@ class ListCiTestsTest(unittest.TestCase):  # UNITTEST_OK=testing tools
     """Verifies the --list_jobs CLI flag."""
     captured_stdout = io.StringIO()
     old_stdout = sys.stdout
-    try:
-      sys.stdout = captured_stdout
-      ret = list_ci_tests.main(["--list_jobs"])
-      self.assertEqual(ret, 0)
-      output = captured_stdout.getvalue()
-      self.assertIn("Available CI jobs", output)
-    finally:
-      sys.stdout = old_stdout
+    with tempfile.TemporaryDirectory() as temp_dir:
+      root_path = pathlib.Path(temp_dir)
+      (root_path / ".bazelrc").write_text(_SAMPLE_BAZELRC, encoding="utf-8")
+      self._write_sample_workflow(root_path)
+      try:
+        sys.stdout = captured_stdout
+        with mock.patch.dict(
+            os.environ, {"TORCH_TPU_REPO_DIR": str(root_path)}
+        ):
+          ret = list_ci_tests.main(["--list_jobs"])
+          self.assertEqual(ret, 0)
+          output = captured_stdout.getvalue()
+          self.assertIn("Available CI jobs", output)
+          self.assertIn("[Machine: CPU (linux-x86-n4-16)]", output)
+          self.assertIn("[Machine: TPU v5e (linux-x86-ct5lp-224-8tpu)]", output)
+      finally:
+        sys.stdout = old_stdout
+
+  def test_cli_execution_no_workflows_dir(self):
+    """Verifies CLI execution succeeds when .github/workflows is absent."""
+    captured_stdout = io.StringIO()
+    old_stdout = sys.stdout
+    with tempfile.TemporaryDirectory() as temp_dir:
+      root_path = pathlib.Path(temp_dir)
+      (root_path / ".bazelrc").write_text(_SAMPLE_BAZELRC, encoding="utf-8")
+      try:
+        sys.stdout = captured_stdout
+        with mock.patch.dict(
+            os.environ, {"TORCH_TPU_REPO_DIR": str(root_path)}
+        ):
+          ret = list_ci_tests.main(["--list_jobs"])
+          self.assertEqual(ret, 0)
+          output = captured_stdout.getvalue()
+          self.assertIn("Available CI jobs", output)
+          self.assertNotIn("[Machine:", output)
+      finally:
+        sys.stdout = old_stdout
 
   def test_cli_execution_test_target_text(self):
     """Verifies querying a test target with text output format."""
@@ -385,6 +436,7 @@ class ListCiTestsTest(unittest.TestCase):  # UNITTEST_OK=testing tools
     with tempfile.TemporaryDirectory() as temp_dir:
       root_path = pathlib.Path(temp_dir)
       (root_path / ".bazelrc").write_text(_SAMPLE_BAZELRC, encoding="utf-8")
+      self._write_sample_workflow(root_path)
 
       captured_stdout = io.StringIO()
       old_stdout = sys.stdout
@@ -402,6 +454,7 @@ class ListCiTestsTest(unittest.TestCase):  # UNITTEST_OK=testing tools
             self.assertIn("Test Target: //tests:my_target", output)
             self.assertIn("Runs in 1 CI job(s):", output)
             self.assertIn("ci_tpu_v5", output)
+            self.assertIn("TPU v5e (linux-x86-ct5lp-224-8tpu)", output)
       finally:
         sys.stdout = old_stdout
 
@@ -418,6 +471,7 @@ class ListCiTestsTest(unittest.TestCase):  # UNITTEST_OK=testing tools
     with tempfile.TemporaryDirectory() as temp_dir:
       root_path = pathlib.Path(temp_dir)
       (root_path / ".bazelrc").write_text(_SAMPLE_BAZELRC, encoding="utf-8")
+      self._write_sample_workflow(root_path)
 
       captured_stdout = io.StringIO()
       old_stdout = sys.stdout
@@ -437,8 +491,266 @@ class ListCiTestsTest(unittest.TestCase):  # UNITTEST_OK=testing tools
             output = captured_stdout.getvalue()
             self.assertIn("ci_cpu", output)
             self.assertIn("ci_cpu_presubmit", output)
+            self.assertIn("Machine Type", output)
+            self.assertIn("CPU (linux-x86-n4-16)", output)
       finally:
         sys.stdout = old_stdout
+
+  def test_decode_runner_machine_type(self):
+    """Verifies runner string to canonical machine type mapping."""
+    self.assertEqual(
+        list_ci_tests.decode_runner_machine_type("linux-x86-n4-16"), "CPU"
+    )
+    self.assertEqual(
+        list_ci_tests.decode_runner_machine_type("linux-x86-ct5lp-224-8tpu"),
+        "TPU v5e",
+    )
+    self.assertEqual(
+        list_ci_tests.decode_runner_machine_type("linux-x86-ct6e-180-8tpu"),
+        "TPU v6e",
+    )
+    self.assertEqual(
+        list_ci_tests.decode_runner_machine_type("linux-x86-tpu7x-224-4tpu"),
+        "TPU v7x",
+    )
+    self.assertEqual(
+        list_ci_tests.decode_runner_machine_type("linux-x86-gpu-h100"), "GPU"
+    )
+    self.assertEqual(
+        list_ci_tests.decode_runner_machine_type("custom-runner"), "Unknown"
+    )
+
+  def test_job_machine_info_description(self):
+    """Verifies JobMachineInfo description formatting."""
+    info_full = list_ci_tests.JobMachineInfo(
+        machine_type="TPU v5e", runner="linux-x86-ct5lp-224-8tpu"
+    )
+    self.assertEqual(
+        info_full.description, "TPU v5e (linux-x86-ct5lp-224-8tpu)"
+    )
+
+    info_no_runner = list_ci_tests.JobMachineInfo(machine_type="CPU", runner="")
+    self.assertEqual(info_no_runner.description, "CPU")
+
+    info_unknown_runner = list_ci_tests.JobMachineInfo(
+        machine_type="CPU", runner="Unknown"
+    )
+    self.assertEqual(info_unknown_runner.description, "CPU")
+
+  def test_parse_workflow_machine_types_mock(self):
+    """Verifies parsing machine types from mock workflow definitions."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+      temp_path = pathlib.Path(temp_dir)
+      mock_workflow = temp_path / "mock.yml"
+      mock_workflow.write_text(
+          """
+jobs:
+  test_matrix:
+    strategy:
+      matrix:
+        job_info:
+          - config: "ci_tpu_mock"
+            runner: "linux-x86-ct6e-180-8tpu"
+            machine_type: "TPU v6e"
+          - config: "ci_cpu_mock"
+            runner: "linux-x86-n4-16"
+            machine_type: "CPU"
+""",
+          encoding="utf-8",
+      )
+      parsed = list_ci_tests.parse_workflow_machine_types(temp_path)
+      self.assertIn("ci_tpu_mock", parsed)
+      self.assertEqual(parsed["ci_tpu_mock"].machine_type, "TPU v6e")
+      self.assertEqual(parsed["ci_tpu_mock"].runner, "linux-x86-ct6e-180-8tpu")
+      self.assertIn("ci_cpu_mock", parsed)
+      self.assertEqual(parsed["ci_cpu_mock"].machine_type, "CPU")
+      self.assertEqual(parsed["ci_cpu_mock"].runner, "linux-x86-n4-16")
+
+  def test_parse_workflow_machine_types_step_command(self):
+    """Verifies parsing step-level bazel test --config in single-job workflows."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+      temp_path = pathlib.Path(temp_dir)
+      mock_workflow = temp_path / "nightly.yml"
+      mock_workflow.write_text(
+          """
+jobs:
+  nightly_tpu:
+    runs-on: linux-x86-ct6e-180-8tpu
+    steps:
+      - name: Run Bazel tests
+        run: |
+          bazel test --config=ci_tpu_nightly //tests:my_test
+""",
+          encoding="utf-8",
+      )
+      parsed = list_ci_tests.parse_workflow_machine_types(temp_path)
+      self.assertIn("ci_tpu_nightly", parsed)
+      self.assertEqual(parsed["ci_tpu_nightly"].machine_type, "TPU v6e")
+      self.assertEqual(
+          parsed["ci_tpu_nightly"].runner, "linux-x86-ct6e-180-8tpu"
+      )
+
+  def test_find_workflows_dir(self):
+    """Verifies that get_workflows_dir locates .github/workflows."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+      root_path = pathlib.Path(temp_dir)
+      self.assertIsNone(list_ci_tests.get_workflows_dir(root_path))
+      wf_dir = root_path / ".github" / "workflows"
+      wf_dir.mkdir(parents=True)
+      self.assertEqual(list_ci_tests.get_workflows_dir(root_path), wf_dir)
+
+  def test_real_workflows_machine_types_integrity(self):
+    """Verifies that actual CI workflow definitions map to machine types."""
+    workflows_dir = list_ci_tests.get_workflows_dir(self.repo_root)
+    self.assertIsNotNone(
+        workflows_dir, f"Workflows directory not found from {self.repo_root}"
+    )
+    job_machines = list_ci_tests.parse_workflow_machine_types(workflows_dir)
+
+    expected_machines = {
+        "ci_cpu_presubmit": ("CPU", "linux-x86-n4-16"),
+        "ci_tpu_v5_presubmit": ("TPU v5e", "linux-x86-ct5lp-224-8tpu"),
+        "ci_tpu_v7_presubmit": ("TPU v7x", "linux-x86-tpu7x-224-4tpu"),
+        "ci_cpu_nightly": ("CPU", "linux-x86-n4-16"),
+        "ci_tpu_nightly": ("TPU v6e", "linux-x86-ct6e-180-8tpu"),
+        "wheel_test_cpu": ("CPU", "linux-x86-n4-16"),
+        "wheel_test_tpu_v7": ("TPU v7x", "linux-x86-tpu7x-224-4tpu"),
+    }
+
+    for job, (expected_machine, expected_runner) in expected_machines.items():
+      self.assertIn(
+          job, job_machines, f"Expected CI job '{job}' not found in workflows"
+      )
+      self.assertEqual(
+          job_machines[job].machine_type,
+          expected_machine,
+          f"Job '{job}' expected machine_type '{expected_machine}', got"
+          f" '{job_machines[job].machine_type}'",
+      )
+      self.assertEqual(
+          job_machines[job].runner,
+          expected_runner,
+          f"Job '{job}' expected runner '{expected_runner}', got"
+          f" '{job_machines[job].runner}'",
+      )
+
+    # `ci_tpu_v6_presubmit` is commented out in presubmit.yml until more quota
+    # is available, so it must not be reported as a job that runs tests.
+    self.assertNotIn("ci_tpu_v6_presubmit", job_machines)
+
+  def test_format_output_with_machine_info(self):
+    """Verifies output formatters incorporate machine type details."""
+    targets = [
+        list_ci_tests.TestTarget(
+            name="test_1",
+            package="tests",
+            tags=set(),
+            source_file="BUILD",
+        )
+    ]
+    job_to_targets = {"ci_tpu_v5": targets}
+    job_machines = {
+        "ci_tpu_v5": list_ci_tests.JobMachineInfo(
+            machine_type="TPU v5e", runner="linux-x86-ct5lp-224-8tpu"
+        )
+    }
+
+    # Text format
+    text_out = list_ci_tests.format_text_output(job_to_targets, job_machines)
+    self.assertIn(
+        "CI Job: ci_tpu_v5 [Machine: TPU v5e (linux-x86-ct5lp-224-8tpu)]",
+        text_out,
+    )
+
+    # Count format
+    count_out = list_ci_tests.format_count_output(job_to_targets, job_machines)
+    self.assertIn("Machine Type", count_out)
+    self.assertIn("TPU v5e (linux-x86-ct5lp-224-8tpu)", count_out)
+
+  def test_parse_workflow_machine_types_multi_job_isolation(self):
+    """Verifies step commands in multi-job workflows don't leak runners across jobs."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+      temp_path = pathlib.Path(temp_dir)
+      mock_workflow = temp_path / "multi_job.yml"
+      mock_workflow.write_text(
+          """
+jobs:
+  job_cpu:
+    runs-on: linux-x86-n4-16
+    steps:
+      - name: Run CPU tests
+        run: |
+          bazel test --config=ci_cpu_isolated //tests:cpu_test
+
+  job_tpu:
+    runs-on: linux-x86-ct6e-180-8tpu
+    steps:
+      - name: Run TPU tests
+        run: |
+          bazel test --config=ci_tpu_isolated //tests:tpu_test
+""",
+          encoding="utf-8",
+      )
+      parsed = list_ci_tests.parse_workflow_machine_types(temp_path)
+      self.assertIn("ci_cpu_isolated", parsed)
+      self.assertEqual(parsed["ci_cpu_isolated"].machine_type, "CPU")
+      self.assertEqual(parsed["ci_cpu_isolated"].runner, "linux-x86-n4-16")
+
+      self.assertIn("ci_tpu_isolated", parsed)
+      self.assertEqual(parsed["ci_tpu_isolated"].machine_type, "TPU v6e")
+      self.assertEqual(
+          parsed["ci_tpu_isolated"].runner, "linux-x86-ct6e-180-8tpu"
+      )
+
+  def test_parse_workflow_machine_types_skips_unparseable_workflow(self):
+    """Verifies malformed workflows are skipped without failing the parse."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+      temp_path = pathlib.Path(temp_dir)
+      (temp_path / "broken.yml").write_text(
+          "jobs: [unclosed\n", encoding="utf-8"
+      )
+      (temp_path / "not_a_mapping.yml").write_text(
+          "- just\n- a\n- list\n", encoding="utf-8"
+      )
+      (temp_path / "good.yml").write_text(
+          """
+jobs:
+  job_cpu:
+    runs-on: linux-x86-n4-16
+    steps:
+      - run: bazel test --config=ci_cpu_ok //tests:cpu_test
+""",
+          encoding="utf-8",
+      )
+      parsed = list_ci_tests.parse_workflow_machine_types(temp_path)
+      self.assertEqual(list(parsed), ["ci_cpu_ok"])
+
+  def test_format_count_output_dynamic_column_width(self):
+    """Verifies that format_count_output dynamically pads long machine descriptions."""
+    targets = [
+        list_ci_tests.TestTarget(
+            name="test_1",
+            package="tests",
+            tags=set(),
+            source_file="BUILD",
+        )
+    ]
+    job_to_targets = {"ci_long_machine_job": targets}
+    long_desc_runner = (
+        "linux-x86-very-very-long-custom-runner-name-exceeding-38-chars"
+    )
+    job_machines = {
+        "ci_long_machine_job": list_ci_tests.JobMachineInfo(
+            machine_type="TPU v7x", runner=long_desc_runner
+        )
+    }
+    output = list_ci_tests.format_count_output(job_to_targets, job_machines)
+    expected_desc = f"TPU v7x ({long_desc_runner})"
+    self.assertIn(expected_desc, output)
+    for line in output.splitlines():
+      if "ci_long_machine_job" in line:
+        self.assertTrue(line.endswith("1"))
+        self.assertIn(expected_desc, line)
 
 
 if __name__ == "__main__":
