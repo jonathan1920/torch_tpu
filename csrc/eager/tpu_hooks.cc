@@ -247,7 +247,7 @@ void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
   TT_ASSIGN_OR_THROW(auto event,
                      MaterializeStream(stream.device_index(), stream.id(),
                                        MaterializationReason::kExplicitSync));
-  TT_THROW_IF_ERROR(event->Wait());
+  TT_THROW_IF_ERROR(event->Synchronize());
   SyncAndCheckStickyError();
 }
 void TpuDeviceGuardImpl::synchronizeDevice(
@@ -256,7 +256,7 @@ void TpuDeviceGuardImpl::synchronizeDevice(
       auto events,
       MaterializeDevice(device_index, MaterializationReason::kExplicitSync));
   for (const auto& event : events) {
-    TT_THROW_IF_ERROR(event->Wait());
+    TT_THROW_IF_ERROR(event->Synchronize());
   }
   SyncAndCheckStickyError();
 }
@@ -272,7 +272,7 @@ void TpuDeviceGuardImpl::synchronizeEvent(void* event) const {
   // event's stream.
   std::shared_ptr<EventSnapshot>* snapshot =
       reinterpret_cast<std::shared_ptr<EventSnapshot>*>(event);
-  TT_THROW_IF_ERROR((*snapshot)->Wait());
+  TT_THROW_IF_ERROR((*snapshot)->Synchronize());
 }
 
 C10_REGISTER_GUARD_IMPL(PrivateUse1, TpuDeviceGuardImpl);

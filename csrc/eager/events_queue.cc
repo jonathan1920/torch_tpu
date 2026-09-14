@@ -970,7 +970,7 @@ std::shared_ptr<EventSnapshot> EventSnapshot::Record(
       new EventSnapshot(std::move(join_future)));
 }
 
-absl::Status EventSnapshot::Wait() const { return future_.Await(); }
+absl::Status EventSnapshot::Synchronize() const { return future_.Await(); }
 
 absl::StatusOr<bool> EventSnapshot::Query() const { return future_.IsReady(); }
 

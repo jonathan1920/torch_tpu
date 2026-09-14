@@ -68,8 +68,8 @@ class PyTpuEventBase {
       absl_nonnull std::shared_ptr<EventSnapshot> event_snapshot)
       : event_snapshot_(std::move(event_snapshot)) {}
 
-  // Wait for the event snapshot to complete.
-  void Wait() { TT_THROW_IF_ERROR(event_snapshot_->Wait()); }
+  // Block the calling thread until the event snapshot is complete.
+  void Synchronize() { TT_THROW_IF_ERROR(event_snapshot_->Synchronize()); }
 
   // Query whether the event snapshot has completed.
   bool Query() {
@@ -254,7 +254,7 @@ PYBIND11_MODULE(_device_ops_backend, m) {
         "specified device have completed.");
 
   py::class_<PyTpuEventBase, py::smart_holder>(m, "TpuEventBase")
-      .def("wait", &PyTpuEventBase::Wait,
+      .def("synchronize", &PyTpuEventBase::Synchronize,
            py::call_guard<py::gil_scoped_release>(),
            "Blocks until the recorded event snapshot has completed.")
       .def("query", &PyTpuEventBase::Query,

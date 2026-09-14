@@ -288,7 +288,7 @@ class TpuEvent:
     """
     if self._base_event is None:
       return
-    self._base_event.wait()
+    self._base_event.synchronize()
 
   @classmethod
   @experimental(

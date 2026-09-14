@@ -97,8 +97,8 @@ class EventSnapshot {
   static std::shared_ptr<EventSnapshot> Record(c10::DeviceIndex device_index,
                                                c10::StreamId stream_id);
 
-  // Wait for the event snapshot to complete.
-  absl::Status Wait() const;
+  // Blocks the calling thread until the event snapshot is complete.
+  absl::Status Synchronize() const;
 
   // Query whether the event snapshot has completed.
   absl::StatusOr<bool> Query() const;
