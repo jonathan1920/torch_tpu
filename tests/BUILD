@@ -196,6 +196,7 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["module_registry_test.py"],
     data = ["//tests/compile:data/goldfish.jpg"],
+    notap = "TODO(b/561614286): Flaky test due to unstable model cache access",
     notest_oss = "No OSS access to model resources",
     shard_count = 6,
     tags = [
