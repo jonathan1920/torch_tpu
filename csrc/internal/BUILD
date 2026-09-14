@@ -31,6 +31,7 @@ torch_tpu_cc_library(
     name = "env_build",
     srcs = ["env.cc"],
     deps = [
+        "//csrc/common:error_utils",
         "//csrc/common:libtpu_version",
         "//csrc/common:utils",
         "//shims/pybind11",

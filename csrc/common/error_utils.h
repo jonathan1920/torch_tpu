@@ -116,7 +116,7 @@ inline constexpr std::string_view kXlaCompilerFailedWith =
     " -- the XLA compiler failed with: ";
 
 // Returns true if debug checks are enabled via the
-// TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS environment variable. This function is
+// TORCH_TPU_ENABLE_DEBUG_CHECKS environment variable. This function is
 // memorized, so calling it is cheap and will always return the same value even
 // if the environment variable is changed.
 [[nodiscard]] bool GetEnableDebugChecks();

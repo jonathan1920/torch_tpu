@@ -15,13 +15,12 @@
 """DTensor.from_local implementation for TorchTPU."""
 
 from collections.abc import Callable
-import os
 from typing import Any, Final
 import warnings
 
 import torch
 import torch.distributed.tensor as dt
-from torch_tpu._internal import execution_mode
+from torch_tpu._internal import env
 
 _UNEVEN_SHARDING_WARNING: Final[str] = (
     "`DTensor.from_local` called without `shape` and `stride`. Unevenly"
@@ -37,18 +36,7 @@ def _is_debug_eager_mode() -> bool:
   if torch.compiler.is_compiling():
     return False
 
-  debug_check_env = os.getenv(
-      "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS", ""
-  ).lower()
-  if debug_check_env in ("0", "false"):
-    return False
-  if debug_check_env in ("1", "true"):
-    return True
-
-  return (
-      execution_mode.eager_mode
-      == execution_mode.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
-  )
+  return env.get_enable_debug_checks()
 
 
 def from_local(

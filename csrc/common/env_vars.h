@@ -67,6 +67,15 @@ inline constexpr char kTorchShowCppStacktracesEnvVar[] =
 inline constexpr char kTorchTpuDeferAndFuseEnvVar[] =
     "TORCH_TPU_DEFER_AND_FUSE";  // Used to enable EagerMode::kDeferAndFuse by
                                  // default.
+// If set to "1", enable expensive debug checks in TorchTPU. This catches
+// more bugs in user code, but comes at a significant performance cost for
+// some ops. The debug eager mode enables these checks by default, but can
+// be overridden by setting this env var to "0".
+// If both TORCH_TPU_ENABLE_DEBUG_CHECKS and
+// TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS are set,
+// TORCH_TPU_ENABLE_DEBUG_CHECKS takes precedence.
+inline constexpr char kTorchTpuEnableDebugChecksEnvVar[] =
+    "TORCH_TPU_ENABLE_DEBUG_CHECKS";
 // Specifies the fixed port number for the handshake server.
 inline constexpr char kTorchTpuHandshakePortEnvVar[] =
     "TORCH_TPU_INTERNAL_HANDSHAKE_PORT";
@@ -218,6 +227,7 @@ inline constexpr auto kEnvVarToStage =
         {kTmpdirEnvVar, SymbolStage::Stable()},
         {kTorchShowCppStacktracesEnvVar, SymbolStage::Experimental()},
         {kTorchTpuDeferAndFuseEnvVar, SymbolStage::Experimental()},
+        {kTorchTpuEnableDebugChecksEnvVar, SymbolStage::Experimental()},
         {kTorchTpuHandshakePortEnvVar, SymbolStage::InternalApi()},
         {kTorchTpuInternalDetectRepeatedOpsEnvVar, std::nullopt},
         {kTorchTpuInternalDisableInplaceBufferDonationEnvVar, std::nullopt},

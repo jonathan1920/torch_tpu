@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "csrc/common/error_utils.h"
 #include "csrc/common/libtpu_version.h"
 #include "csrc/common/utils.h"
 #include "pybind11/pybind11.h"
@@ -29,6 +30,7 @@ PYBIND11_MODULE(env, m) {
 #endif
   m.def("set_libtpu_version", &SetLibtpuVersion, pybind11::arg("version"));
   m.def("get_libtpu_version", &GetLibtpuVersion);
+  m.def("get_enable_debug_checks", &GetEnableDebugChecks);
 }
 
 }  // namespace torch_tpu
