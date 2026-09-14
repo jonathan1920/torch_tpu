@@ -1041,6 +1041,8 @@ class HandshakeTest(seed_test_utils.RepeatableTest):
       )
 
   @parameterized.parameters(0, 1)
+  # TODO(b/560244886): re-enable the test once deflaked in OSS.
+  @absltest.skip("zmq.error.Again: Resource temporarily unavailable")
   def test_handshake_request_mismatching(self, coordinator_rank: int) -> None:
     with mock.patch.dict(
         os.environ,
