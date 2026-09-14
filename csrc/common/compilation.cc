@@ -305,12 +305,8 @@ static absl::StatusOr<bool> SetTpuOptions(xla::CompileOptions& options) {
             // Important: keep the keys sorted alphabetically - the override
             // merging logic relies on this.
             // go/keep-sorted start
-            // Reduces TPU binary size by using calls for deduplicated HLOs.
-            {"xla_tpu_enable_deduplicated_calls", std::string("ENABLED")},
-            // Enable "safe" XLA scavenge mode (where "safe" is needed by
-            // Pallas), which helps with a bit for performance, but also helps
-            // kernels which specify their own scoped limit.
-            {"xla_tpu_vmem_scavenging_mode", std::string("SAFE")},
+            {"xla_tpu_vmem_scavenging_mode",
+             std::string("SAFE_IFF_KERNEL_REQUIRED")},
             // go/keep-sorted end
         });
     options.env_option_overrides = *tpu_env_option_overrides;
