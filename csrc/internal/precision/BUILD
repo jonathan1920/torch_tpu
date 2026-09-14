@@ -26,6 +26,7 @@ torch_tpu_cc_library(
     name = "precision_impl_build",
     srcs = ["precision_impl.cc"],
     deps = [
+        "//csrc/common:pybind_error_utils",
         "//csrc/ops:precision_context",
         "//shims/pybind11",
         "@stablehlo//:stablehlo_ops",

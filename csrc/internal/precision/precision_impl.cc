@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "csrc/common/pybind_error_utils.h"
 #include "csrc/ops/precision_context.h"  // IWYU pragma: keep
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
@@ -24,8 +25,8 @@ namespace torch_tpu {
 using Precision = mlir::stablehlo::Precision;
 mlir::stablehlo::Precision PyUnsafeGetPrecision();
 
-PYBIND11_MODULE(precision_impl, m) {
-  pybind11::enum_<Precision>(m, "Precision")
+TT_PYBIND11_MODULE(precision_impl, m) {
+  pybind11::enum_<Precision>(GetPyBindHandle(m), "Precision")
       .value("DEFAULT",
              Precision::DEFAULT)  // EXPLICIT_PRECISION_OK=root usage
       .value("HIGH",
