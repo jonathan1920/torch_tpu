@@ -28,3 +28,6 @@ race:tpu::xprof::TimeSeries
 
 # Data races in PyTorch ATen.
 race:aten/src/ATen/native/cpu/CopyKernel
+
+# Data race on a recycled file descriptor inside hwloc topology discovery.
+race:third_party/hwloc/hwloc-master/hwloc/topology-linux.c
