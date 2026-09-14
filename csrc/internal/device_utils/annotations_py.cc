@@ -23,6 +23,7 @@
 #include "csrc/common/context_manager.h"
 #include "csrc/common/context_states.h"
 #include "csrc/common/error_utils.h"
+#include "csrc/common/pybind_error_utils.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -53,7 +54,7 @@ void PyExitLayoutContext() { PopContextState<LayoutContextState>(); }
 
 }  // namespace
 
-PYBIND11_MODULE(annotations_py, m) {
+TT_PYBIND11_MODULE(annotations_py, m) {
   m.def("enter_layout_context", &PyEnterLayoutContext,
         py::arg("minor_to_major"), py::arg("tiles"),
         py::arg("element_size_in_bits"));

@@ -57,11 +57,15 @@ pybind_extension(
     common_lib_packages = [
         "torch_tpu/csrc/common",
     ],
+    py_deps = [
+        "//shims/torch:pytorch",
+    ],
     wrap_py_init = True,
     deps = [
         "//csrc/common:context_manager",
         "//csrc/common:context_states",
         "//csrc/common:error_utils",
+        "//csrc/common:pybind_error_utils",
         "@com_google_absl//absl/status:statusor",
         "@xla//xla:shape_util",
         "@xla//xla/hlo/parser:hlo_parser",
