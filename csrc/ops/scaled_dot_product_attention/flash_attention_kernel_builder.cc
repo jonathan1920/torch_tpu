@@ -35,6 +35,8 @@
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "c10/core/ScalarType.h"
@@ -55,9 +57,13 @@
 #include "csrc/ops/scaled_dot_product_attention/helpers.h"
 #include "csrc/ops/scaled_dot_product_attention/util.h"
 #include "csrc/ops/view_decomposition/contiguous_to_view.h"
+#include "csrc/pjrt/pjrt_state.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MathExtras.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -70,12 +76,158 @@
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
 
 namespace torch_tpu {
-
 namespace {
+
+int64_t GetDeviceVmemLimitBytes() {
+  static const int64_t vmem_limit = []() -> int64_t {
+    // Default fallback: 16 MB
+    int64_t capacity = 16777216;
+    auto attrs_or = PjrtBackend::GetInstance().GetDeviceAttributes();
+    if (attrs_or.ok()) {
+      const std::string& device_kind = attrs_or->device_kind;
+      if (device_kind == "TPU v5e" || device_kind == "TPU v5 lite") {
+        capacity = 134217728;
+      } else if (device_kind == "TPU v6e" || device_kind == "TPU v6 lite") {
+        capacity = 134152192;
+      } else if (device_kind == "TPU v5" || device_kind == "TPU v5p") {
+        capacity = 67043328;
+      } else if (device_kind == "TPU7" || device_kind == "TPU7x" ||
+                 device_kind == "TPU 7" || device_kind == "TPU 7x" ||
+                 device_kind == "TPU8i" || device_kind == "TPU8t" ||
+                 device_kind == "TPU 8i" || device_kind == "TPU 8t") {
+        capacity = 67043328;
+      }
+    }
+    // Limit to 50% of capacity to avoid spilling.
+    return capacity / 2;
+  }();
+  return vmem_limit;
+}
+
+// Minimum hardware tile size (hardware lane width).
+constexpr int64_t kMinHardwareTileSize = 128;
+// Minimum tile size for the > 256 heuristic.
+constexpr int64_t kMinHeuristicTileSize = 256;
+
+int64_t RoundUpToTileSize(int64_t seq_len, int64_t tile_size) {
+  return llvm::divideCeil(seq_len, tile_size) * tile_size;
+}
+
+int64_t GetInitialTileSize(int64_t seq_len) {
+  if (seq_len <= 128) {
+    return kMinHardwareTileSize;
+  }
+  if (seq_len <= 256) {
+    return kMinHeuristicTileSize;
+  }
+  return RoundUpToTileSize(seq_len, kMinHeuristicTileSize);
+}
+
+int64_t EstimateTileVmemBytes(int64_t qt, int64_t kt, int64_t head_dim,
+                              bool is_f32, bool is_backward) {
+  int64_t elem_size = is_f32 ? 4 : 2;
+  int64_t linear_bytes = qt * head_dim * (3 * elem_size + 4) +
+                         kt * head_dim * (2 * elem_size) + qt * 1024;
+  int64_t quadratic_bytes = 8 * qt * kt;
+  int64_t total = 2 * (linear_bytes + quadratic_bytes);
+  return is_backward ? 2 * total : total;
+}
+
+mlir::torch_tpu::Tiling CreateTiling(
+    int64_t q_seq_len, int64_t k_seq_len, int64_t head_dim, bool is_f32,
+    bool is_backward,
+    std::optional<int64_t> vmem_limit_override = std::nullopt) {
+  const int64_t vmem_limit =
+      vmem_limit_override.value_or(GetDeviceVmemLimitBytes());
+
+  int64_t qt = GetInitialTileSize(q_seq_len);
+  int64_t kt = GetInitialTileSize(k_seq_len);
+
+  while (EstimateTileVmemBytes(qt, kt, head_dim, is_f32, is_backward) >
+             vmem_limit &&
+         (qt > kMinHeuristicTileSize || kt > kMinHeuristicTileSize)) {
+    if (qt > kt && qt > kMinHeuristicTileSize) {
+      qt = std::max(kMinHeuristicTileSize,
+                    RoundUpToTileSize(qt / 2, kMinHeuristicTileSize));
+    } else if (kt > kMinHeuristicTileSize) {
+      kt = std::max(kMinHeuristicTileSize,
+                    RoundUpToTileSize(kt / 2, kMinHeuristicTileSize));
+    } else if (qt > kMinHeuristicTileSize) {
+      qt = std::max(kMinHeuristicTileSize,
+                    RoundUpToTileSize(qt / 2, kMinHeuristicTileSize));
+    }
+  }
+
+  return {
+      .qt = qt,
+      .kt = kt,
+  };
+}
+
+absl::StatusOr<mlir::stablehlo::CustomCallOp> CreateCustomCallOp(
+    mlir::OpBuilder& builder, mlir::Location loc,
+    mlir::OwningOpRef<mlir::ModuleOp> module, mlir::ValueRange inputs,
+    mlir::TypeRange output_types) {
+  if (failed(mlir::torch_tpu::SerializeMosaicKernel(module.get()))) {
+    return TT_ERROR(::torch_tpu::error::kInternal)
+           << "failed to serialize mosaic kernel";
+  }
+
+  std::string backend_config_json = absl::StrFormat(
+      R"({
+        "custom_call_config": {
+          "body": "%s",
+          "needs_layout_passes": true,
+          "serialization_format": 1,
+        },
+        "device_type": "DEVICE_TYPE_TENSORCORE",
+        "scoped_memory_configs": [
+          {
+            "memory_space": 1,
+            "offset": 0,
+            "size": %d
+          }
+        ]
+      })",
+      absl::Base64Escape(mlir::torch_tpu::GetOpString(module.get())),
+      GetDeviceVmemLimitBytes());
+
+  auto get_default_layout = [&builder](mlir::Type type) {
+    int64_t rank = mlir::cast<mlir::RankedTensorType>(type).getRank();
+    auto layout_range = llvm::reverse(llvm::seq(rank));
+    llvm::SmallVector<int64_t> layout(layout_range.begin(), layout_range.end());
+    auto layout_type =
+        mlir::RankedTensorType::get({rank}, builder.getIndexType());
+    return mlir::DenseIntElementsAttr::get(layout_type, layout);
+  };
+
+  llvm::SmallVector<mlir::Attribute> input_layouts;
+  input_layouts.reserve(inputs.size());
+  for (const auto& input : inputs) {
+    input_layouts.push_back(get_default_layout(input.getType()));
+  }
+
+  llvm::SmallVector<mlir::Attribute> output_layouts;
+  output_layouts.reserve(output_types.size());
+  for (const auto& output_type : output_types) {
+    output_layouts.push_back(get_default_layout(output_type));
+  }
+
+  return mlir::stablehlo::CustomCallOp::create(
+      builder, loc, output_types, inputs,
+      builder.getStringAttr("tpu_custom_call"), builder.getBoolAttr(false),
+      builder.getStringAttr(backend_config_json),
+      mlir::stablehlo::CustomCallApiVersionAttr::get(
+          builder.getContext(),
+          mlir::stablehlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING),
+      builder.getArrayAttr({}), builder.getArrayAttr(input_layouts),
+      builder.getArrayAttr(output_layouts),
+      /*output_operand_aliases=*/nullptr,
+      /*result_tilings=*/nullptr);
+}
 
 bool IsDefined(const std::optional<at::Tensor>& tensor) {
   return tensor.has_value() && tensor->defined();
@@ -139,28 +291,15 @@ mlir::MlirOp PadBias(mlir::MlirOp bias, int64_t padded_q_len,
   return bias;
 }
 
-int64_t RoundUpToTileSize(int64_t seq_len, int64_t tile_size) {
-  return llvm::divideCeil(seq_len, tile_size) * tile_size;
-}
-
-mlir::torch_tpu::Tiling CreateTiling(int64_t q_seq_len, int64_t k_seq_len) {
-  constexpr int64_t kMinTileSize = 128;
-  int64_t qt = std::min(mlir::torch_tpu::kDefaultQTileSize,
-                        RoundUpToTileSize(q_seq_len, kMinTileSize));
-  int64_t kt = std::min(mlir::torch_tpu::kDefaultKTileSize,
-                        RoundUpToTileSize(k_seq_len, kMinTileSize));
-  return {
-      .qt = std::max(kMinTileSize, qt),
-      .kt = std::max(kMinTileSize, kt),
-  };
-}
-
-mlir::torch_tpu::Tiling CreateTiling(mlir::MlirOp query, mlir::MlirOp key) {
+mlir::torch_tpu::Tiling CreateTiling(mlir::MlirOp query, mlir::MlirOp key,
+                                     bool is_backward = false) {
   auto query_type = GetTensorTypeOrDie(query);
   auto key_type = GetTensorTypeOrDie(key);
   int64_t q_seq_len = query_type.getShape()[query_type.getRank() - 2];
   int64_t k_seq_len = key_type.getShape()[key_type.getRank() - 2];
-  return CreateTiling(q_seq_len, k_seq_len);
+  int64_t head_dim = query_type.getShape()[query_type.getRank() - 1];
+  bool is_f32 = query_type.getElementType().isF32();
+  return CreateTiling(q_seq_len, k_seq_len, head_dim, is_f32, is_backward);
 }
 
 absl::StatusOr<mlir::torch_tpu::FlashAttnConfig> CreateFlashAttnConfig(
@@ -274,7 +413,8 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
     std::optional<mlir::MlirOp> attn_bias_mlir =
         inputs.size() == 4 ? std::make_optional(inputs[3]) : std::nullopt;
 
-    const auto tiling = CreateTiling(query_mlir, key_mlir);
+    const auto tiling =
+        CreateTiling(query_mlir, key_mlir, /*is_backward=*/false);
     TT_ASSIGN_OR_RETURN(
         mlir::torch_tpu::FlashAttnConfig config,
         CreateFlashAttnConfig(query_mlir, key_mlir, value_mlir, attn_bias_mlir,
@@ -333,10 +473,10 @@ CreateFlashAttentionKernelImpl(const at::Tensor& query, const at::Tensor& key,
         mlir::OwningOpRef<mlir::ModuleOp> kernel,
         mlir::torch_tpu::CreateKernel(context.get(), config, tiling));
 
-    TT_ASSIGN_OR_RETURN(auto custom_call,
-                        mlir::torch_tpu::CreateCustomCallOp(
-                            builder.getOpBuilder(), builder.getLoc(),
-                            std::move(kernel), operands, result_types));
+    TT_ASSIGN_OR_RETURN(
+        auto custom_call,
+        CreateCustomCallOp(builder.getOpBuilder(), builder.getLoc(),
+                           std::move(kernel), operands, result_types));
 
     mlir::MlirOp out_padded(builder, custom_call.getResult(0));
     mlir::MlirOp out_sliced =
@@ -442,7 +582,8 @@ CreateFlashAttentionBackwardKernel(
     std::optional<mlir::MlirOp> attn_bias_mlir =
         inputs.size() == 7 ? std::make_optional(inputs[6]) : std::nullopt;
 
-    const auto tiling = CreateTiling(query_mlir, key_mlir);
+    const auto tiling =
+        CreateTiling(query_mlir, key_mlir, /*is_backward=*/true);
     TT_ASSIGN_OR_RETURN(
         mlir::torch_tpu::FlashAttnConfig config,
         CreateFlashAttnConfig(query_mlir, key_mlir, value_mlir, attn_bias_mlir,
@@ -516,9 +657,9 @@ CreateFlashAttentionBackwardKernel(
     mlir::RankedTensorType value_type = GetTensorTypeOrDie(value_batch);
     TT_ASSIGN_OR_RETURN(
         auto dkv_custom_call,
-        mlir::torch_tpu::CreateCustomCallOp(
-            builder.getOpBuilder(), builder.getLoc(), std::move(dkv_kernel),
-            dkv_inputs, {key_type, value_type}));
+        CreateCustomCallOp(builder.getOpBuilder(), builder.getLoc(),
+                           std::move(dkv_kernel), dkv_inputs,
+                           {key_type, value_type}));
 
     mlir::MlirOp out_batch =
         flatten_batch_dims(out_mlir, config.batch_size, rank - 3);
@@ -541,9 +682,9 @@ CreateFlashAttentionBackwardKernel(
         mlir::torch_tpu::CreateBackwardDqKernel(context.get(), config, tiling));
     TT_ASSIGN_OR_RETURN(
         auto dq_custom_call,
-        mlir::torch_tpu::CreateCustomCallOp(
-            builder.getOpBuilder(), builder.getLoc(), std::move(dq_kernel),
-            dq_inputs, {query_batch.getType()}));
+        CreateCustomCallOp(builder.getOpBuilder(), builder.getLoc(),
+                           std::move(dq_kernel), dq_inputs,
+                           {query_batch.getType()}));
 
     mlir::MlirOp grad_key_batch_padded(builder, dkv_custom_call.getResult(0));
     mlir::MlirOp grad_value_batch_padded(builder, dkv_custom_call.getResult(1));

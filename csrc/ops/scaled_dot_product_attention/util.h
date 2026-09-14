@@ -18,9 +18,9 @@
 #define TORCH_TPU_CSRC_OPS_SCALED_DOT_PRODUCT_ATTENTION_UTIL_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
-#include "absl/status/statusor.h"
 #include "csrc/ops/scaled_dot_product_attention/flash_attention_config.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -33,10 +33,8 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir::torch_tpu {
 
@@ -114,15 +112,6 @@ Value ConvertElementType(ImplicitLocOpBuilder& b, Type target_element_type,
 // multiple of the input lane size.
 Value NormalizeLaneDim(ImplicitLocOpBuilder& builder, Value input,
                        int64_t target_lane_size);
-
-// Returns the usable scoped VMEM capacity in bytes per TensorCore for the
-// active TPU device (capped at 50% to avoid spilling surrounding operations).
-int64_t GetDeviceVmemLimitBytes();
-
-// Helper to create a stablehlo::CustomCallOp with mosaic kernel.
-absl::StatusOr<stablehlo::CustomCallOp> CreateCustomCallOp(
-    OpBuilder& builder, Location loc, mlir::OwningOpRef<mlir::ModuleOp> module,
-    ValueRange inputs, TypeRange output_types);
 
 // Get the string representation of an operation.
 std::string GetOpString(Operation* op);

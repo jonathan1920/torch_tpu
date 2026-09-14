@@ -21,14 +21,10 @@
 
 #include "absl/log/absl_check.h"
 #include "absl/log/log.h"
-#include "absl/strings/escaping.h"
-#include "absl/strings/str_format.h"
 #include "csrc/common/error_utils.h"
 #include "csrc/internal/mosaic/op_builders.h"
 #include "csrc/ops/scaled_dot_product_attention/flash_attention_config.h"
-#include "csrc/pjrt/pjrt_state.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/Sequence.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -41,13 +37,13 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
-#include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir::torch_tpu {
 
@@ -333,88 +329,6 @@ Value NormalizeLaneDim(ImplicitLocOpBuilder& builder, Value input,
   }
 
   return CreateRepeatOp(builder, input, rank - 1, target_lane_size);
-}
-
-int64_t GetDeviceVmemLimitBytes() {
-  // Default fallback: 16 MB
-  int64_t capacity = 16777216;
-  auto attrs_or = ::torch_tpu::PjrtBackend::GetInstance().GetDeviceAttributes();
-  if (attrs_or.ok()) {
-    const std::string& device_kind = attrs_or->device_kind;
-    if (device_kind == "TPU v5e" || device_kind == "TPU v5 lite") {
-      capacity = 134217728;
-    } else if (device_kind == "TPU v6e" || device_kind == "TPU v6 lite") {
-      capacity = 134152192;
-    } else if (device_kind == "TPU v5" || device_kind == "TPU v5p") {
-      capacity = 67043328;
-    } else if (device_kind == "TPU7" || device_kind == "TPU7x" ||
-               device_kind == "TPU 7" || device_kind == "TPU 7x" ||
-               device_kind == "TPU8i" || device_kind == "TPU8t" ||
-               device_kind == "TPU 8i" || device_kind == "TPU 8t") {
-      capacity = 67043328;
-    }
-  }
-  // Limit to 50% of capacity to avoid spilling.
-  return capacity / 2;
-}
-
-absl::StatusOr<stablehlo::CustomCallOp> CreateCustomCallOp(
-    OpBuilder& builder, Location loc, mlir::OwningOpRef<mlir::ModuleOp> module,
-    ValueRange inputs, TypeRange output_types) {
-  if (failed(SerializeMosaicKernel(module.get()))) {
-    return TT_ERROR(::torch_tpu::error::kInternal)
-           << "failed to serialize mosaic kernel";
-  }
-
-  std::string backend_config_json = absl::StrFormat(
-      R"({
-        "custom_call_config": {
-          "body": "%s",
-          "needs_layout_passes": true,
-          "serialization_format": 1,
-        },
-        "device_type": "DEVICE_TYPE_TENSORCORE",
-        "scoped_memory_configs": [
-          {
-            "memory_space": 1,
-            "offset": 0,
-            "size": %d
-          }
-        ]
-      })",
-      absl::Base64Escape(GetOpString(module.get())), GetDeviceVmemLimitBytes());
-
-  auto get_default_layout = [&builder](Type type) {
-    int64_t rank = cast<RankedTensorType>(type).getRank();
-    auto layout_range = llvm::reverse(llvm::seq(rank));
-    SmallVector<int64_t> layout(layout_range.begin(), layout_range.end());
-    auto layout_type = RankedTensorType::get({rank}, builder.getIndexType());
-    return DenseIntElementsAttr::get(layout_type, layout);
-  };
-
-  SmallVector<Attribute> input_layouts;
-  input_layouts.reserve(inputs.size());
-  for (const auto& input : inputs) {
-    input_layouts.push_back(get_default_layout(input.getType()));
-  }
-
-  SmallVector<Attribute> output_layouts;
-  output_layouts.reserve(output_types.size());
-  for (const auto& output_type : output_types) {
-    output_layouts.push_back(get_default_layout(output_type));
-  }
-
-  return stablehlo::CustomCallOp::create(
-      builder, loc, output_types, inputs,
-      builder.getStringAttr("tpu_custom_call"), builder.getBoolAttr(false),
-      builder.getStringAttr(backend_config_json),
-      stablehlo::CustomCallApiVersionAttr::get(
-          builder.getContext(),
-          stablehlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING),
-      builder.getArrayAttr({}), builder.getArrayAttr(input_layouts),
-      builder.getArrayAttr(output_layouts),
-      /*output_operand_aliases=*/nullptr,
-      /*result_tilings=*/nullptr);
 }
 
 DictionaryAttr CreateSymbolTransformIndicesAttr(
