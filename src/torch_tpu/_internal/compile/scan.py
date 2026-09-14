@@ -21,6 +21,20 @@ from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.export import export
 
 
+def _to_placeholder(t, shape=None):
+  """Returns `t` as a like-shaped placeholder, or `t` itself if not a tensor.
+
+  Args:
+    t: A body operand.
+    shape: Placeholder shape, defaulting to `t`'s own.
+  """
+  if not isinstance(t, torch.Tensor):
+    return t
+  if shape is None:
+    shape = list(t.shape)
+  return tpu_torch_compile.placeholder(shape, t.dtype, t.requires_grad)
+
+
 def _handle_scan_impl(combine_fn, init, xs, additional_inputs, reverse=False):
   """TPU implementation for scan higher-order op.
 
@@ -43,13 +57,12 @@ def _handle_scan_impl(combine_fn, init, xs, additional_inputs, reverse=False):
   xs_list, _ = pytree.tree_flatten(xs)
   extra_list, _ = pytree.tree_flatten(additional_inputs)
 
-  # Construct sample args for body function.
-  x_list = [
-      tpu_torch_compile.placeholder(
-          list(single_xs.shape)[1:], single_xs.dtype, single_xs.requires_grad
-      )
-      for single_xs in xs_list
-  ]
+  # `fx_to_mlir`'s args become the body module's block arguments, which have to
+  # be graph leaves, so every body operand has to be a placeholder.
+  init_args = [_to_placeholder(t) for t in init_list]
+  # The body sees one slice of each `xs` along the scan dimension.
+  x_list = [_to_placeholder(t, list(t.shape)[1:]) for t in xs_list]
+  extra_args = [_to_placeholder(t) for t in extra_list]
 
   # Resolve the actual callable body function.
   actual_combine_fn = combine_fn
@@ -68,9 +81,9 @@ def _handle_scan_impl(combine_fn, init, xs, additional_inputs, reverse=False):
           for t in tensors
       ]
 
-    fake_inits = to_fake(init_list)
+    fake_inits = to_fake(init_args)
     fake_xs_heads = to_fake(x_list)
-    fake_extras = to_fake(extra_list)
+    fake_extras = to_fake(extra_args)
 
     fake_result = actual_combine_fn(*fake_inits, *fake_xs_heads, *fake_extras)
     fake_result_flat, _ = pytree.tree_flatten(fake_result)
@@ -83,7 +96,7 @@ def _handle_scan_impl(combine_fn, init, xs, additional_inputs, reverse=False):
       dummy_ys.append(torch.zeros(ys_shape, dtype=y.dtype, device="meta"))
 
   # Compile the body sub-graph to MLIR.
-  body_args = init_list + x_list + extra_list
+  body_args = init_args + x_list + extra_args
   body_mlir = export.fx_to_mlir(actual_combine_fn, args=body_args)
 
   # Call the C++ binding to create a deferred scan operation.
