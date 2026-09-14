@@ -16,6 +16,7 @@ from typing import TypeAlias
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import execution_mode
+from torch_tpu._internal import testing as tt_testing
 from tests import seed_test_utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
@@ -54,6 +55,7 @@ class EagerDebugTest(seed_test_utils.RepeatableTest):
       # Act
       c = a @ b
       del c
+    tt_testing.reset_eager_state()
 
     # If the outerproduct was deferred,
     # an OOM could be triggered by `c.sum().cpu()`.

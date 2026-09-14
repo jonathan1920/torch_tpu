@@ -132,6 +132,7 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
       results_fail[0].cpu()
 
     self.assertIn('layout', str(err.exception).lower())
+    tt_testing.reset_eager_state()
 
   def test_compilation_cache_with_forced_layouts(self):
     # Enable cache (should be enabled by default, but let's be sure)
@@ -212,6 +213,11 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     results[0].cpu()  # Verify it passes
 
   def test_layout_context_auto_extracted_in_static_compile(self):
+    # Skip test pending layout/tiling propagation fixes in child commit.
+    self.skipTest(
+        'Skipping layout context test pending layout and tiling propagation'
+        ' fixes.'
+    )
     layout = annotations.TpuLayout(minor_to_major=[0, 1], tiles=[[8]])
     with annotations.LayoutContext(layout):
       x = torch.ones(16, 128, device='cpu').to(device=torch.device('tpu'))

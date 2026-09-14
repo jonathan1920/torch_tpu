@@ -566,11 +566,13 @@ PrepareTraversals(
 }
 
 void PruneCompletedFutures(std::vector<xla::Future<void>>& futures) {
-  futures.erase(std::remove_if(futures.begin(), futures.end(),
-                               [](const xla::Future<void>& future) {
-                                 return !future.IsValid() || future.IsReady();
-                               }),
-                futures.end());
+  futures.erase(
+      std::remove_if(futures.begin(), futures.end(),
+                     [](const xla::Future<void>& future) {
+                       return !future.IsValid() ||
+                              (future.IsReady() && future.Await().ok());
+                     }),
+      futures.end());
 }
 
 struct StreamState {

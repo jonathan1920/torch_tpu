@@ -1112,6 +1112,7 @@ torch_tpu_cc_test(
         ":traversal",
         "//csrc/common:cache_key",
         "//csrc/common:dimension_types",
+        "//csrc/common:error_utils",
         "//csrc/common:oss_test_main",
         "//csrc/common:shape",
         "//csrc/common:status_test_utils",
@@ -1120,10 +1121,12 @@ torch_tpu_cc_test(
         "//csrc/ops:python_context",
         "//csrc/pjrt:pjrt_state",
         "//csrc/pjrt:pjrt_utils",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
+        "@xla//xla:future",
     ],
 )
 

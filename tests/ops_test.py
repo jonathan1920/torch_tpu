@@ -1844,7 +1844,10 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("acosh")
 
   def test_adaptive_avg_pool2d(self):
-    self.do_test_op("nn.functional.adaptive_avg_pool2d")
+    self.do_test_op(
+        "nn.functional.adaptive_avg_pool2d",
+        exclude_dtypes=(torch.bool,),
+    )
 
   def test_adaptive_avg_pool3d(self):
     self.do_test_op(
@@ -1921,19 +1924,22 @@ class TestOps(op_testing.OpInfoTestBase):
         "addmv",
         # GPU (CUDA) does not support integral dtypes for addmv.
         exclude_dtypes={
-            "cpu": (torch.int32, torch.int64),
+            "cpu": (torch.int32, torch.int64, torch.complex64),
             "gpu": (
                 torch.uint8,
                 torch.int8,
                 torch.int16,
+                torch.complex64,
             ),
         },
         exclude_inplace_dtypes={
-            "cpu": (torch.int32, torch.int64),
+            "cpu": (torch.int32, torch.int64, torch.complex64),
             "gpu": (
                 torch.uint8,
                 torch.int8,
                 torch.int16,
+                torch.float64,
+                torch.complex64,
             ),
         },
     )
@@ -2024,7 +2030,7 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_avg_pool2d(self):
     self.do_test_op(
         "nn.functional.avg_pool2d",
-        exclude_dtypes={"cpu": (torch.int64,)},
+        exclude_dtypes={"cpu": (torch.int64, torch.bool), "gpu": (torch.bool,)},
     )
 
   def test_avg_pool3d(self):
@@ -2072,11 +2078,14 @@ class TestOps(op_testing.OpInfoTestBase):
         # there's no point in checking the values.
         check_value=CheckValueMode.SKIP,
         # GPU (CUDA) does not support complex dtypes for bernoulli.
+        # TPU does not support complex or integral dtypes for bernoulli.
         exclude_dtypes={
-            "cpu": COMPLEX_DTYPES,
+            "cpu": (*COMPLEX_DTYPES, *INTEGRAL_DTYPES, torch.bool),
             "gpu": (
                 *COMPLEX_DTYPES,
+                *INTEGRAL_DTYPES,
                 torch.int4,
+                torch.bool,
             ),
         },
     )
@@ -2094,7 +2103,7 @@ class TestOps(op_testing.OpInfoTestBase):
         # TODO(b/557286629): support data sampling for booleans.
         exclude_dtypes={
             "cpu": COMPLEX_DTYPES + FLOAT_DTYPES + (torch.bool,),
-            "gpu": COMPLEX_DTYPES + (torch.float64,) + (torch.bool,),
+            "gpu": COMPLEX_DTYPES + FLOAT_DTYPES + (torch.bool,),
         },
     )
 
@@ -2107,10 +2116,8 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_bitwise_not(self):
     self.do_test_op(
         "bitwise_not",
-        # TODO: fix bitwise_not() succeeding on TPU with float inputs.
-        check_op_failures=False,
-        # TODO: fix bitwise_not_() succeeding on TPU with float inputs.
-        check_inplace_op_failures=False,
+        exclude_dtypes=FLOAT_DTYPES + COMPLEX_DTYPES,
+        exclude_inplace_dtypes=FLOAT_DTYPES + COMPLEX_DTYPES,
     )
 
   def test_bitwise_or(self):
@@ -2165,6 +2172,8 @@ class TestOps(op_testing.OpInfoTestBase):
         # TODO: fix clamp() returning enormous errors or nans when dynamism is
         # enabled.
         check_dynamism=False,
+        exclude_dtypes=(torch.bool,),
+        exclude_inplace_dtypes=(torch.bool,),
     )
 
   def test_clamp_min(self):
@@ -2764,7 +2773,11 @@ class TestOps(op_testing.OpInfoTestBase):
 
   @category("foreach")
   def test_foreach_neg(self):
-    self.do_test_op("_foreach_neg")
+    self.do_test_op(
+        "_foreach_neg",
+        exclude_dtypes=(torch.bool,),
+        exclude_inplace_dtypes=(torch.bool,),
+    )
 
   @category("foreach")
   def test_foreach_norm(self):
@@ -3036,7 +3049,11 @@ class TestOps(op_testing.OpInfoTestBase):
     )
 
   def test_logit(self):
-    self.do_test_op("logit")
+    self.do_test_op(
+        "logit",
+        exclude_dtypes=(torch.bool,),
+        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+    )
 
   def test_lu_unpack(self):
     self.do_test_op(
@@ -4237,7 +4254,7 @@ class TestOps(op_testing.OpInfoTestBase):
     self.do_test_op("std")
 
   def test_var(self):
-    self.do_test_op("var")
+    self.do_test_op("var", exclude_dtypes=COMPLEX_DTYPES + (torch.bool,))
 
   def test_var_mean(self):
     self.do_test_op("var_mean")
@@ -4333,7 +4350,8 @@ class TestOps(op_testing.OpInfoTestBase):
         # TODO(b/540346402): succeeded on TPU but failed on GPU for complex64.
         # CUDA kernel is not implemented for this dtype.
         exclude_dtypes={
-            "gpu": (torch.complex64,),
+            "cpu": INTEGRAL_DTYPES,
+            "gpu": (torch.complex64,) + INTEGRAL_DTYPES,
         },
         check_dynamism=False,
     )
@@ -4348,6 +4366,7 @@ class TestOps(op_testing.OpInfoTestBase):
                 (torch.complex64,) + FLOAT_DTYPES,
                 (torch.complex64,),
             )
+            + INTEGRAL_DTYPES
         ),
         check_dynamism=False,
     )

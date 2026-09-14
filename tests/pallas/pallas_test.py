@@ -1001,6 +1001,7 @@ class TestPallasKernels(seed_test_utils.RepeatableTest):
       x = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32, device=self.device)
       y = custom_call_op(x)
       y.cpu()
+    tt_testing.reset_eager_state()
 
   def test_wrapper_tensor_support(self):
 

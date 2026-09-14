@@ -335,6 +335,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         ),
     ):
       t3.to("cpu")
+    tt_testing.reset_eager_state()
 
   @et.why_tpu_only("TODO: support complex32 on TPU.")
   def test_dtype_complex32_unsupported(self):

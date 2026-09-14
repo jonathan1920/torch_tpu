@@ -20,10 +20,12 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "csrc/common/cache_key.h"
 #include "csrc/common/dimension_types.h"
+#include "csrc/common/error_utils.h"
 #include "csrc/common/shape.h"
 #include "csrc/common/status_test_utils.h"
 #include "csrc/eager/current_stream.h"
@@ -42,6 +44,7 @@
 #include "gtest/gtest.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "xla/future.h"
 
 namespace torch_tpu {
 namespace {
@@ -802,6 +805,37 @@ TEST_F(EventsQueueTest, StreamsMaterializeSeparately) {
   EXPECT_THAT(traversal.arguments(), testing::IsEmpty());
   EXPECT_THAT(traversal.execution_order(), testing::ElementsAre(list_c));
   EXPECT_THAT(traversal.outputs(), testing::ElementsAre(ref_c));
+}
+
+TEST_F(EventsQueueTest, RetainsFailedCompletedFutures) {
+  ClearAllStreams();
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+
+  xla::Future<void> failed_future(TT_ERROR(error::kInvalidArgument)
+                                  << "Fake error");
+  ASSERT_TRUE(failed_future.IsReady());
+
+  RecordAsyncDeviceToHost(std::move(failed_future));
+
+  auto snapshot = EventSnapshot::Record(device_index, stream_id);
+  ASSERT_NE(snapshot, nullptr);
+
+  auto status = snapshot->Synchronize();
+  EXPECT_EQ(status.code(), error::kInvalidArgument);
+}
+
+TEST_F(EventsQueueTest, PrunesSuccessfulCompletedFutures) {
+  ClearAllStreams();
+  const auto [device_index, stream_id] = GetCurrentDeviceStreamId();
+
+  xla::Future<void> ok_future(absl::OkStatus());
+  ASSERT_TRUE(ok_future.IsReady());
+
+  RecordAsyncDeviceToHost(std::move(ok_future));
+
+  auto snapshot = EventSnapshot::Record(device_index, stream_id);
+  ASSERT_NE(snapshot, nullptr);
+  EXPECT_TRUE(snapshot->Synchronize().ok());
 }
 
 }  // namespace

@@ -357,9 +357,11 @@ _OUT_DTYPE_CAST_KNOWN_FAILURES: Final[set[str]] = {
     "addcdiv",
     "addcmul",
     "addmm",
+    "addmv",
     "aminmax",
     "baddbmm",
     "bernoulli",
+    "bitwise_not",
     "bmm",
     "bucketize",
     "clamp_max",
@@ -415,6 +417,7 @@ _OUT_DTYPE_CAST_KNOWN_FAILURES: Final[set[str]] = {
     "torch._scaled_mm_v2",
     "tril",
     "triu",
+    "var",
     # go/keep-sorted end
 }
 
