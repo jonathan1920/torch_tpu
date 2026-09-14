@@ -20,6 +20,7 @@
 #include "ATen/core/TensorBody.h"
 #include "csrc/common/device_type.h"
 #include "csrc/common/error_utils.h"
+#include "csrc/common/pybind_error_utils.h"
 #include "csrc/common/shape.h"
 #include "csrc/internal/dynamism/dynamism.h"
 #include "pybind11/pybind11.h"
@@ -59,8 +60,8 @@ std::vector<BoundedDynamicDimension> PyGetDynamismInfo(
 
 }  // namespace
 
-PYBIND11_MODULE(_tpu_torch_dynamism, m) {
-  py::class_<BoundedDynamicDimension>(m, "BoundedDynamicDimension")
+TT_PYBIND11_MODULE(_tpu_torch_dynamism, m) {
+  PyBindClass<BoundedDynamicDimension>(m, "BoundedDynamicDimension")
       .def_readonly("dimension", &BoundedDynamicDimension::dimension)
       .def_readonly("lower_bound", &BoundedDynamicDimension::lower_bound)
       .def_readonly("upper_bound", &BoundedDynamicDimension::upper_bound);

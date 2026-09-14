@@ -48,6 +48,7 @@ torch_tpu_cc_library(
         ":dynamism_cc",
         "//csrc/common:device_type",
         "//csrc/common:error_utils",
+        "//csrc/common:pybind_error_utils",
         "//csrc/common:shape",
         "//shims/pybind11",
         "//shims/torch:aten_headers",

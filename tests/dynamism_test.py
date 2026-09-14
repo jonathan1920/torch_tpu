@@ -98,24 +98,6 @@ class DynamismApiTest(seed_test_utils.RepeatableTest):
     self.assertEmpty(dynamism.get_dynamism_info(y))
     self.assertEmpty(dynamism.get_dynamism_info(z))
 
-  def test_mark_dynamic_invalid_dim(self):
-    x = torch.ones(10, device=self.device)
-    with self.assertRaisesRegex(RuntimeError, "dimension -1 is out of bounds"):
-      dynamism.mark_dynamic(x, -1, 2, 10)
-
-  def test_mark_dynamic_invalid_bounds(self):
-    x = torch.ones(10, device=self.device)
-    with self.assertRaisesRegex(RuntimeError, "but the dimension size is 10"):
-      dynamism.mark_dynamic(x, 0, 2, 9)
-
-  def test_mark_dynamic_multiple_dims_fails(self):
-    x = torch.ones(10, 10, device=self.device)
-    dynamism.mark_dynamic(x, 0, 2, 10)
-    with self.assertRaisesRegex(
-        RuntimeError, "only one dynamic dimension is supported"
-    ):
-      dynamism.mark_dynamic(x, 1, 2, 10)
-
   def test_mark_dynamic_multiple_tensors(self):
     x = torch.ones(10, device=self.device)
     y = torch.ones(10, device=self.device)

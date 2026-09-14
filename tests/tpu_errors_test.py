@@ -1130,10 +1130,62 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""only one dynamic dimension is supported per tensor""",
+        tpu="""mark_dynamic(): cannot mark dimension 1 as dynamic, because dimension 0 is already marked as dynamic (multiple dynamic dimensions in one tensor is not yet supported)""",
+        message_reviewed_by="wan",
     ):
       # Try to mark dimension 1 as dynamic too.
       dynamism.mark_dynamic(inp, 1, 5, 20)
+
+  @et.why_tpu_only("Bounded dynamism is a TPU-specific feature.")
+  def test_mark_dynamic_invalid_dim(self):
+    x = torch.ones(10, device=et.device())
+
+    with et.assert_raises_message(
+        IndexError,
+        tpu="""mark_dynamic(): expected dimension to be >= 0, got -1""",
+        message_reviewed_by="wan",
+    ):
+      dynamism.mark_dynamic(x, -1, 2, 10)
+
+    with et.assert_raises_message(
+        IndexError,
+        tpu="""mark_dynamic(): expected dimension to be < 1 (the tensor's number of dimensions), got 3""",
+        message_reviewed_by="wan",
+    ):
+      dynamism.mark_dynamic(x, 3, 2, 10)
+
+  @et.why_tpu_only("Bounded dynamism is a TPU-specific feature.")
+  def test_mark_dynamic_invalid_lower_bound(self):
+    x = torch.ones(10, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""mark_dynamic(): expected lower_bound to be >= 2 as 0/1-sized dimensions are processed with particular assumptions (e.g. no-data, broadcastable), got 1""",
+        message_reviewed_by="wan",
+    ):
+      dynamism.mark_dynamic(x, 0, 1, 10)
+
+  @et.why_tpu_only("Bounded dynamism is a TPU-specific feature.")
+  def test_mark_dynamic_invalid_bounds(self):
+    x = torch.ones(10, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""mark_dynamic(): expected lower_bound <= upper_bound, got 2 vs 1""",
+        message_reviewed_by="wan",
+    ):
+      dynamism.mark_dynamic(x, 0, 2, 1)
+
+  @et.why_tpu_only("Bounded dynamism is a TPU-specific feature.")
+  def test_mark_dynamic_size_not_in_bounds(self):
+    x = torch.ones(10, device=et.device())
+
+    with et.assert_raises_message(
+        IndexError,
+        tpu="""mark_dynamic(): expected the size range [lower, upper] for dimension 0 to contain its size (10), got [2, 9]""",
+        message_reviewed_by="wan",
+    ):
+      dynamism.mark_dynamic(x, 0, 2, 9)
 
   @et.why_tpu_only("Bounded dynamism is a TPU-specific feature.")
   def test_slice_dynamic_dim_on_dynamic_tensor_error(self):

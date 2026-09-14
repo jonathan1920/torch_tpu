@@ -570,25 +570,34 @@ void DeviceBufferList::SetAsError(absl::Status error) {
 absl::Status DeviceBufferList::MarkDynamic(int64_t index, int64_t dimension,
                                            int64_t lower_bound,
                                            int64_t upper_bound) {
-  TT_RET_CHECK(lower_bound >= 2 && lower_bound <= upper_bound,
-               error::kInvalidArgument)
-      << "trying to mark dimension " << dimension
-      << " as dynamic with invalid bounds [" << lower_bound << ", "
-      << upper_bound << "]";
-  TT_RET_CHECK(index >= 0 && index < shapes_.size(), error::kPythonIndexError)
-      << "index " << index << " is out of bounds for DeviceBufferList of size "
-      << shapes_.size();
+  ABSL_CHECK(index >= 0 && index < shapes_.size())  // CRASH_OK
+      << "Index " << index << " is out of bounds for DeviceBufferList of size "
+      << shapes_.size() << ".";
+
   Shape& shape = shapes_[index];
-  TT_RET_CHECK(dimension >= 0 && dimension < shape.dimensions().size(),
-               error::kPythonIndexError)
-      << "dimension " << dimension << " is out of bounds for tensor of rank "
-      << shape.dimensions().size();
+
+  TT_RET_CHECK(lower_bound >= 2, error::kInvalidArgument)
+      << "expected lower_bound to be >= 2 as 0/1-sized dimensions are "
+         "processed with particular assumptions (e.g. no-data, broadcastable), "
+         "got "
+      << lower_bound;
+  TT_RET_CHECK(lower_bound <= upper_bound, error::kInvalidArgument)
+      << "expected lower_bound <= upper_bound, got " << lower_bound << " vs "
+      << upper_bound;
+
+  TT_RET_CHECK(dimension >= 0, error::kPythonIndexError)
+      << "expected dimension to be >= 0, got " << dimension;
+  TT_RET_CHECK(dimension < shape.dimensions().size(), error::kPythonIndexError)
+      << "expected dimension to be < " << shape.dimensions().size()
+      << " (the tensor's number of dimensions), got " << dimension;
+
   TT_RET_CHECK(shape.dimensions()[dimension] >= lower_bound &&
                    shape.dimensions()[dimension] <= upper_bound,
                error::kPythonIndexError)
-      << "trying to mark dimension " << dimension << " as dynamic with bounds ["
-      << lower_bound << ", " << upper_bound << "], but the dimension size is "
-      << shape.dimensions()[dimension];
+      << "expected the size range [lower, upper] for dimension " << dimension
+      << " to contain its size (" << shape.dimensions()[dimension] << "), got ["
+      << lower_bound << ", " << upper_bound << "]";
+
   auto it_find = std::find_if(
       shape.dynamic_dimensions().begin(), shape.dynamic_dimensions().end(),
       [dimension](const BoundedDynamicDimension& dynamic_dimension) {

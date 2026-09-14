@@ -48,6 +48,7 @@ pybind_extension(
     deps = [
         "//csrc/common:device_type",
         "//csrc/common:error_utils",
+        "//csrc/common:pybind_error_utils",
         "//csrc/common:shape",
         "//csrc/internal/dynamism:dynamism_cc",
         "//shims/torch:aten_headers",

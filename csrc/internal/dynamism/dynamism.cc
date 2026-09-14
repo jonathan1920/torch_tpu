@@ -50,7 +50,11 @@ absl::StatusOr<at::Tensor> MarkDynamic(const at::Tensor& tensor,
   TT_RET_CHECK(
       it_find != dynamic_dimensions.end() || dynamic_dimensions.empty(),
       error::kInvalidArgument)
-      << "only one dynamic dimension is supported per tensor";
+      << "cannot mark dimension " << dimension
+      << " as dynamic, because dimension "
+      << dynamic_dimensions.front().dimension
+      << " is already marked as dynamic (multiple dynamic dimensions in one "
+         "tensor is not yet supported)";
   TT_RETURN_IF_ERROR(
       buffer_ref.MarkDynamic(dimension, lower_bound, upper_bound));
 
