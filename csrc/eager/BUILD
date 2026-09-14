@@ -130,6 +130,9 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "materialization_heuristics_test",
     srcs = ["materialization_heuristics_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     requires_libtpu = True,
     deps = [
         ":device_buffer",
