@@ -765,6 +765,7 @@ enum class OpName {
   kUpsampleBicubic2dOut,
   kUpsampleBilinear2dBackwardGradInput,
   kUpsampleBilinear2dOut,
+  kUpsampleLinear1dOut,
   kUpsampleNearest1dBackwardGradInput,
   kUpsampleNearest1dOut,
   kUpsampleNearest2dBackwardGradInput,

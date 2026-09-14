@@ -395,7 +395,6 @@ UNREGISTERED_OPS = frozenset([
     'triangular_solve.X',
     'triu_indices',
     'unique_dim',
-    'upsample_linear1d.out',
     'upsample_linear1d_backward.grad_input',
     'upsample_trilinear3d.out',
     'upsample_trilinear3d_backward.grad_input',

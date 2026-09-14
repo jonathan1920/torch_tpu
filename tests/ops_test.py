@@ -4189,6 +4189,14 @@ class TestOps(op_testing.OpInfoTestBase):
         },
     )
 
+  def test_upsample_linear1d(self):
+    self.do_test_op(
+        "nn.functional.interpolate",
+        variant_test_name="linear",
+        check_grad=False,
+        exclude_dtypes=_if_tpu_vs_gpu_compiled(INTEGRAL_DTYPES, ()),
+    )
+
   def test_upsample_bilinear(self):
     # TODO: The CPU side fails for complex dtypes and integers.
     self.do_test_op(

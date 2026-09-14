@@ -3601,6 +3601,88 @@ class OpsUnitTest(TorchTpuVsCpuTestBase):
 
     self.assert_close(golden_result=out_cpu, torch_tpu_result=out_tpu.cpu())
 
+  def test_upsample_linear1d_align_corners(self):
+    tpu_device = torch.device("tpu")
+    for align_corners in (True, False):
+      x = torch.arange(8, dtype=torch.float32).reshape(2, 1, 4)
+      x_tpu = x.to(tpu_device)
+      out_tpu = torch.nn.functional.interpolate(
+          x_tpu, size=10, mode="linear", align_corners=align_corners
+      )
+      out_cpu = torch.nn.functional.interpolate(
+          x, size=10, mode="linear", align_corners=align_corners
+      )
+      self.assert_close(golden_result=out_cpu, torch_tpu_result=out_tpu.cpu())
+
+  def test_upsample_linear1d_with_scale_factor(self):
+    tpu_device = torch.device("tpu")
+    for align_corners in (True, False):
+      x = torch.randn(2, 3, 16, dtype=torch.float32)
+      x_tpu = x.to(tpu_device)
+      out_tpu = torch.nn.functional.interpolate(
+          x_tpu, scale_factor=2.5, mode="linear", align_corners=align_corners
+      )
+      out_cpu = torch.nn.functional.interpolate(
+          x, scale_factor=2.5, mode="linear", align_corners=align_corners
+      )
+      self.assert_close(golden_result=out_cpu, torch_tpu_result=out_tpu.cpu())
+
+  def test_upsample_linear1d_dtypes(self):
+    tpu_device = torch.device("tpu")
+    for dtype in (torch.float32, torch.bfloat16, torch.float16, torch.float64):
+      x = torch.randn(2, 2, 8, dtype=dtype)
+      x_tpu = x.to(tpu_device)
+      out_tpu = torch.nn.functional.interpolate(
+          x_tpu, size=12, mode="linear", align_corners=False
+      )
+      out_cpu = torch.nn.functional.interpolate(
+          x, size=12, mode="linear", align_corners=False
+      )
+      self.assert_close(
+          golden_result=out_cpu,
+          torch_tpu_result=out_tpu.cpu(),
+          atol=1e-2,
+          rtol=1e-2,
+      )
+
+  def test_upsample_linear1d_edge_cases(self):
+    tpu_device = torch.device("tpu")
+    # Output size 1
+    x = torch.tensor([[[1.0, 2.0, 3.0, 4.0]]], dtype=torch.float32)
+    x_tpu = x.to(tpu_device)
+    out_tpu = torch.nn.functional.interpolate(
+        x_tpu, size=1, mode="linear", align_corners=False
+    )
+    out_cpu = torch.nn.functional.interpolate(
+        x, size=1, mode="linear", align_corners=False
+    )
+    self.assert_close(golden_result=out_cpu, torch_tpu_result=out_tpu.cpu())
+
+    # Empty batch
+    x_empty = torch.empty(0, 2, 4, dtype=torch.float32)
+    x_empty_tpu = x_empty.to(tpu_device)
+    out_empty_tpu = torch.nn.functional.interpolate(
+        x_empty_tpu, size=8, mode="linear", align_corners=True
+    )
+    out_empty_cpu = torch.nn.functional.interpolate(
+        x_empty, size=8, mode="linear", align_corners=True
+    )
+    self.assert_close(
+        golden_result=out_empty_cpu, torch_tpu_result=out_empty_tpu.cpu()
+    )
+
+    # Out variant
+    out_tensor = torch.empty(2, 1, 10, dtype=torch.float32, device=tpu_device)
+    torch.ops.aten.upsample_linear1d.out(
+        x_tpu.repeat(2, 1, 1), [10], False, None, out=out_tensor
+    )
+    expected_out = torch.nn.functional.interpolate(
+        x.repeat(2, 1, 1), size=10, mode="linear", align_corners=False
+    )
+    self.assert_close(
+        golden_result=expected_out, torch_tpu_result=out_tensor.cpu()
+    )
+
   def test_bitwise_right_shift(self):
     tpu_device = torch.device("tpu")
     shift_by_int32 = torch.tensor([1, 2, 4, 5], dtype=torch.int32)

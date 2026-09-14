@@ -479,6 +479,46 @@ class TpuVsGpuErrorTest(et.ErrorTestBase):
           t, [10, 10], False, None, None, out=out
       )
 
+  def test_upsample_linear1d_invalid_rank(self):
+    t = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    out = torch.empty(2, 10, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""upsample_linear1d(): expected 3D input tensor, got 2D tensor""",
+        gpu="""It is expected input_size equals to 3, but got size 2""",
+    ):
+      torch.ops.aten.upsample_linear1d.out(t, [10], False, None, out=out)
+
+  def test_upsample_linear1d_invalid_output_size(self):
+    t = torch.ones(1, 2, 4, device=et.device(), dtype=torch.float32)
+    out = torch.empty(1, 2, 10, 10, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""upsample_linear1d(): expected output_size to have 1 element, got 2""",
+        gpu="""It is expected output_size equals to 1, but got size 2""",
+    ):
+      torch.ops.aten.upsample_linear1d.out(t, [10, 10], False, None, out=out)
+
+  def test_upsample_linear1d_invalid_size(self):
+    t = torch.ones(1, 2, 4, device=et.device(), dtype=torch.float32)
+    out = torch.empty(1, 2, 0, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""upsample_linear1d(): expected input and output sizes to be greater than 0, got input (W: 4) and output (W: 0)""",
+        gpu="""Input and output sizes should be greater than 0, but got input (W: 4) and output (W: 0)""",
+    ):
+      torch.ops.aten.upsample_linear1d.out(t, [0], False, None, out=out)
+
+  def test_upsample_linear1d_dtype_mismatch(self):
+    t = torch.ones(1, 1, 4, device=et.device(), dtype=torch.float32)
+    out = torch.empty(1, 1, 10, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""upsample_linear1d(): expected out dtype float32, got int32""",
+        gpu="""Expected out tensor to have dtype float, but got int instead""",
+    ):
+      torch.ops.aten.upsample_linear1d.out(t, [10], False, None, out=out)
+
   def test_upsample_bicubic2d_backward_invalid_grad_output_rank(self):
     grad_output = torch.ones(1, 2, 3, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
@@ -10007,6 +10047,21 @@ Device-side assertion tracking was not enabled by user.""",
           message_reviewed_by="gunhyun",
       ):
         torch.nn.functional.interpolate(t, scale_factor=2, mode=mode)
+
+  def test_upsample_1d_unsupported_dtypes(self):
+    for dtype, tpu_dtype, gpu_dtype in (
+        (torch.bool, "bool", "Bool"),
+        (torch.int32, "int32", "Int"),
+        (torch.int64, "int64", "Long"),
+    ):
+      t = torch.ones(1, 1, 2, device=et.device(), dtype=dtype)
+      with et.assert_raises_message(
+          NotImplementedError,
+          tpu=f"""upsample_linear1d(): not implemented for {tpu_dtype}""",
+          gpu=f""""upsample_linear1d_out_frame" not implemented for '{gpu_dtype}'""",
+          message_reviewed_by="gunhyun",
+      ):
+        torch.nn.functional.interpolate(t, scale_factor=2, mode="linear")
 
   def test_transformer_encoder_layer_fwd_invalid_src_dim(self):
     embed_dim = 16

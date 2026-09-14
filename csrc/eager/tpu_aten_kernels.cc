@@ -216,6 +216,7 @@
 #include "csrc/ops/unique_consecutive/unique_consecutive_aten_kernels.h"
 #include "csrc/ops/upsample/upsample_aten_kernels.h"
 #include "csrc/ops/upsample/upsample_bicubic2d_aten_kernels.h"
+#include "csrc/ops/upsample/upsample_linear1d_aten_kernels.h"
 #include "csrc/ops/view/view_aten_kernels.h"
 #include "csrc/ops/weight_norm/weight_norm_aten_kernels.h"
 #include "csrc/ops/where/where_aten_kernels.h"
@@ -1018,6 +1019,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kUpsampleBilinear2dBackwardGradInput>(
       m, AtenUpsampleBilinear2dBackwardGradInput);
   ImplStable<OpName::kUpsampleBilinear2dOut>(m, AtenUpsampleBilinear2dOut);
+  ImplStable<OpName::kUpsampleLinear1dOut>(m, AtenUpsampleLinear1dOut);
   ImplStable<OpName::kUpsampleNearest1dBackwardGradInput>(
       m, AtenUpsampleNearest1dBackwardGradInput);
   ImplStable<OpName::kUpsampleNearest1dOut>(m, AtenUpsampleNearest1dOut);
