@@ -32,6 +32,7 @@ torch_tpu_cc_library(
         "//csrc/common:compilation",
         "//csrc/common:compilation_spec",
         "//csrc/common:error_utils",
+        "//csrc/common:pybind_error_utils",
         "//shims/pybind11",
         "//shims/torch",
         "//shims/torch:aten",

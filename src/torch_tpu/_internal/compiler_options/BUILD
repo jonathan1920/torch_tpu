@@ -40,11 +40,15 @@ pybind_extension(
     common_lib_packages = [
         "torch_tpu/csrc/common",
     ],
+    py_deps = [
+        "//shims/torch:pytorch",
+    ],
     wrap_py_init = True,
     deps = [
         "//csrc/common:compilation",
         "//csrc/common:compilation_spec",
         "//csrc/common:error_utils",
+        "//csrc/common:pybind_error_utils",
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",

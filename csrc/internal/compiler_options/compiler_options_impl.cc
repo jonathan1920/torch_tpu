@@ -18,6 +18,7 @@
 #include "csrc/common/compilation.h"
 #include "csrc/common/compilation_spec.h"
 #include "csrc/common/error_utils.h"
+#include "csrc/common/pybind_error_utils.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 
@@ -29,7 +30,7 @@ static void PushCompilerOptions(CompilerOptionOverrides options) {
   TT_THROW_IF_ERROR(PushCompilerOptionOverrides(std::move(options)));
 }
 
-PYBIND11_MODULE(compiler_options_impl, m) {
+TT_PYBIND11_MODULE(compiler_options_impl, m) {
   // Pushes the XLA options onto the per-thread custom compiler options stack.
   m.def("push_compiler_options", &PushCompilerOptions, py::arg("options"));
 
