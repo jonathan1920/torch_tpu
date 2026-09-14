@@ -105,6 +105,7 @@ torch_tpu_cc_library(
         "//csrc/common:compilation_spec",
         "//csrc/common:context_manager",
         "//csrc/common:context_states",
+        "//csrc/common:device_type",
         "//csrc/common:dimension_types",
         "//csrc/common:dtype",
         "//csrc/common:error_utils",

@@ -142,6 +142,7 @@ pybind_extension(
         "//csrc/common:compile_options_key",
         "//csrc/common:context_manager",
         "//csrc/common:context_states",
+        "//csrc/common:device_type",
         "//csrc/common:dimension_types",
         "//csrc/common:dtype",
         "//csrc/common:env_vars",

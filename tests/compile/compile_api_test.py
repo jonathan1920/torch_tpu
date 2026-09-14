@@ -569,6 +569,17 @@ class CompileApiTest(seed_test_utils.RepeatableTest):
     # The logical values of tpu_dst should be identical to cpu_src.
     utils.assert_close(actual=actual, expected=cpu_src)
 
+  def test_is_constant_tensor(self):
+    cpu_t = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32, device='cpu')
+    self.assertFalse(tpu_torch_compile.is_constant_tensor(cpu_t))
+
+    tpu_device = torch.device('tpu')
+    regular_tpu = torch.empty((2, 2), dtype=torch.float32, device=tpu_device)
+    self.assertFalse(tpu_torch_compile.is_constant_tensor(regular_tpu))
+
+    constant_tpu = tpu_torch_compile.make_constant_tensor(cpu_t)
+    self.assertTrue(tpu_torch_compile.is_constant_tensor(constant_tpu))
+
   def test_assign_constant_tensor_non_contiguous(self):
     # Arrange
     tpu_device = torch.device('tpu')

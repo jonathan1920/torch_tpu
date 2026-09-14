@@ -39,6 +39,7 @@
 #include "csrc/common/compilation_spec.h"
 #include "csrc/common/context_manager.h"
 #include "csrc/common/context_states.h"
+#include "csrc/common/device_type.h"
 #include "csrc/common/dimension_types.h"
 #include "csrc/common/dtype.h"
 #include "csrc/common/error_utils.h"
@@ -1095,6 +1096,20 @@ void PyAssignConstantTensor(const at::Tensor& cpu_src_tensor,
   TT_THROW_IF_ERROR(AssignConstantTensor(cpu_src_tensor, tpu_dst_tensor));
 }
 
+bool PyIsConstantTensor(const at::Tensor& tensor) {
+  if (!tensor.defined() ||
+      tensor.device().type() != GetPrivateUse1DeviceType()) {
+    return false;
+  }
+  auto buffer_ref_or = GetBuffer(tensor);
+  if (!buffer_ref_or.ok()) {
+    return false;
+  }
+  auto deferred_op = buffer_ref_or->deferred_op();
+  return deferred_op != nullptr &&
+         deferred_op->op_name() == OpName::kTorchTpuInternalConstant;
+}
+
 at::Tensor PyForceStrides(
     const at::Tensor& tensor,
     const std::vector<int64_t>& target_strides,  // INT_VEC_OK
@@ -1420,6 +1435,10 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       "make_constant_tensor", PyMakeConstantTensor, py::arg("cpu_tensor"),
       "Creates a TPU tensor that represents the constant value of the CPU "
       "tensor.");
+  mod_with_error_handling.def(
+      "is_constant_tensor", PyIsConstantTensor, py::arg("tensor"),
+      "Returns whether the tensor is a constant TPU tensor created by "
+      "make_constant_tensor.");
   mod_with_error_handling.def(
       "assign_constant_tensor", PyAssignConstantTensor,
       py::arg("cpu_src_tensor"), py::arg("tpu_dst_tensor"),

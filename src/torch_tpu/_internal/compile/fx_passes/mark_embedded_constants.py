@@ -60,6 +60,10 @@ def apply(
       if not isinstance(target, torch.Tensor):
         continue
 
+      if tpu_torch_compile.is_constant_tensor(target):
+        gm._processed_constant_attrs.add(attr_target)  # pyrefly: ignore[missing-attribute]
+        continue
+
       # The target will be placed on the device by AOT Autograd automatically,
       # transfer it back to CPU so that we can access the data.
       new_target = tpu_torch_compile.make_constant_tensor(target.to("cpu"))
