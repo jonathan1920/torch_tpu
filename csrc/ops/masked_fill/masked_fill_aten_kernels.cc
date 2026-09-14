@@ -114,16 +114,24 @@ absl::Status DispatchWithScalarValue(at::Tensor& self, const at::Tensor& mask,
   return Dispatch(self, mask, std::move(value_tensor));
 }
 
-// Performs in-place masked fill using a 0D tensor value.
+// Performs in-place masked fill using a 0D tensor value, on either the TPU or
+// the CPU.
 //
-// Requires `value` to be a 0D tensor. To align with PyTorch GPU behavior,
-// synchronously copies `value` to CPU to check for scalar overflow before
-// executing the fill, which triggers a host-device synchronization.
+// To align with PyTorch GPU behavior, a TPU `value` is synchronously copied to
+// CPU to check for scalar overflow before executing the fill, which triggers a
+// host-device synchronization.
 absl::Status DispatchWithTensorValue(at::Tensor& self, const at::Tensor& mask,
                                      const at::Tensor& value) {
   TT_RET_CHECK(value.dim() == 0, error::kInvalidArgument)
       << "expected value to be a 0D tensor, got " << value.dim()
       << "D tensor of shape " << ToString(value.sizes());
+
+  // A CPU `value` has no device buffer to feed to the op, but PyTorch permits
+  // it anyway. Read it on the host, as the GPU kernel does.
+  if (IsCpuDevice(value)) {
+    PromotedScalar promoted_value = PromoteScalar(value.item());
+    return DispatchWithScalarValue(self, mask, promoted_value);
+  }
 
   // Force the materialization of `value` so that we can run the overflow
   // check. This aligns TorchTPU implementation with the GPU kernel.
