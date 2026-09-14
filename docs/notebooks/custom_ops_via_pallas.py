@@ -121,7 +121,7 @@ def _(mo):
     ## 2. Pallas Implementation
 
     Look at the implementation below. Notice that:
-    *   The wrapper around the JAX function is similar to the quantized sum example (**[quantized_sum.py](?file=quantized_sum.py)**), using `torch_tpu._internal.pallas.jax_op`.
+    *   The wrapper around the JAX function is similar to the quantized sum example (**[quantized_sum.py](?file=quantized_sum.py)**), using `torch.tpu.pallas.jax_op`.
     *   The JAX code itself calls into Pallas to implement the register-level packing kernel.
     """)
   return
@@ -148,10 +148,9 @@ def _():
   )
 
   import torch
-  import torch_tpu._internal.pallas
 
   torch._logging.set_logs(aot_graphs=True)  # pylint: disable=protected-access
-  return LLO_DUMP_TO, Tuple, XLA_DUMP_TO, torch, torch_tpu
+  return LLO_DUMP_TO, Tuple, XLA_DUMP_TO, torch
 
 
 @app.cell
@@ -185,11 +184,10 @@ def _(Tuple):
 
 
 @app.cell
-def _(quant_and_pack_jax, torch_tpu):
+def _(quant_and_pack_jax, torch):
   # --- The rest of this code is pure PyTorch, with no reference to JAX modules.
 
-  # pylint: disable=protected-access
-  quant_and_pack = torch_tpu._internal.pallas.jax_op(
+  quant_and_pack = torch.tpu.pallas.jax_op(
       "testing_op::quant_and_pack",
       quant_and_pack_jax,
   )

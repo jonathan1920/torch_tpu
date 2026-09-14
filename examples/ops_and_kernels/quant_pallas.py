@@ -32,7 +32,6 @@ os.environ["XLA_FLAGS"] = f"--xla_dump_to={XLA_DUMP_TO} --xla_dump_hlo_as_text"
 
 from absl import app  # pylint: disable=g-import-not-at-top
 import torch
-import torch_tpu._internal.pallas
 
 torch._logging.set_logs(aot_graphs=True)  # pylint: disable=protected-access
 
@@ -67,8 +66,7 @@ def quant_and_pack_jax(x: jax.Array) -> Tuple[jax.Array, jax.Array]:
 
 # --- The rest of this code is pure PyTorch, with no reference to JAX modules.
 
-# pylint: disable=protected-access
-quant_and_pack = torch_tpu._internal.pallas.jax_op(
+quant_and_pack = torch.tpu.pallas.jax_op(
     "testing_op::quant_and_pack",
     quant_and_pack_jax,
 )

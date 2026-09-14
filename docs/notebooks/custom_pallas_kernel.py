@@ -43,7 +43,7 @@ def _(mo):
 
     [Pallas](https://docs.jax.dev/en/latest/pallas/index.html) is a JAX-based kernel language for TPUs. It provides direct control over the TPU's memory hierarchy and vector units while remaining in pure Python.
 
-    `torch_tpu` integrates with Pallas via the `@pallas.jax_op` decorator, allowing you to write custom hardware-accelerated logic and call it directly within your PyTorch models.
+    `torch.tpu` integrates with Pallas via `torch.tpu.pallas.jax_op`, allowing you to write custom hardware-accelerated logic and call it directly within your PyTorch models.
 
     **Prerequisites:** JAX must be installed (`pip install jax`).
     """)
@@ -52,15 +52,14 @@ def _(mo):
 
 @app.cell
 def _():
-  import torch
   import jax
   from jax.experimental import pallas as pl
-  from torch_tpu._internal import pallas  # This will likely change from _internal to experimental
+  import torch
 
   device = torch.device("tpu")
 
   print(f"Pallas environment ready on {device}.")
-  return device, jax, pallas, pl, torch
+  return device, jax, pl, torch
 
 
 @app.cell(hide_code=True)
@@ -68,7 +67,7 @@ def _(mo):
   mo.md(r"""
     ## 2. Writing Your First Kernel
 
-    The `pallas.jax_op` function is the primary way to define a custom TPU kernel. By using it directly, you can bind your kernel logic to statically known output shapes.
+    The `torch.tpu.pallas.jax_op` function is the primary way to define a custom TPU kernel. By using it directly, you can bind your kernel logic to statically known output shapes.
 
     ### Key Concepts
 
@@ -82,7 +81,7 @@ def _(mo):
 
 
 @app.cell
-def _(jax, pallas, pl, torch):
+def _(jax, pl, torch):
   # Define a simple vector addition kernel
   def add_vectors_kernel(x_ref, y_ref, o_ref):
     """x_ref, y_ref: Input references
@@ -102,7 +101,7 @@ def _(jax, pallas, pl, torch):
     )(x, y)
 
   # Wrap it using the functional interface
-  add_vectors_fn = pallas.jax_op(
+  add_vectors_fn = torch.tpu.pallas.jax_op(
       "pallas::add_vectors",
       add_vectors_jax,
   )
@@ -127,7 +126,7 @@ def _(mo):
 
 
 @app.cell
-def _(jax, pallas, pl, torch):
+def _(jax, pl, torch):
   def add_subtract_kernel(x_ref, y_ref, out_add_ref, out_sub_ref):
     x, y = x_ref[...], y_ref[...]
     out_add_ref[...] = x + y
@@ -147,7 +146,7 @@ def _(jax, pallas, pl, torch):
         ],
     )(x, y)
 
-  add_subtract_fn = pallas.jax_op(
+  add_subtract_fn = torch.tpu.pallas.jax_op(
       "pallas::add_subtract",
       add_subtract_jax,
   )
@@ -166,13 +165,13 @@ def _(mo):
   mo.md(r"""
     ## 3. Integration: `torch.compile`
 
-    Pallas kernels can be seamlessly compiled into larger graphs using `torch.compile(backend="tpu")`. Because `pallas.jax_op` automatically registers the function as a `torch.library.custom_op` and handles the `register_fake` implementation internally, you can compile the resulting op directly.
+    Pallas kernels can be seamlessly compiled into larger graphs using `torch.compile(backend="tpu")`. Because `torch.tpu.pallas.jax_op` automatically registers the function as a `torch.library.custom_op` and handles the `register_fake` implementation internally, you can compile the resulting op directly.
     """)
   return
 
 
 @app.cell
-def _(jax, pallas, pl, torch):
+def _(jax, pl, torch):
   from torch_tpu._internal import compile
 
   # 1. Define the Pallas kernel and its JAX wrapper
@@ -184,7 +183,7 @@ def _(jax, pallas, pl, torch):
         mul_kernel_fn, out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype)
     )(x, y)
 
-  mul_vectors_op = pallas.jax_op("pallas::mul_vectors", mul_jax_fn)
+  mul_vectors_op = torch.tpu.pallas.jax_op("pallas::mul_vectors", mul_jax_fn)
 
   # 4. Compile with the TPU backend
   @torch.compile(backend="tpu")
@@ -210,13 +209,13 @@ def _(mo):
 
     If you are using custom kernels in a training loop, you must manually define the backward pass and register it with the forward op using `register_autograd`.
 
-    Both the forward and backward passes should be defined using `pallas.jax_op`. This ensures they are registered as custom ops with their own `register_fake` implementations, which is required because AOTAutograd traces both the forward and backward graphs.
+    Both the forward and backward passes should be defined using `torch.tpu.pallas.jax_op`. This ensures they are registered as custom ops with their own `register_fake` implementations, which is required because AOTAutograd traces both the forward and backward graphs.
     """)
   return
 
 
 @app.cell
-def _(device, jax, mul_vectors_op, pallas, pl, torch):
+def _(device, jax, mul_vectors_op, pl, torch):
   # 1. Define the backward Pallas kernel and its JAX wrapper
   def mul_backward_kernel_fn(g_ref, x_ref, y_ref, g_x_ref, g_y_ref):
     g, x, y = g_ref[...], x_ref[...], y_ref[...]
@@ -234,7 +233,7 @@ def _(device, jax, mul_vectors_op, pallas, pl, torch):
         ],
     )(grad, x, y)
 
-  mul_vectors_backward_op = pallas.jax_op(
+  mul_vectors_backward_op = torch.tpu.pallas.jax_op(
       "pallas::mul_vectors_backward", mul_backward_jax_fn
   )
 
@@ -282,7 +281,7 @@ def _(mo):
 
 
 @app.cell
-def _(jax, pallas, pl, torch):
+def _(jax, pl, torch):
   def double_kernel(i_ref, o_ref):
     o_ref[...] = i_ref[...] * 2.0
 
@@ -293,7 +292,7 @@ def _(jax, pallas, pl, torch):
         double_kernel, out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype)
     )(x)
 
-  double_fn = pallas.jax_op(
+  double_fn = torch.tpu.pallas.jax_op(
       "pallas::double",
       double_jax_fn,
   )
@@ -319,7 +318,7 @@ def _(mo):
 
     | Concept | Key Takeaway |
     | :--- | :--- |
-    | **`pallas.jax_op`** | Decorator to define a TPU kernel as a PyTorch custom operation by wrapping a JAX function |
+    | **`torch.tpu.pallas.jax_op`** | Decorator to define a TPU kernel as a PyTorch custom operation by wrapping a JAX function |
     | **`pl.pallas_call`** | Used to wrap a Pallas kernel function into a JAX function |
     | **`_ref[...]` syntax** | Used in these examples to read/write local memory references managed by Pallas |
     | **Multiple outputs** | Provide a list of `jax.ShapeDtypeStruct` to `out_shape` in `pl.pallas_call`. |

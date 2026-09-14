@@ -136,7 +136,7 @@ def _(mo):
 
       Below is the sample implementation. Notice that:
 
-      *   `torch_tpu._internal.pallas.jax_op` wraps JAX inside a PyTorch custom op.
+      *   `torch.tpu.pallas.jax_op` wraps JAX inside a PyTorch custom op.
       *   The caller of the PyTorch custom op has no visibility into the fact that the
           op is implemented in terms of JAX.
 
@@ -187,7 +187,6 @@ def _():
 
   from absl import app as absl_app  # pylint: disable=g-import-not-at-top
   import torch  # pylint: disable=g-import-not-at-top
-  import torch_tpu._internal.pallas  # pylint: disable=g-import-not-at-top
 
   # pylint: disable=protected-access
   torch._logging.set_logs(aot_graphs=True)
@@ -200,7 +199,6 @@ def _():
       random,
       sys,
       torch,
-      torch_tpu,
   )
 
 
@@ -228,7 +226,7 @@ def _(torch):
 
 
 @app.cell()
-def _(torch_tpu):
+def _(torch):
   def create_popcount_op() -> Callable:
     import jax
 
@@ -237,7 +235,7 @@ def _(torch_tpu):
       return jax.lax.population_count(packed_vector)
 
     # jax_op takes name and fn as positional-only arguments.
-    return torch_tpu._internal.pallas.jax_op(
+    return torch.tpu.pallas.jax_op(
         "test_example::popcount",
         jax_popcount,
     )

@@ -15,12 +15,9 @@
 """Example of using Pallas JAX op for popcount in quantized sum."""
 
 import os
-import os
 import random
 import sys
-import sys
 from typing import Callable, Final
-from typing import Final
 
 # Inject flags and env var to libtpu. It sometimes needs flags, sometimes envvar.
 LLO_DUMP_TO: Final[str] = "/tmp/llo_dump"
@@ -36,7 +33,6 @@ os.environ["XLA_FLAGS"] = f"--xla_dump_to={XLA_DUMP_TO} --xla_dump_hlo_as_text"
 
 from absl import app  # pylint: disable=g-import-not-at-top
 import torch  # pylint: disable=g-import-not-at-top
-import torch_tpu._internal.pallas  # pylint: disable=g-import-not-at-top
 
 # pylint: disable=protected-access
 torch._logging.set_logs(aot_graphs=True)
@@ -69,7 +65,7 @@ def create_popcount_op() -> Callable:
     return jax.lax.population_count(packed_vector)
 
   # jax_op takes name and fn as positional-only arguments.
-  return torch_tpu._internal.pallas.jax_op(
+  return torch.tpu.pallas.jax_op(
       "test_example::popcount",
       jax_popcount,
   )

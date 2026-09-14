@@ -15,11 +15,10 @@
 """TorchTPU adapter for the Pallas addition kernel."""
 
 import torch
-from torch_tpu._internal import pallas
 from examples.ops_and_kernels import pallas_add
 
 # Register the JAX function as a PyTorch custom operation.
-pallas_add_op = pallas.jax_op(
+pallas_add_op = torch.tpu.pallas.jax_op(
     "custom_pallas::add_vectors",
     pallas_add.add_vectors_jax,
 )

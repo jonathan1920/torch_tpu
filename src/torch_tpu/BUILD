@@ -52,6 +52,7 @@ torch_tpu_py_library(
     name = "pallas",
     srcs = ["pallas.py"],
     deps = [
+        "//shims/jax:pallas_tpu",  # build_cleaner: keep
         "//src/torch_tpu/_internal/pallas:pallas_lib",
     ],
 )

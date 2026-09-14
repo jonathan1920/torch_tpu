@@ -508,7 +508,7 @@ simply
 Take a look at the sample implementation in
 [quantized_sum.py](quantized_sum.py). Notice that:
 
-*   `torch_tpu._internal.pallas.jax_op` wraps JAX inside a PyTorch custom op.
+*   `torch.tpu.pallas.jax_op` wraps JAX inside a PyTorch custom op.
 *   The caller of the PyTorch custom op has no visibility into the fact that the
     op is implemented in terms of JAX.
 
@@ -562,7 +562,7 @@ of responsibilities:
     using `pl.pallas_call`.
 2.  **TorchTPU adapter** in [torch_pallas_add.py](torch_pallas_add.py): Adapts
     the JAX function into a PyTorch-compatible custom op using
-    `torch_tpu._internal.pallas.jax_op` and exposes a Pythonic PyTorch function
+    `torch.tpu.pallas.jax_op` and exposes a Pythonic PyTorch function
     `pallas_add_vectors`.
 3.  **User-facing call and test** in [call_pallas_add.py](call_pallas_add.py):
     Simulates how an end-user calls the kernel from PyTorch, verifying that it
@@ -596,8 +596,7 @@ Look at the sample implementation in [quant_pallas.py](quant_pallas.py). Notice
 that:
 
 *   The wrapper around the JAX function is similar to
-    [quantized_sum.py](quantized_sum.py), using
-    `torch_tpu._internal.pallas.jax_op`.
+    [quantized_sum.py](quantized_sum.py), using `torch.tpu.pallas.jax_op`.
 *   The JAX code itself calls into Pallas to implement the kernel.
 
 ## Conclusion

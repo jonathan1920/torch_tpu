@@ -102,7 +102,6 @@ torch_tpu_py_test(
         "//shims/absl_py:app",
         "//shims/torch:pytorch",
         "//src/torch_tpu",
-        "//src/torch_tpu/_internal/pallas",
         "@pypi//jax",
     ],
 )
@@ -135,7 +134,6 @@ torch_tpu_py_test(
         "//shims/jax:pallas",
         "//shims/torch:pytorch",
         "//src/torch_tpu",
-        "//src/torch_tpu/_internal/pallas",
         "@pypi//jax",
     ],
 )
@@ -158,7 +156,6 @@ torch_tpu_py_library(
         ":pallas_add",
         "//shims/torch:pytorch",
         "//src/torch_tpu",
-        "//src/torch_tpu/_internal/pallas",
     ],
 )
 
