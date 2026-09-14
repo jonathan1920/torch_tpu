@@ -53,7 +53,8 @@ enum class EagerMode {
   // and is not intended for most users.
   kInternalDeferAll,
   // kInternalCompileFxGraph fully prevents all eager mode operations from
-  // from being executed on-device. This is only used in `torch.compile` mode.
+  // being executed on-device. This is used in compilation and export tracing
+  // (e.g., `torch.compile` or `torch.export`).
   kInternalCompileFxGraph,
 };
 
