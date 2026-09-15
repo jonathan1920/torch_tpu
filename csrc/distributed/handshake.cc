@@ -42,10 +42,4 @@ HandshakeStage GetHandshakeStageEnvVarOnce() {
   return env_value;
 }
 
-int GetHandshakePortEnvVarOnce() {
-  constexpr int kDefaultHandshakePort = 36423;
-  return GetIntegerEnvOnce<int, kTorchTpuHandshakePortEnvVar>().value_or(
-      kDefaultHandshakePort);
-}
-
 }  // namespace torch_tpu

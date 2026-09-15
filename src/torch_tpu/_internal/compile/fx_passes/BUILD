@@ -94,7 +94,7 @@ torch_tpu_py_library(
     srcs = ["reassociate_norm_weights.py"],
     deps = [
         "//shims/torch:pytorch",
-        "//src/torch_tpu/_internal/compile:tpu_torch_compile",
+        "//src/torch_tpu/_internal:env",
     ],
 )
 

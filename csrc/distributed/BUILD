@@ -71,7 +71,6 @@ torch_tpu_cc_library(
         "//csrc/eager:op_dispatcher",
         "//csrc/eager:structured_log_buffer",
         "//csrc/eager:tensor_to_buffer",
-        "//csrc/internal/compile:torch_compile_utils",
         "//csrc/ops:op_builder_utils",
         "//csrc/ops:op_names",
         "//csrc/ops/macros:kernel",

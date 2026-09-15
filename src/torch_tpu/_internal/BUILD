@@ -30,10 +30,12 @@ pybind_extension(
     ],
     wrap_py_init = True,
     deps = [
+        "//csrc/common:env_vars",
         "//csrc/common:error_utils",
         "//csrc/common:libtpu_version",
         "//csrc/common:utils",
         "//shims/torch:torch_headers",
+        "@com_google_absl//absl/log:absl_log",
     ],
 )
 

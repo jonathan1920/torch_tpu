@@ -34,12 +34,14 @@ from typing import Any
 
 import torch
 import torch.fx
-from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal import env
 
 
 def _is_reassociate_norm_weights_enabled() -> bool:
   """Returns whether the pass is enabled via environment variable."""
-  return tpu_torch_compile.get_reassociate_norm_weights_env_value()
+  return env.get_bool_env_once(
+      "TORCH_TPU_INTERNAL_ENABLE_REASSOCIATE_NORM_WEIGHTS", default_value=True
+  )
 
 
 def _normalize_gm_and_graph(

@@ -27,7 +27,7 @@ import portpicker
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.testing._internal.distributed import fake_pg
-from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal import env
 from torch_tpu._internal.distributed import handshake
 from torch_tpu._internal.distributed import multiprocessing
 from tests import seed_test_utils
@@ -496,8 +496,8 @@ class GetValidatedHandshakePortTest(seed_test_utils.RepeatableTest):
   def test_get_validated_port_env_var(self, is_coordinator: bool) -> None:
     """Tests that TORCH_TPU_INTERNAL_HANDSHAKE_PORT env var is respected."""
     with mock.patch.object(
-        tpu_torch_compile,
-        "get_handshake_port_env_var_once",
+        env,
+        "get_int_env_once",
         return_value=12345,
     ):
       with mock.patch.object(portpicker, "is_port_free", return_value=True):
@@ -1012,8 +1012,8 @@ class HandshakeTest(seed_test_utils.RepeatableTest):
     port = portpicker.pick_unused_port()
     with mock.patch.object(dist, "get_world_size", return_value=1):
       with mock.patch.object(
-          tpu_torch_compile,
-          "get_handshake_port_env_var_once",
+          env,
+          "get_int_env_once",
           return_value=port,
       ):
         _ = Handshake(current_rank=0, coordinator_rank=0)

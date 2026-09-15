@@ -22,7 +22,7 @@ from unittest import mock
 from absl.testing import absltest
 import portpicker
 import torch.distributed as dist
-from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal import env
 from torch_tpu._internal.distributed import handshake
 from tests import seed_test_utils
 import zmq
@@ -340,8 +340,8 @@ class HandshakeTest(seed_test_utils.RepeatableTest):
     port = portpicker.pick_unused_port()
     with mock.patch.object(dist, "get_world_size", return_value=1):
       with mock.patch.object(
-          tpu_torch_compile,
-          "get_handshake_port_env_var_once",
+          env,
+          "get_int_env_once",
           return_value=port,
       ):
         hs = Handshake(current_rank=0, coordinator_rank=0)
@@ -353,8 +353,8 @@ class HandshakeTest(seed_test_utils.RepeatableTest):
     port = portpicker.pick_unused_port()
     with mock.patch.object(dist, "get_world_size", return_value=4):
       with mock.patch.object(
-          tpu_torch_compile,
-          "get_handshake_port_env_var_once",
+          env,
+          "get_int_env_once",
           return_value=port,
       ):
         hs = Handshake(current_rank=0, coordinator_rank=0)

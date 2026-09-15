@@ -30,9 +30,6 @@ enum class HandshakeStage {
 // TORCH_TPU_INTERNAL_HANDSHAKE_STAGE.
 HandshakeStage GetHandshakeStageEnvVarOnce();
 
-// Returns the handshake port.
-int GetHandshakePortEnvVarOnce();
-
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_CSRC_DISTRIBUTED_HANDSHAKE_H_

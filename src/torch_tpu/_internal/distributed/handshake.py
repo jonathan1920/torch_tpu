@@ -26,13 +26,13 @@ import os
 import queue
 import struct
 import threading
-from typing import Any, Coroutine, TypeVar, cast
+from typing import Any, Coroutine, Final, TypeVar, cast
 
 from absl import logging
 import portpicker
 from torch._subclasses import fake_tensor
 import torch.distributed as dist
-from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal import env
 from torch_tpu._internal.distributed import process_group_utils
 import zmq
 from zmq import error
@@ -45,6 +45,7 @@ unset_fake_temporarily = fake_tensor.unset_fake_temporarily
 _T = TypeVar("_T")
 
 _COORDINATOR_RANK = 0  # Default coordinator rank, can be overridden.
+_DEFAULT_HANDSHAKE_PORT: Final[int] = 36423
 
 
 def _get_handshake_timeout_s() -> int:
@@ -536,7 +537,9 @@ def _get_validated_port(is_coordinator: bool) -> int:
     RuntimeError: If the selected port is not available for usage.
     ValueError: If the port number is not valid.
   """
-  port = tpu_torch_compile.get_handshake_port_env_var_once()
+  port = env.get_int_env_once(
+      "TORCH_TPU_INTERNAL_HANDSHAKE_PORT", default_value=_DEFAULT_HANDSHAKE_PORT
+  )
   _validate_port_number(port)
   if is_coordinator and not portpicker.is_port_free(port):
     raise RuntimeError(
@@ -1132,9 +1135,9 @@ class _HandshakeServer(_HandshakeBackend):
     remaining = set(first_msg.participating_ranks) - {first_msg.rank}
 
     results = await self._handshake_consensus.get_from_ranks(remaining)
-    for env in results:
-      received_msgs[env.request.rank] = env.request
-      client_ids[env.request.rank] = env.client_id
+    for envelope in results:
+      received_msgs[envelope.request.rank] = envelope.request
+      client_ids[envelope.request.rank] = envelope.client_id
 
     return received_msgs, client_ids
 

@@ -15,6 +15,7 @@
 """Unit tests for TorchTPU environment and libtpu version handling."""
 
 import enum
+import os
 
 from absl import flags
 from absl.testing import absltest
@@ -30,6 +31,15 @@ class TestMode(enum.Enum):
 
   LIBTPU_VERSION = "libtpu_version"
   LIBTPU_VERSION_NOT_LOADED = "libtpu_version_not_loaded"
+  GET_BOOL_ENV_ONCE_UNSET = "get_bool_env_once_unset"
+  GET_BOOL_ENV_ONCE_TRUE = "get_bool_env_once_true"
+  GET_BOOL_ENV_ONCE_FALSE = "get_bool_env_once_false"
+  GET_BOOL_ENV_ONCE_INVALID = "get_bool_env_once_invalid"
+  GET_BOOL_ENV_ONCE_MEMOIZED = "get_bool_env_once_memoized"
+  GET_INT_ENV_ONCE_UNSET = "get_int_env_once_unset"
+  GET_INT_ENV_ONCE_VALID = "get_int_env_once_valid"
+  GET_INT_ENV_ONCE_INVALID = "get_int_env_once_invalid"
+  GET_INT_ENV_ONCE_MEMOIZED = "get_int_env_once_memoized"
 
 
 _TEST_MODE = flags.DEFINE_enum_class(
@@ -59,6 +69,90 @@ class EnvTest(seed_test_utils.RepeatableTest):
   def test_libtpu_version_not_loaded(self) -> None:
     self.assertIsNone(env.get_libtpu_version())
 
+  def test_get_bool_env_once_unset(self) -> None:
+    self.assertIsNone(
+        env.get_bool_env_once("TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS")
+    )
+    self.assertTrue(
+        env.get_bool_env_once(
+            "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS", default_value=True
+        )
+    )
+
+  def test_get_bool_env_once_true(self) -> None:
+    self.assertTrue(
+        env.get_bool_env_once("TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS")
+    )
+    # The default value is ignored when the variable is set.
+    self.assertTrue(
+        env.get_bool_env_once(
+            "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS", default_value=False
+        )
+    )
+
+  def test_get_bool_env_once_false(self) -> None:
+    self.assertFalse(
+        env.get_bool_env_once("TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS")
+    )
+
+  def test_get_bool_env_once_invalid(self) -> None:
+    self.assertIsNone(
+        env.get_bool_env_once("TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS")
+    )
+    self.assertTrue(
+        env.get_bool_env_once(
+            "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS", default_value=True
+        )
+    )
+
+  def test_get_bool_env_once_memoized(self) -> None:
+    self.assertTrue(
+        env.get_bool_env_once("TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS")
+    )
+    os.environ["TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS"] = "0"
+    self.assertTrue(
+        env.get_bool_env_once("TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS")
+    )
+
+  def test_get_int_env_once_unset(self) -> None:
+    self.assertIsNone(env.get_int_env_once("TORCH_TPU_INTERNAL_HANDSHAKE_PORT"))
+    self.assertEqual(
+        env.get_int_env_once(
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT", default_value=42
+        ),
+        42,
+    )
+
+  def test_get_int_env_once_valid(self) -> None:
+    self.assertEqual(
+        env.get_int_env_once("TORCH_TPU_INTERNAL_HANDSHAKE_PORT"), 12345
+    )
+    # The default value is ignored when the variable is set.
+    self.assertEqual(
+        env.get_int_env_once(
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT", default_value=42
+        ),
+        12345,
+    )
+
+  def test_get_int_env_once_invalid(self) -> None:
+    self.assertIsNone(env.get_int_env_once("TORCH_TPU_INTERNAL_HANDSHAKE_PORT"))
+    self.assertEqual(
+        env.get_int_env_once(
+            "TORCH_TPU_INTERNAL_HANDSHAKE_PORT", default_value=42
+        ),
+        42,
+    )
+
+  def test_get_int_env_once_memoized(self) -> None:
+    self.assertEqual(
+        env.get_int_env_once("TORCH_TPU_INTERNAL_HANDSHAKE_PORT"), 12345
+    )
+    os.environ["TORCH_TPU_INTERNAL_HANDSHAKE_PORT"] = "54321"
+    self.assertEqual(
+        env.get_int_env_once("TORCH_TPU_INTERNAL_HANDSHAKE_PORT"), 12345
+    )
+
 
 class ParentEnvTest(
     subprocess_test_utils.SubprocessTestMixin,
@@ -78,6 +172,60 @@ class ParentEnvTest(
 
   def test_libtpu_version_not_loaded(self) -> None:
     self.run_sub_test(TestMode.LIBTPU_VERSION_NOT_LOADED)
+
+  def test_get_bool_env_once_unset(self) -> None:
+    self.run_sub_test(
+        TestMode.GET_BOOL_ENV_ONCE_UNSET,
+        env_removals=["TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS"],
+    )
+
+  def test_get_bool_env_once_true(self) -> None:
+    self.run_sub_test(
+        TestMode.GET_BOOL_ENV_ONCE_TRUE,
+        env_updates={"TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1"},
+    )
+
+  def test_get_bool_env_once_false(self) -> None:
+    self.run_sub_test(
+        TestMode.GET_BOOL_ENV_ONCE_FALSE,
+        env_updates={"TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "0"},
+    )
+
+  def test_get_bool_env_once_invalid(self) -> None:
+    self.run_sub_test(
+        TestMode.GET_BOOL_ENV_ONCE_INVALID,
+        env_updates={"TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "not_a_bool"},
+    )
+
+  def test_get_bool_env_once_memoized(self) -> None:
+    self.run_sub_test(
+        TestMode.GET_BOOL_ENV_ONCE_MEMOIZED,
+        env_updates={"TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "true"},
+    )
+
+  def test_get_int_env_once_unset(self) -> None:
+    self.run_sub_test(
+        TestMode.GET_INT_ENV_ONCE_UNSET,
+        env_removals=["TORCH_TPU_INTERNAL_HANDSHAKE_PORT"],
+    )
+
+  def test_get_int_env_once_valid(self) -> None:
+    self.run_sub_test(
+        TestMode.GET_INT_ENV_ONCE_VALID,
+        env_updates={"TORCH_TPU_INTERNAL_HANDSHAKE_PORT": "12345"},
+    )
+
+  def test_get_int_env_once_invalid(self) -> None:
+    self.run_sub_test(
+        TestMode.GET_INT_ENV_ONCE_INVALID,
+        env_updates={"TORCH_TPU_INTERNAL_HANDSHAKE_PORT": "abc"},
+    )
+
+  def test_get_int_env_once_memoized(self) -> None:
+    self.run_sub_test(
+        TestMode.GET_INT_ENV_ONCE_MEMOIZED,
+        env_updates={"TORCH_TPU_INTERNAL_HANDSHAKE_PORT": "12345"},
+    )
 
 
 if __name__ == "__main__":

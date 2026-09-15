@@ -31,10 +31,12 @@ torch_tpu_cc_library(
     name = "env_build",
     srcs = ["env.cc"],
     deps = [
+        "//csrc/common:env_vars",
         "//csrc/common:error_utils",
         "//csrc/common:libtpu_version",
         "//csrc/common:utils",
         "//shims/pybind11",
+        "@com_google_absl//absl/log:absl_log",
     ],
 )
 

@@ -33,6 +33,7 @@ from torch._subclasses.fake_tensor import unset_fake_temporarily
 import torch.distributed as dist
 from torch.fx.passes import graph_transform_observer
 from torch.fx.passes.split_module import split_module
+from torch_tpu._internal import env
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import torch_tpu_compiled_executable
 from torch_tpu._internal.compile import tpu_torch_compile
@@ -711,8 +712,8 @@ class SplitCompiler(compiler.Compiler):
     """Splits the graph on collectives and compiles the submodules."""
 
     handshake_stage = tpu_torch_compile.get_handshake_stage_env_var_once()
-    materialize_collectives = (
-        tpu_torch_compile.get_materialize_collective_tensors_env_value()
+    materialize_collectives = env.get_bool_env_once(
+        "TORCH_TPU_INTERNAL_MATERIALIZE_COLLECTIVE_TENSORS", default_value=True
     )
 
     should_handshake = False

@@ -65,6 +65,7 @@
 #include "csrc/common/device_type.h"
 #include "csrc/common/dimension_types.h"
 #include "csrc/common/dtype.h"
+#include "csrc/common/env_vars.h"
 #include "csrc/common/error_utils.h"
 #include "csrc/common/fingerprint_utils.h"
 #include "csrc/common/fixed_size_span.h"
@@ -82,7 +83,6 @@
 #include "csrc/eager/op_dispatcher.h"
 #include "csrc/eager/structured_log_buffer.h"
 #include "csrc/eager/tensor_to_buffer.h"
-#include "csrc/internal/compile/torch_compile_utils.h"
 #include "csrc/ops/macros/kernel.h"
 #include "csrc/ops/op_builder_utils.h"
 #include "csrc/ops/op_names.h"
@@ -340,7 +340,8 @@ OpSplitMode GetCollectiveSplitMode() {
     return OpSplitMode::kNone;
   }
 
-  if (PyGetMaterializeCollectiveTensorsEnvVarOnce()) {
+  if (GetBooleanEnvOnce<kTorchTpuInternalMaterializeCollectiveTensorsEnvVar>()
+          .value_or(true)) {
     return OpSplitMode::kSplitBoth;
   }
   return OpSplitMode::kNone;

@@ -13,6 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <cstdint>
+#include <optional>
+#include <string_view>
+
+#include "absl/log/absl_log.h"
+#include "csrc/common/env_vars.h"
 #include "csrc/common/error_utils.h"
 #include "csrc/common/libtpu_version.h"
 #include "csrc/common/utils.h"
@@ -20,6 +26,52 @@
 #include "pybind11/stl.h"
 
 namespace torch_tpu {
+namespace {
+
+// Returns the Boolean value of the environment variable `name`, or
+// `default_value` if the variable is unset or cannot be parsed as a Boolean.
+//
+// GetBooleanEnvOnce() takes the variable name as a template parameter, so a
+// name given at run time (from Python) has to be dispatched here. Only the
+// variables that Python code reads are listed; add more as needed.
+//
+// REQUIRES: `name` is one of them.
+std::optional<bool> PyGetBooleanEnvOnce(std::string_view name,
+                                        std::optional<bool> default_value) {
+  std::optional<bool> value;
+  if (name == kTorchTpuInternalEnableDebugChecksEnvVar) {
+    value = GetBooleanEnvOnce<kTorchTpuInternalEnableDebugChecksEnvVar>();
+  } else if (name == kTorchTpuInternalEnableReassociateNormWeightsEnvVar) {
+    value = GetBooleanEnvOnce<
+        kTorchTpuInternalEnableReassociateNormWeightsEnvVar>();
+  } else if (name == kTorchTpuInternalMaterializeCollectiveTensorsEnvVar) {
+    value = GetBooleanEnvOnce<
+        kTorchTpuInternalMaterializeCollectiveTensorsEnvVar>();
+  } else {
+    ABSL_LOG(FATAL)  // CRASH_OK=TorchTPU bug
+        << "Before reading Boolean environment variable " << name
+        << " from Python, it must be added to the body of "
+           "PyGetBooleanEnvOnce().";
+  }
+  return value.has_value() ? value : default_value;
+}
+
+// Like PyGetBooleanEnvOnce(), but for integer environment variables.
+std::optional<int64_t> PyGetIntegerEnvOnce(
+    std::string_view name, std::optional<int64_t> default_value) {
+  std::optional<int64_t> value;
+  if (name == kTorchTpuHandshakePortEnvVar) {
+    value = GetIntegerEnvOnce<int64_t, kTorchTpuHandshakePortEnvVar>();
+  } else {
+    ABSL_LOG(FATAL)  // CRASH_OK=TorchTPU bug
+        << "Before reading integer environment variable " << name
+        << " from Python, it must be added to the body of "
+           "PyGetIntegerEnvOnce().";
+  }
+  return value.has_value() ? value : default_value;
+}
+
+}  // namespace
 
 PYBIND11_MODULE(env, m) {
   m.attr("IS_INTERNAL_TORCH_TPU") = static_cast<bool>(TT_IS_INTERNAL_TORCH_TPU);
@@ -31,6 +83,14 @@ PYBIND11_MODULE(env, m) {
   m.def("set_libtpu_version", &SetLibtpuVersion, pybind11::arg("version"));
   m.def("get_libtpu_version", &GetLibtpuVersion);
   m.def("get_enable_debug_checks", &GetEnableDebugChecks);
+  m.def("get_bool_env_once", &PyGetBooleanEnvOnce, pybind11::arg("name"),
+        pybind11::arg("default_value") = std::optional<bool>(),
+        "Returns the Boolean value of the given environment variable, or "
+        "`default_value` if it is unset or cannot be parsed as a Boolean.");
+  m.def("get_int_env_once", &PyGetIntegerEnvOnce, pybind11::arg("name"),
+        pybind11::arg("default_value") = std::optional<int64_t>(),
+        "Returns the integer value of the given environment variable, or "
+        "`default_value` if it is unset or cannot be parsed as an integer.");
 }
 
 }  // namespace torch_tpu

@@ -53,7 +53,6 @@
 #include "csrc/eager/tensor_to_buffer.h"
 #include "csrc/internal/compile/compiled_mode.h"
 #include "csrc/internal/compile/dispatch_scan.h"
-#include "csrc/internal/compile/torch_compile_utils.h"
 #include "csrc/internal/dynamism/dynamism_ops.h"
 #include "csrc/ops/op_builder_utils.h"
 #include "csrc/ops/op_names.h"
@@ -1423,12 +1422,6 @@ TT_PYBIND11_MODULE(tpu_torch_compile, m) {
         "Returns a tensor with equivalent logical values to the input tensor, "
         "but with the given strides and storage offset, copying "
         "data as necessary.");
-  m.def("get_materialize_collective_tensors_env_value",
-        PyGetMaterializeCollectiveTensorsEnvVarOnce,
-        "Returns whether to materialize collective tensors.");
-  m.def("get_reassociate_norm_weights_env_value",
-        PyGetReassociateNormWeightsEnvVarOnce,
-        "Returns whether to reassociate normalization weights.");
 
   py::enum_<HandshakeStage>(GetPyBindHandle(m), "HandshakeStage")
       .value("OFF", HandshakeStage::kOff)
@@ -1438,8 +1431,6 @@ TT_PYBIND11_MODULE(tpu_torch_compile, m) {
 
   m.def("get_handshake_stage_env_var_once", &GetHandshakeStageEnvVarOnce,
         "Returns configured handshake stage.");
-  m.def("get_handshake_port_env_var_once", &GetHandshakePortEnvVarOnce,
-        "Returns configured handshake port.");
 
   m.def(
       "fingerprint64",
