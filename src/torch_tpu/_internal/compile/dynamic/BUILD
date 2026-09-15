@@ -95,11 +95,23 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "convert_constant_symints_pass",
+    srcs = [
+        "convert_constant_symints_pass.py",
+    ],
+    deps = [
+        ":sym_utils",
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
     name = "graph_transformations",
     srcs = [
         "graph_transformations.py",
     ],
     deps = [
+        ":convert_constant_symints_pass",
         ":dynamic_view_pass",
         ":generative_ops_pass",
         ":sym_shape_manager",

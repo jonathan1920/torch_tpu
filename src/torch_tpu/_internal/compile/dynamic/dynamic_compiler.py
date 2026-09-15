@@ -27,7 +27,7 @@ from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.dynamic import view_decomposition as decompose
 from torch_tpu._internal.compile.dynamic import view_ops_passes
 from torch_tpu._internal.compile.dynamic.graph_transformations import apply_dynamism_transformations
-from torch_tpu._internal.compile.dynamic.graph_transformations import apply_input_view_transformations
+from torch_tpu._internal.compile.dynamic.graph_transformations import apply_pre_dynamism_transformations
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
 
 
@@ -369,6 +369,7 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     self._static_tensor_map = []
     self._dynamic_tensor_map = []
     self._dynamic_scalar_map = []
+    self._static_scalar_map = []
 
     target_idx = 0
     pad_idx = 0
@@ -385,6 +386,8 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
           pad_idx += 1
         else:
           self._static_tensor_map.append((idx, target_idx))
+      else:
+        self._static_scalar_map.append((idx, target_idx))
 
       target_idx += 1
 
@@ -426,6 +429,9 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
         tensor = torch.tensor(val, dtype=torch.int32, device=backend_device)
         self._default_scalar_tensor_cache[val] = tensor
       model_inputs[target_idx] = tensor
+
+    for arg_idx, target_idx in self._static_scalar_map:
+      model_inputs[target_idx] = args[arg_idx]
 
     return model_inputs
 
@@ -604,20 +610,20 @@ class DynamicCompiler(compiler.Compiler):
         example_inputs,
     )
 
-    # Handle dynamic view placeholders.
-    view_arg_indices, updated_inputs = apply_input_view_transformations(
+    # Pre-pass on FX graph and example inputs.
+    # Handles view decomposition and constant SymInt conversion.
+    view_arg_indices, example_inputs = apply_pre_dynamism_transformations(
         graph_module, example_inputs
     )
-    if updated_inputs is not None:
-      example_inputs = updated_inputs
 
     logging.debug(
-        "[DynamicTpuBackend] After view decomposition, FX Graph: %s",
+        "[DynamicTpuBackend] After pre-dynamism transformations, FX Graph: %s",
         LazyString(graph_module.print_readable),
     )
 
     logging.debug(
-        "[DynamicTpuBackend] After view decomposition, example inputs: %s",
+        "[DynamicTpuBackend] After pre-dynamism transformations, example"
+        " inputs: %s",
         example_inputs,
     )
 

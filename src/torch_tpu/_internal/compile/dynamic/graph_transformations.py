@@ -24,6 +24,7 @@ from torch._inductor.utils import InputType
 from torch.fx.passes import graph_transform_observer
 from torch.fx.passes import tools_common
 from torch.utils import _pytree
+from torch_tpu._internal.compile.dynamic import convert_constant_symints_pass
 from torch_tpu._internal.compile.dynamic import dynamic_view_pass
 from torch_tpu._internal.compile.dynamic import generative_ops_pass
 from torch_tpu._internal.compile.dynamic import sym_utils
@@ -31,6 +32,9 @@ from torch_tpu._internal.compile.dynamic import symbol_bounds
 from torch_tpu._internal.compile.dynamic import view_ops_passes
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
 
+ConvertConstantSymIntsPass = (
+    convert_constant_symints_pass.ConvertConstantSymIntsPass
+)
 GraphTransformObserver = graph_transform_observer.GraphTransformObserver
 get_symint_bounds = symbol_bounds.get_symint_bounds
 HandleGenerativeOpsPass = generative_ops_pass.HandleGenerativeOpsPass
@@ -233,25 +237,35 @@ class HandleSymIntUsagesPass:
           changed = False
           symint_output_indices = []
           for idx, arg in enumerate(node.args[0]):
-            if sym_utils.is_symint_node(arg):
+            if sym_utils.is_symint(arg) or sym_utils.is_scalar(arg):
               symint_output_indices.append(idx)
-              tensor_node = self._sym_shape_manager.ensure_tensor(
-                  graph_module, arg, node
+              val_meta = (
+                  arg.meta.get("val")
+                  if isinstance(arg, torch.fx.Node) and hasattr(arg, "meta")
+                  else arg
               )
-              # Determine original target dtype from node metadata
-              val_meta = arg.meta.get("val")
-              target_dtype = getattr(val_meta, "dtype", torch.int64)
+              target_dtype = getattr(
+                  val_meta,
+                  "dtype",
+                  torch.int64 if isinstance(val_meta, int) else None,
+              )
+              tensor_node = self._sym_shape_manager.ensure_tensor(
+                  graph_module, arg, node, dtype=target_dtype
+              )
               current_dtype = getattr(
                   tensor_node.meta.get("val"), "dtype", None
               )
 
               if target_dtype is not None and current_dtype != target_dtype:
                 with graph_module.graph.inserting_before(node):
+                  device = sym_utils.get_target_device(node)
                   cast_node = graph_module.graph.call_method(
                       "to", args=(tensor_node,), kwargs={"dtype": target_dtype}
                   )
                   cast_node.meta = tensor_node.meta.copy()
-                  cast_node.meta["val"] = torch.empty((), dtype=target_dtype)
+                  cast_node.meta["val"] = torch.empty(
+                      (), dtype=target_dtype, device=device
+                  )
                   tensor_node = cast_node
 
               new_ret_args.append(tensor_node)
@@ -309,11 +323,11 @@ class DetectSymIntUsagesPass:
     return unhandled_usages
 
 
-def apply_input_view_transformations(
+def apply_pre_dynamism_transformations(
     graph_module: torch.fx.GraphModule,
     example_inputs: Sequence[InputType],
 ) -> tuple[set[int], Sequence[InputType]]:
-  """Decomposes non-contiguous dynamic view input placeholders into contiguous base buffers.
+  """Runs pre-dynamism passes including view transformations and constant SymInt conversions.
 
   Args:
     graph_module: The FX graph module to transform.
@@ -323,7 +337,7 @@ def apply_input_view_transformations(
     A tuple of (view_arg_indices, updated_example_inputs), where
     view_arg_indices is a set of argument indices for input placeholders that
     were decomposed, and updated_example_inputs is a sequence of example inputs
-    with decomposed view tensors replaced by their base shapes.
+    with decomposed view tensors and constant SymInts updated.
   """
   # Fetch original placeholders once in argument order
   original_placeholders = list(
@@ -337,14 +351,22 @@ def apply_input_view_transformations(
       input_dynamic_view_p
   )
 
+  view_arg_indices = input_dynamic_view_p.view_arg_indices
+  example_inputs = input_dynamic_view_p.updated_example_inputs
+
+  convert_symints_p = ConvertConstantSymIntsPass(
+      original_placeholders, example_inputs
+  )
+  GraphTransformObserver(
+      graph_module, "convert_constant_symints_pass"
+  ).apply_gm_pass(convert_symints_p)
+  example_inputs = convert_symints_p.updated_example_inputs
+
   tools_common.stable_topological_sort(graph_module)
   graph_module.graph.lint()
   graph_module.recompile()
 
-  return (
-      input_dynamic_view_p.view_arg_indices,
-      input_dynamic_view_p.updated_example_inputs,
-  )
+  return view_arg_indices, example_inputs
 
 
 def apply_dynamism_transformations(

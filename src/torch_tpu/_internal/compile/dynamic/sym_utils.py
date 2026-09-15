@@ -121,6 +121,40 @@ def is_symint(val: Any) -> bool:
   return isinstance(val, torch.fx.Node) and is_symint_node(val)
 
 
+def is_constant_symint(val: Any) -> bool:
+  """Checks if a value represents a constant SymInt with no free symbols."""
+  if isinstance(val, torch.fx.Node) and hasattr(val, "meta"):
+    val = val.meta.get("val")
+  if isinstance(val, torch.SymInt):
+    if hasattr(val, "node") and hasattr(val.node, "expr"):
+      expr = val.node.expr
+      if isinstance(expr, (int, sympy.Integer)):
+        return True
+      if hasattr(expr, "free_symbols"):
+        return len(expr.free_symbols) == 0
+  return False
+
+
+def get_constant_symint_value(val: Any) -> int | None:
+  """Extracts a concrete integer from a constant SymInt."""
+  if isinstance(val, torch.fx.Node) and hasattr(val, "meta"):
+    val = val.meta.get("val")
+  if isinstance(val, torch.SymInt) and is_constant_symint(val):
+    try:
+      return int(val.node.expr)  # pyrefly: ignore[bad-argument-type]
+    except Exception:
+      return None
+
+  return None
+
+
+def is_scalar(val: Any) -> bool:
+  """Checks if a value or FX node represents a Python scalar (int, float, bool)."""
+  if isinstance(val, torch.fx.Node) and hasattr(val, "meta"):
+    val = val.meta.get("val")
+  return isinstance(val, (int, float, bool))
+
+
 def has_dynamic_shape(val: Any) -> bool:
   """Checks if a tensor, FX Node, or FakeTensor has any dynamic dimensions.
 

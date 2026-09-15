@@ -463,6 +463,27 @@ class CompileTest(seed_test_utils.RepeatableTest):
     utils.assert_close(actual_dynamic, expected_dynamic)
     utils.assert_close(actual_view, expected_view)
 
+  def test_constant_symint_argument(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x, scale: int):
+        torch._check(scale == 4)
+        return x * scale, scale * 2
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x = torch.ones(2, 2, dtype=torch.float32, device="tpu")
+    torch._dynamo.mark_dynamic(x, 0, min=2, max=8)
+
+    # Instruct Dynamo to treat int value 4 as dynamic:
+    with torch.compiler.config.patch({"dynamic_sources": ".*scale.*"}):
+      out, scale_out = compiled(x, 4)
+    expected = x.to("cpu") * 4
+    utils.assert_close(out, expected)
+    self.assertEqual(scale_out, 8)
+
 
 class SymIntArithmeticTest(seed_test_utils.RepeatableTest):
 

@@ -689,7 +689,7 @@ class SymShapeManager:
         tensor_node = self._get_or_create_tensor_node(val, consumer_node)
         assert tensor_node is not None, f"tensor node for {val} not found"
         return tensor_node
-      if "val" in val.meta and isinstance(val.meta["val"], (int, float, bool)):
+      if sym_utils.is_scalar(val):
         val = val.meta["val"]
       else:
         raise RuntimeError(f"Unsupported node type for ensure_tensor: {val}")
