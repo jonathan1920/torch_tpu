@@ -429,6 +429,7 @@ TEST_P(ScanBuilderTest, NativeScanUnsupportedFallsBackToWhileLoop) {
       SetLibtpuVersion(*original_version);
     }
   };
+  ResetLibtpuVersionForTesting();
   SetLibtpuVersion("0.0.40");
 
   mlir::func::FunctionBuilder function_builder(module_builder(), "main");

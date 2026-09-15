@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import torch
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch_tpu._internal import dynamism
+from torch_tpu._internal import env
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import tpu_torch_compile
@@ -4068,6 +4069,29 @@ module {
         tpu="""reload(): expected reload device 'tpu:0', got 'tpu:1'""",
     ):
       torch.ops.ao.reload(y, torch.device("tpu", 1))
+
+  @et.why_tpu_only("libtpu only present for TPU devices.")
+  def test_invalid_libtpu_version(self):
+    env.reset_libtpu_version_for_testing()
+    self.addCleanup(env.reset_libtpu_version_for_testing)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""set_libtpu_version(): expected version string to be of the format <major>.<minor>.<patch>[.dev<date>], got '1.2.3.4.dev20260914'""",
+    ):
+      env.set_libtpu_version("1.2.3.4.dev20260914")
+
+  @et.why_tpu_only("libtpu only present for TPU devices.")
+  def test_reset_different_libtpu_version(self):
+    env.reset_libtpu_version_for_testing()
+    self.addCleanup(env.reset_libtpu_version_for_testing)
+
+    env.set_libtpu_version("0.1.0")
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""set_libtpu_version(): expected libtpu version to match previously set version '0.1.0', got '0.2.0'""",
+    ):
+      env.set_libtpu_version("0.2.0")
 
 
 class PyBindErrorUtilsErrorsTest(et.TpuOnlyErrorTestBase):

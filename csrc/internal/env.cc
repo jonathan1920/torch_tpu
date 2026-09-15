@@ -21,8 +21,8 @@
 #include "csrc/common/env_vars.h"
 #include "csrc/common/error_utils.h"
 #include "csrc/common/libtpu_version.h"
+#include "csrc/common/pybind_error_utils.h"
 #include "csrc/common/utils.h"
-#include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 
 namespace torch_tpu {
@@ -73,7 +73,7 @@ std::optional<int64_t> PyGetIntegerEnvOnce(
 
 }  // namespace
 
-PYBIND11_MODULE(env, m) {
+TT_PYBIND11_MODULE(env, m) {
   m.attr("IS_INTERNAL_TORCH_TPU") = static_cast<bool>(TT_IS_INTERNAL_TORCH_TPU);
 #if defined(NDEBUG)
   m.attr("TORCH_TPU_IS_OPTIMIZED_BUILD") = true;
@@ -82,6 +82,7 @@ PYBIND11_MODULE(env, m) {
 #endif
   m.def("set_libtpu_version", &SetLibtpuVersion, pybind11::arg("version"));
   m.def("get_libtpu_version", &GetLibtpuVersion);
+  m.def("reset_libtpu_version_for_testing", &ResetLibtpuVersionForTesting);
   m.def("get_enable_debug_checks", &GetEnableDebugChecks);
   m.def("get_bool_env_once", &PyGetBooleanEnvOnce, pybind11::arg("name"),
         pybind11::arg("default_value") = std::optional<bool>(),

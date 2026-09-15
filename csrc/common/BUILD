@@ -70,9 +70,13 @@ torch_tpu_cc_library(
     srcs = ["libtpu_version.cc"],
     hdrs = ["libtpu_version.h"],
     deps = [
+        ":error_utils",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -82,6 +86,7 @@ torch_tpu_cc_test(
     name = "libtpu_version_test",
     srcs = ["libtpu_version_test.cc"],
     deps = [
+        ":error_utils",
         ":libtpu_version",
         "//csrc/common:oss_test_main",
     ],

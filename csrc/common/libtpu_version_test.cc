@@ -18,6 +18,7 @@
 
 #include <optional>
 
+#include "csrc/common/error_utils.h"
 #include "gtest/gtest.h"
 
 namespace torch_tpu {
@@ -34,9 +35,18 @@ TEST_F(LibtpuVersionTest, InitialValueIsUnsetInFreshProcess) {
   EXPECT_TRUE(IsLibtpuVersionAtLeast("0.1.0"));
 }
 
-TEST_F(LibtpuVersionTest, SettingDifferentVersionFailsCheck) {
+TEST_F(LibtpuVersionTest, SettingDifferentVersionThrows) {
   SetLibtpuVersion("0.1.0");
-  EXPECT_DEATH(SetLibtpuVersion("0.2.0"), "LibtpuVersion has already been set");
+  EXPECT_THROW(SetLibtpuVersion("0.2.0"), torch_tpu::TtError);
+}
+
+TEST_F(LibtpuVersionTest, SettingInvalidVersionThrows) {
+  EXPECT_THROW(SetLibtpuVersion("0.1.2.3.4"), torch_tpu::TtError);
+}
+
+TEST_F(LibtpuVersionTest, InvalidVersionComparison) {
+  SetLibtpuVersion("0.1.0");
+  EXPECT_FALSE(IsLibtpuVersionAtLeast("0.1.2.3.4"));
 }
 
 TEST_F(LibtpuVersionTest, SetAndGetVersion) {
@@ -86,6 +96,22 @@ TEST_F(LibtpuVersionTest, StableVersionPrecedenceOverNightly) {
   EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.47.dev20260823+nightly"));
   EXPECT_FALSE(IsLibtpuVersionAtLeast("0.0.47.dev20260825+nightly"));
   EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.46"));
+}
+
+TEST_F(LibtpuVersionTest, TimestampDevVersion) {
+  // Timestamp-based dev versions use 12 digits (YYYYMMDDHHMM), exceeding
+  // 32-bit signed int limits (2,147,483,647).
+  SetLibtpuVersion("0.0.47.dev202605201400");
+  EXPECT_FALSE(IsLibtpuVersionAtLeast("0.0.47"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.47.dev202605201400"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.47.dev202605201300"));
+  EXPECT_FALSE(IsLibtpuVersionAtLeast("0.0.47.dev202605201500"));
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.46"));
+
+  // Stable 0.0.47 satisfies requirements for timestamp-based dev versions.
+  ResetLibtpuVersionForTesting();
+  SetLibtpuVersion("0.0.47");
+  EXPECT_TRUE(IsLibtpuVersionAtLeast("0.0.47.dev202605201400"));
 }
 
 TEST_F(LibtpuVersionTest, SetEmptyVersion) {

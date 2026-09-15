@@ -32,12 +32,12 @@ void SetLibtpuVersion(std::string_view version);
 // Returns the libtpu version string set via SetLibtpuVersion, or std::nullopt
 // if never set. If libtpu was not found, the returned optional contains an
 // empty string.
-std::optional<std::string> GetLibtpuVersion();
+[[nodiscard]] std::optional<std::string> GetLibtpuVersion();
 
 // Returns true if the libtpu version set via SetLibtpuVersion is at least
 // `min_version` (i.e. greater than or equal to `min_version`). If no libtpu
 // version has been set (e.g. in-tree builds) or if version is empty, returns
-// true.
+// true. Returns false if `min_version` cannot be parsed.
 //
 // Stable versions are given higher precedence than nightly/pre-release builds
 // of the same release version. For example:
@@ -47,7 +47,7 @@ std::optional<std::string> GetLibtpuVersion();
 //   "0.0.46" or older nightlies like "0.0.47.dev20260823+nightly", but does NOT
 //   satisfy a requirement for the stable release "0.0.47" or newer nightlies
 //   like "0.0.47.dev20260825+nightly".
-bool IsLibtpuVersionAtLeast(std::string_view min_version);
+[[nodiscard]] bool IsLibtpuVersionAtLeast(std::string_view min_version);
 
 // Resets the libtpu version state to uninitialized (std::nullopt).
 // For test isolation only.

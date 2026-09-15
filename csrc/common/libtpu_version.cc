@@ -16,73 +16,91 @@
 
 #include "csrc/common/libtpu_version.h"
 
-#include <algorithm>
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
+#include "csrc/common/error_utils.h"
 
 namespace torch_tpu {
 namespace {
 
+using VersionComponents = std::array<int64_t, 4>;
+
+constexpr VersionComponents kDefaultVersionComponents = {
+    0, 0, 0, std::numeric_limits<int64_t>::max()};
+
 struct LibtpuVersionState {
   absl::Mutex mutex;
   std::optional<std::string> version ABSL_GUARDED_BY(mutex);
-  std::vector<int> parsed_version ABSL_GUARDED_BY(mutex);
+  VersionComponents parsed_version ABSL_GUARDED_BY(mutex) =
+      kDefaultVersionComponents;
 };
 
 LibtpuVersionState& GetState() {
-  static auto* state = new LibtpuVersionState();
+  static absl::NoDestructor<LibtpuVersionState> state;
   return *state;
 }
 
-std::vector<int> ParseVersion(std::string_view version) {
-  std::vector<int> components;
+absl::StatusOr<VersionComponents> ParseVersion(std::string_view version) {
+  VersionComponents components = kDefaultVersionComponents;
+  size_t idx = 0;
   for (std::string_view part : absl::StrSplit(version, '.')) {
+    TT_RET_CHECK(idx < components.size(), error::kInvalidArgument)
+        << "expected version string to be of the format "
+           "<major>.<minor>.<patch>[.dev<date>], got '"
+        << version << "'";
     size_t start = 0;
     while (start < part.size() && !absl::ascii_isdigit(part[start])) {
-      start++;
+      ++start;
     }
     if (start >= part.size()) {
       continue;
     }
     size_t end = start;
     while (end < part.size() && absl::ascii_isdigit(part[end])) {
-      end++;
+      ++end;
     }
-    int value = 0;
+    int64_t value = 0;
     if (absl::SimpleAtoi(part.substr(start, end - start), &value)) {
-      components.push_back(value);
+      components[idx++] = value;
     }
   }
   return components;
 }
 
-void PadVersion(std::vector<int>& components, size_t target_len) {
-  // Pads `components` up to `target_len`.
-  // - The first three components (major, minor, patch) are zero-padded so that
-  //   shorter versions like "0.1" are treated as "0.1.0".
-  // - Subsequent components (4th component onwards) are padded with `INT_MAX`.
-  //   This ensures that a stable release (e.g. "0.0.47" -> [0, 0, 47,
-  //   INT_MAX]) compares greater than a pre-release or nightly build of the
-  //   same release (e.g. "0.0.47.dev20260824" -> [0, 0, 47, 20260824]).
-  while (components.size() < target_len) {
-    if (components.size() < 3) {
-      components.push_back(0);
-    } else {
-      components.push_back(std::numeric_limits<int>::max());
+enum class ComparisonResult {
+  kLess,
+  kEqual,
+  kGreater,
+};
+
+// Compares two versions component-by-component on-the-fly without copying or
+// vector resizing.
+// Returns kLess if lhs < rhs, kEqual if lhs == rhs, kGreater if lhs > rhs.
+ComparisonResult CompareVersions(const VersionComponents& lhs,
+                                 const VersionComponents& rhs) {
+  for (size_t i = 0; i < lhs.size(); ++i) {
+    if (lhs[i] != rhs[i]) {
+      return lhs[i] < rhs[i] ? ComparisonResult::kLess
+                             : ComparisonResult::kGreater;
     }
   }
+  return ComparisonResult::kEqual;
 }
 
 }  // namespace
@@ -91,17 +109,16 @@ void SetLibtpuVersion(std::string_view version) {
   LibtpuVersionState& state = GetState();
   absl::MutexLock lock(state.mutex);
   if (state.version.has_value()) {
-    ABSL_CHECK_EQ(  // CRASH_OK=Libtpu version is initialized once at startup;
-                    // resetting to a different version implies an internal
-                    // TorchTPU bug.
-        *state.version, version)
-        << "LibtpuVersion has already been set to '" << *state.version
-        << "' and cannot be reset to a different version '" << version << "'.";
+    TT_CHECK_THROW(*state.version == version, error::kInvalidArgument)
+        << "expected libtpu version to match previously set version '"
+        << *state.version << "', got '" << version << "'";
     return;
   }
+  TT_ASSIGN_OR_THROW(const VersionComponents parsed_version,
+                     ParseVersion(version));
   state.version = std::string(version);
-  state.parsed_version = ParseVersion(version);
-  if (state.version->empty()) {
+  state.parsed_version = parsed_version;
+  if (version.empty()) {
     ABSL_LOG(INFO) << "libtpu not installed.";
   } else {
     ABSL_LOG(INFO) << "Setting libtpu version to: " << *state.version;
@@ -118,25 +135,23 @@ void ResetLibtpuVersionForTesting() {
   LibtpuVersionState& state = GetState();
   absl::MutexLock lock(state.mutex);
   state.version.reset();
-  state.parsed_version.clear();
+  state.parsed_version = kDefaultVersionComponents;
 }
 
 bool IsLibtpuVersionAtLeast(std::string_view min_version) {
   LibtpuVersionState& state = GetState();
-  std::vector<int> current_components;
-  {
-    absl::MutexLock lock(state.mutex);
-    if (!state.version.has_value() || state.version->empty()) {
-      return true;
-    }
-    current_components = state.parsed_version;
+  absl::MutexLock lock(state.mutex);
+  if (!state.version.has_value() || state.version->empty()) {
+    return true;
   }
-  std::vector<int> req_components = ParseVersion(min_version);
-  const size_t target_len =
-      std::max(current_components.size(), req_components.size());
-  PadVersion(current_components, target_len);
-  PadVersion(req_components, target_len);
-  return current_components >= req_components;
+  const absl::StatusOr<VersionComponents> req_components =
+      ParseVersion(min_version);
+  if (!req_components.ok()) {
+    ABSL_LOG(ERROR) << req_components.status().message();
+    return false;
+  }
+  return CompareVersions(state.parsed_version, *req_components) !=
+         ComparisonResult::kLess;
 }
 
 }  // namespace torch_tpu
