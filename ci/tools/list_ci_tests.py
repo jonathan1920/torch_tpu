@@ -27,10 +27,14 @@ Example usage:
 
     # Check which CI jobs run a specific test target:
     $ ci/tools/list_ci_tests.py --test=ops_test_tpu-v5lite
+
+    # List only the test targets matching one or more globs:
+    $ ci/tools/list_ci_tests.py --tests=ops_test*,//tests:*_tpu-v5lite
 """
 
 import argparse
 from collections.abc import Mapping, Sequence
+import fnmatch
 import os
 import pathlib
 import platform
@@ -806,6 +810,41 @@ def discover_test_targets(
   return parse_bazel_query_xml(proc.stdout)
 
 
+def filter_targets_by_patterns(
+    targets: Sequence[TestTarget],
+    patterns: Sequence[str],
+) -> tuple[list[TestTarget], list[str]]:
+  """Filters test targets down to those matching any of the given globs.
+
+  Args:
+    targets: Sequence of TestTarget objects to filter.
+    patterns: Sequence of glob patterns (e.g. 'ops_test*' or
+      '//tests:*_tpu-v5lite'). A target matches when any pattern matches its
+      short name, its ':name' form, or its full label.
+
+  Returns:
+    A tuple of:
+      - The matching TestTarget objects, in the order they were given.
+      - The patterns that matched no target, so that callers can report
+        typos rather than silently listing nothing.
+  """
+  matched: list[TestTarget] = []
+  unmatched_patterns = set(patterns)
+
+  for t in targets:
+    candidates = (t.name, f":{t.name}", t.label)
+    matching_patterns = [
+        p
+        for p in patterns
+        if any(fnmatch.fnmatchcase(c, p) for c in candidates)
+    ]
+    if matching_patterns:
+      matched.append(t)
+      unmatched_patterns.difference_update(matching_patterns)
+
+  return matched, [p for p in patterns if p in unmatched_patterns]
+
+
 def map_jobs_to_tests(
     targets: Sequence[TestTarget],
     ci_configs: Mapping[str, Sequence[str]],
@@ -958,6 +997,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
       ),
   )
   parser.add_argument(
+      "--tests",
+      type=str,
+      metavar="PATTERNS",
+      default=None,
+      help=(
+          "Comma-separated list of test target globs limiting the output to"
+          " the matching tests (e.g. --tests=ops_test*,//tests:*_tpu-v5lite)."
+          " Each glob is matched against the target name and its full label."
+      ),
+  )
+  parser.add_argument(
       "--format",
       choices=["text", "count"],
       default="text",
@@ -1023,6 +1073,15 @@ def main(argv: Sequence[str] | None = None) -> int:
   except Exception as e:  # pylint: disable=broad-exception-caught
     sys.stderr.write(f"Error discovering test targets: {e}\n")
     return 1
+
+  if args.tests:
+    patterns = [p.strip() for p in args.tests.split(",") if p.strip()]
+    targets, unmatched_patterns = filter_targets_by_patterns(targets, patterns)
+    if unmatched_patterns:
+      sys.stderr.write(
+          "Warning: No test target matches:"
+          f" {', '.join(unmatched_patterns)}.\n\n"
+      )
 
   if args.test:
     matched_target, matching_jobs = map_test_to_jobs(

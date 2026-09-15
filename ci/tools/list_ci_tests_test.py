@@ -458,6 +458,89 @@ class ListCiTestsTest(unittest.TestCase):  # UNITTEST_OK=testing tools
       finally:
         sys.stdout = old_stdout
 
+  def test_filter_targets_by_patterns(self):
+    """Verifies glob filtering by target name and by full label."""
+    ops_target = list_ci_tests.TestTarget(
+        name="ops_test_tpu-v5lite",
+        package="tests",
+        tags=set(),
+        source_file="tests/BUILD",
+    )
+    kernel_target = list_ci_tests.TestTarget(
+        name="kernel_test",
+        package="csrc/ops",
+        tags=set(),
+        source_file="csrc/ops/BUILD",
+    )
+    targets = [ops_target, kernel_target]
+
+    matched, unmatched = list_ci_tests.filter_targets_by_patterns(
+        targets, ["ops_test*"]
+    )
+    self.assertEqual(matched, [ops_target])
+    self.assertEqual(unmatched, [])
+
+    matched, unmatched = list_ci_tests.filter_targets_by_patterns(
+        targets, ["//csrc/ops:*"]
+    )
+    self.assertEqual(matched, [kernel_target])
+    self.assertEqual(unmatched, [])
+
+    # Multiple patterns are unioned, and each target is listed at most once.
+    matched, unmatched = list_ci_tests.filter_targets_by_patterns(
+        targets, ["*_test*", "ops_test_tpu-v5lite"]
+    )
+    self.assertEqual(matched, targets)
+    self.assertEqual(unmatched, [])
+
+    matched, unmatched = list_ci_tests.filter_targets_by_patterns(
+        targets, ["ops_test*", "no_such_test*"]
+    )
+    self.assertEqual(matched, [ops_target])
+    self.assertEqual(unmatched, ["no_such_test*"])
+
+  def test_cli_execution_tests_filter_text(self):
+    """Verifies --tests limits the listed targets to matching globs."""
+    mock_targets = [
+        list_ci_tests.TestTarget(
+            name="my_target",
+            package="tests",
+            tags=set(),
+            source_file="tests/BUILD",
+        ),
+        list_ci_tests.TestTarget(
+            name="other_target",
+            package="tests",
+            tags=set(),
+            source_file="tests/BUILD",
+        ),
+    ]
+    with tempfile.TemporaryDirectory() as temp_dir:
+      root_path = pathlib.Path(temp_dir)
+      (root_path / ".bazelrc").write_text(_SAMPLE_BAZELRC, encoding="utf-8")
+      self._write_sample_workflow(root_path)
+
+      captured_stdout = io.StringIO()
+      old_stdout = sys.stdout
+      try:
+        sys.stdout = captured_stdout
+        with mock.patch.dict(
+            os.environ, {"TORCH_TPU_REPO_DIR": str(root_path)}
+        ):
+          with mock.patch.object(
+              list_ci_tests, "discover_test_targets", return_value=mock_targets
+          ):
+            ret = list_ci_tests.main([
+                "--jobs=ci_cpu",
+                "--tests=my_*",
+            ])
+            self.assertEqual(ret, 0)
+            output = captured_stdout.getvalue()
+            self.assertIn("//tests:my_target", output)
+            self.assertNotIn("//tests:other_target", output)
+      finally:
+        sys.stdout = old_stdout
+
   def test_cli_execution_jobs_filter_count(self):
     """Verifies filtering by --jobs with count format."""
     mock_targets = [
