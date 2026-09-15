@@ -2883,6 +2883,78 @@ class TestOps(op_testing.OpInfoTestBase):
   def test_full_like(self):
     self.do_test_op("full_like")
 
+  def test_fused_adagrad(self):
+    self.do_test_op(
+        "_fused_adagrad_",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        # Parameter shapes are static and optimizer steps are non-differentiable.
+        check_dynamism=False,
+        check_grad=False,
+    )
+
+  def test_fused_adagrad_tensor_lr(self):
+    self.do_test_op(
+        "_fused_adagrad_.tensor_lr",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        # Parameter shapes are static and optimizer steps are non-differentiable.
+        check_dynamism=False,
+        check_grad=False,
+    )
+
+  def test_fused_adam(self):
+    self.do_test_op(
+        "_fused_adam_",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        # Parameter shapes are static and optimizer steps are non-differentiable.
+        check_dynamism=False,
+        check_grad=False,
+    )
+
+  def test_fused_adam_tensor_lr(self):
+    self.do_test_op(
+        "_fused_adam_.tensor_lr",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        # Parameter shapes are static and optimizer steps are non-differentiable.
+        check_dynamism=False,
+        check_grad=False,
+    )
+
+  def test_fused_adamw(self):
+    self.do_test_op(
+        "_fused_adamw_",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        # Parameter shapes are static and optimizer steps are non-differentiable.
+        check_dynamism=False,
+        check_grad=False,
+    )
+
+  def test_fused_adamw_tensor_lr(self):
+    self.do_test_op(
+        "_fused_adamw_.tensor_lr",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        # Parameter shapes are static and optimizer steps are non-differentiable.
+        check_dynamism=False,
+        check_grad=False,
+    )
+
+  def test_fused_sgd(self):
+    self.do_test_op(
+        "_fused_sgd_",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        # Parameter shapes are static and optimizer steps are non-differentiable.
+        check_dynamism=False,
+        check_grad=False,
+    )
+
+  def test_fused_sgd_tensor_lr(self):
+    self.do_test_op(
+        "_fused_sgd_.tensor_lr",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        # Parameter shapes are static and optimizer steps are non-differentiable.
+        check_dynamism=False,
+        check_grad=False,
+    )
+
   def test_gather(self):
     self.do_test_op("gather")
 

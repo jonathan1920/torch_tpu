@@ -1272,8 +1272,565 @@ def _sample_inputs_safe_softmax(
     yield sample
 
 
+def _fused_adam_wrapper(
+    self,
+    grads,
+    exp_avgs,
+    exp_avg_sqs,
+    max_exp_avg_sqs,
+    state_steps,
+    **kwargs,
+):
+  return torch.ops.aten._fused_adam.default(
+      self,
+      grads,
+      exp_avgs,
+      exp_avg_sqs,
+      max_exp_avg_sqs,
+      state_steps,
+      **kwargs,
+  )
+
+
+def _fused_adam_tensor_lr_wrapper(
+    self,
+    grads,
+    exp_avgs,
+    exp_avg_sqs,
+    max_exp_avg_sqs,
+    state_steps,
+    **kwargs,
+):
+  return torch.ops.aten._fused_adam.tensor_lr(
+      self,
+      grads,
+      exp_avgs,
+      exp_avg_sqs,
+      max_exp_avg_sqs,
+      state_steps,
+      **kwargs,
+  )
+
+
+def _fused_adamw_wrapper(
+    self,
+    grads,
+    exp_avgs,
+    exp_avg_sqs,
+    max_exp_avg_sqs,
+    state_steps,
+    **kwargs,
+):
+  return torch.ops.aten._fused_adamw.default(
+      self,
+      grads,
+      exp_avgs,
+      exp_avg_sqs,
+      max_exp_avg_sqs,
+      state_steps,
+      **kwargs,
+  )
+
+
+def _fused_adamw_tensor_lr_wrapper(
+    self,
+    grads,
+    exp_avgs,
+    exp_avg_sqs,
+    max_exp_avg_sqs,
+    state_steps,
+    **kwargs,
+):
+  return torch.ops.aten._fused_adamw.tensor_lr(
+      self,
+      grads,
+      exp_avgs,
+      exp_avg_sqs,
+      max_exp_avg_sqs,
+      state_steps,
+      **kwargs,
+  )
+
+
+def _fused_sgd_wrapper(
+    self,
+    grads,
+    momentum_buffer_list,
+    **kwargs,
+):
+  return torch.ops.aten._fused_sgd.default(
+      self,
+      grads,
+      momentum_buffer_list,
+      **kwargs,
+  )
+
+
+def _fused_sgd_tensor_lr_wrapper(
+    self,
+    grads,
+    momentum_buffer_list,
+    **kwargs,
+):
+  return torch.ops.aten._fused_sgd.tensor_lr(
+      self,
+      grads,
+      momentum_buffer_list,
+      **kwargs,
+  )
+
+
+def _fused_adagrad_wrapper(
+    self,
+    grads,
+    state_sums,
+    state_steps,
+    **kwargs,
+):
+  return torch.ops.aten._fused_adagrad.default(
+      self,
+      grads,
+      state_sums,
+      state_steps,
+      **kwargs,
+  )
+
+
+def _fused_adagrad_tensor_lr_wrapper(
+    self,
+    grads,
+    state_sums,
+    state_steps,
+    **kwargs,
+):
+  return torch.ops.aten._fused_adagrad.tensor_lr(
+      self,
+      grads,
+      state_sums,
+      state_steps,
+      **kwargs,
+  )
+
+
+def _make_fused_opt_tensors(
+    device: str | torch.device,
+    param_dtype: torch.dtype,
+    state_dtype: torch.dtype | None = None,
+) -> tuple[
+    list[torch.Tensor],
+    list[torch.Tensor],
+    list[torch.Tensor],
+    list[torch.Tensor],
+    list[torch.Tensor],
+    list[torch.Tensor],
+]:
+  """Constructs deterministic multi-tensor inputs for fused optimizers (no randn)."""
+  if state_dtype is None:
+    state_dtype = param_dtype
+  p0 = torch.tensor([1.0, -0.5, 2.0, -1.5], dtype=param_dtype, device=device)
+  p1 = torch.tensor(
+      [[0.25, -0.75], [1.25, 0.5]], dtype=param_dtype, device=device
+  )
+  g0 = torch.tensor([0.1, -0.2, 0.3, -0.4], dtype=param_dtype, device=device)
+  g1 = torch.tensor(
+      [[-0.05, 0.15], [0.25, -0.35]], dtype=param_dtype, device=device
+  )
+  m0 = torch.tensor(
+      [0.01, -0.02, 0.03, -0.04], dtype=state_dtype, device=device
+  )
+  m1 = torch.tensor(
+      [[0.02, -0.01], [0.04, 0.01]], dtype=state_dtype, device=device
+  )
+  # Strictly positive second-moment / sum accumulators (> 0) to prevent 1/sqrt(0).
+  v0 = torch.tensor([0.01, 0.04, 0.09, 0.16], dtype=state_dtype, device=device)
+  v1 = torch.tensor(
+      [[0.04, 0.09], [0.16, 0.25]], dtype=state_dtype, device=device
+  )
+  max_v0 = torch.tensor(
+      [0.02, 0.05, 0.10, 0.20], dtype=state_dtype, device=device
+  )
+  max_v1 = torch.tensor(
+      [[0.05, 0.10], [0.20, 0.30]], dtype=state_dtype, device=device
+  )
+  # Auxiliary step counters must always be float32 on device for CUDA kernels.
+  step0 = torch.tensor(1.0, dtype=torch.float32, device=device)
+  step1 = torch.tensor(2.0, dtype=torch.float32, device=device)
+  return (
+      [p0, p1],
+      [g0, g1],
+      [m0, m1],
+      [v0, v1],
+      [max_v0, max_v1],
+      [step0, step1],
+  )
+
+
+def _make_dummy_unsupported_tensors(
+    device: str | torch.device, dtype: torch.dtype
+) -> tuple[
+    list[torch.Tensor],
+    list[torch.Tensor],
+    list[torch.Tensor],
+    list[torch.Tensor],
+    list[torch.Tensor],
+    list[torch.Tensor],
+]:
+  if dtype in quantize_utils.SUB_BYTE_DTYPES:
+    t = torch.zeros((4,), dtype=torch.uint8, device=device).view(dtype)
+  elif dtype == torch.bool:
+    t = torch.tensor([True, False, True, False], dtype=dtype, device=device)
+  elif dtype.is_complex:
+    t = torch.tensor(
+        [1.0 + 1.0j, 2.0 + 1.0j, 1.0 + 1.0j, 2.0 + 1.0j],
+        dtype=dtype,
+        device=device,
+    )
+  else:
+    t = torch.tensor([1, 2, 1, 2], dtype=dtype, device=device)
+  step = torch.tensor(1.0, dtype=torch.float32, device=device)
+  return [t], [t.clone()], [t.clone()], [t.clone()], [t.clone()], [step]
+
+
+def _sample_inputs_fused_adam(
+    opinfo: Any,
+    device: str | torch.device,
+    dtype: torch.dtype,
+    requires_grad: bool,
+    **kwargs: Any,
+) -> collections.abc.Iterator[core.SampleInput]:
+  """Deterministic sample generator for _fused_adam_ and _fused_adamw_ (no randn)."""
+  del requires_grad, kwargs
+  use_tensor_lr = opinfo.name.endswith(".tensor_lr")
+  lr_val = (
+      torch.tensor(0.01, dtype=torch.float32, device=device)
+      if use_tensor_lr
+      else 0.01
+  )
+
+  if not dtype.is_floating_point:
+    ps, gs, ms, vs, _, steps = _make_dummy_unsupported_tensors(device, dtype)
+    yield core.SampleInput(
+        ps,
+        args=(gs, ms, vs, [], steps),
+        kwargs={
+            "lr": lr_val,
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "weight_decay": 0.0,
+            "eps": 1e-8,
+            "amsgrad": False,
+            "maximize": False,
+        },
+        name="unsupported_dtype",
+    )
+    return
+
+  ps, gs, ms, vs, _, steps = _make_fused_opt_tensors(device, dtype)
+  yield core.SampleInput(
+      ps,
+      args=(gs, ms, vs, [], steps),
+      kwargs={
+          "lr": lr_val,
+          "beta1": 0.9,
+          "beta2": 0.999,
+          "weight_decay": 0.0,
+          "eps": 1e-8,
+          "amsgrad": False,
+          "maximize": False,
+      },
+      name="basic_step",
+  )
+
+  ps, gs, ms, vs, max_vs, steps = _make_fused_opt_tensors(device, dtype)
+  yield core.SampleInput(
+      ps,
+      args=(gs, ms, vs, max_vs, steps),
+      kwargs={
+          "lr": lr_val,
+          "beta1": 0.9,
+          "beta2": 0.999,
+          "weight_decay": 0.01,
+          "eps": 1e-8,
+          "amsgrad": True,
+          "maximize": True,
+      },
+      name="amsgrad_wd_maximize",
+  )
+
+  ps, gs, ms, vs, _, steps = _make_fused_opt_tensors(device, dtype)
+  yield core.SampleInput(
+      ps,
+      args=(gs, ms, vs, [], steps),
+      kwargs={
+          "lr": lr_val,
+          "beta1": 0.9,
+          "beta2": 0.999,
+          "weight_decay": 0.01,
+          "eps": 1e-8,
+          "amsgrad": False,
+          "maximize": False,
+          "grad_scale": torch.tensor(2.0, dtype=torch.float32, device=device),
+          "found_inf": torch.tensor(0.0, dtype=torch.float32, device=device),
+      },
+      name="grad_scale_step",
+  )
+
+  if dtype == torch.float32 and str(device) != "cpu":
+    ps, gs, ms, vs, _, steps = _make_fused_opt_tensors(
+        device, param_dtype=torch.float32, state_dtype=torch.bfloat16
+    )
+    yield core.SampleInput(
+        ps,
+        args=(gs, ms, vs, [], steps),
+        kwargs={
+            "lr": lr_val,
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "weight_decay": 0.01,
+            "eps": 1e-8,
+            "amsgrad": False,
+            "maximize": False,
+        },
+        name="mixed_precision_bf16_state",
+    )
+
+
+def _sample_inputs_fused_sgd(
+    opinfo: Any,
+    device: str | torch.device,
+    dtype: torch.dtype,
+    requires_grad: bool,
+    **kwargs: Any,
+) -> collections.abc.Iterator[core.SampleInput]:
+  """Deterministic sample generator for _fused_sgd_ (no randn)."""
+  del requires_grad, kwargs
+  use_tensor_lr = opinfo.name.endswith(".tensor_lr")
+  lr_val = (
+      torch.tensor(0.01, dtype=torch.float32, device=device)
+      if use_tensor_lr
+      else 0.01
+  )
+
+  if not dtype.is_floating_point:
+    ps, gs, _, _, _, _ = _make_dummy_unsupported_tensors(device, dtype)
+    yield core.SampleInput(
+        ps,
+        args=(gs, []),
+        kwargs={
+            "weight_decay": 0.0,
+            "momentum": 0.0,
+            "lr": lr_val,
+            "dampening": 0.0,
+            "nesterov": False,
+            "maximize": False,
+            "is_first_step": False,
+        },
+        name="unsupported_dtype",
+    )
+    return
+
+  ps, gs, _, _, _, _ = _make_fused_opt_tensors(device, dtype)
+  yield core.SampleInput(
+      ps,
+      args=(gs, []),
+      kwargs={
+          "weight_decay": 0.0,
+          "momentum": 0.0,
+          "lr": lr_val,
+          "dampening": 0.0,
+          "nesterov": False,
+          "maximize": False,
+          "is_first_step": False,
+      },
+      name="no_momentum",
+  )
+
+  ps, gs, ms, _, _, _ = _make_fused_opt_tensors(device, dtype)
+  yield core.SampleInput(
+      ps,
+      args=(gs, ms),
+      kwargs={
+          "weight_decay": 0.01,
+          "momentum": 0.9,
+          "lr": lr_val,
+          "dampening": 0.0,
+          "nesterov": True,
+          "maximize": False,
+          "is_first_step": False,
+      },
+      name="momentum_nesterov_wd",
+  )
+
+  ps, gs, ms, _, _, _ = _make_fused_opt_tensors(device, dtype)
+  yield core.SampleInput(
+      ps,
+      args=(gs, ms),
+      kwargs={
+          "weight_decay": 0.01,
+          "momentum": 0.9,
+          "lr": lr_val,
+          "dampening": 0.1,
+          "nesterov": False,
+          "maximize": True,
+          "is_first_step": True,
+          "grad_scale": torch.tensor(2.0, dtype=torch.float32, device=device),
+          "found_inf": torch.tensor(0.0, dtype=torch.float32, device=device),
+      },
+      name="grad_scale_first_step",
+  )
+
+
+def _sample_inputs_fused_adagrad(
+    opinfo: Any,
+    device: str | torch.device,
+    dtype: torch.dtype,
+    requires_grad: bool,
+    **kwargs: Any,
+) -> collections.abc.Iterator[core.SampleInput]:
+  """Deterministic sample generator for _fused_adagrad_ (no randn)."""
+  del requires_grad, kwargs
+  use_tensor_lr = opinfo.name.endswith(".tensor_lr")
+  lr_val = (
+      torch.tensor(0.01, dtype=torch.float32, device=device)
+      if use_tensor_lr
+      else 0.01
+  )
+
+  if not dtype.is_floating_point:
+    ps, gs, _, vs, _, steps = _make_dummy_unsupported_tensors(device, dtype)
+    yield core.SampleInput(
+        ps,
+        args=(gs, vs, steps),
+        kwargs={
+            "lr": lr_val,
+            "lr_decay": 0.0,
+            "weight_decay": 0.0,
+            "eps": 1e-10,
+            "maximize": False,
+        },
+        name="unsupported_dtype",
+    )
+    return
+
+  ps, gs, _, vs, _, steps = _make_fused_opt_tensors(device, dtype)
+  yield core.SampleInput(
+      ps,
+      args=(gs, vs, steps),
+      kwargs={
+          "lr": lr_val,
+          "lr_decay": 0.0,
+          "weight_decay": 0.0,
+          "eps": 1e-10,
+          "maximize": False,
+      },
+      name="basic_step",
+  )
+
+  ps, gs, _, vs, _, steps = _make_fused_opt_tensors(device, dtype)
+  yield core.SampleInput(
+      ps,
+      args=(gs, vs, steps),
+      kwargs={
+          "lr": lr_val,
+          "lr_decay": 0.01,
+          "weight_decay": 0.01,
+          "eps": 1e-10,
+          "maximize": True,
+      },
+      name="lr_decay_wd_maximize",
+  )
+
+  ps, gs, _, vs, _, steps = _make_fused_opt_tensors(device, dtype)
+  yield core.SampleInput(
+      ps,
+      args=(gs, vs, steps),
+      kwargs={
+          "lr": lr_val,
+          "lr_decay": 0.01,
+          "weight_decay": 0.01,
+          "eps": 1e-10,
+          "maximize": False,
+          "grad_scale": torch.tensor(2.0, dtype=torch.float32, device=device),
+          "found_inf": torch.tensor(0.0, dtype=torch.float32, device=device),
+      },
+      name="grad_scale_step",
+  )
+
+
 # Ops not included in the list of tested ops for pytorch.
 _ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
+    OpInfo(
+        "_fused_adagrad_",
+        op=_fused_adagrad_wrapper,
+        aten_name="_fused_adagrad_",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_fused_adagrad,
+        supports_out=False,
+        supports_autograd=False,
+    ),
+    OpInfo(
+        "_fused_adagrad_.tensor_lr",
+        op=_fused_adagrad_tensor_lr_wrapper,
+        aten_name="_fused_adagrad_.tensor_lr",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_fused_adagrad,
+        supports_out=False,
+        supports_autograd=False,
+    ),
+    OpInfo(
+        "_fused_adam_",
+        op=_fused_adam_wrapper,
+        aten_name="_fused_adam_",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_fused_adam,
+        supports_out=False,
+        supports_autograd=False,
+    ),
+    OpInfo(
+        "_fused_adam_.tensor_lr",
+        op=_fused_adam_tensor_lr_wrapper,
+        aten_name="_fused_adam_.tensor_lr",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_fused_adam,
+        supports_out=False,
+        supports_autograd=False,
+    ),
+    OpInfo(
+        "_fused_adamw_",
+        op=_fused_adamw_wrapper,
+        aten_name="_fused_adamw_",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_fused_adam,
+        supports_out=False,
+        supports_autograd=False,
+    ),
+    OpInfo(
+        "_fused_adamw_.tensor_lr",
+        op=_fused_adamw_tensor_lr_wrapper,
+        aten_name="_fused_adamw_.tensor_lr",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_fused_adam,
+        supports_out=False,
+        supports_autograd=False,
+    ),
+    OpInfo(
+        "_fused_sgd_",
+        op=_fused_sgd_wrapper,
+        aten_name="_fused_sgd_",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_fused_sgd,
+        supports_out=False,
+        supports_autograd=False,
+    ),
+    OpInfo(
+        "_fused_sgd_.tensor_lr",
+        op=_fused_sgd_tensor_lr_wrapper,
+        aten_name="_fused_sgd_.tensor_lr",
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=_sample_inputs_fused_sgd,
+        supports_out=False,
+        supports_autograd=False,
+    ),
     OpInfo(
         "torch._scaled_mm_v2",
         op=torch._scaled_mm_v2,  # pylint: disable=protected-access
