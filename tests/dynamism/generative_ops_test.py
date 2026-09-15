@@ -689,6 +689,261 @@ class GenerativeOpsTest(seed_test_utils.RepeatableTest):
     utils.assert_close(out1, expected)
 
   # =========================================================================
+  # torch.ones_like Tests
+  # =========================================================================
+
+  def test_ones_like_1d_dynamic(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.ones_like(x)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.zeros(4, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.ones_like(x1)
+    utils.assert_close(out1, expected)
+
+  def test_ones_like_2d_dynamic(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.ones_like(x)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.zeros(4, 8, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.ones_like(x1)
+    utils.assert_close(out1, expected)
+
+  def test_ones_like_multi_dynamic_dims(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.ones_like(x)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.zeros(4, 6, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.ones_like(x1)
+    utils.assert_close(out1, expected)
+
+  def test_ones_like_with_dtype(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.ones_like(x, dtype=torch.int32)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.zeros(4, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.ones_like(x1, dtype=torch.int32)
+    utils.assert_close(out1, expected)
+
+  # =========================================================================
+  # torch.zeros_like Tests
+  # =========================================================================
+
+  def test_zeros_like_1d_dynamic(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.zeros_like(x)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.ones(4, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.zeros_like(x1)
+    utils.assert_close(out1, expected)
+
+  def test_zeros_like_2d_dynamic(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.zeros_like(x)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.ones(4, 16, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.zeros_like(x1)
+    utils.assert_close(out1, expected)
+
+  def test_zeros_like_multi_dynamic_dims(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.zeros_like(x)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.ones(4, 6, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.zeros_like(x1)
+    utils.assert_close(out1, expected)
+
+  def test_zeros_like_with_dtype(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.zeros_like(x, dtype=torch.int64)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.ones(4, 8, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.zeros_like(x1, dtype=torch.int64)
+    utils.assert_close(out1, expected)
+
+  # =========================================================================
+  # torch.full_like Tests
+  # =========================================================================
+
+  def test_full_like_1d_dynamic(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.full_like(x, 3.14)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.zeros(4, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.full_like(x1, 3.14)
+    utils.assert_close(out1, expected)
+
+  def test_full_like_2d_dynamic(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.full_like(x, 7, dtype=torch.int32)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.zeros(4, 8, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.full_like(x1, 7, dtype=torch.int32)
+    utils.assert_close(out1, expected)
+
+  def test_full_like_multi_dynamic_dims(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.full_like(x, 42.0)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.zeros(4, 6, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = torch.full_like(x1, 42.0)
+    utils.assert_close(out1, expected)
+
+  # =========================================================================
+  # torch.empty_like Tests
+  # =========================================================================
+
+  def test_empty_like_1d_dynamic(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.empty_like(x)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.zeros(4, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    self.assertEqual(out1.shape, (4,))
+
+  def test_empty_like_2d_dynamic(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.empty_like(x)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.zeros(4, 8, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+
+    out1 = compiled(x1)
+    self.assertEqual(out1.shape, (4, 8))
+
+  def test_empty_like_multi_dynamic_dims(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.empty_like(x)
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.zeros(4, 6, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=16)
+
+    out1 = compiled(x1)
+    self.assertEqual(out1.shape, (4, 6))
+
+  # =========================================================================
   # torch.rand and torch.randn Tests
   # =========================================================================
 
@@ -922,6 +1177,27 @@ class GenerativeOpsTest(seed_test_utils.RepeatableTest):
         ones = x.new_ones((s0, s1))
         zeros = x.new_zeros((s0, s1))
         full = x.new_full((s0, s1), 3.0)
+        return x + ones + zeros + full
+
+    compiled = torch.compile(
+        Model(), backend="tpu", options={"bounded_dynamism": True}
+    )
+
+    x1 = torch.ones(4, 8, device=self.device)
+    torch._dynamo.mark_dynamic(x1, 0, min=2, max=16)
+    torch._dynamo.mark_dynamic(x1, 1, min=2, max=16)
+
+    out1 = compiled(x1)
+    expected = x1 + 1.0 + 0.0 + 3.0
+    utils.assert_close(out1, expected)
+
+  def test_multiple_like_generative_ops_in_graph(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        ones = torch.ones_like(x)
+        zeros = torch.zeros_like(x)
+        full = torch.full_like(x, 3.0)
         return x + ones + zeros + full
 
     compiled = torch.compile(

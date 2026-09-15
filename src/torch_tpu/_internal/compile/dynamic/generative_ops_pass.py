@@ -32,7 +32,7 @@ class HandleGenerativeOpsPass:
   fixed shapes. This pass handles them by applying Bounded Dynamism.
 
   Depending on the operator and its parameter profile, this pass applies one of
-  three strategies:
+  four strategies:
   1. Dedicated Custom Operators: For operations like `torch.arange` with truly
      dynamic lengths, it replaces the original operation directly with a custom
      operator (`dynamic_arange`) that computes the dynamic sequence natively.
@@ -44,6 +44,13 @@ class HandleGenerativeOpsPass:
      dynamic shape arguments with their static upper bounds to allow
      compilation, and appends a `set_dimension_logical_size` operation to
      truncate the tensor at runtime.
+  4. Like-Op Dimension Bounding: For generative operations taking a template
+     tensor input (like `torch.zeros_like`, `torch.ones_like`,
+     `torch.full_like`,
+     `torch.empty_like`), the operation generates a new buffer matching the
+     bounded physical shape of the template. This pass appends
+     `set_dimension_logical_size` operations for any dynamic dimensions to
+     truncate the output tensor to its runtime logical size.
 
   Examples:
 
@@ -159,6 +166,10 @@ class HandleGenerativeOpsPass:
                 gm, node, size_arg_idx=2
             )
         ),
+        torch.ops.aten.zeros_like.default: self._process_like_op,
+        torch.ops.aten.ones_like.default: self._process_like_op,
+        torch.ops.aten.full_like.default: self._process_like_op,
+        torch.ops.aten.empty_like.default: self._process_like_op,
     }
 
   def __call__(self, graph_module: torch.fx.GraphModule) -> None:
@@ -361,6 +372,36 @@ class HandleGenerativeOpsPass:
           new_size_arg,
           *node.args[size_arg_idx + 1 :],
       )
+
+    if current_node != node:
+      node.replace_all_uses_with(
+          current_node, delete_user_cb=lambda u: u in original_users
+      )
+
+  def _process_like_op(
+      self,
+      graph_module: torch.fx.GraphModule,
+      node: torch.fx.Node,
+  ) -> None:
+    """Processes *_like generative ops with dynamic shapes (e.g.
+
+    zeros_like, ones_like, full_like, empty_like).
+    """
+    val = node.meta.get("val")
+    if val is None or not hasattr(val, "shape"):
+      return
+
+    original_users = set(node.users.keys())
+    current_node = node
+
+    for dim, s in enumerate(val.shape):
+      if sym_utils.is_symint(s):
+        tensor_node = self._sym_shape_manager.ensure_tensor(
+            graph_module, s, node
+        )
+        current_node = self._insert_set_dimension_logical_size(
+            graph_module, current_node, tensor_node, dim, node
+        )
 
     if current_node != node:
       node.replace_all_uses_with(
