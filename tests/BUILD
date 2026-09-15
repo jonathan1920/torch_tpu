@@ -625,17 +625,14 @@ torch_tpu_py_test(
     main = "ops_test.py",
     # Skip this in OSS presubmit when it's overloaded.
     nopresubmit_oss = _WHEN_OSS_PRESUBMIT_OVERLOADED,
-    run_on_accelerators = [
-        "requires-tpu-v6e",
-        "requires-tpu-v5lite",
-    ],
+    oss_presubmit_tpu_generation = _OPS_TEST_ON_V7_TPU_GENERATION,
+    run_on_accelerators = _OPS_TEST_ON_V7_RUN_ON_ACCELERATORS,
     shard_count = 50,
     tags = [
         "noasan",  # This test times out in asan mode.
         "nomsan",  # This test times out in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
-        "ok-to-wait-for-v6e-in-presubmit",
-    ],
+    ] + _OPS_TEST_ON_V7_TAGS,
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
