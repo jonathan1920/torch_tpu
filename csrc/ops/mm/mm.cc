@@ -25,6 +25,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
@@ -67,6 +68,14 @@ absl::StatusOr<mlir::MlirOp> BuildMmShlo(mlir::MlirOp lhs, mlir::MlirOp rhs,
          "got "
       << lhs_shape[1] << " and " << rhs_shape[0];
 
+  // XLA doesn't support matmul with i64, so we convert them to f64.
+  const bool is_any_i64 = lhs_tensor_type.getElementType().isInteger(64) ||
+                          rhs_tensor_type.getElementType().isInteger(64);
+  if (is_any_i64) {
+    lhs = stablehlo::ConvertElementType(lhs, mlir::ElementType::F64);
+    rhs = stablehlo::ConvertElementType(rhs, mlir::ElementType::F64);
+  }
+
   // Explanation: (m , n) @ (n, p) -> (m, p)
   // n is a contracting dimension, m and p are result dimensions.
   // There are no batch dimensions (like (b, m, n) @ (b, n, p) -> (b, m, p))).
@@ -85,8 +94,12 @@ absl::StatusOr<mlir::MlirOp> BuildMmShlo(mlir::MlirOp lhs, mlir::MlirOp rhs,
 
   // NB: deliberately using DotGeneral instead of Dot because Dot is scheduled
   // for removal from StableHLO.
-  return stablehlo::DotGeneral(lhs, rhs, dot_dimension_numbers,
-                               /*precision_config=*/precision_config_attr);
+  auto dot_result =
+      stablehlo::DotGeneral(lhs, rhs, dot_dimension_numbers,
+                            /*precision_config=*/precision_config_attr);
+  return is_any_i64 ? stablehlo::ConvertElementType(dot_result,
+                                                    dot_general_element_type)
+                    : dot_result;
 }
 
 }  // namespace torch_tpu

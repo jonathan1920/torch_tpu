@@ -318,6 +318,17 @@ def _get_grid_sampler_inputs(dims: int) -> tuple[torch.Tensor, torch.Tensor]:
 class TpuVsGpuErrorTest(et.ErrorTestBase):
   """Tests error messages on TPU vs on GPU."""
 
+  def test_matmul_unsupported_dtypes(self):
+    """Tests that matmul with unsupported integral non-empty tensor inputs fails with expected error."""
+    a = torch.zeros((5, 5), dtype=torch.int64, device=et.device())
+    b = torch.zeros((5, 5), dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""mm(): not implemented for int64""",
+        gpu=""""addmm_cuda" not implemented for 'Long'""",
+    ):
+      torch.matmul(a, b)
+
   def test_triu_insufficient_dims(self):
     """Tests that triu with insufficient dims fails with expected error."""
     t = torch.ones(1, device=et.device(), dtype=torch.float32)

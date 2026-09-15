@@ -3329,11 +3329,6 @@ class TestOps(op_testing.OpInfoTestBase):
         # delegated, but due to the same reason above, there are some funky
         # lowering causing delegation to fail for us. This requires additional
         # work to fix. For now, we just exclude bool dtypes.
-        # TODO: fix matmul(out=...) failing with int64 dtypes. Error:
-        # While rewriting computation to not contain X64 element types, XLA
-        # encountered an HLO for which this rewriting is not implemented:
-        # %_run_op.1 = s64[] dot(%Arg_1.1, %Arg_0.1), lhs_contracting_dims={0},
-        # rhs_contracting_dims={0}, operand_precision={highest,highest}
         exclude_dtypes={
             "cpu": (
                 torch.bool,
@@ -3345,7 +3340,6 @@ class TestOps(op_testing.OpInfoTestBase):
                 torch.uint8,
                 torch.int8,
                 torch.int16,
-                torch.int64,
             ),
         },
     )
