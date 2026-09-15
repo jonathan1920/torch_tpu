@@ -448,7 +448,7 @@ class ListCiTestsTest(unittest.TestCase):  # UNITTEST_OK=testing tools
           with mock.patch.object(
               list_ci_tests, "discover_test_targets", return_value=mock_targets
           ):
-            ret = list_ci_tests.main(["--test_target=my_target"])
+            ret = list_ci_tests.main(["--test=my_target"])
             self.assertEqual(ret, 0)
             output = captured_stdout.getvalue()
             self.assertIn("Test Target: //tests:my_target", output)

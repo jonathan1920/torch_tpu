@@ -26,7 +26,7 @@ Example usage:
     $ ci/tools/list_ci_tests.py --format=count
 
     # Check which CI jobs run a specific test target:
-    $ ci/tools/list_ci_tests.py --test_target=ops_test_tpu-v5lite
+    $ ci/tools/list_ci_tests.py --test=ops_test_tpu-v5lite
 """
 
 import argparse
@@ -948,13 +948,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
       ),
   )
   parser.add_argument(
-      "--test_target",
+      "--test",
       type=str,
       default=None,
       help=(
           "Specify a test target name or label to list all CI jobs that execute"
-          " it (e.g. --test_target=ops_test_tpu-v5lite or"
-          " --test_target=//tests:ops_test_tpu-v5lite)."
+          " it (e.g. --test=ops_test_tpu-v5lite or"
+          " --test=//tests:ops_test_tpu-v5lite)."
       ),
   )
   parser.add_argument(
@@ -1024,14 +1024,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     sys.stderr.write(f"Error discovering test targets: {e}\n")
     return 1
 
-  if args.test_target:
+  if args.test:
     matched_target, matching_jobs = map_test_to_jobs(
-        args.test_target, targets, ci_configs, selected_jobs
+        args.test, targets, ci_configs, selected_jobs
     )
     if not matched_target:
       sys.stderr.write(
-          f"Error: Test target '{args.test_target}' was not found in"
-          f" {repo_root}.\n"
+          f"Error: Test target '{args.test}' was not found in {repo_root}.\n"
       )
       return 1
 
