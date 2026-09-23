@@ -60,6 +60,11 @@ jobs:
           # Closed as "not planned" to align with GitHub UI options.
           close-issue-reason: not_planned
 
+          # Scoped strictly to issues waiting on contributor response to
+          # prevent closing issues stalled due to internal team delays.
+          only-issue-labels: "stat:awaiting response from contributor"
+          exempt-issue-labels: "override-stale"
+
           # For fairness, unassigned issues and pull requests are exempted
           # since they result from ineffective triaging.
           #
@@ -77,7 +82,9 @@ jobs:
           # GitHub rate limits.
           sort-by: updated
           ascending: true
-          operations-per-run: 100
+          # Process up to 1000 items per run to drain backlog spikes in a single
+          # daily execution while staying safely under the 5000/hr API limit.
+          operations-per-run: 1000
 
           enable-statistics: true
 
@@ -89,13 +96,12 @@ jobs:
           # blank lines because YAML folds n line breaks into n-1, so a single
           # blank line would yield a break inside the paragraph instead.
           stale-issue-message: >-
-            This issue has had no activity for 30 days, so it is labeled
-            `stale`. If nothing changes, it will be closed in 14 days.
+            This issue is marked as stale because it has been awaiting response from the
+            contributor for 30 days with no activity. If nothing changes, it will be closed in 14 days.
 
 
             Cleaning up stale issues helps us stay focused on active work.
-            If this issue should stay open, please update it regularly with
-            comments or pull requests.
+            If this issue should stay open, please update it with the requested information or a reproducer.
 
 
             The workflow will remove the `stale` label on its next daily run
